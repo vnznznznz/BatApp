@@ -16,7 +16,12 @@ export type AuthContextValue = {
   /** True until the stored session has been restored, or found to be absent. */
   isRestoring: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (details: SignUpDetails) => Promise<void>;
+  /**
+   * Resolves with whether the account still needs an emailed confirmation
+   * before it can be used. That depends on a project setting rather than on
+   * anything the app controls, so it is reported rather than assumed.
+   */
+  signUp: (details: SignUpDetails) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
@@ -65,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signUp({ email, password, username, displayName }) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
@@ -77,6 +82,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
         if (error) throw new Error(describeAuthError(error.message));
+
+        // With email confirmation enabled, Supabase creates the user but hands
+        // back no session. With it disabled, the session arrives immediately and
+        // onAuthStateChange signs the user straight in.
+        return { needsEmailConfirmation: data.session === null };
       },
 
       async signOut() {

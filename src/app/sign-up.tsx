@@ -44,10 +44,12 @@ export default function SignUpScreen() {
 
     setBusy(true);
     try {
-      await signUp({ email, password, username, displayName });
-      // With email confirmation on, no session arrives yet — say so rather than
-      // leaving the user on a form that appears to have done nothing.
-      setSentTo(email.trim());
+      const { needsEmailConfirmation } = await signUp({ email, password, username, displayName });
+      // With confirmation on, no session arrives yet — say so rather than leave
+      // the user on a form that appears to have done nothing. With it off, the
+      // session lands immediately and the route guard takes them onward, so
+      // showing "check your email" would be a lie they would wait on.
+      if (needsEmailConfirmation) setSentTo(email.trim());
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {

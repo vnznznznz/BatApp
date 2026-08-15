@@ -130,6 +130,38 @@ the empty case is handled.
 
 ## Phase 2 — Supabase and authentication
 
+### Region: Frankfurt (`eu-central-1`), not Zurich
+
+Supabase's two EU-central regions are Frankfurt and Zurich. Frankfurt is inside the EU; Zurich is
+Switzerland, which is not.
+
+Sending the data to Zurich would be a third-country transfer under GDPR. It is lawful today —
+the Commission's January 2024 adequacy decision covers Switzerland — but it is a dependency on a
+decision that can be challenged and withdrawn, as _Schrems I_ and _II_ both were. Frankfurt
+removes the question rather than answering it, is roughly 150 km from the operator instead of
+450, and is AWS's largest European region, which is where Supabase features tend to land first.
+
+The region is immutable after project creation, so this is worth getting right while the database
+is still empty.
+
+### Email confirmation: off during development, on before anyone else joins
+
+Supabase's built-in email service **refuses to deliver to any address that is not on the
+project's team**, and is capped at two messages per hour across the whole project. With email
+confirmation enabled and no custom SMTP, a friend's signup therefore fails silently — the account
+is created and the confirmation link never arrives.
+
+So the order is: confirmation **off** while the only account is the operator's; configure custom
+SMTP (Resend, Postmark, SES) before inviting anyone; then turn confirmation **on**. It stays
+worth turning on, because password reset is only a recovery route if the address is real, and a
+typo'd address on a project with no support desk is a permanent lockout.
+
+Because that setting lives in the Supabase dashboard rather than in this repository, `signUp`
+**reports** which case occurred rather than assuming one: Supabase returns a user but no session
+when confirmation is pending, and a session immediately when it is not. The sign-up screen
+branches on that. Telling someone to check an inbox when no email was sent leaves them waiting
+forever, and both tests for it are in `src/tests/sign-up-screen.test.tsx`.
+
 ### The database is tested, not just written
 
 `src/tests/db` replays the real migrations against Postgres compiled to WebAssembly (PGlite) and

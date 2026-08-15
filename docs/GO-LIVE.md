@@ -178,6 +178,20 @@ is the cleaner foundation.
    gives data _residency_, not sovereignty — transfers rest on SCCs in their DPA, which is
    appropriate for a hobby project but worth knowing.
 
+### Before a second person can sign up: custom SMTP
+
+This one blocks earlier than it looks. Supabase's built-in email service **will not deliver to
+anyone who is not on the project's team**, and caps the whole project at two messages per hour.
+Until a custom SMTP provider is configured:
+
+- a friend's signup fails silently if email confirmation is on — the account is created and the
+  link never arrives;
+- password reset does not work for anyone but the operator, whatever the confirmation setting is.
+
+Configure a provider under Authentication → Emails → SMTP Settings (Resend, Postmark and SES all
+have free tiers large enough for this app), which also lifts the cap to 30 messages per hour, and
+then turn email confirmation on. Both are dashboard settings, not code.
+
 ### Before Phase 10 (push)
 
 Keep the notification content-free, as already specified — "A bat has arrived 🦇", body fetched
