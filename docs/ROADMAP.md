@@ -1,7 +1,10 @@
 # Roadmap
 
-Seventeen phases. Each one ends with `npm run verify` green and a commit. Nothing is built ahead
-of its phase.
+Each phase ends with `npm run verify` green and a commit. Nothing is built ahead of its phase.
+
+Three go-live tasks do **not** wait for Phase 15 — Apple enrolment, the Play Console account and
+the Supabase project all have lead times or one-way doors, and two of them block earlier phases.
+See [`GO-LIVE.md`](GO-LIVE.md).
 
 | #   | Phase                           | Status   |
 | --- | ------------------------------- | -------- |
@@ -18,6 +21,7 @@ of its phase.
 | 11  | Inbox and message detail        | Planned  |
 | 12  | Bat flight animation            | Planned  |
 | 13  | Security and RLS audit          | Planned  |
+| 13a | Safety and moderation           | Planned  |
 | 14  | Testing                         | Planned  |
 | 15  | iOS/Android production builds   | Planned  |
 | 16  | TestFlight / Play internal test | Planned  |
@@ -81,3 +85,15 @@ Recorded rather than guessed at:
   needs a decision before then, not after.
 - **Message retention.** Nothing currently says how long a delivered message is kept. This
   affects the Phase 2 account-deletion test and the database schema.
+- **Contact address for store listings.** Apple Guideline 1.2 requires published contact
+  information and GDPR Art. 13 requires the controller's identity, so full anonymity is not
+  available. Whether that is a home address, a c/o, or a Postfach is a personal decision that
+  needs making before Phase 16, not at it.
+
+## Phase 13a — Safety and moderation
+
+Inserted after researching submission requirements: a chat app is a user-generated-content app
+under Apple Guideline 1.2, and Beta App Review checks it. Report a message or user, block a user
+as an action distinct from removing a friend, a contact route, and a EULA with a zero-tolerance
+clause. Invite-only one-to-one messaging makes the "filtering" limb easy to satisfy, but it has
+to be a deliberate documented answer rather than an omission.
