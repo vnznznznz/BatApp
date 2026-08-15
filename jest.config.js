@@ -11,10 +11,17 @@ const expoPreset = require('jest-expo/jest-preset');
  * The assets alias is listed first because Jest takes the first match, and the
  * preset's broader `^@/(.*)$` would otherwise resolve `@/assets/...` under src/.
  *
+ * Database tests are not Jest's: they live in `src/tests/db` as native ESM and
+ * run under `node --test` via `npm run test:db`. See that directory's harness
+ * for why.
+ *
  * @type {import('jest').Config}
  */
 module.exports = {
   preset: 'jest-expo',
+  // Same merge hazard as moduleNameMapper: the preset's own setup files must be
+  // kept, or React Native's test globals never get installed.
+  setupFiles: [...(expoPreset.setupFiles ?? []), '<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '^@/assets/(.*)$': '<rootDir>/assets/$1',
     ...expoPreset.moduleNameMapper,

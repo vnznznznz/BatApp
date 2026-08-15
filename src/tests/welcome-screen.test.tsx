@@ -1,9 +1,23 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import WelcomeScreen from '@/app/index';
 import { BATS_PER_USER } from '@/constants/config';
+
+const mockPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
+  Redirect: () => null,
+}));
+
+// The screen is under test, not the auth stack. Mocking the context keeps this
+// from becoming an integration test of Supabase's client.
+const mockAuth = { session: null as unknown };
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => mockAuth,
+}));
 
 /** Fixed insets so the screen renders deterministically outside a device. */
 const metrics: Metrics = {
@@ -13,6 +27,11 @@ const metrics: Metrics = {
 
 const renderScreen = (ui: ReactElement) =>
   render(<SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>);
+
+beforeEach(() => {
+  mockPush.mockClear();
+  mockAuth.session = null;
+});
 
 describe('WelcomeScreen', () => {
   it('names the app and its premise', async () => {
@@ -40,5 +59,23 @@ describe('WelcomeScreen', () => {
     expect(
       screen.getByText(/No purchases, no credits, no subscriptions, no advertising/),
     ).toBeOnTheScreen();
+  });
+
+  it('offers a way to create an account and a way to sign in', async () => {
+    await renderScreen(<WelcomeScreen />);
+
+    await fireEvent.press(screen.getByText('Create an account'));
+    expect(mockPush).toHaveBeenCalledWith('/sign-up');
+
+    await fireEvent.press(screen.getByText('I already have one'));
+    expect(mockPush).toHaveBeenCalledWith('/sign-in');
+  });
+
+  it('sends an already signed-in user onward instead of showing the pitch', async () => {
+    mockAuth.session = { user: { id: 'abc' } };
+
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText('Night Courier')).toBeNull();
   });
 });

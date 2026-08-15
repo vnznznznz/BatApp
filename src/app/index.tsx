@@ -1,11 +1,14 @@
+import { Redirect, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { BatMark } from '@/components/bat-mark';
+import { Button } from '@/components/button';
 import { Card } from '@/components/card';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-context';
 
 /** The promises the app makes, stated on the way in. */
 const PROMISES = [
@@ -24,11 +27,16 @@ const PROMISES = [
 ];
 
 export default function WelcomeScreen() {
+  const router = useRouter();
+  const { session } = useAuth();
+
+  if (session) return <Redirect href="/home" />;
+
   return (
     // Scrolls rather than clips: this content does not fit a smaller iPhone
     // once the reader has turned Dynamic Type up.
     <Screen center scroll style={styles.screen}>
-      <BatMark size={148} />
+      <BatMark size={132} />
 
       <Text variant="display" style={styles.title}>
         Night Courier
@@ -49,6 +57,15 @@ export default function WelcomeScreen() {
           </View>
         ))}
       </Card>
+
+      <View style={styles.actions}>
+        <Button label="Create an account" onPress={() => router.push('/sign-up')} />
+        <Button
+          label="I already have one"
+          variant="ghost"
+          onPress={() => router.push('/sign-in')}
+        />
+      </View>
     </Screen>
   );
 }
@@ -81,5 +98,10 @@ const styles = StyleSheet.create({
   detail: {
     // Keeps the second line from crowding the heading above it.
     lineHeight: 19,
+  },
+  actions: {
+    alignSelf: 'stretch',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
   },
 });

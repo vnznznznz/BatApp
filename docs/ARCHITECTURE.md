@@ -128,6 +128,75 @@ the empty case is handled.
 
 ---
 
+## Phase 2 — Supabase and authentication
+
+### The database is tested, not just written
+
+`src/tests/db` replays the real migrations against Postgres compiled to WebAssembly (PGlite) and
+asserts against the result. RLS policies are the security boundary of this whole application; a
+policy that is merely reviewed is a policy that is guessed at.
+
+Two things this harness deliberately does not do, recorded so nobody later mistakes a green run
+for more than it is:
+
+- It stubs Supabase's `auth` schema — `auth.users`, `auth.uid()`, and the `anon` and
+  `authenticated` roles. Faithful to the contract, not to Supabase's implementation.
+- It cannot test concurrency. PGlite is a single embedded connection, so two transactions cannot
+  race. **The concurrent-send test that Phase 7 requires cannot be satisfied here** and needs a
+  real Postgres with two connections.
+
+The tests must also `set role authenticated`: PGlite connects as a superuser, and superusers
+bypass RLS entirely, so a test that forgot this would pass no matter what the policies said.
+
+**These tests run under `node --test`, not Jest.** PGlite resolves its WebAssembly bundles
+relative to `import.meta.url`, which Jest's CommonJS transform leaves undefined. Supplying the
+bundles by hand did not help — the loader still wanted a URL. Native ESM has no such problem and
+Node's built-in runner costs no extra dependency, so `npm run test:db` sits alongside `npm test`
+and `npm run verify` runs both.
+
+### `search_path = ''` on every function
+
+Every function in the migrations sets an empty `search_path` and fully qualifies its identifiers.
+For `SECURITY DEFINER` functions this is mandatory — without it a caller can create objects that
+shadow the ones the function meant to use, and the function runs them with the owner's rights.
+Applying it everywhere removes the question of which functions needed it.
+
+### `force row level security`
+
+`enable row level security` does not apply policies to the table's owner. `force` does. Without
+it, anything running as the owner silently sees every row.
+
+### Account deletion is a SQL function, not an Edge Function
+
+`delete_own_account()` is `SECURITY DEFINER` and takes **no arguments**, so there is no id to
+tamper with and it can only ever delete its caller. Deleting the auth user cascades to the
+profile and to everything later phases hang off it.
+
+The alternative — an Edge Function holding the service-role key — is more moving parts, another
+deploy target, and a second place the privileged key exists. Both satisfy Apple Guideline
+5.1.1(v) and GDPR Art. 17; this one has less surface.
+
+### Refusing to start on a service-role key
+
+Expo inlines `EXPO_PUBLIC_*` into the bundle. That is correct for the anon key, which is designed
+to be public and is protected by RLS, and catastrophic for the service-role key, which bypasses
+RLS entirely — shipping it would hand every reader of the app full access to every message.
+
+`src/lib/env.ts` detects both key shapes Supabase issues (the `sb_secret_` prefix, and the
+`role: service_role` claim in a legacy JWT) and throws at startup. The mistake is a single paste
+away, so it is worth making impossible rather than merely documenting.
+
+### Sessions live in the keychain, chunked
+
+Auth tokens are bearer credentials and belong in the keychain, not in AsyncStorage, which is
+plain text on disk. But SecureStore becomes unreliable above roughly 2 KB per entry and a
+Supabase session — two JWTs plus user metadata — routinely exceeds that.
+
+`src/lib/secure-storage.ts` splits values across numbered entries with a manifest in the primary
+key, writes chunks before the manifest so an interrupted write leaves the previous complete set
+intact, and treats a partially readable value as absent. The alternative, quietly falling back to
+AsyncStorage, trades a visible failure for an invisible one.
+
 ## Deferred to later phases
 
 Recorded here so the reasoning is not lost between phases.

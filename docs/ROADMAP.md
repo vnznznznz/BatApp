@@ -9,8 +9,8 @@ See [`GO-LIVE.md`](GO-LIVE.md).
 | #   | Phase                           | Status   |
 | --- | ------------------------------- | -------- |
 | 1   | Project foundation              | **Done** |
-| 2   | Supabase configuration and auth | Next     |
-| 3   | Profiles and city selection     | Planned  |
+| 2   | Supabase configuration and auth | **Done** |
+| 3   | Profiles and city selection     | Next     |
 | 4   | Bat model and inventory         | Planned  |
 | 5   | Friend system                   | Planned  |
 | 6   | Message creation                | Planned  |
@@ -49,6 +49,31 @@ passing across 4 suites, and `expo export` bundles without error.
 
 Not built, by design: no backend, no auth, no database, no messaging, no navigation beyond the
 single welcome route.
+
+## Phase 2 — Supabase configuration and authentication (done)
+
+Delivered:
+
+- `supabase/migrations` — the `profiles` table with its constraints, a trigger that creates a
+  profile from signup metadata, `updated_at` maintenance, RLS policies, and
+  `delete_own_account()`
+- A database test harness that replays the real migrations against Postgres compiled to
+  WebAssembly, so the schema and its policies are tested as written. 19 cases.
+- `src/lib/env.ts` — configuration validation that refuses to start if the service-role key is
+  ever pasted where the anon key belongs
+- `src/lib/secure-storage.ts` — session storage in the device keychain, chunked because
+  SecureStore is unreliable above ~2 KB and a Supabase session is bigger than that
+- `src/features/auth` — session context covering sign-in, sign-up, sign-out, password reset and
+  account deletion, with Supabase's developer-facing errors translated
+- Screens: welcome, sign in, sign up, reset password, and a placeholder home behind a route
+  guard, plus a `TextField` primitive
+
+Verified: 70 app tests, 19 database tests, typecheck, lint, format, and an iOS bundle of 1615
+modules exporting cleanly.
+
+Not built, by design: no city selection UI (Phase 3), no bats (Phase 4), no friends (Phase 5).
+Profiles are readable only by their owner — friend search adds the one narrow exception in
+Phase 5.
 
 ## The tests that matter
 
