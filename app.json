@@ -7,7 +7,7 @@
     "scheme": "nightcourier",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#070A14",
+    "backgroundColor": "#060912",
     "ios": {
       "bundleIdentifier": "com.nightcourier.app",
       "supportsTablet": false
@@ -30,7 +30,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#070A14",
+          "backgroundColor": "#060912",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 180
         }

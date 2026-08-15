@@ -7,7 +7,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 
-SplashScreen.preventAutoHideAsync();
+// Both splash calls reject if the splash screen has already been dismissed —
+// on a fast reload, for instance. That is harmless, but an uncaught rejection
+// surfaces as a red-box warning in development, so both are swallowed.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /** Navigation chrome painted in Night Courier's palette rather than the default grey. */
 const NavigationTheme = {
@@ -26,7 +29,7 @@ export default function RootLayout() {
   useEffect(() => {
     // Nothing is loaded asynchronously yet. Once fonts and the restored auth
     // session arrive (Phases 2-3), the splash screen stays up until both settle.
-    SplashScreen.hideAsync();
+    SplashScreen.hideAsync().catch(() => {});
   }, []);
 
   return (

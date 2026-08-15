@@ -117,6 +117,53 @@ Mitigations, both worth doing on day one:
 
 ---
 
+## Running it on your own iPhone before paying for anything
+
+You do not need a developer account to start. Three options, in the order they are worth trying.
+
+### 1. Expo Go — free, instant, no Mac (do this one)
+
+Run `npm start` and scan the QR code with the camera. The app runs on your iPhone in seconds,
+reloads as the code changes, and costs nothing. This covers Phases 1–9, 11 and 12.
+
+The one gap is **push notifications (Phase 10)**, which need a development build rather than
+Expo Go, and a development build needs a paid account for signing. Expo removed Android push
+from Expo Go in SDK 53 and iOS support has been in flux since — re-check the current state when
+Phase 10 arrives rather than assuming either way.
+
+### 2. Free Apple personal team — works, but painful
+
+Xcode lets you sign with a free Apple ID onto your own device. It requires **a Mac**, the
+provisioning profile **expires after 7 days**, and push notification entitlements are not
+available. Fine for a one-off look at a real build; not something to rely on.
+
+### 3. Joining a friend's paid account — check which kind of enrolment he has first
+
+This is the part of the plan that probably does not work as expected.
+
+**An Individual enrolment cannot add team members.** It can add up to 50 users to _App Store
+Connect_, but Apple is explicit that those users are not part of the developer team and get no
+access to Certificates, Identifiers & Profiles — which is precisely what is needed to sign a
+build. Only an **Organization** enrolment can add real team members with development access, and
+an Organization enrolment requires a legal entity and a D-U-N-S number.
+
+So:
+
+- If your friend is enrolled as an **Organization**, he can add you as a Developer or App Manager
+  and everything works.
+- If he is enrolled as an **Individual** — far more likely for someone paying €99 personally — he
+  can give you App Store Connect access to manage TestFlight and metadata, but **he** has to
+  create the signing credentials and run the builds. The app is published under his name and he
+  carries the responsibility for it.
+- Signing in with his Apple ID yourself is account sharing, breaches the developer agreement, and
+  risks his account. Not worth it.
+
+Either way, the app would belong to his team, not yours, and moving an app between teams later is
+possible but tedious. If Night Courier is going to outlive the experiment, your own €99 enrolment
+is the cleaner foundation.
+
+---
+
 ## What to do now, in parallel with the build
 
 ### This week — these gate later phases
@@ -148,9 +195,16 @@ the door open to end-to-end encryption later.
 - **Report, block, and a contact route** — the new Phase 13a below.
 - **A support URL and a reachable contact address.** You cannot stay fully anonymous: Guideline
   1.2 requires published contact information and GDPR Art. 13 requires the controller's identity.
-  A real name and a reachable address is the safe reading. Many hobbyists use a c/o or Postfach
-  address; that is a judgement call, and the one point on this page where the trade-off is yours
-  rather than technical.
+
+  The operator has decided to use a personal postal address. **It is deliberately not stored in
+  this repository, and must not be.** This repository is public; anything committed here is
+  scraped, mirrored, and permanent in git history even after deletion. The address belongs in
+  App Store Connect's contact fields and in the privacy policy hosted at its own URL — both
+  entered directly, at Phase 16, and neither of them in version control.
+
+  The same applies to the privacy policy: host it somewhere you control and link to it, rather
+  than committing a document containing a home address to a public repo.
+
 - **Complete the age-rating questionnaire.** Apple's system was overhauled in 2025 and the new
   questionnaire has been mandatory since 31 January 2026; incomplete apps are blocked from new
   submissions and updates.

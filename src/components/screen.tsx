@@ -26,20 +26,24 @@ export function Screen({
   children,
   ...rest
 }: ScreenProps) {
-  const inner = [styles.inner, !flush && styles.padded, center && styles.centered, style];
+  const content = [!flush && styles.padded, center && styles.centered, style];
 
   return (
     <SafeAreaView style={styles.safe} edges={edges} {...rest}>
       {scroll ? (
         <ScrollView
-          contentContainerStyle={[inner, center && styles.scrollCentered]}
+          style={styles.fill}
+          // `flexGrow`, never `flex`. A ScrollView content container with
+          // `flex: 1` is pinned to the viewport height and cannot scroll, which
+          // silently defeats the whole point of the `scroll` prop.
+          contentContainerStyle={[styles.grow, ...content]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {children}
         </ScrollView>
       ) : (
-        <View style={inner}>{children}</View>
+        <View style={[styles.fill, ...content]}>{children}</View>
       )}
     </SafeAreaView>
   );
@@ -50,8 +54,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  inner: {
+  fill: {
     flex: 1,
+  },
+  grow: {
+    flexGrow: 1,
   },
   padded: {
     paddingHorizontal: Spacing.lg,
@@ -59,8 +66,5 @@ const styles = StyleSheet.create({
   centered: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  scrollCentered: {
-    flexGrow: 1,
   },
 });

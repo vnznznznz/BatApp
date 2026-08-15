@@ -25,7 +25,9 @@ const PROMISES = [
 
 export default function WelcomeScreen() {
   return (
-    <Screen center>
+    // Scrolls rather than clips: this content does not fit a smaller iPhone
+    // once the reader has turned Dynamic Type up.
+    <Screen center scroll style={styles.screen}>
       <BatMark size={148} />
 
       <Text variant="display" style={styles.title}>
@@ -52,6 +54,9 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    paddingVertical: Spacing.xl,
+  },
   title: {
     marginTop: Spacing.md,
   },

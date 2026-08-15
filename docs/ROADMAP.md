@@ -85,10 +85,9 @@ Recorded rather than guessed at:
   needs a decision before then, not after.
 - **Message retention.** Nothing currently says how long a delivered message is kept. This
   affects the Phase 2 account-deletion test and the database schema.
-- **Contact address for store listings.** Apple Guideline 1.2 requires published contact
-  information and GDPR Art. 13 requires the controller's identity, so full anonymity is not
-  available. Whether that is a home address, a c/o, or a Postfach is a personal decision that
-  needs making before Phase 16, not at it.
+- ~~**Contact address for store listings.**~~ Decided: a personal postal address will be used.
+  It is deliberately **not** recorded in this repository, which is public — it goes straight into
+  App Store Connect and the hosted privacy policy at Phase 16. See [`GO-LIVE.md`](GO-LIVE.md).
 
 ## Phase 13a — Safety and moderation
 
