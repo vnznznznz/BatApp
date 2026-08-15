@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, type TextStyle } from 'react-native';
 
 /**
  * Night Courier is a nocturnal app, so it ships a single dark theme rather than
@@ -6,21 +6,24 @@ import { Platform } from 'react-native';
  */
 export const Colors = {
   /** Deepest layer — the night sky behind everything. */
-  background: '#070A14',
+  background: '#060912',
   /** Cards, list rows, sheets. */
   surface: '#111726',
-  /** Raised surfaces: modals, the bat roost tiles. */
+  /** Raised surfaces: modals, roost tiles. */
   surfaceRaised: '#1A2133',
+  /** Pressed state for interactive surfaces. */
+  surfacePressed: '#212A40',
   border: '#232C42',
+  borderStrong: '#33405E',
 
   /** Moonlight — primary text and the bat silhouette. */
   text: '#E9EFFA',
   textSecondary: '#94A3BE',
   textMuted: '#64708A',
 
-  /** The moon — accents, primary actions. */
-  accent: '#F3EAD2',
-  accentPressed: '#C9BE9E',
+  /** The moon — accents and primary actions. */
+  accent: '#F6EFDB',
+  accentPressed: '#D9D0BA',
   /** Text placed on top of `accent`. */
   onAccent: '#0B0F1C',
 
@@ -30,6 +33,9 @@ export const Colors = {
 
   danger: '#E2857F',
   success: '#8FD6A9',
+
+  /** Non-interactive scrim behind modals. */
+  scrim: 'rgba(6, 9, 18, 0.72)',
 } as const;
 
 export type ColorName = keyof typeof Colors;
@@ -51,18 +57,60 @@ export const Radius = {
   pill: 999,
 } as const;
 
-export const FontSize = {
-  caption: 13,
-  body: 16,
-  title: 22,
-  display: 32,
-} as const;
-
-/**
- * The serif face carries the "old letters" half of the identity; the sans face
- * is used for controls and metadata.
- */
-export const Fonts = Platform.select({
+const fonts = Platform.select({
   ios: { sans: 'system-ui', serif: 'ui-serif', mono: 'ui-monospace' },
   default: { sans: 'normal', serif: 'serif', mono: 'monospace' },
-});
+})!;
+
+export const Fonts = fonts;
+
+/**
+ * The type scale. The serif face carries the "old letters" half of the
+ * identity and is reserved for display and title text; everything functional
+ * is set in the system sans.
+ */
+export const Typography = {
+  display: {
+    fontFamily: fonts.serif,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: 0.4,
+  },
+  title: {
+    fontFamily: fonts.serif,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: 0.3,
+  },
+  heading: {
+    fontFamily: fonts.sans,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  body: {
+    fontFamily: fonts.sans,
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  label: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  caption: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: 0.2,
+  },
+  /** Countdowns and distances, so digits do not jitter as they tick. */
+  mono: {
+    fontFamily: fonts.mono,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+} as const satisfies Record<string, TextStyle>;
+
+export type TypographyVariant = keyof typeof Typography;

@@ -1,72 +1,80 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 
+import { BatMark } from '@/components/bat-mark';
+import { Card } from '@/components/card';
+import { Screen } from '@/components/screen';
+import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
-import { Colors, FontSize, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
+
+/** The promises the app makes, stated on the way in. */
+const PROMISES = [
+  {
+    title: `${BATS_PER_USER} bats. Never more.`,
+    detail: 'Each one carries a single message and cannot fly again until it comes home.',
+  },
+  {
+    title: 'They fly the real distance.',
+    detail: 'Across town, a message arrives tonight. Across a continent, it takes days.',
+  },
+  {
+    title: 'Nothing is for sale.',
+    detail: 'No purchases, no credits, no subscriptions, no advertising. Not ever.',
+  },
+];
 
 export default function WelcomeScreen() {
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.content}>
-        <Image
-          source={require('@/assets/images/splash-icon.png')}
-          style={styles.mark}
-          resizeMode="contain"
-          accessibilityRole="image"
-          accessibilityLabel="A bat in flight"
-        />
+    <Screen center>
+      <BatMark size={148} />
 
-        <Text style={styles.title}>Night Courier</Text>
-        <Text style={styles.tagline}>Messages that take their time.</Text>
+      <Text variant="display" style={styles.title}>
+        Night Courier
+      </Text>
+      <Text variant="body" tone="accent" center>
+        Messages that take their time.
+      </Text>
 
-        <View style={styles.rule} />
+      <View style={styles.rule} />
 
-        <Text style={styles.body}>
-          You keep {BATS_PER_USER} bats. Each one carries a single message, flies the real distance
-          between your city and your friend&apos;s, and cannot be sent again until it comes home.
-        </Text>
-      </View>
-    </SafeAreaView>
+      <Card style={styles.card}>
+        {PROMISES.map((promise, index) => (
+          <View key={promise.title} style={[styles.promise, index > 0 && styles.promiseDivided]}>
+            <Text variant="heading">{promise.title}</Text>
+            <Text variant="caption" tone="secondary" style={styles.detail}>
+              {promise.detail}
+            </Text>
+          </View>
+        ))}
+      </Card>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xl,
-    gap: Spacing.md,
-  },
-  mark: {
-    width: 168,
-    height: 168,
-  },
   title: {
-    color: Colors.text,
-    fontFamily: Fonts?.serif,
-    fontSize: FontSize.display,
-    letterSpacing: 0.5,
-  },
-  tagline: {
-    color: Colors.accent,
-    fontSize: FontSize.body,
-    letterSpacing: 0.3,
+    marginTop: Spacing.md,
   },
   rule: {
-    width: 56,
+    width: 48,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: Colors.border,
-    marginVertical: Spacing.sm,
+    backgroundColor: Colors.borderStrong,
+    marginVertical: Spacing.lg,
   },
-  body: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.body,
-    lineHeight: 24,
-    textAlign: 'center',
+  card: {
+    alignSelf: 'stretch',
+  },
+  promise: {
+    gap: Spacing.xs,
+  },
+  promiseDivided: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  detail: {
+    // Keeps the second line from crowding the heading above it.
+    lineHeight: 19,
   },
 });

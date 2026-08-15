@@ -30,16 +30,18 @@ Delivered:
 - Expo SDK 57 + React Native 0.86 + TypeScript 6, strict, with `@/` path aliases wired through
   TypeScript, Jest and Metro
 - Expo Router with typed routes; a root layout carrying the dark navigation theme
-- The visual system (`src/constants/theme.ts`) and the product invariants
-  (`src/constants/config.ts`), the latter covered by tests
+- A design system: the palette, spacing scale, radii and type scale in
+  `src/constants/theme.ts`, and five primitives — `Screen`, `Text`, `Button`, `Card`,
+  `BatMark` — that every later screen is built from
+- The product invariants (`src/constants/config.ts`), covered by tests
 - Original generated artwork: app icon, Android adaptive icon (background/foreground/
-  monochrome), splash mark, favicon
-- Toolchain: ESLint (flat config), Prettier, Jest via `jest-expo`, and a single
-  `npm run verify` gate that CI runs unchanged
-- A welcome screen that renders the identity
+  monochrome), splash mark, favicon — Bézier vector source, rasterised at build time
+- Toolchain: ESLint (flat config), Prettier, Jest via `jest-expo`, React Native Testing
+  Library, and a single `npm run verify` gate that CI runs unchanged
+- A welcome screen, built on the design system, stating the three promises the app makes
 
-Verified: `tsc --noEmit` clean, `eslint .` clean at zero warnings, Prettier clean, 23 tests
-passing, and `expo export` bundles 1554 modules without error.
+Verified: `tsc --noEmit` clean, `eslint .` clean at zero warnings, Prettier clean, 31 tests
+passing across 4 suites, and `expo export` bundles without error.
 
 Not built, by design: no backend, no auth, no database, no messaging, no navigation beyond the
 single welcome route.

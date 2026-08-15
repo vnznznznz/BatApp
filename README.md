@@ -65,12 +65,17 @@ Run `npm run verify` before every commit. CI runs exactly the same command.
 ```
 src/
   app/          Expo Router routes. Files here are URLs.
-  constants/    Product invariants (config.ts) and the visual system (theme.ts)
+  components/   Design-system primitives: Screen, Text, Button, Card, BatMark
+  constants/    Product invariants (config.ts) and the design tokens (theme.ts)
   lib/          Pure, framework-free helpers
 assets/images/  Generated artwork — do not hand-edit, see scripts/generate-assets.mjs
 scripts/        Build tooling
 docs/           Architecture decisions and roadmap
 ```
+
+Screens compose the primitives and choose a semantic variant and tone —
+`<Text variant="heading" tone="secondary">` — rather than reaching for a font size or a hex
+value. Colours, spacing and type live in `src/constants/theme.ts` and nowhere else.
 
 `@/` resolves to `src/`, and `@/assets/` to `assets/`. Both are configured in three places that
 must stay in sync: `tsconfig.json`, `jest.config.js`, and Metro (via Expo's defaults).

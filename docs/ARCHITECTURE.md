@@ -56,13 +56,36 @@ File-based routing keeps navigation structure visible in the directory tree, and
 makes a link to a route that does not exist a type error. `reactCompiler` is left on — it ships
 with the SDK 57 template and `babel-plugin-react-compiler` is already installed.
 
-### Testing: Jest 29 via `jest-expo`
+### A design system, not per-screen styling
+
+`src/components/` holds five primitives — `Screen`, `Text`, `Button`, `Card`, `BatMark` — and
+`src/constants/theme.ts` holds the palette, spacing scale, radii and type scale behind them.
+
+Screens choose a semantic variant and tone (`<Text variant="heading" tone="secondary">`); they
+never reach for a font size or a hex value directly. The point is that sixteen screens are
+coming across Phases 3–13, and a design system built after those screens exist is a rewrite,
+whereas one built before them is just how they get written.
+
+**Trade-off:** five components is more indirection than one welcome screen needs today. Accepted
+on the basis of what Phases 3–13 add.
+
+### Testing: Jest 29 via `jest-expo`, plus React Native Testing Library
 
 `jest-expo@57` is built against Jest 29 internals (`babel-jest@^29`, `@jest/globals@^29`).
 Installing Jest 30 alongside it would break the preset, so Jest is pinned to `~29.7.0`.
 
-`@testing-library/react-native` is deliberately **not** installed yet. Phase 1 has no component
-worth asserting on; it arrives in the phase that first renders a component under test.
+Two things about this setup cost real time and are worth recording:
+
+**`render` and `fireEvent` are asynchronous in RNTL 14.** Calling them without `await` leaves
+`screen` as its placeholder and every query fails with "`render` function has not been called" —
+which reads like a configuration fault rather than a missing await. Every test awaits both.
+
+**Jest replaces preset keys rather than merging them.** `jest-expo` supplies a
+`moduleNameMapper` containing both the `@/` aliases it derives from `tsconfig.json` and a pin
+forcing every import of `react-native` onto a single instance. Declaring `moduleNameMapper` in
+`jest.config.js` silently dropped that pin. `jest.config.js` now spreads the preset's own map
+back in, with the assets alias listed first because Jest takes the first match and the preset's
+broader `^@/(.*)$` would otherwise resolve `@/assets/...` under `src/`.
 
 `tsconfig.json` sets `"types": ["jest"]` explicitly — automatic `@types` discovery did not pick
 it up under TypeScript 6.
@@ -76,14 +99,24 @@ Prettier owns.
 
 ### Artwork generated from source
 
-`scripts/generate-assets.mjs` defines the bat and the moon as vector data and rasterises them
-with a scanline polygon filler (non-zero winding, analytic horizontal coverage, 5× vertical
-supersampling) and a minimal PNG encoder built on `node:zlib`.
+`scripts/generate-assets.mjs` defines the bat, the moon and the star field as vector paths and
+rasterises them with a renderer written for this project: cubic Béziers flattened by adaptive
+de Casteljau subdivision, filled with the non-zero winding rule using analytic horizontal
+coverage and 6× vertical supersampling, composited with a smootherstep radial falloff for the
+moon's halo, and encoded to PNG through `node:zlib`.
+
+The first version of this used straight polygon segments, and the result read as a moth rather
+than a bat: what makes the silhouette legible is the membrane between the finger tips bowing
+back up toward the leading edge, and that is a curve, not a chord.
 
 **Why not commit PNGs from a design tool:** no design tool is available in this environment, and
 generated artwork can be re-rendered at any size, recoloured from the palette, and reviewed as a
-diff. **Trade-off:** the silhouette is polygonal rather than curved. Accepted — if the app ever
-gets a designer, the generator is deleted and real assets are committed in its place.
+diff rather than as an opaque binary. CI regenerates the assets and fails if they differ from
+what is committed, so the source and the output cannot drift.
+
+**Trade-off:** the artwork is constrained to what this renderer can express — flat fills,
+gradients and radial glows, no strokes, no blur, no texture. Accepted; if the app ever gets a
+designer, the generator is deleted and real assets are committed in its place.
 
 ### Strict TypeScript, plus `noUncheckedIndexedAccess`
 
