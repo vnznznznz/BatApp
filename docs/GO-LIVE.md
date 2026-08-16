@@ -207,6 +207,11 @@ the door open to end-to-end encryption later.
   not sufficient. Already in the plan for Phase 2 — build it as a real hard delete, which also
   satisfies GDPR Art. 17.
 - **Report, block, and a contact route** — the new Phase 13a below.
+- **The privacy policy must name Switzerland as the hosting location.** The Supabase project is
+  in Zurich (`eu-central-2`), which is outside the EU. The transfer is lawful under the
+  Commission's January 2024 adequacy decision for Switzerland, but Art. 13 requires telling users
+  where their data actually goes — "hosted in the EU" would be untrue.
+
 - **A support URL and a reachable contact address.** You cannot stay fully anonymous: Guideline
   1.2 requires published contact information and GDPR Art. 13 requires the controller's identity.
 

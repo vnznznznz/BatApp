@@ -144,6 +144,25 @@ removes the question rather than answering it, is roughly 150 km from the operat
 The region is immutable after project creation, so this is worth getting right while the database
 is still empty.
 
+#### Reversed: the project is in Zurich (`eu-central-2`)
+
+The operator chose Zurich after reading the above. Recording what that actually means, so the
+choice is documented rather than merely made:
+
+- **The transfer is lawful.** Switzerland is a third country under GDPR, but the Commission's
+  adequacy decision of January 2024 covers it, so no standard contractual clauses or transfer
+  impact assessment are needed for the hosting location itself.
+- **Swiss data protection is not a downgrade.** The revised FADP is close in substance to the
+  GDPR, and Switzerland's reputation on privacy is a legitimate reason to prefer it.
+- **The residual risk is the one named above** — the arrangement rests on an adequacy decision,
+  and adequacy decisions have been invalidated before. If that ever happened, the remedy would be
+  migrating the project to an EU region, which means recreating it and moving the data.
+- **Latency is a non-issue here.** ~300 km of extra distance is single-digit milliseconds, and
+  this is an application whose entire premise is that messages take hours.
+
+**One concrete consequence:** the privacy policy must name Switzerland as the hosting location.
+GDPR Art. 13 requires telling users where their data goes, and "in the EU" would be wrong.
+
 ### Email confirmation: off during development, on before anyone else joins
 
 Supabase's built-in email service **refuses to deliver to any address that is not on the

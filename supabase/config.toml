@@ -1,0 +1,60 @@
+# Night Courier — Supabase project configuration.
+#
+# Apply to the linked project with:
+#
+#   npx supabase link --project-ref <your-project-ref>
+#   npx supabase config push
+#
+# CAUTION: `config push` replaces the linked project's configuration with what
+# this file describes, filling in CLI defaults for anything omitted. Any setting
+# changed in the dashboard but not recorded here will be reverted. Add settings
+# to this file rather than to the dashboard, and this stays the source of truth.
+
+project_id = "night-courier"
+
+[auth]
+enabled = true
+
+# The app is a native one and has no website. These are what a link in an auth
+# email is allowed to return to.
+site_url = "nightcourier://"
+additional_redirect_urls = ["nightcourier://", "exp://"]
+
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+enable_signup = true
+# Nothing in this app is anonymous: every message has a named sender who is an
+# accepted friend of the recipient.
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+
+# Matches PASSWORD_MIN_LENGTH in src/features/auth/validation.ts.
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+
+# OFF, deliberately and temporarily.
+#
+# Supabase's built-in email service refuses to deliver to any address that is
+# not on the project's team, and caps the project at two messages per hour. With
+# confirmations on and no custom SMTP, a friend's signup fails silently: the
+# account is created and the link never arrives.
+#
+# Turn this back on at the same time as configuring custom SMTP, and before
+# anyone but the operator has an account. Password reset is only a recovery
+# route if the address is known to be real, and a typo'd address on a project
+# with no support desk is a permanent lockout.
+enable_confirmations = false
+
+# Changing an email address still has to be confirmed on both the old and the
+# new address — that one is an account-takeover route, not a convenience.
+double_confirm_changes = true
+secure_password_change = true
+max_frequency = "1s"
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false

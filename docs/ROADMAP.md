@@ -75,6 +75,13 @@ Not built, by design: no city selection UI (Phase 3), no bats (Phase 4), no frie
 Profiles are readable only by their owner — friend search adds the one narrow exception in
 Phase 5.
 
+**Incomplete, and not by design:** password reset sends the email but the app cannot yet _finish_
+the reset. Tapping the link opens Supabase's redirect, and there is no deep-link handler to catch
+it and present a "choose a new password" screen. This is deliberately parked rather than hidden:
+the built-in email service cannot reach anyone outside the project team anyway, so the flow is
+untestable end to end until custom SMTP exists. Both get finished together, before anyone else
+has an account. Tracked here so it is not discovered by a locked-out user.
+
 ## The tests that matter
 
 These are specified now so that later phases are written against them rather than towards them.
