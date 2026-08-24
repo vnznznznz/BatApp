@@ -9,6 +9,96 @@ with Phases 2–14, not when the code is finished.
 
 ---
 
+## Readiness checklist
+
+Where this actually stands, as of Phase 2 of 18. The four groups below are independent and have
+different owners, so they can proceed in parallel — and two of them have lead times that make
+starting late expensive.
+
+### A. The application — 16 phases remain
+
+Today you can sign up, sign in, sign out and delete your account. That is all. There are no bats,
+no friends, and no messages: **the product does not exist yet**, only the shell it will live in.
+
+| Phase | What it adds                | Why it blocks go-live                                      |
+| ----- | --------------------------- | ---------------------------------------------------------- |
+| 3     | Profiles and city selection | No city means no distance, so no delivery time             |
+| 4     | Bats as database records    | The core object of the product                             |
+| 5     | Friend system               | Only friends can exchange messages                         |
+| 6     | Message creation            | —                                                          |
+| 7     | Atomic bat reservation      | The correctness centre of the whole app                    |
+| 8     | Delivery calculation        | Turns distance into an arrival time, server-side           |
+| 9     | Scheduled delivery worker   | Without it nothing is ever delivered                       |
+| 10    | Push notifications          | **Needs a paid Apple account** for a development build     |
+| 11    | Inbox and message detail    | Reading what arrived                                       |
+| 12    | Bat flight animation        | Decorative, and the last thing that should be built        |
+| 13    | Security and RLS audit      | —                                                          |
+| 13a   | Safety and moderation       | **App Review rejects a chat app without report and block** |
+| 14    | Testing                     | Includes the tests this harness cannot run — see below     |
+
+Phases 7 and 9 are the two that decide whether the app is correct or merely convincing.
+
+### B. Accounts and services — yours, and two have lead times
+
+| Item                              | Cost      | Status          | Blocks                                 |
+| --------------------------------- | --------- | --------------- | -------------------------------------- |
+| Supabase project in Zurich        | free tier | **not created** | everything — the app cannot run at all |
+| Custom SMTP (Resend/Postmark/SES) | free tier | not started     | any second user; password reset        |
+| Apple Developer Program           | €99/year  | not started     | Phase 10, and Phases 15–17             |
+| Expo account for EAS builds       | free tier | not started     | Phases 15–16                           |
+| Google Play Console               | $25 once  | not started     | Android only; skip if iOS-only         |
+
+**Apple enrolment is the longest pole.** Individual identity verification takes days to weeks, and
+it gates push notifications in Phase 10 — not just the final build. Starting it now costs nothing
+but €99 and removes it from the critical path.
+
+### C. Compliance artifacts — none of these exist yet
+
+| Item                              | Required by                    | Notes                                                                                             |
+| --------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | Needed in App Store Connect **and** linked in-app. Must name Switzerland as the hosting location. |
+| Support URL                       | Apple 1.2                      | Published contact route                                                                           |
+| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                      |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | For user-generated content                                                                        |
+| App Privacy "nutrition label"     | App Store Connect              | Answered per data type collected                                                                  |
+| Age rating questionnaire          | App Store Connect              | Mandatory since 31 Jan 2026; blocks submission if incomplete                                      |
+| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                      |
+
+Account deletion is already built and tested, which is the one item on Apple's list that is code
+rather than paperwork.
+
+### D. Build and distribution plumbing — not started
+
+- `eas.json` does not exist. Build profiles for development, preview and production.
+- EAS project link, plus credentials: an APNs key for iOS push, FCM for Android.
+- First TestFlight upload, and Beta App Review on the first build of each version.
+- Automation for the **90-day TestFlight expiry**. Worth setting up with the first build rather
+  than rediscovering it a quarter later when the app dies on everyone's phone.
+
+### Known gaps already logged
+
+Both recorded where the work is, not only here:
+
+- **Password reset cannot be completed in-app.** The email sends; there is no deep-link handler to
+  catch the return and present a new-password screen. Parked until custom SMTP exists, because
+  until then the mail cannot reach anyone anyway.
+- **The concurrency test cannot run in this harness.** "Two concurrent sends cannot claim the same
+  bat" needs a real Postgres with two connections; PGlite is a single embedded connection. This is
+  the single most important test in the product and it needs real infrastructure in Phase 7.
+
+### The shortest path to friends using it
+
+1. Create the Supabase project in Zurich, link it, push config and migrations. _(unblocks everything)_
+2. Start Apple enrolment. _(long lead time, gates Phase 10)_
+3. Phases 3–9 — the product itself, ending with messages that actually arrive.
+4. Custom SMTP, then email confirmation on, then finish password reset.
+5. Phase 10 push, needing the Apple account from step 2.
+6. Phases 11–14, including 13a, which App Review will check.
+7. Privacy policy and the rest of group C.
+8. `eas.json`, first build, TestFlight, invite the circle.
+
+---
+
 ## The two findings that change the plan
 
 ### 1. The GDPR household exemption does not cover you
@@ -22,8 +112,9 @@ activities."_ Operating the server your friends message through is exactly that.
 is gone the day a second household uses the app, and the CJEU reads it narrowly (_Ryneš_
 C-212/13, _Lindqvist_ C-101/01).
 
-Practical consequence: a privacy policy, a real hard-delete, data minimisation and EU hosting
-are obligations, not polish. Most of this is already in the build plan; it now has a reason
+Practical consequence: a privacy policy, a real hard-delete, data minimisation and hosting in a
+jurisdiction with an adequate level of protection are obligations, not polish. (The project is in
+Zurich, which qualifies via Switzerland's adequacy decision — see `ARCHITECTURE.md`.) Most of this is already in the build plan; it now has a reason
 attached.
 
 **Good news, separately:** there is **no Impressum obligation**. § 5 DDG (successor to § 5 TMG
