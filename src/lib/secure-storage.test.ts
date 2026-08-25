@@ -38,6 +38,26 @@ describe('secureStorage', () => {
     expect(await secureStorage.getItem('session')).toBeNull();
   });
 
+  /**
+   * `expo-secure-store` declares `string | null`, but the native module resolves
+   * `undefined` for a missing key on some platforms. Treating that as a present
+   * value crashed the Supabase client during session restore.
+   */
+  it('treats an undefined result from the keychain as absent', async () => {
+    mocked.getItemAsync.mockResolvedValue(undefined as unknown as string | null);
+
+    expect(await secureStorage.getItem('session')).toBeNull();
+  });
+
+  it('treats a missing chunk reported as undefined as absent', async () => {
+    await secureStorage.setItem('session', 'a'.repeat(10_000));
+    mocked.getItemAsync.mockImplementation(async (key: string) =>
+      key === 'session.2' ? (undefined as unknown as string | null) : (store.get(key) ?? null),
+    );
+
+    expect(await secureStorage.getItem('session')).toBeNull();
+  });
+
   it('round-trips a small value without chunking it', async () => {
     await secureStorage.setItem('session', 'short');
 

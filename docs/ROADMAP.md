@@ -10,8 +10,8 @@ See [`GO-LIVE.md`](GO-LIVE.md).
 | --- | ------------------------------- | -------- |
 | 1   | Project foundation              | **Done** |
 | 2   | Supabase configuration and auth | **Done** |
-| 3   | Profiles and city selection     | Next     |
-| 4   | Bat model and inventory         | Planned  |
+| 3   | Profiles and city selection     | **Done** |
+| 4   | Bat model and inventory         | Next     |
 | 5   | Friend system                   | Planned  |
 | 6   | Message creation                | Planned  |
 | 7   | Atomic bat reservation          | Planned  |
@@ -81,6 +81,27 @@ it and present a "choose a new password" screen. This is deliberately parked rat
 the built-in email service cannot reach anyone outside the project team anyway, so the flow is
 untestable end to end until custom SMTP exists. Both get finished together, before anyone else
 has an account. Tracked here so it is not discovered by a locked-out user.
+
+## Phase 3 - Profiles and city selection (done)
+
+Delivered:
+
+- A `cities` table of 4,310 real cities from GeoNames, seeded by a generated migration, with
+  coordinates the client cannot choose - `profiles.city_id` is a foreign key
+- `search_cities`, a server-side search over folded names and aliases, so "wien" finds Vienna and
+  "koln" finds Köln
+- A profile screen (display name, username, city) and a debounced city picker
+- Home now shows the real profile, and prompts for a city while one is missing
+
+Verified: 85 app tests, 38 database tests, typecheck, lint, format, and an iOS bundle of 1619
+modules across 12 routes.
+
+Also fixed, found while building this: `secureStorage.getItem` crashed when the keychain resolved
+`undefined` rather than `null` for a missing key, which broke Supabase's session restore. Two
+regression tests now cover it.
+
+Not built, by design: avatars. Image upload means Storage, bucket policies, resizing and a
+moderation question - a phase of its own.
 
 ## The tests that matter
 

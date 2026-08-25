@@ -248,6 +248,73 @@ key, writes chunks before the manifest so an interrupted write leaves the previo
 intact, and treats a partially readable value as absent. The alternative, quietly falling back to
 AsyncStorage, trades a visible failure for an invisible one.
 
+---
+
+## Phase 3 - Profiles and city selection
+
+### City coordinates live in Postgres, not in the app bundle
+
+This is a security decision rather than a storage one. Delivery time is derived from the distance
+between two cities, so if the client sent latitude and longitude, any user could claim to live
+next door to the recipient and forge a short flight. The client sends a `city_id` and nothing
+else; `profiles.city_id` is a foreign key, so an invented id is rejected by the database rather
+than validated by the app.
+
+Search therefore runs server-side too, in `search_cities`.
+
+### GeoNames, bundled at build time, rather than a geocoding API
+
+`scripts/build-cities.mjs` downloads GeoNames `cities15000` and emits a migration. No geocoding
+API is called, at build time or run time, because:
+
+- no third party learns where any user lives, which is the whole point of a privacy-first app;
+- there is no API key, rate limit or outage to handle;
+- the same city always yields the same distance.
+
+**Trade-off:** the list is finite - every city above 15,000 inhabitants in DE, AT and CH, plus
+every city worldwide above 200,000. A village below the cut-off cannot be chosen and the user
+picks the nearest town instead. At city-level granularity that changes nothing meaningful. The
+data is CC BY 4.0 and attributed in the generated migration's header.
+
+### Alias search, because GeoNames stores English names
+
+GeoNames' primary name is frequently the English one: Vienna not Wien, Munich not München,
+Nuremberg not Nürnberg. Measured against a list of 76 names a German speaker might type, **20%
+were unfindable** by primary name alone.
+
+Every city therefore carries a `search_index`: its own name plus every Latin-script alternate
+name, lower-cased and diacritic-folded, pipe-delimited. Folding also means "Zurich" finds Zürich
+and "Koln" finds Köln, which matters because typing umlauts on a phone is possible but nobody
+bothers. Non-Latin forms are dropped - most of the volume, none of the value here.
+
+### The folding is a tested contract, not a convention
+
+`fold()` exists twice: in the generator that built `search_index`, and in the client that folds
+the query. If they diverge, nothing throws - search simply stops finding cities, which is far
+worse than a crash.
+
+The generator therefore emits `fold-parity.fixture.json`, 200 sampled name/folded pairs weighted
+toward diacritics, and a test asserts the TypeScript implementation reproduces every one.
+
+### Search ranking, and the bug that produced it
+
+Ranking is exact-match, then own-name-prefix, then population. The middle tier alone was not
+enough: searching "wien" returned **Wiener Neustadt** above **Vienna**, because "wien" is a
+prefix of Wiener Neustadt's own name but only an alias of Vienna's. An exact match on any name or
+alias has to outrank a prefix match. Caught by a test, and the test stayed.
+
+### No index on `search_index`
+
+The alias branch needs a leading wildcard, which no btree index serves, and the table holds about
+4,300 rows - a sequential scan is well under a millisecond. Worth revisiting only if the
+population cut-off in the generator is lowered substantially.
+
+### Deferred: avatars
+
+`profiles.avatar_url` exists and is never written. Uploading images means Supabase Storage, a
+bucket with its own RLS, image resizing and a moderation question for user-supplied pictures.
+That is a phase of its own, not a corner of this one.
+
 ## Deferred to later phases
 
 Recorded here so the reasoning is not lost between phases.

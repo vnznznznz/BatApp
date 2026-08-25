@@ -28,7 +28,10 @@ async function clearChunks(key: string, from: number, to: number): Promise<void>
 export const secureStorage = {
   async getItem(key: string): Promise<string | null> {
     const head = await SecureStore.getItemAsync(key);
-    if (head === null) return null;
+    // Loose equality on purpose: the declared type is `string | null`, but the
+    // native module resolves `undefined` for a missing key on some platforms,
+    // and a strict null check would then call `startsWith` on it.
+    if (head == null) return null;
     if (!head.startsWith(MANIFEST_PREFIX)) return head;
 
     const total = Number.parseInt(head.slice(MANIFEST_PREFIX.length), 10);
@@ -39,7 +42,7 @@ export const secureStorage = {
       const part = await SecureStore.getItemAsync(chunkKey(key, i));
       // A partially written value is unusable; treat it as absent so the user
       // is asked to sign in again rather than handed a corrupt token.
-      if (part === null) return null;
+      if (part == null) return null;
       parts.push(part);
     }
     return parts.join('');
