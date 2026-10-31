@@ -239,8 +239,8 @@ describe('FriendsScreen', () => {
       await ask('anna');
 
       expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
-      expect(screen.getByText('@anna · Munich, DE')).toBeOnTheScreen();
-      expect(screen.getByText('about 6h 18m by bat')).toBeOnTheScreen();
+      expect(screen.getByText('@anna')).toBeOnTheScreen();
+      expect(screen.getByText('Munich, DE · about 6h 18m by bat')).toBeOnTheScreen();
       expect(screen.queryByText('No friends yet. Ask someone by their username above.')).toBeNull();
     });
 
@@ -303,7 +303,7 @@ describe('FriendsScreen', () => {
       await waitFor(() => expect(screen.queryByRole('header', { name: 'Asking you' })).toBeNull());
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
       expect(screen.getByText('Carla Ruiz')).toBeOnTheScreen();
-      expect(screen.getByText('@carla · has not chosen a city yet')).toBeOnTheScreen();
+      expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
     });
 
     it('declines a request, and then drops it from the list', async () => {
@@ -380,11 +380,11 @@ describe('FriendsScreen', () => {
       await listLoaded();
 
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
-      expect(screen.getByText('@anna · Munich, DE')).toBeOnTheScreen();
+      expect(screen.getByText('@anna')).toBeOnTheScreen();
       // On a line of its own, so a narrow screen cannot cut it off.
-      expect(screen.getByText('about 6h 18m by bat')).toBeOnTheScreen();
+      expect(screen.getByText('Munich, DE · about 6h 18m by bat')).toBeOnTheScreen();
       expect(screen.getByText('Ben Okafor')).toBeOnTheScreen();
-      expect(screen.getByText('@ben · has not chosen a city yet')).toBeOnTheScreen();
+      expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
     });
 
     it('leaves out the flight time while there is no route to a friend', async () => {
@@ -394,7 +394,7 @@ describe('FriendsScreen', () => {
       await renderScreen(<FriendsScreen />);
       await listLoaded();
 
-      expect(screen.getByText('@anna · Munich, DE')).toBeOnTheScreen();
+      expect(screen.getByText('Munich, DE')).toBeOnTheScreen();
       expect(screen.queryByText(/by bat$/)).toBeNull();
     });
 

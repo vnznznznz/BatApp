@@ -268,20 +268,21 @@ export default function FriendsScreen() {
 
 type FriendAction = (friendshipId: string) => Promise<void>;
 
-/** "@ben · Munich, DE", or why there is no city to show. */
+/** "@ben" - alone on its line, so a long username cannot crowd out the city. */
 function describeFriend(friendship: Friendship): string {
-  const { city, username } = friendship.friend;
-  return `@${username} · ${city ? describeCity(city) : 'has not chosen a city yet'}`;
+  return `@${friendship.friend.username}`;
 }
 
 /**
- * "about 6h 18m by bat" - on a line of its own, so that the figure people look
- * for is never the part a narrow screen cuts off.
+ * "Munich, DE · about 6h 18m by bat" - the line people look at, given a line of
+ * its own (wrapping to two) so that a narrow screen cannot cut it off.
  */
-function describeRoute(friendship: Friendship): string | undefined {
+function describeRoute(friendship: Friendship): string {
+  const { city } = friendship.friend;
+  if (!city) return 'Has not chosen a city yet';
   return friendship.route
-    ? `${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
-    : undefined;
+    ? `${describeCity(city)} · ${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
+    : describeCity(city);
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
