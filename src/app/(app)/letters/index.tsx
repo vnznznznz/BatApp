@@ -3,6 +3,7 @@ import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { UnreadDot } from '@/components/badge';
+import { Button } from '@/components/button';
 import { ListRow } from '@/components/list-row';
 import { Screen } from '@/components/screen';
 import { SegmentedControl } from '@/components/segmented-control';
@@ -12,6 +13,7 @@ import {
   correspondentName,
   fetchInbox,
   fetchSent,
+  MAX_PAGE_SIZE,
   PAGE_SIZE,
   type ReceivedLetter,
   type SentLetter,
@@ -52,7 +54,7 @@ export default function LettersScreen() {
 
 function ReceivedList() {
   const router = useRouter();
-  const letters = usePaged(fetchInbox, PAGE_SIZE);
+  const letters = usePaged(fetchInbox, PAGE_SIZE, MAX_PAGE_SIZE);
 
   return (
     <LetterList
@@ -77,7 +79,7 @@ function ReceivedList() {
 
 function SentList() {
   const router = useRouter();
-  const letters = usePaged(fetchSent, PAGE_SIZE);
+  const letters = usePaged(fetchSent, PAGE_SIZE, MAX_PAGE_SIZE);
   const now = useNow(1000);
 
   return (
@@ -121,7 +123,13 @@ function LetterList<T extends { id: string }>({
       contentContainerStyle={styles.list}
       onEndReachedThreshold={0.5}
       onEndReached={() => {
-        if (paged.hasMore && !paged.isLoading) void paged.loadMore();
+        // Not after a failure: the error text and the spinner change the
+        // list's height, which fires this again, and offline that became a
+        // request loop with nobody touching the screen. The footer offers a
+        // retry instead, and any successful load clears the error.
+        if (paged.hasMore && !paged.isLoading && !paged.isLoadingMore && !paged.error) {
+          void paged.loadMore();
+        }
       }}
       refreshControl={
         <RefreshControl
@@ -149,6 +157,15 @@ function LetterList<T extends { id: string }>({
       ListFooterComponent={
         paged.isLoadingMore ? (
           <ActivityIndicator color={Colors.textMuted} style={styles.message} />
+        ) : paged.error && paged.hasMore && paged.items.length > 0 ? (
+          <View style={styles.retry}>
+            <Button
+              label="Load older letters"
+              variant="secondary"
+              size="compact"
+              onPress={() => void paged.loadMore()}
+            />
+          </View>
         ) : null
       }
     />
@@ -174,4 +191,5 @@ const styles = StyleSheet.create({
   list: { paddingBottom: Spacing.xl, flexGrow: 1 },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
   message: { marginTop: Spacing.lg, lineHeight: 19 },
+  retry: { marginTop: Spacing.lg, alignItems: 'center' },
 });

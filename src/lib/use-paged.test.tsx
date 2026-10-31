@@ -93,7 +93,7 @@ describe('usePaged', () => {
 
       expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c']);
       expect(loadPage).toHaveBeenCalledTimes(1);
-      expect(loadPage).toHaveBeenCalledWith();
+      expect(loadPage).toHaveBeenCalledWith(undefined, PAGE);
       expect(result.current.error).toBeNull();
     });
 
@@ -184,7 +184,7 @@ describe('usePaged', () => {
       await act(() => result.current.loadMore());
 
       expect(loadPage).toHaveBeenCalledTimes(1);
-      expect(loadPage).toHaveBeenCalledWith();
+      expect(loadPage).toHaveBeenCalledWith(undefined, PAGE);
     });
 
     it('never shows an item twice when a page overlaps the one before it', async () => {
@@ -247,7 +247,7 @@ describe('usePaged', () => {
       await act(() => result.current.loadMore());
       await waitFor(() => expect(idsOf(result.current.items)).toEqual(['a', 'b', 'd']));
 
-      expect(loadPage).toHaveBeenLastCalledWith();
+      expect(loadPage).toHaveBeenLastCalledWith(undefined, PAGE);
       expect(result.current.hasMore).toBe(true);
       expect(result.current.error).toBeNull();
     });
@@ -269,7 +269,7 @@ describe('usePaged', () => {
         expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c', 'd', 'e', 'f']),
       );
       expect(loadPage).toHaveBeenCalledTimes(3);
-      expect(loadPage).toHaveBeenLastCalledWith();
+      expect(loadPage).toHaveBeenLastCalledWith(undefined, PAGE);
       expect(result.current.hasMore).toBe(true);
     });
 
@@ -282,7 +282,7 @@ describe('usePaged', () => {
       await settle();
 
       expect(loadPage).toHaveBeenCalledTimes(3);
-      expect(loadPage).toHaveBeenLastCalledWith();
+      expect(loadPage).toHaveBeenLastCalledWith(undefined, PAGE);
       expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
       expect(result.current.hasMore).toBe(true);
     });

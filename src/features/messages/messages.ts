@@ -67,8 +67,11 @@ export type Badges = {
   friendRequests: number;
 };
 
-/** Letters per page in either list. The server caps a page at 100. */
+/** Letters per page in either list. */
 export const PAGE_SIZE = 30;
+
+/** The most letters one request returns: `max_results` is capped at this in SQL. */
+export const MAX_PAGE_SIZE = 100;
 
 /* -------------------------------------------------------------------------- */
 /* Rows, with the nullability the SQL actually has                             */
@@ -242,9 +245,12 @@ export async function sendMessage(
 /* -------------------------------------------------------------------------- */
 
 /** One page of landed letters, newest first. Pass the last id for the next page. */
-export async function fetchInbox(olderThan?: string): Promise<ReceivedLetter[]> {
+export async function fetchInbox(
+  olderThan?: string,
+  limit: number = PAGE_SIZE,
+): Promise<ReceivedLetter[]> {
   const { data, error } = await supabase.rpc('list_inbox', {
-    max_results: PAGE_SIZE,
+    max_results: limit,
     older_than: olderThan,
   });
   if (error) throw toRpcError(error, 'Your letters could not be loaded. Check your connection.');
@@ -252,9 +258,12 @@ export async function fetchInbox(olderThan?: string): Promise<ReceivedLetter[]> 
 }
 
 /** One page of the letters you sent, in the air and landed, newest first. */
-export async function fetchSent(olderThan?: string): Promise<SentLetter[]> {
+export async function fetchSent(
+  olderThan?: string,
+  limit: number = PAGE_SIZE,
+): Promise<SentLetter[]> {
   const { data, error } = await supabase.rpc('list_sent', {
-    max_results: PAGE_SIZE,
+    max_results: limit,
     older_than: olderThan,
   });
   if (error) throw toRpcError(error, 'Your letters could not be loaded. Check your connection.');

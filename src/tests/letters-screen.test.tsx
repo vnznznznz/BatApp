@@ -144,6 +144,10 @@ async function scrollToEnd() {
 /** What the list holds, whether or not the list has rendered that far down. */
 const lettersHeld = () => (letterList().props.data as { id: string }[]).map((letter) => letter.id);
 
+/** One letter as the list holds it - rows this far down are not rendered in a test. */
+const heldLetter = (id: string) =>
+  (letterList().props.data as ReceivedLetter[]).find((letter) => letter.id === id);
+
 /**
  * The refresh control has no role or label to find it by, so it is picked out
  * by its native type and sent the event the native view sends on a pull.
@@ -188,7 +192,7 @@ describe('LettersScreen', () => {
       expect(tab('Received')).toBeSelected();
       expect(tab('Sent')).not.toBeSelected();
       expect(mockedFetchInbox).toHaveBeenCalledTimes(1);
-      expect(mockedFetchInbox).toHaveBeenCalledWith();
+      expect(mockedFetchInbox).toHaveBeenCalledWith(undefined, PAGE_SIZE);
       expect(mockedFetchSent).not.toHaveBeenCalled();
     });
 
@@ -314,7 +318,7 @@ describe('LettersScreen', () => {
       expect(tab('Sent')).toBeSelected();
       expect(tab('Received')).not.toBeSelected();
       expect(mockedFetchSent).toHaveBeenCalledTimes(1);
-      expect(mockedFetchSent).toHaveBeenCalledWith();
+      expect(mockedFetchSent).toHaveBeenCalledWith(undefined, PAGE_SIZE);
     });
 
     it('shows where a letter in the air is going, and how long until it lands', async () => {
@@ -507,6 +511,34 @@ describe('LettersScreen', () => {
       expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
     });
 
+    /**
+     * Offline, a failed page used to fire the list's end-of-list event again by
+     * changing the list's height, and that asked again, forever, with nobody
+     * touching the screen. After a failure only the reader asks again.
+     */
+    it('does not keep asking for older letters after a failure, and offers to try again', async () => {
+      mockedFetchInbox
+        .mockResolvedValueOnce(fullPage())
+        .mockRejectedValueOnce(new Error('No connection. Check your network and try again.'))
+        .mockResolvedValueOnce([received({ id: 'letter-31' })]);
+      await renderScreen(<LettersScreen />);
+      await screen.findAllByText('Anna Weber');
+
+      await scrollToEnd();
+      expect(
+        await screen.findByText('No connection. Check your network and try again.'),
+      ).toBeOnTheScreen();
+      await scrollToEnd();
+      await scrollToEnd();
+
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Load older letters' }));
+
+      await waitFor(() => expect(lettersHeld()).toHaveLength(PAGE_SIZE + 1));
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(3);
+    });
+
     it('pages through the letters sent in the same way', async () => {
       const page = Array.from({ length: PAGE_SIZE }, (_, index) =>
         sent({ id: `sent-${index + 1}` }),
@@ -537,7 +569,33 @@ describe('LettersScreen', () => {
       expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.getByText('Ben Okafor')).toBeOnTheScreen();
       expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
-      expect(mockedFetchInbox).toHaveBeenLastCalledWith();
+      // Everything on screen and a page more, so the refresh covers it all.
+      expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, 1 + PAGE_SIZE);
+    });
+
+    /**
+     * Returning from a letter refreshes everything on screen, not just the
+     * newest page: a letter read deep in the list must not keep its unread mark.
+     */
+    it('shows a letter read beyond the first page as read on coming back', async () => {
+      const older = { ...received({ id: 'letter-31' }), preview: 'Deep in the list.' };
+      mockedFetchInbox
+        .mockResolvedValueOnce(fullPage())
+        .mockResolvedValueOnce([older])
+        .mockResolvedValue([
+          ...fullPage(),
+          { ...older, openedAt: new Date('2026-10-31T20:00:00Z') },
+        ]);
+      await renderScreen(<LettersScreen />);
+      await screen.findAllByText('Anna Weber');
+      await scrollToEnd();
+      await waitFor(() => expect(lettersHeld()).toHaveLength(PAGE_SIZE + 1));
+      expect(heldLetter('letter-31')?.openedAt).toBeNull();
+
+      await pullToRefresh();
+
+      expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, PAGE_SIZE + 1 + PAGE_SIZE);
+      await waitFor(() => expect(heldLetter('letter-31')?.openedAt).not.toBeNull());
     });
 
     it('keeps the letters it has when a refresh fails, and says why', async () => {

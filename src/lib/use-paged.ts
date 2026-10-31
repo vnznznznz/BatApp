@@ -20,16 +20,20 @@ export type Paged<T> = {
  * A newest-first list read a page at a time, by keyset: each page is asked for
  * with the id of the last item already held.
  *
- * Refreshing on focus fetches only the first page and splices it onto what is
- * already loaded, rather than throwing the older pages away - so returning from
- * a letter does not jump the list back to the top. That relies on the list
- * being sorted by the server in the same order every time, which it is.
+ * Refreshing on focus asks again for everything already on screen - up to
+ * `maxPageSize`, the most one request may return - so that older entries are as
+ * fresh as the newest: a letter opened deep in the list shows as read when the
+ * reader comes back, and one deleted since disappears. Returning from a letter
+ * therefore neither jumps the list back to the top nor leaves it stale. Beyond
+ * `maxPageSize`, the fresh entries are spliced onto the older ones already held,
+ * which relies on the server sorting the same way every time, which it does.
  *
  * `loadPage` must be stable, as with `useRemote`.
  */
 export function usePaged<T extends { id: string }>(
-  loadPage: (olderThan?: string) => Promise<T[]>,
+  loadPage: (olderThan?: string, limit?: number) => Promise<T[]>,
   pageSize: number,
+  maxPageSize: number = pageSize,
 ): Paged<T> {
   const [items, setItems] = useState<T[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -52,19 +56,29 @@ export function usePaged<T extends { id: string }>(
     async (visible: boolean, restart = false) => {
       const request = ++latest.current;
       if (visible) setIsRefreshing(true);
+      // Everything on screen and a page more, so that letters arriving since
+      // push nothing that was showing out of view.
+      const want = restart ? pageSize : Math.min(held.current.length + pageSize, maxPageSize);
       try {
-        const page = await loadPage();
+        const page = await loadPage(undefined, want);
         if (request !== latest.current) return;
 
-        const last = page.at(-1);
-        const anchor =
-          last && !restart ? held.current.findIndex((item) => item.id === last.id) : -1;
-        // The fresh first page, then whatever was loaded beyond its last item.
-        // If that item is not among the older ones, everything has moved on and
-        // the older pages are stale: start again from this page.
-        const older = anchor >= 0 ? held.current.slice(anchor + 1) : [];
-        keep([...page, ...older]);
-        if (anchor < 0) setHasMore(page.length >= pageSize);
+        if (restart || want > held.current.length || page.length < want) {
+          // What came back covers everything that was on screen: show it as it
+          // is now - opened letters read, deleted ones gone.
+          keep(page);
+          setHasMore(page.length >= want);
+        } else {
+          // More is held than one request returns: the fresh entries, then
+          // whatever was loaded beyond the last of them. If that one is not
+          // among the older entries, everything has moved on and they are
+          // stale: start again from what came back.
+          const last = page.at(-1);
+          const anchor = last ? held.current.findIndex((item) => item.id === last.id) : -1;
+          const older = anchor >= 0 ? held.current.slice(anchor + 1) : [];
+          keep([...page, ...older]);
+          if (anchor < 0) setHasMore(page.length >= want);
+        }
         setError(null);
       } catch (caught) {
         if (request !== latest.current) return;
@@ -76,7 +90,7 @@ export function usePaged<T extends { id: string }>(
         }
       }
     },
-    [keep, loadPage, pageSize],
+    [keep, loadPage, maxPageSize, pageSize],
   );
 
   const loadMore = useCallback(async () => {
