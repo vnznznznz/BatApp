@@ -20,6 +20,8 @@ the build.
 - Delivery time is computed and stored **server-side**. The client never decides when a message
   arrives.
 - No read receipts, no typing indicators, no online status, no public profiles, no feeds.
+- A new city takes a day to become where your bats fly from. Otherwise anyone could borrow a
+  friend's city for one short flight and move straight back - choosing their own delivery time.
 
 ## Status
 

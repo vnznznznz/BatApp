@@ -136,10 +136,22 @@ Delivered:
   by default; a migration narrows that to exactly what the app uses, and the test harness now
   reproduces the platform's defaults so a forgotten grant fails a test.
 
-Verified: the full `npm run verify` gate, the concurrency suite against a real Postgres 16, and an
-end-to-end run of the web build in Chromium against a local Supabase stack (GoTrue, PostgREST,
-Postgres 17, pg_cron): sign up, choose a city, ask a friend, send a letter, watch the bat land on
-screen, sign in as the recipient and read it - with no console errors at iPhone sizes.
+Verified: the full `npm run verify` gate - 453 app tests and 182 database tests, 11 of them races
+run against a real Postgres - and an end-to-end run of the web build in Chromium against a local
+Supabase stack (GoTrue, PostgREST, Postgres 17, pg_cron): sign up, choose a city, ask a friend, send
+a letter, watch the bat land on screen, sign in as the recipient and read it - with no console
+errors at iPhone sizes, repeated until it passed three times running.
+
+Then an adversarial review - independent reviewers for security, correctness, the client and the
+product, each finding checked by someone trying to refute it. What it found in this phase's own
+code, all fixed and each with a test that fails without the fix:
+
+- A courier could borrow a friend's city for one twenty-minute flight and move straight back. A new
+  city now takes a day to count (`RELOCATION_HOURS`).
+- A direct read of the bats table could reveal when a friend opened the app. It is gone.
+- Account deletion could deadlock with a landing, a send, or another deletion.
+- A send retried after its answer was lost went out twice, on two bats. Sends are now idempotent.
+- A page cursor whose letter had been deleted silently ended the list.
 
 **Found and fixed while doing this, in code from earlier phases:**
 

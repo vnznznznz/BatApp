@@ -435,6 +435,51 @@ same `(deliver_at, id)` order, so it cannot deadlock. A concurrency test reprodu
 race and fails against the old code. The app also re-asks, with backoff, while a landing it expects
 is overdue (`src/lib/use-refresh-at.ts`), so no single lost response can freeze a countdown.
 
+### A new city takes a day
+
+Coordinates live on the server so a client cannot invent a location, but a courier still chooses
+their own city, and changing it is one request. Review found the consequence: switch to a friend's
+city, send a twenty-minute letter, switch back - a flight time of the sender's choosing, which is
+precisely what computing delivery on the server exists to prevent.
+
+A new city therefore becomes where a courier's letters leave from, and arrive at, only
+`RELOCATION_HOURS` (24) after the move; `private.flight_city()` is the one place every distance
+reads a city from. A first city counts at once, so a new account can write immediately; moving back
+within the day cancels the move; moving on again restarts the wait; clearing the city does not skip
+it. Borrowing a city now means living in it for a day, during which every letter, to everyone,
+leaves from there - which is not borrowing. The profile, the compose screen and the city picker say
+so while it applies.
+
+**Trade-off:** someone who genuinely moves waits a day before their letters fly from the new place.
+For an app whose letters take hours anyway, that is in character.
+
+### Nothing reads the bats table directly
+
+The roost comes from `get_roost()`, which lands whatever is due for its caller before answering, so
+its answer depends only on the time. A direct read did not: a due letter is landed by whichever
+request touches it first, and if that was the recipient opening the app between two scheduler runs,
+the sender polling `bats` saw their bat come home at that moment - a trace of when their friend was
+online, which this product shows nobody. The app never used the direct read; the grant and the
+policy are gone, and a homecoming is stamped with the letter's landing time rather than with the
+moment a request noticed it.
+
+### A send can be repeated safely
+
+A phone can lose the answer to a send that succeeded - a network change, the OS suspending the app
+mid-request - and the courier, told it failed, taps Send again. That used to send a copy on a second
+bat. The app now names each letter with a `client_ref` it keeps across retries of the same words
+to the same friend, and changes when either changes; `send_message` answers a repeated ref with the
+letter that went. Two repeats arriving at once are settled by a unique index, and the loser's claim
+on a bat is undone with it - a concurrency test holds the original open while the retry runs.
+
+### An unusable page cursor is reported, not answered with nothing
+
+A page is asked for after the id of the last letter held. If that letter has since gone - deleted
+with its sender's account - an empty page would read as the end of the list, and every older letter
+would be out of reach until the screen was left. The list functions refuse it as
+`cursor_not_found`, which a foreign letter's id also gets, and the app starts the list again from
+the top.
+
 ### Account deletion takes letters from both sides
 
 A letter is kept until either correspondent deletes their account, and then it is deleted - from the
@@ -442,6 +487,13 @@ recipient's inbox as well as the sender's list. Anonymising instead ("from a del
 would keep the body, which is the sender's personal data under Art. 17. A trigger returns the
 sender's bat when a letter still in the air is deleted by that cascade; without it, deleting an
 account would have cost a friend one of their three bats forever.
+
+Deletion takes the caller's letters first, in the same `(deliver_at, id)` order delivery uses,
+before anything else. The cascades used to reach bats before letters while delivery locks letters
+before bats - opposite orders, which review reproduced as deadlocks three ways (a letter landing as
+its sender deletes their account, a send to someone deleting theirs, two friends deleting at once).
+Postgres broke each by failing one side, so nothing was corrupted, but a request failed or a minute
+of the worker's landings rolled back.
 
 ### Client: three small hooks, no query library
 
@@ -455,6 +507,14 @@ Generated database types (`npm run generate:types`, from the local stack) type t
 arguments of tables and functions. Each feature still declares its own row types, because the
 generator marks every column a `returns table (...)` function returns as non-null - including, for
 example, the flight fields of a bat that is at home.
+
+### Confirmations that work on the web too
+
+React Native Web implements `Alert.alert` as an empty function, so on the web build a confirmation
+built on it never appears and its action can never be taken - removing a friend and deleting an
+account were impossible there. `src/lib/confirm.ts` uses the browser's own dialog on the web and
+`Alert` elsewhere. The friend list also stopped hiding its actions in an alert: tapping a friend
+opens a letter to them, and Remove is a button of its own.
 
 ### Navigation
 
