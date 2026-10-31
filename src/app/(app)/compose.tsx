@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { BatMark } from '@/components/bat-mark';
 import { Button } from '@/components/button';
@@ -26,6 +26,7 @@ import {
 } from '@/features/messages/messages';
 import { useProfile } from '@/features/profile/use-profile';
 import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
+import { announce } from '@/lib/announce';
 import {
   formatDistance,
   formatDuration,
@@ -103,6 +104,10 @@ export default function ComposeScreen() {
         name: friendName(friendship.friend),
         city: friendship.friend.city?.name ?? null,
       });
+      announce(
+        `Your bat is on its way to ${friendName(friendship.friend)}. ` +
+          `It lands in ${formatDuration(dispatch.deliverAt.getTime() - Date.now())}.`,
+      );
       setText('');
       attempt.current = null;
     } catch (caught) {
@@ -217,73 +222,71 @@ export default function ComposeScreen() {
   }
 
   return (
-    <Screen scroll edges={['bottom']} style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Text variant="caption" tone="secondary">
-          To
+    <Screen scroll avoidKeyboard edges={['bottom']} style={styles.screen}>
+      <Text variant="caption" tone="secondary">
+        To
+      </Text>
+      <Text variant="title">{friendName(recipient.friend)}</Text>
+      <Text variant="caption" tone="secondary" style={styles.lead}>
+        {describeRoute(recipient)}
+      </Text>
+      {profile?.move ? (
+        <Text variant="caption" tone="muted" style={styles.note}>
+          Your bats still leave from {describeCity(profile.move.from)} until{' '}
+          {formatTimestamp(profile.move.settlesAt)}, when your move settles.
         </Text>
-        <Text variant="title">{friendName(recipient.friend)}</Text>
-        <Text variant="caption" tone="secondary" style={styles.lead}>
-          {describeRoute(recipient)}
+      ) : null}
+
+      {profile && !profile.city ? (
+        <Text variant="caption" tone="danger" style={styles.spaced}>
+          Choose your city first. Your bats need to know where home is.
         </Text>
-        {profile?.move ? (
-          <Text variant="caption" tone="muted" style={styles.note}>
-            Your bats still leave from {describeCity(profile.move.from)} until{' '}
-            {formatTimestamp(profile.move.settlesAt)}, when your move settles.
-          </Text>
-        ) : null}
+      ) : !profile && profileError ? (
+        <Text variant="caption" tone="danger" style={styles.spaced}>
+          {profileError}
+        </Text>
+      ) : null}
 
-        {profile && !profile.city ? (
-          <Text variant="caption" tone="danger" style={styles.spaced}>
-            Choose your city first. Your bats need to know where home is.
-          </Text>
-        ) : !profile && profileError ? (
-          <Text variant="caption" tone="danger" style={styles.spaced}>
-            {profileError}
-          </Text>
-        ) : null}
+      <View style={styles.form}>
+        <TextField
+          label="Your letter"
+          value={text}
+          onChangeText={(value) => {
+            setText(value);
+            if (error) setError(null);
+          }}
+          error={error}
+          placeholder={`Dear ${friendName(recipient.friend)},`}
+          multiline
+          autoCapitalize="sentences"
+          accessibilityHint={`Up to ${MESSAGE_MAX_LENGTH} characters.`}
+        />
+        <Text
+          variant="caption"
+          tone={tooLong ? 'danger' : 'muted'}
+          style={styles.counter}
+          accessibilityLabel={`${length} of ${MESSAGE_MAX_LENGTH} characters`}
+        >
+          {length} / {MESSAGE_MAX_LENGTH}
+        </Text>
 
-        <View style={styles.form}>
-          <TextField
-            label="Your letter"
-            value={text}
-            onChangeText={(value) => {
-              setText(value);
-              if (error) setError(null);
-            }}
-            error={error}
-            placeholder={`Dear ${friendName(recipient.friend)},`}
-            multiline
-            autoCapitalize="sentences"
-            accessibilityHint={`Up to ${MESSAGE_MAX_LENGTH} characters.`}
-          />
+        {batLine ? (
           <Text
             variant="caption"
-            tone={tooLong ? 'danger' : 'muted'}
-            style={styles.counter}
-            accessibilityLabel={`${length} of ${MESSAGE_MAX_LENGTH} characters`}
+            tone={!roost.data ? 'danger' : atHome > 0 ? 'muted' : 'flying'}
+            style={styles.note}
           >
-            {length} / {MESSAGE_MAX_LENGTH}
+            {batLine}
           </Text>
+        ) : null}
 
-          {batLine ? (
-            <Text
-              variant="caption"
-              tone={!roost.data ? 'danger' : atHome > 0 ? 'muted' : 'flying'}
-              style={styles.note}
-            >
-              {batLine}
-            </Text>
-          ) : null}
-
-          <Button
-            label="Send by bat"
-            loading={sending}
-            disabled={!canSend}
-            onPress={() => void send(recipient)}
-          />
-        </View>
-      </KeyboardAvoidingView>
+        <Button
+          label="Send by bat"
+          loading={sending}
+          disabled={!canSend}
+          onPress={() => void send(recipient)}
+        />
+      </View>
     </Screen>
   );
 }

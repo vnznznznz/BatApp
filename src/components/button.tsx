@@ -39,6 +39,9 @@ export function Button({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
+      // A compact button is drawn 36pt tall to sit in a list row; the touch
+      // target still reaches the 44pt the platforms ask for.
+      hitSlop={size === 'compact' ? COMPACT_HIT_SLOP : undefined}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
@@ -62,6 +65,8 @@ export function Button({
     </Pressable>
   );
 }
+
+const COMPACT_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 };
 
 const styles = StyleSheet.create({
   base: {

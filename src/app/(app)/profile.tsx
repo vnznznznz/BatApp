@@ -12,6 +12,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { validateDisplayName } from '@/features/auth/validation';
 import { describeCity } from '@/features/cities/search';
 import { useProfile } from '@/features/profile/use-profile';
+import { announce } from '@/lib/announce';
 import { confirmAction, notify } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
 
@@ -55,8 +56,11 @@ export default function ProfileScreen() {
       await updateDisplayName(displayName);
       setDraft(null);
       setSaved(true);
+      announce('Saved.');
     } catch (caught) {
-      setSaveError(caught instanceof Error ? caught.message : 'That could not be saved.');
+      const problem = caught instanceof Error ? caught.message : 'That could not be saved.';
+      setSaveError(problem);
+      announce(problem);
     } finally {
       setBusy(false);
     }

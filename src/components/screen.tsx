@@ -13,6 +13,14 @@ export type ScreenProps = ViewProps & {
   /** Pull-to-refresh, for scrolling screens that show server data. */
   refreshControl?: ScrollViewProps['refreshControl'];
   /**
+   * Keeps a scrolling form reachable above the keyboard. On iOS the scroll
+   * view's insets follow the keyboard, so whatever it covers can be scrolled
+   * into view; dragging the content down puts the keyboard away. Use it instead
+   * of a KeyboardAvoidingView under a navigation header, whose padding comes out
+   * short by the header's height.
+   */
+  avoidKeyboard?: boolean;
+  /**
    * Which safe-area insets to pad. Screens under a navigation header leave out
    * `top`: the header has already cleared the status bar.
    */
@@ -28,6 +36,7 @@ export function Screen({
   scroll = false,
   flush = false,
   refreshControl,
+  avoidKeyboard = false,
   edges = ['top', 'bottom'],
   style,
   children,
@@ -47,6 +56,8 @@ export function Screen({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl}
+          automaticallyAdjustKeyboardInsets={avoidKeyboard}
+          keyboardDismissMode={avoidKeyboard ? 'interactive' : undefined}
         >
           {children}
         </ScrollView>

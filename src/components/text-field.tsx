@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Text } from '@/components/text';
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
+import { announce } from '@/lib/announce';
 
 export type TextFieldProps = Omit<TextInputProps, 'style'> & {
   label: string;
@@ -22,6 +23,12 @@ export function TextField({
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
 
+  // An error appears in red under the field while focus is still on the button
+  // that caused it. Spoken as it appears, it reaches someone who cannot see it.
+  useEffect(() => {
+    if (error) announce(`${label}: ${error}`);
+  }, [error, label]);
+
   return (
     <View style={styles.container}>
       <Text variant="caption" tone={error ? 'danger' : 'secondary'}>
@@ -30,8 +37,10 @@ export function TextField({
 
       <TextInput
         accessibilityLabel={label}
-        accessibilityHint={hint}
-        // Announces the error state rather than relying on the colour alone.
+        // The error, while there is one, is what a screen reader should hear
+        // on returning to the field. aria-invalid reaches assistive technology
+        // only on the web; native platforms ignore it.
+        accessibilityHint={error ?? hint}
         aria-invalid={Boolean(error)}
         placeholderTextColor={Colors.textMuted}
         selectionColor={Colors.accent}

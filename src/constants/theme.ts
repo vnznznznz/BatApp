@@ -19,7 +19,11 @@ export const Colors = {
   /** Moonlight — primary text and the bat silhouette. */
   text: '#E9EFFA',
   textSecondary: '#94A3BE',
-  textMuted: '#64708A',
+  /**
+   * At least 4.5:1 - WCAG AA for small text - on background, surface and
+   * surfaceRaised alike. It was #64708A, which fell to 3.2:1 on the bat tiles.
+   */
+  textMuted: '#7D89A3',
 
   /** The moon — accents and primary actions. */
   accent: '#F6EFDB',

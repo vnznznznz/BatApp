@@ -407,15 +407,35 @@ describe('FriendsScreen', () => {
       ).toBeOnTheScreen();
     });
 
-    /** Writing is what friends are for, so it is the row itself, one tap away. */
-    it('opens a letter to a friend when their row is tapped', async () => {
+    it('opens a letter to a friend from their row', async () => {
       serve(() => [anna]);
       await renderScreen(<FriendsScreen />);
 
-      await fireEvent.press(await screen.findByRole('button', { name: /^Anna Weber/ }));
+      await fireEvent.press(await screen.findByRole('button', { name: 'Write to Anna Weber' }));
 
       expect(mockPush).toHaveBeenCalledWith({ pathname: '/compose', params: { to: 'user-anna' } });
       expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    /**
+     * VoiceOver treats a pressable row as a single element, so a button nested
+     * inside one can never be focused. Each action is its own button instead.
+     */
+    it('keeps each action a button of its own, reachable by a screen reader', async () => {
+      serve(() => [anna]);
+      await renderScreen(<FriendsScreen />);
+      await screen.findByText('Anna Weber');
+
+      expect(screen.queryByRole('button', { name: /^Anna Weber/ })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Write to Anna Weber' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Remove Anna Weber' })).toBeEnabled();
+    });
+
+    it('offers no letter to a friend no bat can reach yet', async () => {
+      serve(() => [{ ...anna, route: null }]);
+      await renderScreen(<FriendsScreen />);
+
+      expect(await screen.findByRole('button', { name: 'Write to Anna Weber' })).toBeDisabled();
     });
 
     it('asks before removing a friend, and keeps them if the courier thinks better of it', async () => {

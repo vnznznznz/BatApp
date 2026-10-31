@@ -22,6 +22,7 @@ import {
   type Friendship,
 } from '@/features/friends/friends';
 import { useProfile } from '@/features/profile/use-profile';
+import { announce } from '@/lib/announce';
 import { confirmAction } from '@/lib/confirm';
 import { formatFlightEstimate, formatTimestamp } from '@/lib/format';
 import { messageOf } from '@/lib/rpc-error';
@@ -64,7 +65,9 @@ export default function FriendsScreen() {
     setAsking(true);
     try {
       const result = await requestFriend(username);
-      setOutcome(describeRequestOutcome(result, username));
+      const said = describeRequestOutcome(result, username);
+      setOutcome(said);
+      announce(said);
       setUsername('');
       await reload();
     } catch (caught) {
@@ -81,7 +84,9 @@ export default function FriendsScreen() {
       await action(friendship.id);
       await reload();
     } catch (caught) {
-      setActionError(messageOf(caught));
+      const problem = messageOf(caught);
+      setActionError(problem);
+      announce(problem);
       // Whatever went wrong, the list on screen may be out of date now.
       await reload();
     } finally {
@@ -172,7 +177,7 @@ export default function FriendsScreen() {
               key={friendship.id}
               title={friendName(friendship.friend)}
               subtitle={`@${friendship.friend.username} · asked ${formatTimestamp(friendship.requestedAt)}`}
-              trailing={
+              actions={
                 <>
                   <Button
                     label="Accept"
@@ -209,19 +214,26 @@ export default function FriendsScreen() {
                 title={friendName(friendship.friend)}
                 subtitle={describeFriend(friendship)}
                 detail={describeRoute(friendship)}
-                accessibilityHint="Write a letter"
-                disabled={busyId !== null}
-                onPress={() => writeTo(friendship)}
-                trailing={
-                  <Button
-                    label="Remove"
-                    size="compact"
-                    variant="ghost"
-                    accessibilityLabel={`Remove ${friendName(friendship.friend)}`}
-                    loading={busyId === friendship.id}
-                    disabled={busyId !== null}
-                    onPress={() => confirmRemove(friendship)}
-                  />
+                actions={
+                  <>
+                    <Button
+                      label="Write"
+                      size="compact"
+                      variant="secondary"
+                      accessibilityLabel={`Write to ${friendName(friendship.friend)}`}
+                      disabled={busyId !== null || !friendship.route}
+                      onPress={() => writeTo(friendship)}
+                    />
+                    <Button
+                      label="Remove"
+                      size="compact"
+                      variant="ghost"
+                      accessibilityLabel={`Remove ${friendName(friendship.friend)}`}
+                      loading={busyId === friendship.id}
+                      disabled={busyId !== null}
+                      onPress={() => confirmRemove(friendship)}
+                    />
+                  </>
                 }
               />
             ))
@@ -236,7 +248,7 @@ export default function FriendsScreen() {
               key={friendship.id}
               title={`@${friendship.friend.username}`}
               subtitle={`Asked ${formatTimestamp(friendship.requestedAt)}`}
-              trailing={
+              actions={
                 <Button
                   label="Withdraw"
                   size="compact"

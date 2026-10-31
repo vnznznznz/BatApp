@@ -52,4 +52,16 @@ describe('Button', () => {
 
     expect(screen.getByText('Send')).toBeOnTheScreen();
   });
+
+  /** Drawn 36pt tall to sit in a list row, it still takes a 44pt touch. */
+  it('gives a compact button the touch target the platforms ask for', async () => {
+    await render(<Button label="Accept" size="compact" onPress={jest.fn()} />);
+
+    expect(screen.getByRole('button').props.hitSlop).toEqual({
+      top: 4,
+      bottom: 4,
+      left: 4,
+      right: 4,
+    });
+  });
 });
