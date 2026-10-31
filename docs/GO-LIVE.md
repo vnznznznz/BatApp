@@ -11,32 +11,27 @@ with Phases 2–14, not when the code is finished.
 
 ## Readiness checklist
 
-Where this actually stands, as of Phase 2 of 18. The four groups below are independent and have
-different owners, so they can proceed in parallel — and two of them have lead times that make
-starting late expensive.
+Where this actually stands, as of Phase 11 of 18. The four groups below are independent and
+have different owners, so they can proceed in parallel — and two of them have lead times that
+make starting late expensive.
 
-### A. The application — 16 phases remain
+### A. The application — the product works; four phases stand between it and review
 
-Today you can sign up, sign in, sign out and delete your account. That is all. There are no bats,
-no friends, and no messages: **the product does not exist yet**, only the shell it will live in.
+You can sign up, choose a city, ask friends by username, send letters that fly the real distance,
+watch bats come home, and read what has landed. Delivery is decided by the database and runs on
+pg_cron; every product rule is enforced server-side and tested, including the reservation race
+against a real Postgres.
 
-| Phase | What it adds                | Why it blocks go-live                                      |
-| ----- | --------------------------- | ---------------------------------------------------------- |
-| 3     | Profiles and city selection | No city means no distance, so no delivery time             |
-| 4     | Bats as database records    | The core object of the product                             |
-| 5     | Friend system               | Only friends can exchange messages                         |
-| 6     | Message creation            | —                                                          |
-| 7     | Atomic bat reservation      | The correctness centre of the whole app                    |
-| 8     | Delivery calculation        | Turns distance into an arrival time, server-side           |
-| 9     | Scheduled delivery worker   | Without it nothing is ever delivered                       |
-| 10    | Push notifications          | **Needs a paid Apple account** for a development build     |
-| 11    | Inbox and message detail    | Reading what arrived                                       |
-| 12    | Bat flight animation        | Decorative, and the last thing that should be built        |
-| 13    | Security and RLS audit      | —                                                          |
-| 13a   | Safety and moderation       | **App Review rejects a chat app without report and block** |
-| 14    | Testing                     | Includes the tests this harness cannot run — see below     |
+| Phase | What it adds           | Why it blocks go-live                                      |
+| ----- | ---------------------- | ---------------------------------------------------------- |
+| 10    | Push notifications     | **Needs a paid Apple account** for a development build     |
+| 12    | Bat flight animation   | Decorative, and the last thing that should be built        |
+| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains   |
+| 13a   | Safety and moderation  | **App Review rejects a chat app without report and block** |
+| 14    | Testing                | Mostly done in passing; device testing remains             |
 
-Phases 7 and 9 are the two that decide whether the app is correct or merely convincing.
+Without push, a letter that lands is seen the next time its recipient opens the app. That is
+usable among friends who know to look, and it is not what the product should finally be.
 
 ### B. Accounts and services — yours, and two have lead times
 
@@ -82,15 +77,18 @@ Both recorded where the work is, not only here:
 - **Password reset cannot be completed in-app.** The email sends; there is no deep-link handler to
   catch the return and present a new-password screen. Parked until custom SMTP exists, because
   until then the mail cannot reach anyone anyway.
-- **The concurrency test cannot run in this harness.** "Two concurrent sends cannot claim the same
-  bat" needs a real Postgres with two connections; PGlite is a single embedded connection. This is
-  the single most important test in the product and it needs real infrastructure in Phase 7.
+- ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
+  `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
+  service container.
+- **The migrations must be pushed to the hosted project.** `npx supabase db push` after linking —
+  see the README. Until then the app signs in and then fails on every screen that reads a bat.
 
 ### The shortest path to friends using it
 
 1. Create the Supabase project in Zurich, link it, push config and migrations. _(unblocks everything)_
 2. Start Apple enrolment. _(long lead time, gates Phase 10)_
-3. Phases 3–9 — the product itself, ending with messages that actually arrive.
+3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
+   Phase 11. Push the migrations to the hosted project (`npx supabase db push`).
 4. Custom SMTP, then email confirmation on, then finish password reset.
 5. Phase 10 push, needing the Apple account from step 2.
 6. Phases 11–14, including 13a, which App Review will check.

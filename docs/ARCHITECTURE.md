@@ -315,6 +315,165 @@ population cut-off in the generator is lowered substantially.
 bucket with its own RLS, image resizing and a moderation question for user-supplied pictures.
 That is a phase of its own, not a corner of this one.
 
+## Phases 4–11 - bats, friends, letters, delivery
+
+### Least privilege, found on the real platform
+
+Run against a local Supabase stack for the first time, the database turned out to differ from the
+test harness in one way that mattered. Supabase's default privileges grant **every** table,
+sequence and function created in `public` to `anon` and `authenticated` - INSERT, UPDATE, DELETE
+and TRUNCATE included - and leave RLS as the only barrier. The PGlite harness had no such
+defaults, so tests asserting "permission denied" passed for a reason that did not exist in
+production, where the same request was permitted by privilege and stopped only by a policy.
+
+Nothing was exposed - every table had RLS forced on - but the posture was one missing policy away
+from being wide open. `20261031120000_least_privilege.sql` now revokes the defaults for objects
+created by migrations, re-grants exactly what the app uses (on `profiles`, column-level: only
+`display_name` and `city_id` are updatable, which also enforces the profile screen's promise that a
+username cannot change), and creates a `private` schema the API roles cannot reach. The harness
+reproduces Supabase's defaults, and `privileges.db.test.mjs` lists, in full, what each API role
+holds on every table and function - so a new table or function fails a test until someone decides
+its privileges.
+
+**Trade-off:** a table created later through the dashboard is not reachable through the API until
+it is granted. That is the intended failure direction.
+
+### Bats are rows with slots
+
+Three rows per courier rather than a counter: a row can be locked by the reservation, carries its
+own state, and shows up in the roost as a distinct thing. "Exactly three" is a property of the
+schema - `slot between 1 and 3` and `unique (owner_id, slot)` - rather than of the code that
+inserts them, so a fourth bat is unrepresentable rather than merely unwritten. They are issued by an
+`after insert` trigger on `profiles`, inside the signup transaction, and backfilled for accounts
+that predate them.
+
+The status is stored (`available`/`flying`) rather than derived from whether a letter is in the
+air, because the reservation has to lock and update something: with a derived status, two sends
+could both see a bat as free in their snapshots and only the unique index would stop the second -
+as an error instead of a different bat.
+
+### Delivery time lives in SQL
+
+`private.flight_duration(distance)` is `greatest(20 minutes, distance / 80 km/h) × multiplier`,
+and `private.distance_km` is the haversine formula on the mean Earth radius. Both read only from
+the `cities` table, so the client never sends a coordinate, a distance or a time. The multiplier
+lives in `private.flight_settings` - one row, `(0, 1]`, operator-only - and scales the floor too,
+so a development project at 0.01 lands a same-city letter in 12 seconds. The 20 and the 80 are
+duplicated from `src/constants/config.ts`; `parity.db.test.mjs` reads that file and fails if they
+drift.
+
+`flight_duration` is `STRICT`. It was not at first, and `greatest()` skips nulls, so every route
+with a missing city quoted the 20-minute floor as if it were a real flight time.
+
+### Friendship is one row per pair
+
+A unique index on `(least(a, b), greatest(a, b))` makes "are these two friends" have one answer,
+whichever of them asked. `request_friend` treats asking someone who already asked you as accepting,
+and reports what happened (`requested`, `already_requested`, `accepted`, `already_friends`) rather
+than raising for cases that are not mistakes. Usernames are matched exactly, never by prefix, so
+the service cannot be browsed; that a username exists is revealed, which is inherent in finding
+friends by username.
+
+Profiles remain readable only by their owner. `list_friends()` picks columns by hand: a name is
+shown once a person has asked you or accepted you, a city only to friends. A policy letting friends
+read each other's profile row would have handed over whole rows, to strangers with pending
+requests included.
+
+**Unfriending does not recall letters already in the air.** They were sent between friends, and a
+bat cannot be recalled. Block (Phase 13a) is where stopping them belongs.
+
+### No client reads the messages table
+
+`messages` has RLS forced on, no policies and no grants. Every read is a `SECURITY DEFINER`
+function that returns exactly what its side of a letter may see: the recipient sees nothing until
+it lands - not the letter, not that a bat is coming - and the sender never sees `opened_at`. That
+column exists for the recipient's unread marker; a SELECT policy for senders would have returned
+it, and a whole row is a read receipt. `privileges.db.test.mjs` pins that `authenticated` holds
+nothing on the table, and `messages.db.test.mjs` pins the exact columns of the sender's list.
+
+Errors use one contract: business-rule refusals raise SQLSTATE `P0001` with a stable `hint`
+(`no_available_bat`, `not_friends`, ...), which PostgREST passes through, and `src/lib/rpc-error.ts`
+turns into the app's words. The database's own messages stay free to be written for logs.
+
+### The reservation
+
+```sql
+update bats set status = 'flying'
+where id = (select id from bats where owner_id = $caller and status = 'available'
+            order by slot limit 1 for update skip locked)
+  and status = 'available'
+```
+
+`skip locked` lets concurrent sends take different bats instead of queueing for one; after taking
+the lock Postgres rechecks the row, so a bat that left between snapshot and lock is skipped; the
+outer recheck and a partial unique index on in-flight bats (`messages(bat_id) where delivered_at
+is null`) are second and third lines of defence. `concurrency.pg.test.mjs` holds four overlapping
+transactions open against a real Postgres and checks that three get a bat each and the fourth is
+refused. A mutation test - removing `for update skip locked` - makes it fail, which is how we know
+it tests something.
+
+### Delivery: a worker, and every read
+
+`private.deliver_due_messages()` lands every due letter and brings its bat home in one statement,
+idempotently (only while `delivered_at` is null). pg_cron runs it every minute, inside the
+database: the worker is one SQL statement, so an Edge Function would add a deploy target, a network
+hop and a service-role key for nothing. The migration schedules it only where pg_cron exists, which
+includes hosted and local Supabase and excludes PGlite and plain CI Postgres.
+
+Every function the app reads through first runs the same delivery for the caller. Correctness
+therefore never depends on the schedule: if pg_cron stopped, letters would still be readable and
+bats home on time, the moment anybody involved looked. The worker makes delivery timely - which
+push notifications will need - not correct.
+
+The two modes lock differently, and the first version got this wrong. The worker uses `skip locked`
+so overlapping runs divide the work. The per-caller path originally did too, and the end-to-end run
+caught the consequence: at the moment a bat was due, the home screen asked for the roost and the
+badges at once, both tried to land the same letter, and the one that skipped it reported the bat
+as still flying - with nothing left to prompt another fetch, so the roost stayed stuck. The
+per-caller path now waits for the lock (milliseconds) and rereads; every caller takes locks in the
+same `(deliver_at, id)` order, so it cannot deadlock. A concurrency test reproduces the original
+race and fails against the old code. The app also re-asks, with backoff, while a landing it expects
+is overdue (`src/lib/use-refresh-at.ts`), so no single lost response can freeze a countdown.
+
+### Account deletion takes letters from both sides
+
+A letter is kept until either correspondent deletes their account, and then it is deleted - from the
+recipient's inbox as well as the sender's list. Anonymising instead ("from a deleted account")
+would keep the body, which is the sender's personal data under Art. 17. A trigger returns the
+sender's bat when a letter still in the air is deleted by that cascade; without it, deleting an
+account would have cost a friend one of their three bats forever.
+
+### Client: three small hooks, no query library
+
+`useRemote` (load on focus and on return from background, newest request wins), `usePaged`
+(keyset pages; a focus refresh splices the new first page onto older pages instead of jumping to
+the top) and `useRefreshAt` (fetch again when a bat is due). Countdowns tick from the server's
+`deliver_at` via `useNow`, which stops when its screen is not focused. A query library would earn
+its place if screens started sharing cached data; today each screen owns what it shows.
+
+Generated database types (`npm run generate:types`, from the local stack) type the names and
+arguments of tables and functions. Each feature still declares its own row types, because the
+generator marks every column a `returns table (...)` function returns as non-null - including, for
+example, the flight fields of a bat that is at home.
+
+### Navigation
+
+A native header carrying only a back button on every signed-in screen but the roost, painted in the
+background colour; the serif titles stay in the content. The root layout owns the way in: a session
+appearing anywhere outside the app - restored at launch, or created by the form on screen - sends
+the user to the roost with the stack cleared. That guard did not exist before Phase 4, though the
+sign-in screen's comments said it did: sign-in and sign-up both succeeded and then left the user on
+the form.
+
+### Configuration inlining
+
+Expo inlines `EXPO_PUBLIC_*` variables only where the code reads `process.env.EXPO_PUBLIC_NAME`
+literally; at run time `process.env` itself is empty. `src/lib/supabase.ts` had passed it whole
+since Phase 2, so every real build threw at launch while every test passed. `supabase.test.ts`
+now runs the file through `babel-preset-expo` and asserts both values are inlined and no read of
+`process.env` remains. The URL check also accepts plain http for loopback and private-network
+addresses, so the app can run against `npx supabase start` - from a phone too.
+
 ## Deferred to later phases
 
 Recorded here so the reasoning is not lost between phases.
@@ -322,10 +481,12 @@ Recorded here so the reasoning is not lost between phases.
 - **Environment configuration and secrets** (Phase 2). No `.env.example` yet because there is
   nothing to configure. The Supabase anon key is publishable by design; the service-role key
   must never reach the app bundle, and enforcing that is a Phase 2 decision.
-- **Delivery time algorithm** (Phase 8). `BAT_SPEED_KMH` and `MINIMUM_FLIGHT_MINUTES` are
-  declared now because they are product invariants; the function that consumes them is not
-  written until there are cities to measure between.
-- **Scheduled delivery** (Phase 9). The worker must be idempotent and must not live in the
-  mobile app. The choice between `pg_cron` calling a SQL function directly and `pg_cron`
-  invoking an Edge Function is deferred until Phase 9, when the delivery and push paths are
-  both concrete.
+- ~~**Delivery time algorithm** (Phase 8).~~ Built: see "Delivery time lives in SQL" above.
+- ~~**Scheduled delivery** (Phase 9).~~ Built: pg_cron calling a SQL function directly; see
+  "Delivery: a worker, and every read" above.
+- **Push notifications** (Phase 10). The worker is where a landing becomes known. The push itself
+  needs an HTTP call to Expo's service, which SQL should not make inline: the expected shape is
+  the worker recording landings in an outbox table that `pg_net` or an Edge Function drains, so a
+  failed push can be retried without touching the letter's state - which is the Phase 10 test.
+- **Nocturnal delivery.** Still undecided (see the roadmap). It would change only
+  `private.flight_duration`, which is why that function takes nothing but a distance.

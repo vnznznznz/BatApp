@@ -11,16 +11,16 @@ See [`GO-LIVE.md`](GO-LIVE.md).
 | 1   | Project foundation              | **Done** |
 | 2   | Supabase configuration and auth | **Done** |
 | 3   | Profiles and city selection     | **Done** |
-| 4   | Bat model and inventory         | Next     |
-| 5   | Friend system                   | Planned  |
-| 6   | Message creation                | Planned  |
-| 7   | Atomic bat reservation          | Planned  |
-| 8   | Delivery calculation            | Planned  |
-| 9   | Scheduled delivery worker       | Planned  |
-| 10  | Push notifications              | Planned  |
-| 11  | Inbox and message detail        | Planned  |
+| 4   | Bat model and inventory         | **Done** |
+| 5   | Friend system                   | **Done** |
+| 6   | Message creation                | **Done** |
+| 7   | Atomic bat reservation          | **Done** |
+| 8   | Delivery calculation            | **Done** |
+| 9   | Scheduled delivery worker       | **Done** |
+| 10  | Push notifications              | Next     |
+| 11  | Inbox and message detail        | **Done** |
 | 12  | Bat flight animation            | Planned  |
-| 13  | Security and RLS audit          | Planned  |
+| 13  | Security and RLS audit          | Started  |
 | 13a | Safety and moderation           | Planned  |
 | 14  | Testing                         | Planned  |
 | 15  | iOS/Android production builds   | Planned  |
@@ -103,27 +103,85 @@ regression tests now cover it.
 Not built, by design: avatars. Image upload means Storage, bucket policies, resizing and a
 moderation question - a phase of its own.
 
+## Phases 4–9 and 11 — the product (done)
+
+Built together, because they are one mechanism: a letter cannot be created without reserving a
+bat, cannot be reserved without a delivery time, and is not a product until it can be read. Each
+phase's decisions are recorded under its own heading in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+Delivered:
+
+- **Bats (4).** Three rows per courier, issued by a trigger in the signup transaction, in slots
+  1–3 with a unique (owner, slot) pair - a fourth bat is a row the schema cannot store. Existing
+  accounts are backfilled by the migration.
+- **Friends (5).** Request by exact username, accept, decline, withdraw, unfriend. One row per pair
+  whichever way it was asked; asking someone who already asked you accepts. `list_friends()`
+  reveals a name only once someone has asked or accepted, and a city only to friends.
+- **Letters, reservation and delivery time (6–8).** `send_message(recipient_id, body)` is the only
+  way to create a letter. It checks friendship and both cities, claims a bat with
+  `for update skip locked`, measures the haversine distance between the two cities' stored
+  coordinates, and sets `deliver_at` from 80 km/h with a 20-minute floor, scaled by an
+  operator-only multiplier. A partial unique index makes two letters on one bat impossible.
+- **Delivery (9).** `private.deliver_due_messages()` lands every due letter and brings its bat home
+  in one statement; pg_cron runs it every minute. Every read function also lands what is due for
+  the caller first, so delivery is correct even if the schedule stops.
+- **Reading (11).** The `messages` table has no client access at all. The roost, the inbox, the sent
+  list, a whole letter and the unread counts come from functions that choose, column by column,
+  what each side may see: nothing reaches the recipient before landing, and `opened_at` never
+  reaches the sender.
+- **Screens.** The roost (three live bat tiles with countdowns that land on screen by themselves),
+  friends, compose with the server's flight estimate, letters received and sent, and a letter.
+  Sign-out and account deletion moved to the profile screen.
+- **Least privilege (part of 13).** Supabase grants every new table and function to the API roles
+  by default; a migration narrows that to exactly what the app uses, and the test harness now
+  reproduces the platform's defaults so a forgotten grant fails a test.
+
+Verified: the full `npm run verify` gate, the concurrency suite against a real Postgres 16, and an
+end-to-end run of the web build in Chromium against a local Supabase stack (GoTrue, PostgREST,
+Postgres 17, pg_cron): sign up, choose a city, ask a friend, send a letter, watch the bat land on
+screen, sign in as the recipient and read it - with no console errors at iPhone sizes.
+
+**Found and fixed while doing this, in code from earlier phases:**
+
+- **The app could not start in any real build.** `src/lib/supabase.ts` passed `process.env` whole to
+  the config reader, but Expo inlines `EXPO_PUBLIC_*` values only where they are written out as
+  `process.env.EXPO_PUBLIC_NAME`. Jest has a real environment, so every test passed; Expo Go, EAS
+  and web builds all threw "Missing EXPO_PUBLIC_SUPABASE_URL" at launch. A test now runs the file
+  through Expo's own Babel preset and checks what comes out.
+- **Signing in or up left the user on the form.** The comments referred to a root guard that did not
+  exist; the only redirect lived on the welcome screen and fires only while that screen is in
+  front. `src/app/_layout.tsx` now has the guard.
+- **A local Supabase stack could not be used.** The URL check refused plain http outright; it now
+  accepts http for loopback and private-network addresses only.
+
+Not built, by design: push notifications (Phase 10 - needs a development build and a paid Apple
+account), the flight animation (12), and safety and moderation (13a, below).
+
 ## The tests that matter
 
 These are specified now so that later phases are written against them rather than towards them.
 They come from the product requirements, and each one belongs to the phase that first makes it
 possible.
 
-| Test                                                     | Phase |
-| -------------------------------------------------------- | ----- |
-| A new user receives exactly three bats                   | 4     |
-| A user cannot obtain a fourth bat                        | 4     |
-| Sending a message consumes exactly one bat               | 7     |
-| A user with zero available bats cannot send              | 7     |
-| Two concurrent sends cannot claim the same bat           | 7     |
-| A delivered message returns its bat to AVAILABLE         | 9     |
-| A user cannot send to a non-friend                       | 5     |
-| A user cannot read another user's message                | 13    |
-| A client cannot manipulate `delivery_at`                 | 8     |
-| The delivery worker is idempotent                        | 9     |
-| A duplicate worker run does not deliver twice            | 9     |
-| A push failure does not corrupt message state            | 10    |
-| Account deletion removes or anonymises the required data | 2     |
+| Test                                                     | Phase | Where                                                                 |
+| -------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
+| A new user receives exactly three bats                   | 4     | `bats.db.test.mjs`                                                    |
+| A user cannot obtain a fourth bat                        | 4     | `bats.db.test.mjs`                                                    |
+| Sending a message consumes exactly one bat               | 7     | `messages.db.test.mjs`                                                |
+| A user with zero available bats cannot send              | 7     | `messages.db.test.mjs`                                                |
+| Two concurrent sends cannot claim the same bat           | 7     | `concurrency.pg.test.mjs` (real Postgres)                             |
+| A delivered message returns its bat to AVAILABLE         | 9     | `messages.db.test.mjs`                                                |
+| A user cannot send to a non-friend                       | 5     | `messages.db.test.mjs`                                                |
+| A user cannot read another user's message                | 13    | `messages.db.test.mjs`                                                |
+| A client cannot manipulate `delivery_at`                 | 8     | `messages.db.test.mjs`                                                |
+| The delivery worker is idempotent                        | 9     | `messages.db.test.mjs`                                                |
+| A duplicate worker run does not deliver twice            | 9     | `concurrency.pg.test.mjs` (real Postgres)                             |
+| A push failure does not corrupt message state            | 10    | not yet - Phase 10                                                    |
+| Account deletion removes or anonymises the required data | 2     | `messages.db.test.mjs`, `bats.db.test.mjs`, `friendships.db.test.mjs` |
+
+Every one of them except the push test now exists, under its own name, in `src/tests/db`. The two
+concurrency tests run only where `DATABASE_URL` points at a real Postgres - CI provides one, and
+locally they are skipped with a message saying so.
 
 ## Open questions for later phases
 
@@ -136,8 +194,10 @@ Recorded rather than guessed at:
 - **Nocturnal delivery.** Bats flying only at night is the strongest theming hook available and
   is not in the current requirements. It would change the delivery formula in Phase 8, so it
   needs a decision before then, not after.
-- **Message retention.** Nothing currently says how long a delivered message is kept. This
-  affects the Phase 2 account-deletion test and the database schema.
+- ~~**Message retention.**~~ Decided in Phase 6: a letter is kept until either of the two people
+  deletes their account, and then it goes from both sides - out of the recipient's inbox as well
+  as the sender's list. A per-letter "delete" for one side is not built; if it is wanted, it is a
+  hidden-for-me flag, not a deletion, since the other person still holds the letter.
 - ~~**Contact address for store listings.**~~ Decided: a personal postal address will be used.
   It is deliberately **not** recorded in this repository, which is public — it goes straight into
   App Store Connect and the hosted privacy policy at Phase 16. See [`GO-LIVE.md`](GO-LIVE.md).

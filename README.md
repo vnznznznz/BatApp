@@ -23,10 +23,14 @@ the build.
 
 ## Status
 
-Phase 1 of 17 — project foundation. The app currently builds, bundles and renders a welcome
-screen. There is no backend, no authentication and no messaging yet. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when, and
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the decisions taken so far.
+The product works end to end. You can sign up, choose your city, ask friends by username, write
+to a friend, watch your bat fly the real distance, and read what lands in your inbox - with the
+delivery time decided by the database, three bats that are really three, and no read receipts.
+Phases 1–9 and 11 are done; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when,
+and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the decisions and why.
+
+Not built yet: push notifications (Phase 10 - until then, open the app to see what has landed), the
+flight animation (12), and report/block (13a, required before App Store review).
 
 ## Requirements
 
@@ -35,42 +39,98 @@ screen. There is no backend, no authentication and no messaging yet. See
 - An iOS or Android device with [Expo Go](https://expo.dev/go), or a simulator
 - macOS with Xcode is only required for local native iOS builds; cloud builds via EAS do not
   need it
+- Docker, only to run the backend locally with `npx supabase start`
 
 ## Getting started
 
 ```bash
 npm install
+cp .env.example .env    # then fill in your project's URL and anon key
 npm start
 ```
 
 Then scan the QR code with Expo Go, or press `i` / `a` for a simulator.
 
+### The Supabase project
+
+The app needs its schema in your Supabase project. Once, after creating the project:
+
+```bash
+npx supabase link --project-ref <your-project-ref>
+npx supabase config push
+npx supabase db push
+```
+
+`db push` applies everything in `supabase/migrations`: the tables, the row level security, the
+functions the app calls, the 4,310 cities, and the delivery job (pg_cron is enabled by the
+migration). Run it again whenever a migration is added. `config push` applies
+`supabase/config.toml`, which **replaces** dashboard auth settings - read the warning at its top
+first.
+
+### Running everything locally
+
+With Docker, the whole backend runs on your machine and nothing touches the hosted project:
+
+```bash
+npx supabase start
+```
+
+Put the printed API URL and publishable key into `.env` (`http://127.0.0.1:54321` - plain http is
+accepted for local and private-network addresses only). To use Expo Go on a phone, use your
+computer's LAN address instead of `127.0.0.1`.
+
+Real flights take hours. To watch one land in under a minute, scale every flight down - on a
+development project only:
+
+```bash
+psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+  -c "update private.flight_settings set time_multiplier = 0.002"
+```
+
+`0.01` makes Berlin to Munich about four minutes; `1` is real time and the only value production
+should ever have.
+
 ## Scripts
 
-| Command                   | What it does                                           |
-| ------------------------- | ------------------------------------------------------ |
-| `npm start`               | Start the Expo dev server                              |
-| `npm run ios` / `android` | Start and open a simulator                             |
-| `npm run typecheck`       | `tsc --noEmit`                                         |
-| `npm run lint`            | ESLint over the whole repo, warnings treated as errors |
-| `npm run format`          | Rewrite files with Prettier                            |
-| `npm test`                | Jest                                                   |
-| `npm run verify`          | typecheck + lint + format check + tests (what CI runs) |
-| `npm run generate:assets` | Redraw the app artwork from source                     |
+| Command                   | What it does                                                |
+| ------------------------- | ----------------------------------------------------------- |
+| `npm start`               | Start the Expo dev server                                   |
+| `npm run ios` / `android` | Start and open a simulator                                  |
+| `npm run typecheck`       | `tsc --noEmit`                                              |
+| `npm run lint`            | ESLint over the whole repo, warnings treated as errors      |
+| `npm run format`          | Rewrite files with Prettier                                 |
+| `npm test`                | Jest                                                        |
+| `npm run test:db`         | The database tests: migrations replayed in PGlite           |
+| `npm run verify`          | typecheck + lint + format check + tests (what CI runs)      |
+| `npm run generate:assets` | Redraw the app artwork from source                          |
+| `npm run generate:types`  | Regenerate `src/lib/database.types.ts` from the local stack |
 
 Run `npm run verify` before every commit. CI runs exactly the same command.
+
+The concurrency tests (`src/tests/db/concurrency.pg.test.mjs`) need a real Postgres, because the
+races they check cannot happen on PGlite's single connection. CI provides one. Locally they are
+skipped, saying so, unless you point them at a server where they may create a scratch database:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres npm run test:db
+```
 
 ## Project layout
 
 ```
 src/
   app/          Expo Router routes. Files here are URLs.
-  components/   Design-system primitives: Screen, Text, Button, Card, BatMark
+  components/   Design-system primitives: Screen, Text, Button, Card, ListRow, Badge, ...
   constants/    Product invariants (config.ts) and the design tokens (theme.ts)
-  lib/          Pure, framework-free helpers
+  features/     One folder per domain - auth, profile, cities, roost, friends, messages - each
+                with the calls it makes and the types it maps them to
+  lib/          Framework-level helpers: the Supabase client, data hooks, formatting, errors
+  tests/        Screen tests (never under app/, where every file is a route) and db/, the
+                database tests
+supabase/       config.toml and the migrations - the schema, its policies and its functions
 assets/images/  Generated artwork — do not hand-edit, see scripts/generate-assets.mjs
 scripts/        Build tooling
-docs/           Architecture decisions and roadmap
+docs/           Architecture decisions, roadmap and go-live plan
 ```
 
 Screens compose the primitives and choose a semantic variant and tone —
