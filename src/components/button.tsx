@@ -12,9 +12,13 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
+export type ButtonSize = 'regular' | 'compact';
+
 export type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   label: string;
   variant?: ButtonVariant;
+  /** `compact` fits inside a list row, beside the text it acts on. */
+  size?: ButtonSize;
   loading?: boolean;
   style?: ViewStyle;
 };
@@ -22,6 +26,7 @@ export type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
 export function Button({
   label,
   variant = 'primary',
+  size = 'regular',
   loading = false,
   disabled,
   style,
@@ -37,6 +42,7 @@ export function Button({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
+        size === 'compact' && styles.compact,
         variants[variant].container,
         pressed && !isDisabled && variants[variant].pressed,
         isDisabled && styles.disabled,
@@ -66,6 +72,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'transparent',
+  },
+  compact: {
+    minHeight: 36,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.sm,
   },
   disabled: {
     opacity: 0.45,

@@ -77,7 +77,7 @@ export default function CityPickerScreen() {
   }
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={styles.screen} edges={['bottom']}>
       <Text variant="title">Where is your roost?</Text>
       <Text variant="caption" tone="secondary" style={styles.subtitle}>
         Your city decides how long your bats take to reach your friends. Nothing finer than the city
@@ -139,7 +139,7 @@ export default function CityPickerScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingTop: Spacing.lg },
+  screen: { paddingTop: Spacing.sm },
   subtitle: { marginTop: Spacing.xs, lineHeight: 19 },
   search: { marginTop: Spacing.lg, marginBottom: Spacing.md },
   row: {

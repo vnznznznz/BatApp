@@ -11,7 +11,15 @@ export type TextFieldProps = Omit<TextInputProps, 'style'> & {
   hint?: string;
 };
 
-export function TextField({ label, error, hint, onFocus, onBlur, ...rest }: TextFieldProps) {
+export function TextField({
+  label,
+  error,
+  hint,
+  multiline,
+  onFocus,
+  onBlur,
+  ...rest
+}: TextFieldProps) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -27,8 +35,10 @@ export function TextField({ label, error, hint, onFocus, onBlur, ...rest }: Text
         aria-invalid={Boolean(error)}
         placeholderTextColor={Colors.textMuted}
         selectionColor={Colors.accent}
+        multiline={multiline}
         style={[
           styles.input,
+          multiline && styles.inputMultiline,
           focused && styles.inputFocused,
           Boolean(error) && styles.inputInvalid,
         ]}
@@ -71,6 +81,13 @@ const styles = StyleSheet.create({
     // Height rather than vertical padding, so the field does not change size
     // between platforms or when an error appears.
     minHeight: 50,
+  },
+  inputMultiline: {
+    minHeight: 180,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.md,
+    // Android centres multiline text vertically unless told otherwise.
+    textAlignVertical: 'top',
   },
   inputFocused: {
     borderColor: Colors.borderStrong,

@@ -1,0 +1,121 @@
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+
+import { Button } from '@/components/button';
+import { Card } from '@/components/card';
+import { Screen } from '@/components/screen';
+import { Text } from '@/components/text';
+import { Colors, Spacing } from '@/constants/theme';
+import { describeCity } from '@/features/cities/search';
+import { correspondentName, readMessage, type Letter } from '@/features/messages/messages';
+import { formatDistance, formatDuration, formatTimestamp } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
+import { useRefreshAt } from '@/lib/use-refresh-at';
+import { useRemote } from '@/lib/use-remote';
+
+/**
+ * One letter, whole.
+ *
+ * Opening a received letter marks it read - on the server, for the recipient's
+ * own inbox, and never for the sender. A letter you sent that is still in the
+ * air shows its countdown, and lands on screen when it lands.
+ */
+export default function LetterScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const load = useCallback(() => readMessage(id), [id]);
+  const letter = useRemote(load);
+  const now = useNow(1000);
+  const { reload } = letter;
+
+  const landsAt = letter.data && !letter.data.delivered ? letter.data.deliverAt.getTime() : null;
+
+  // Fetching again once the arrival time passes is what lands it.
+  useRefreshAt(landsAt, letter.settledAt, reload);
+
+  if (!letter.data) {
+    return (
+      <Screen center edges={['bottom']} style={styles.screen}>
+        {letter.error ? (
+          <>
+            <Text variant="body" tone="danger" center>
+              {letter.error}
+            </Text>
+            <View style={styles.actions}>
+              <Button label="Try again" variant="secondary" onPress={() => void reload()} />
+            </View>
+          </>
+        ) : (
+          <ActivityIndicator color={Colors.textMuted} />
+        )}
+      </Screen>
+    );
+  }
+
+  const data = letter.data;
+  const received = data.direction === 'received';
+
+  return (
+    <Screen scroll edges={['bottom']} style={styles.screen}>
+      <Text variant="caption" tone="secondary">
+        {received ? 'From' : 'To'}
+      </Text>
+      <Text variant="title">{correspondentName(data.other)}</Text>
+      <Text variant="caption" tone="muted">
+        @{data.other.username}
+      </Text>
+
+      <Card style={styles.card}>
+        <Text variant="body" selectable>
+          {data.body}
+        </Text>
+      </Card>
+
+      <View style={styles.meta}>
+        {describeJourney(data, now).map((line) => (
+          <Text key={line} variant="caption" tone="secondary" style={styles.line}>
+            {line}
+          </Text>
+        ))}
+      </View>
+
+      {received ? (
+        <View style={styles.actions}>
+          <Button
+            label="Write back"
+            onPress={() => router.push({ pathname: '/compose', params: { to: data.other.id } })}
+          />
+        </View>
+      ) : null}
+    </Screen>
+  );
+}
+
+/** Where the letter went, and when - in the past tense once it has landed. */
+function describeJourney(letter: Letter, now: number): string[] {
+  const from = describeCity(letter.origin);
+  const to = describeCity(letter.destination);
+  const distance = formatDistance(letter.distanceKm);
+  const duration = formatDuration(letter.deliverAt.getTime() - letter.sentAt.getTime());
+
+  if (!letter.delivered) {
+    return [
+      `Flying ${distance} from ${from} to ${to}.`,
+      `Sent ${formatTimestamp(letter.sentAt)}. Lands in ${formatDuration(letter.deliverAt.getTime() - now)}, at ${formatTimestamp(letter.deliverAt)}.`,
+    ];
+  }
+
+  return [
+    `Flew ${distance} from ${from} to ${to}, in ${duration}.`,
+    `Sent ${formatTimestamp(letter.sentAt)}. Landed ${formatTimestamp(letter.deliverAt)}.`,
+  ];
+}
+
+const styles = StyleSheet.create({
+  screen: { paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
+  card: { marginTop: Spacing.lg },
+  meta: { marginTop: Spacing.lg, gap: Spacing.xs },
+  line: { lineHeight: 19 },
+  actions: { alignSelf: 'stretch', marginTop: Spacing.xl },
+});

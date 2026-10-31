@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -8,13 +8,16 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Colors, Spacing } from '@/constants/theme';
-import { describeCity } from '@/features/cities/search';
+import { useAuth } from '@/features/auth/auth-context';
 import { validateDisplayName } from '@/features/auth/validation';
+import { describeCity } from '@/features/cities/search';
 import { useProfile } from '@/features/profile/use-profile';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { signOut, deleteAccount } = useAuth();
   const { profile, isLoading, error, reload, updateDisplayName } = useProfile();
+  const [deleting, setDeleting] = useState(false);
 
   /**
    * Null until the user types, so the field shows whatever the profile last
@@ -57,16 +60,45 @@ export default function ProfileScreen() {
     }
   }
 
+  function confirmDelete() {
+    Alert.alert(
+      'Delete your account?',
+      'Your profile, your bats, your friendships and every letter you have sent or received ' +
+        'are removed permanently. Letters you sent disappear from your friends’ inboxes too. ' +
+        'This cannot be undone.',
+      [
+        { text: 'Keep my account', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await deleteAccount();
+            } catch (caught) {
+              Alert.alert(
+                'Could not delete',
+                caught instanceof Error ? caught.message : 'Please try again.',
+              );
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   if (isLoading && !profile) {
     return (
-      <Screen center>
+      <Screen center edges={['bottom']}>
         <ActivityIndicator color={Colors.textMuted} />
       </Screen>
     );
   }
 
   return (
-    <Screen scroll style={styles.screen}>
+    <Screen scroll style={styles.screen} edges={['bottom']}>
       <Text variant="title">Your profile</Text>
 
       {error ? (
@@ -130,13 +162,31 @@ export default function ProfileScreen() {
           onPress={() => router.push('/city-picker')}
         />
       </View>
+
+      <View style={[styles.form, styles.account]}>
+        <Text variant="caption" tone="secondary">
+          Account
+        </Text>
+        <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+        <Button
+          label="Delete my account"
+          variant="danger"
+          loading={deleting}
+          onPress={confirmDelete}
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingVertical: Spacing.xl },
+  screen: { paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   card: { marginTop: Spacing.lg, gap: Spacing.xs },
+  account: {
+    paddingTop: Spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
   form: { gap: Spacing.sm, marginTop: Spacing.xl },
   spaced: { marginTop: Spacing.sm },
   hint: { lineHeight: 19 },

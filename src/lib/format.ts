@@ -48,3 +48,46 @@ export function formatBatCount(available: number, total: number): string {
   const noun = available === 1 ? 'bat' : 'bats';
   return `${available} / ${total} ${noun} available`;
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function sameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/**
+ * A moment in the reader's local time, as briefly as is unambiguous:
+ * "21:04" today, "Yesterday 21:04", "12 Oct 21:04" this year, "12 Oct 2025"
+ * before that.
+ *
+ * Written out rather than left to `Intl`, which renders differently per device
+ * locale and per JavaScript engine. A 24-hour clock with the day before the
+ * month is how the people this app is for write dates.
+ */
+export function formatTimestamp(date: Date, now: Date = new Date()): string {
+  if (Number.isNaN(date.getTime())) return '—';
+
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (sameDay(date, now)) return time;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(date, yesterday)) return `Yesterday ${time}`;
+
+  const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  return date.getFullYear() === now.getFullYear()
+    ? `${day} ${time}`
+    : `${day} ${date.getFullYear()}`;
+}
+
+/** "about 6h 18m" — how long a bat will take, for an estimate shown before sending. */
+export function formatFlightEstimate(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  return `about ${formatDuration(seconds * 1000)}`;
+}

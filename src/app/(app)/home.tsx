@@ -1,92 +1,125 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { useCallback } from 'react';
+import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { Badge } from '@/components/badge';
 import { BatMark } from '@/components/bat-mark';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
+import { ListRow } from '@/components/list-row';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
-import { useAuth } from '@/features/auth/auth-context';
 import { describeCity } from '@/features/cities/search';
+import { fetchBadges } from '@/features/messages/messages';
 import { useProfile } from '@/features/profile/use-profile';
+import { BatTile } from '@/features/roost/bat-tile';
+import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
+import { formatDuration } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
+import { useRefreshAt } from '@/lib/use-refresh-at';
+import { useRemote } from '@/lib/use-remote';
 
 /**
- * A placeholder home. The roost, the flock and the inbox arrive in later
- * phases; what is real here is the session, the profile, and being able to sign
- * out or delete the account.
+ * The roost: the courier's three bats, and the way to everything else.
+ *
+ * Every figure on this screen is the server's. The bat count is read from the
+ * bats themselves rather than from the constant, and each countdown runs toward
+ * an arrival time the server set when the letter left.
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const { signOut, deleteAccount } = useAuth();
-  const { profile, isLoading, reload } = useProfile();
-  const [busy, setBusy] = useState(false);
+  const {
+    profile,
+    isLoading: profileLoading,
+    error: profileError,
+    reload: reloadProfile,
+  } = useProfile();
+  const roost = useRemote(fetchRoost);
+  const badges = useRemote(fetchBadges);
+  const now = useNow(1000);
 
+  const { reload: reloadRoost, refresh: refreshRoost } = roost;
+  const { reload: reloadBadges } = badges;
+
+  // The profile screen and the city picker change what this one shows.
   useFocusEffect(
     useCallback(() => {
-      void reload();
-    }, [reload]),
+      void reloadProfile();
+    }, [reloadProfile]),
   );
 
-  function confirmDelete() {
-    Alert.alert(
-      'Delete your account?',
-      'Your profile and everything attached to it are removed permanently. This cannot be undone.',
-      [
-        { text: 'Keep my account', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await deleteAccount();
-            } catch (error) {
-              Alert.alert(
-                'Could not delete',
-                error instanceof Error ? error.message : 'Please try again.',
-              );
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ],
-    );
+  const bats = roost.data ?? [];
+  const atHome = countAtHome(bats);
+  const nextHomeAt = nextHomecoming(bats)?.getTime() ?? null;
+
+  // Fetch again the moment the next bat is due, and keep asking while it is
+  // overdue, so it lands on screen without anyone pulling to refresh.
+  const reloadAll = useCallback(() => {
+    void reloadRoost();
+    void reloadBadges();
+  }, [reloadRoost, reloadBadges]);
+  useRefreshAt(nextHomeAt, roost.settledAt, reloadAll);
+
+  const hasCity = Boolean(profile?.city);
+  const canWrite = hasCity && atHome > 0;
+
+  let writeHint: string | null = null;
+  if (profile && !hasCity) {
+    writeHint = 'Choose your city before sending a letter.';
+  } else if (roost.data && atHome === 0 && nextHomeAt !== null) {
+    const remaining = nextHomeAt - now;
+    writeHint =
+      remaining > 0
+        ? `All ${BATS_PER_USER} bats are out. The next one is home in ${formatDuration(remaining)}.`
+        : `All ${BATS_PER_USER} bats are out. The next one is landing any moment now.`;
   }
 
+  const unread = badges.data?.unreadLetters ?? 0;
+  const requests = badges.data?.friendRequests ?? 0;
+
+  const refreshAll = () => {
+    void refreshRoost();
+    void reloadBadges();
+    void reloadProfile();
+  };
+
   return (
-    <Screen scroll style={styles.screen}>
+    <Screen
+      scroll
+      style={styles.screen}
+      refreshControl={
+        <RefreshControl
+          refreshing={roost.isRefreshing}
+          onRefresh={refreshAll}
+          tintColor={Colors.textMuted}
+        />
+      }
+    >
       <View style={styles.header}>
-        <BatMark size={88} />
-        {isLoading && !profile ? (
-          <ActivityIndicator color={Colors.textMuted} />
-        ) : (
+        <BatMark size={72} />
+        {profile ? (
           <>
             <Text variant="title" center>
-              {profile?.displayName ?? 'Courier'}
+              {profile.displayName}
             </Text>
             <Text variant="caption" tone="secondary" center>
-              @{profile?.username}
-              {profile?.city ? ` · ${describeCity(profile.city)}` : ''}
+              @{profile.username}
+              {profile.city ? ` · ${describeCity(profile.city)}` : ''}
             </Text>
           </>
+        ) : profileLoading ? (
+          <ActivityIndicator color={Colors.textMuted} />
+        ) : (
+          // Without this, a failed load rendered a placeholder name over a bare "@".
+          <Text variant="caption" tone="danger" center>
+            {profileError ?? 'Your profile could not be loaded. Pull down to try again.'}
+          </Text>
         )}
       </View>
 
-      <Card style={styles.card}>
-        <Text variant="heading">
-          🦇 {BATS_PER_USER} / {BATS_PER_USER} bats available
-        </Text>
-        <Text variant="caption" tone="secondary" style={styles.note}>
-          Your roost is not wired up yet — this figure is the promise, not a reading. Bats become
-          real records in Phase 4, and start flying in Phase 7.
-        </Text>
-      </Card>
-
-      {profile && !profile.city ? (
+      {profile && !hasCity ? (
         <Card raised style={styles.card}>
           <Text variant="heading">Choose your city</Text>
           <Text variant="caption" tone="secondary" style={styles.note}>
@@ -96,12 +129,104 @@ export default function HomeScreen() {
         </Card>
       ) : null}
 
-      <View style={styles.actions}>
-        <Button label="Your profile" variant="secondary" onPress={() => router.push('/profile')} />
-        <Button label="Sign out" variant="ghost" onPress={() => void signOut()} />
-        <Button label="Delete my account" variant="danger" loading={busy} onPress={confirmDelete} />
+      <Card style={styles.card}>
+        <View style={styles.roostHeading}>
+          <Text variant="heading">Your roost</Text>
+          {roost.data ? (
+            <Text variant="caption" tone="secondary">
+              {atHome} of {bats.length} at home
+            </Text>
+          ) : null}
+        </View>
+
+        {roost.data ? (
+          <View style={styles.tiles}>
+            {bats.map((bat) => (
+              <BatTile
+                key={bat.id}
+                bat={bat}
+                now={now}
+                onPress={
+                  bat.flight
+                    ? () =>
+                        router.push({
+                          pathname: '/letters/[id]',
+                          params: { id: bat.flight!.messageId },
+                        })
+                    : canWrite
+                      ? () => router.push('/compose')
+                      : undefined
+                }
+              />
+            ))}
+          </View>
+        ) : roost.error ? null : (
+          <ActivityIndicator color={Colors.textMuted} style={styles.loading} />
+        )}
+
+        {roost.error ? (
+          <Text variant="caption" tone="danger">
+            {roost.error}
+          </Text>
+        ) : null}
+      </Card>
+
+      <View style={styles.write}>
+        <Button
+          label="Write a letter"
+          disabled={!canWrite}
+          onPress={() => router.push('/compose')}
+        />
+        {writeHint ? (
+          <Text variant="caption" tone="muted" center style={styles.note}>
+            {writeHint}
+          </Text>
+        ) : null}
       </View>
+
+      <Card style={[styles.card, styles.menu]}>
+        <ListRow
+          title="Letters"
+          subtitle={unread > 0 ? `${unread} new` : 'Received and sent'}
+          emphasised={unread > 0}
+          trailing={
+            <>
+              <Badge count={unread} label="unread letters" />
+              <Chevron />
+            </>
+          }
+          onPress={() => router.push('/letters')}
+        />
+        <ListRow
+          title="Friends"
+          subtitle={
+            requests > 0 ? `${requests} waiting for your answer` : 'Add friends by their username'
+          }
+          emphasised={requests > 0}
+          trailing={
+            <>
+              <Badge count={requests} label="friend requests" />
+              <Chevron />
+            </>
+          }
+          onPress={() => router.push('/friends')}
+        />
+        <ListRow
+          title="Your profile"
+          subtitle="Name, city and account"
+          trailing={<Chevron />}
+          onPress={() => router.push('/profile')}
+        />
+      </Card>
     </Screen>
+  );
+}
+
+function Chevron() {
+  return (
+    <Text variant="heading" tone="muted" accessibilityElementsHidden importantForAccessibility="no">
+      ›
+    </Text>
   );
 }
 
@@ -109,6 +234,14 @@ const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
   header: { alignItems: 'center', gap: Spacing.sm },
   card: { marginTop: Spacing.lg, gap: Spacing.sm },
+  menu: { paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs, gap: 0 },
   note: { lineHeight: 19 },
-  actions: { gap: Spacing.sm, marginTop: Spacing.xl },
+  roostHeading: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  tiles: { flexDirection: 'row', gap: Spacing.sm },
+  loading: { paddingVertical: Spacing.xl },
+  write: { marginTop: Spacing.lg, gap: Spacing.sm },
 });

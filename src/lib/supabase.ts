@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
+import type { Database } from '@/lib/database.types';
 import { readSupabaseConfig } from '@/lib/env';
 import { secureStorage } from '@/lib/secure-storage';
 
@@ -15,7 +16,7 @@ const { url, anonKey } = readSupabaseConfig({
   EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
 });
 
-export const supabase = createClient(url, anonKey, {
+export const supabase = createClient<Database>(url, anonKey, {
   auth: {
     // The keychain on device; the browser's own storage on web, where
     // SecureStore does not exist.

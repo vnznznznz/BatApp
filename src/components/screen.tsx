@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
+import { ScrollView, StyleSheet, View, type ScrollViewProps, type ViewProps } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { Colors, Spacing } from '@/constants/theme';
@@ -10,6 +10,12 @@ export type ScreenProps = ViewProps & {
   scroll?: boolean;
   /** Removes the default horizontal padding, for edge-to-edge lists. */
   flush?: boolean;
+  /** Pull-to-refresh, for scrolling screens that show server data. */
+  refreshControl?: ScrollViewProps['refreshControl'];
+  /**
+   * Which safe-area insets to pad. Screens under a navigation header leave out
+   * `top`: the header has already cleared the status bar.
+   */
   edges?: readonly Edge[];
 };
 
@@ -21,6 +27,7 @@ export function Screen({
   center = false,
   scroll = false,
   flush = false,
+  refreshControl,
   edges = ['top', 'bottom'],
   style,
   children,
@@ -39,6 +46,7 @@ export function Screen({
           contentContainerStyle={[styles.grow, ...content]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl}
         >
           {children}
         </ScrollView>
