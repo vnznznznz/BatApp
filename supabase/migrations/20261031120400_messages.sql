@@ -247,6 +247,15 @@ begin
   order by m.deliver_at, m.id
   for update;
 
+  -- Then the caller's bats, before the cascade reaches the profile: a send of
+  -- the caller's own already holding a bat finishes first, instead of waiting
+  -- on the profile this deletion holds while this deletion waits on its bat.
+  perform 1
+  from public.bats b
+  where b.owner_id = caller
+  order by b.slot
+  for update;
+
   delete from auth.users where id = caller;
 end;
 $$;

@@ -611,6 +611,23 @@ describe('ComposeScreen', () => {
       expect(second?.[2]).toBe(first?.[2]);
     });
 
+    /** Space at the ends is trimmed before sending, so it changes nothing. */
+    it('does not count space added at the end as a change to the letter', async () => {
+      mockedSendMessage.mockRejectedValueOnce(
+        new RpcError('No connection. Check your network and try again.', null),
+      );
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+      await screen.findByText('No connection. Check your network and try again.');
+      await fireEvent.changeText(letterField(), 'See you at the lake.  \n');
+      await fireEvent.press(sendButton());
+      await screen.findByText('Your bat is on its way');
+
+      const [first, second] = mockedSendMessage.mock.calls;
+      expect(second?.[2]).toBe(first?.[2]);
+    });
+
     it('treats a letter changed after a failure as a new letter', async () => {
       mockedSendMessage.mockRejectedValueOnce(
         new RpcError('No connection. Check your network and try again.', null),

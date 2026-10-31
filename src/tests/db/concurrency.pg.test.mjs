@@ -459,6 +459,50 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.equal(left[0].count, 0);
     });
 
+    /**
+     * A courier deleting their account while one of their own sends is still
+     * running: the send holds a bat and then needs the profile for its letter's
+     * foreign key, while the deletion's cascade held the profile and wanted the
+     * bat. Deletion now takes the bats before the profile. (From review.)
+     */
+    it('waits for its own courier’s send in progress instead of deadlocking with it', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      await admin.query(`
+        create function public._slow_insert() returns trigger language plpgsql as $$
+        begin perform pg_sleep(1); return new; end $$;
+        create trigger _slow_insert before insert on public.messages
+          for each row execute function public._slow_insert();
+      `);
+
+      let outcomes;
+      try {
+        const sending = (await connectAs(anna)).query(
+          `select * from public.send_message($1, 'one last letter')`,
+          [ben],
+        );
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const deleting = (await connectAs(anna)).query('select public.delete_own_account()');
+        outcomes = await Promise.allSettled([sending, deleting]);
+      } finally {
+        await admin.query(`
+          drop trigger _slow_insert on public.messages;
+          drop function public._slow_insert();
+        `);
+      }
+
+      for (const outcome of outcomes) {
+        assert.equal(outcome.status, 'fulfilled', outcome.reason?.message);
+      }
+      const { rows } = await admin.query(
+        `select (select count(*)::int from auth.users where id = $1) as accounts,
+                (select count(*)::int from public.messages) as letters`,
+        [anna],
+      );
+      assert.deepEqual(rows[0], { accounts: 0, letters: 0 });
+    });
+
     it('lets two friends with letters to each other delete their accounts at once', async () => {
       const anna = await createCourier('anna', ['Berlin', 'DE']);
       const ben = await createCourier('ben', ['Munich', 'DE']);

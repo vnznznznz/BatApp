@@ -20,6 +20,7 @@ import {
 } from '@/features/friends/friends';
 import {
   letterLength,
+  prepareBody,
   sendMessage,
   validateBody,
   type Dispatch,
@@ -94,8 +95,11 @@ export default function ComposeScreen() {
     inFlight.current = true;
     setSending(true);
     const to = friendship.friend.id;
-    if (attempt.current?.to !== to || attempt.current.text !== text) {
-      attempt.current = { ref: randomUuid(), to, text };
+    // Compared as it will be sent: a trailing space added after a failure is
+    // not a different letter, and must not cost a second bat if the first went.
+    const words = prepareBody(text);
+    if (attempt.current?.to !== to || attempt.current.text !== words) {
+      attempt.current = { ref: randomUuid(), to, text: words };
     }
     try {
       const dispatch = await sendMessage(to, text, attempt.current.ref);

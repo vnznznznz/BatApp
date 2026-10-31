@@ -101,6 +101,8 @@ set search_path = ''
 as $$
 declare
   caller uuid := private.caller();
+  after_at timestamptz;
+  after_id uuid;
 begin
   perform private.deliver_due_messages(caller);
 
@@ -110,15 +112,20 @@ begin
   -- empty page instead would read as the end of the list, and every older
   -- letter would be out of reach. (Found in review.) The same answer for gone
   -- and for someone else's keeps it from saying which.
-  if list_inbox.older_than is not null and not exists (
-    select 1
+  --
+  -- The cursor's position is read once, here, and the page placed after it,
+  -- so that it cannot vanish between the check and the query.
+  if list_inbox.older_than is not null then
+    select c.deliver_at, c.id into after_at, after_id
     from public.messages c
     where c.id = list_inbox.older_than
       and c.recipient_id = caller
-      and c.delivered_at is not null
-  ) then
-    raise exception 'the letter this page continues from is gone'
-      using errcode = 'P0001', hint = 'cursor_not_found';
+      and c.delivered_at is not null;
+
+    if not found then
+      raise exception 'the letter this page continues from is gone'
+        using errcode = 'P0001', hint = 'cursor_not_found';
+    end if;
   end if;
 
   return query
@@ -139,15 +146,7 @@ begin
     join public.cities origin on origin.id = m.origin_city_id
     where m.recipient_id = caller
       and m.delivered_at is not null
-      and (
-        list_inbox.older_than is null
-        or (m.deliver_at, m.id) < (
-          select page_end.deliver_at, page_end.id
-          from public.messages page_end
-          where page_end.id = list_inbox.older_than
-            and page_end.recipient_id = caller
-        )
-      )
+      and (after_id is null or (m.deliver_at, m.id) < (after_at, after_id))
     order by m.deliver_at desc, m.id desc
     limit least(greatest(coalesce(list_inbox.max_results, 50), 1), 100);
 end;
@@ -182,18 +181,22 @@ set search_path = ''
 as $$
 declare
   caller uuid := private.caller();
+  after_at timestamptz;
+  after_id uuid;
 begin
   perform private.deliver_due_messages(caller);
 
   -- As in list_inbox: an unusable cursor is said, not answered with nothing.
-  if list_sent.older_than is not null and not exists (
-    select 1
+  if list_sent.older_than is not null then
+    select c.sent_at, c.id into after_at, after_id
     from public.messages c
     where c.id = list_sent.older_than
-      and c.sender_id = caller
-  ) then
-    raise exception 'the letter this page continues from is gone'
-      using errcode = 'P0001', hint = 'cursor_not_found';
+      and c.sender_id = caller;
+
+    if not found then
+      raise exception 'the letter this page continues from is gone'
+        using errcode = 'P0001', hint = 'cursor_not_found';
+    end if;
   end if;
 
   return query
@@ -213,15 +216,7 @@ begin
     join public.profiles r on r.id = m.recipient_id
     join public.cities destination on destination.id = m.destination_city_id
     where m.sender_id = caller
-      and (
-        list_sent.older_than is null
-        or (m.sent_at, m.id) < (
-          select page_end.sent_at, page_end.id
-          from public.messages page_end
-          where page_end.id = list_sent.older_than
-            and page_end.sender_id = caller
-        )
-      )
+      and (after_id is null or (m.sent_at, m.id) < (after_at, after_id))
     order by m.sent_at desc, m.id desc
     limit least(greatest(coalesce(list_sent.max_results, 50), 1), 100);
 end;
