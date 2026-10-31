@@ -328,15 +328,21 @@ describe('list_friends', () => {
     );
   });
 
-  it('follows a friend who moves', async () => {
+  /** A new city counts a day after the move; see relocation.db.test.mjs. */
+  it('follows a friend who moves, once their bats have settled', async () => {
     const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
     const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
     await makeFriends(db, anna, ben);
     await setCity(db, ben, ['Hamburg', 'DE']);
 
-    const [row] = await listFriends(anna);
+    assert.equal((await listFriends(anna))[0].city_name, 'Munich');
 
-    assert.equal(row.city_name, 'Hamburg');
+    await db.query(
+      `update public.profiles set city_changed_at = now() - interval '25 hours' where id = $1`,
+      [ben],
+    );
+
+    assert.equal((await listFriends(anna))[0].city_name, 'Hamburg');
   });
 });
 

@@ -123,6 +123,71 @@ describe('sending', () => {
     await rejectsWithHint(send(anna, ben), 'not_friends');
   });
 
+  /**
+   * A phone can lose the answer to a send that went through, and the courier,
+   * told it failed, taps Send again. The app repeats the same client_ref, and
+   * the repeat must not cost a second bat.
+   */
+  it('sends a letter once however often the same send is repeated', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const ref = '0d3c1c0e-7a5b-4c47-9b0e-2f3f1f9e0a11';
+
+    const first = (
+      await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'Once.', client_ref: ref })
+    )[0];
+    const again = (
+      await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'Once.', client_ref: ref })
+    )[0];
+
+    assert.equal(again.message_id, first.message_id);
+    assert.deepEqual(again.deliver_at, first.deliver_at);
+    assert.equal(await count(db, `select 1 from public.messages`), 1);
+    assert.deepEqual(await batStatuses(db, anna), ['flying', 'available', 'available']);
+  });
+
+  it('answers a repeat even when every bat is out', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const ref = '6b1e5c1c-1f0e-4a43-8d8c-6f0b7f7c2d22';
+    const first = (
+      await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'One.', client_ref: ref })
+    )[0];
+    await send(anna, ben, 'two');
+    await send(anna, ben, 'three');
+
+    const again = (
+      await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'One.', client_ref: ref })
+    )[0];
+
+    assert.equal(again.message_id, first.message_id);
+  });
+
+  it('treats a new client_ref as a new letter', async () => {
+    const { anna, ben } = await berlinAndMunich();
+
+    await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'One.',
+      client_ref: '11111111-1111-4111-8111-111111111111',
+    });
+    await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'Two.',
+      client_ref: '22222222-2222-4222-8222-222222222222',
+    });
+
+    assert.equal(await count(db, `select 1 from public.messages`), 2);
+  });
+
+  it('keeps one courier’s client_ref apart from another’s', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const ref = '33333333-3333-4333-8333-333333333333';
+
+    await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'Hi Ben.', client_ref: ref });
+    await rpc(db, ben, 'send_message', { recipient_id: anna, body: 'Hi Anna.', client_ref: ref });
+
+    assert.equal(await count(db, `select 1 from public.messages`), 2);
+  });
+
   it('refuses a letter to yourself', async () => {
     const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
 
@@ -155,16 +220,18 @@ describe('sending', () => {
   });
 
   it('needs the sender to have chosen a city', async () => {
-    const { anna, ben } = await berlinAndMunich();
-    await setCity(db, anna, null);
+    const anna = await createCourier(db, { name: 'anna' });
+    const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
+    await makeFriends(db, anna, ben);
 
     await rejectsWithHint(send(anna, ben), 'sender_has_no_city');
     assert.deepEqual(await batStatuses(db, anna), ['available', 'available', 'available']);
   });
 
   it('needs the recipient to have chosen a city', async () => {
-    const { anna, ben } = await berlinAndMunich();
-    await setCity(db, ben, null);
+    const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
+    const ben = await createCourier(db, { name: 'ben' });
+    await makeFriends(db, anna, ben);
 
     await rejectsWithHint(send(anna, ben), 'recipient_has_no_city');
     assert.deepEqual(await batStatuses(db, anna), ['available', 'available', 'available']);
@@ -368,6 +435,33 @@ describe('the delivery worker', () => {
 
     assert.deepEqual(await batStatuses(db, anna), ['available', 'flying', 'available']);
     assert.deepEqual(await batStatuses(db, ben), ['available', 'available', 'available']);
+  });
+
+  /**
+   * Nothing recorded at a landing may depend on whose request noticed it. A
+   * homecoming stamped with the moment of the recipient's request would tell
+   * the sender when their friend opened the app.
+   */
+  it('records a homecoming at the landing time, whoever’s request landed it', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const sent = await send(anna, ben);
+    await db.query(
+      `update public.messages
+       set sent_at = now() - interval '8 hours', deliver_at = now() - interval '90 minutes'
+       where id = $1`,
+      [sent.message_id],
+    );
+
+    // Ben opens the app an hour and a half after the letter landed.
+    await rpc(db, ben, 'get_badges');
+
+    const { rows } = await db.query(
+      `select b.updated_at = m.deliver_at as at_landing
+       from public.messages m join public.bats b on b.id = m.bat_id
+       where m.id = $1`,
+      [sent.message_id],
+    );
+    assert.equal(rows[0].at_landing, true);
   });
 
   it('lets a bat that came home fly again', async () => {
@@ -694,10 +788,33 @@ describe('reading', () => {
       await fastForward(db, theirs.message_id);
       await fastForward(db, mine.message_id);
 
-      // A cursor naming a letter the caller cannot see yields nothing, rather
-      // than a page positioned relative to it.
-      assert.deepEqual(await rpc(db, cara, 'list_inbox', { older_than: theirs.message_id }), []);
+      // Refused exactly as a cursor naming no letter at all would be: no page
+      // positioned relative to it, and no hint that it exists.
+      await rejectsWithHint(
+        rpc(db, cara, 'list_inbox', { older_than: theirs.message_id }),
+        'cursor_not_found',
+      );
     });
+  });
+
+  /**
+   * A cursor whose letter has gone - deleted with its sender's account - cannot
+   * place the next page. An empty page would read as the end of the list.
+   */
+  it('says so when the letter a page continues from has gone', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const sent = await send(anna, ben);
+    await fastForward(db, sent.message_id);
+    await db.query(`delete from public.messages where id = $1`, [sent.message_id]);
+
+    await rejectsWithHint(
+      rpc(db, ben, 'list_inbox', { older_than: sent.message_id }),
+      'cursor_not_found',
+    );
+    await rejectsWithHint(
+      rpc(db, anna, 'list_sent', { older_than: sent.message_id }),
+      'cursor_not_found',
+    );
   });
 
   it('pages through the inbox without losing letters that landed together', async () => {

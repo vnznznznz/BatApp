@@ -49,6 +49,18 @@ export const DEBUG_TIME_MULTIPLIER = 0.01;
  */
 export const MINIMUM_FLIGHT_MINUTES = 20;
 
+/**
+ * How long a new city takes to become where a courier's bats fly from.
+ *
+ * Without it, a courier could switch to a friend's city, send a twenty-minute
+ * letter, and switch back - a flight time of their own choosing, which is
+ * exactly what computing delivery on the server exists to prevent. With it, a
+ * city counts only once it has been yours for a day, and in that day every
+ * letter you send leaves from it. A courier's first city takes effect at once.
+ * Enforced in the database (see the flight migration).
+ */
+export const RELOCATION_HOURS = 24;
+
 /** Message body limits, enforced client-side and again in the database. */
 export const MESSAGE_MAX_LENGTH = 2000;
 

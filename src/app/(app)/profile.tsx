@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -12,6 +12,8 @@ import { useAuth } from '@/features/auth/auth-context';
 import { validateDisplayName } from '@/features/auth/validation';
 import { describeCity } from '@/features/cities/search';
 import { useProfile } from '@/features/profile/use-profile';
+import { confirmAction, notify } from '@/lib/confirm';
+import { formatTimestamp } from '@/lib/format';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -61,32 +63,29 @@ export default function ProfileScreen() {
   }
 
   function confirmDelete() {
-    Alert.alert(
-      'Delete your account?',
-      'Your profile, your bats, your friendships and every letter you have sent or received ' +
+    confirmAction({
+      title: 'Delete your account?',
+      message:
+        'Your profile, your bats, your friendships and every letter you have sent or received ' +
         'are removed permanently. Letters you sent disappear from your friends’ inboxes too. ' +
         'This cannot be undone.',
-      [
-        { text: 'Keep my account', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await deleteAccount();
-            } catch (caught) {
-              Alert.alert(
-                'Could not delete',
-                caught instanceof Error ? caught.message : 'Please try again.',
-              );
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ],
-    );
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep my account',
+      destructive: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await deleteAccount();
+        } catch (caught) {
+          notify(
+            'Could not delete',
+            caught instanceof Error ? caught.message : 'Please try again.',
+          );
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
   }
 
   if (isLoading && !profile) {
@@ -107,61 +106,72 @@ export default function ProfileScreen() {
         </Text>
       ) : null}
 
-      <Card style={styles.card}>
-        <Text variant="caption" tone="secondary">
-          Username
-        </Text>
-        <Text variant="body">@{profile?.username}</Text>
-        <Text variant="caption" tone="muted">
-          How friends find you. It cannot be changed.
-        </Text>
-      </Card>
+      {/* Without a profile there is nothing true to show here - not an empty
+          username, and not "no city chosen" for a courier who has one. What
+          stays is the way out: the error above may say to sign out and in. */}
+      {profile ? (
+        <>
+          <Card style={styles.card}>
+            <Text variant="caption" tone="secondary">
+              Username
+            </Text>
+            <Text variant="body">@{profile.username}</Text>
+            <Text variant="caption" tone="muted">
+              How friends find you. It cannot be changed.
+            </Text>
+          </Card>
 
-      <View style={styles.form}>
-        <TextField
-          label="Your name"
-          value={displayName}
-          onChangeText={(value) => {
-            setDraft(value);
-            setSaved(false);
-          }}
-          error={nameError}
-          hint="What your friends see."
-          autoCapitalize="words"
-          returnKeyType="done"
-          onSubmitEditing={save}
-        />
+          <View style={styles.form}>
+            <TextField
+              label="Your name"
+              value={displayName}
+              onChangeText={(value) => {
+                setDraft(value);
+                setSaved(false);
+              }}
+              error={nameError}
+              hint="What your friends see."
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={save}
+            />
 
-        {saveError ? (
-          <Text variant="caption" tone="danger">
-            {saveError}
-          </Text>
-        ) : null}
-        {saved ? (
-          <Text variant="caption" tone="available">
-            Saved.
-          </Text>
-        ) : null}
+            {saveError ? (
+              <Text variant="caption" tone="danger">
+                {saveError}
+              </Text>
+            ) : null}
+            {saved ? (
+              <Text variant="caption" tone="available">
+                Saved.
+              </Text>
+            ) : null}
 
-        <Button label="Save name" loading={busy} onPress={save} />
-      </View>
+            <Button label="Save name" loading={busy} onPress={save} />
+          </View>
 
-      <View style={styles.form}>
-        <Text variant="caption" tone="secondary">
-          Your city
-        </Text>
-        <Text variant="body">{profile?.city ? describeCity(profile.city) : 'Not chosen yet'}</Text>
-        <Text variant="caption" tone="muted" style={styles.hint}>
-          {profile?.city
-            ? 'Distance from here decides how long your bats fly.'
-            : 'Your bats cannot fly anywhere until you pick a city.'}
-        </Text>
-        <Button
-          label={profile?.city ? 'Change city' : 'Choose your city'}
-          variant={profile?.city ? 'secondary' : 'primary'}
-          onPress={() => router.push('/city-picker')}
-        />
-      </View>
+          <View style={styles.form}>
+            <Text variant="caption" tone="secondary">
+              Your city
+            </Text>
+            <Text variant="body">
+              {profile.city ? describeCity(profile.city) : 'Not chosen yet'}
+            </Text>
+            <Text variant="caption" tone="muted" style={styles.hint}>
+              {profile.move
+                ? `Your bats are still settling in. Until ${formatTimestamp(profile.move.settlesAt)}, letters leave from ${describeCity(profile.move.from)}.`
+                : profile.city
+                  ? 'Distance from here decides how long your bats fly.'
+                  : 'Your bats cannot fly anywhere until you pick a city.'}
+            </Text>
+            <Button
+              label={profile.city ? 'Change city' : 'Choose your city'}
+              variant={profile.city ? 'secondary' : 'primary'}
+              onPress={() => router.push('/city-picker')}
+            />
+          </View>
+        </>
+      ) : null}
 
       <View style={[styles.form, styles.account]}>
         <Text variant="caption" tone="secondary">

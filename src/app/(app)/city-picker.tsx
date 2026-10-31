@@ -81,7 +81,8 @@ export default function CityPickerScreen() {
       <Text variant="title">Where is your roost?</Text>
       <Text variant="caption" tone="secondary" style={styles.subtitle}>
         Your city decides how long your bats take to reach your friends. Nothing finer than the city
-        is stored, and your location is never tracked.
+        is stored, and your location is never tracked. If you move, your bats take a day to settle
+        in, and letters sent before then still leave from your old city.
       </Text>
 
       <View style={styles.search}>

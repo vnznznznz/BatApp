@@ -22,6 +22,8 @@ export const REFUSALS = {
   recipient_has_no_city: 'Your friend has not chosen a city yet, so no bat can find them.',
   no_available_bat: 'All your bats are out flying. One will be home soon.',
   message_not_found: 'That letter could not be found.',
+  // Handled by starting the list again; the words show only if that fails too.
+  cursor_not_found: 'Your letters have changed. Pull down to see them again.',
   try_again: 'That did not go through. Try again.',
 } as const;
 

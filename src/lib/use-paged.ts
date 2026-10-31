@@ -2,7 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
-import { messageOf } from '@/lib/rpc-error';
+import { messageOf, RpcError } from '@/lib/rpc-error';
 
 export type Paged<T> = {
   items: T[];
@@ -49,7 +49,7 @@ export function usePaged<T extends { id: string }>(
   }, []);
 
   const loadFirst = useCallback(
-    async (visible: boolean) => {
+    async (visible: boolean, restart = false) => {
       const request = ++latest.current;
       if (visible) setIsRefreshing(true);
       try {
@@ -57,7 +57,8 @@ export function usePaged<T extends { id: string }>(
         if (request !== latest.current) return;
 
         const last = page.at(-1);
-        const anchor = last ? held.current.findIndex((item) => item.id === last.id) : -1;
+        const anchor =
+          last && !restart ? held.current.findIndex((item) => item.id === last.id) : -1;
         // The fresh first page, then whatever was loaded beyond its last item.
         // If that item is not among the older ones, everything has moved on and
         // the older pages are stale: start again from this page.
@@ -98,12 +99,20 @@ export function usePaged<T extends { id: string }>(
       // A page arrived, so whatever failed before has recovered.
       setError(null);
     } catch (caught) {
-      if (request === latest.current) setError(messageOf(caught));
+      if (request !== latest.current) return;
+      if (caught instanceof RpcError && caught.reason === 'cursor_not_found') {
+        // The item this page continued from has gone - its letter was deleted
+        // with its sender's account. Nothing can be placed after it, so start
+        // the list again from the top rather than stop here for good.
+        void loadFirst(false, true);
+        return;
+      }
+      setError(messageOf(caught));
     } finally {
       loadingMore.current = false;
       setIsLoadingMore(false);
     }
-  }, [keep, loadPage, pageSize]);
+  }, [keep, loadFirst, loadPage, pageSize]);
 
   const refresh = useCallback(() => loadFirst(true), [loadFirst]);
 

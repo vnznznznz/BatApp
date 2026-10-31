@@ -33,7 +33,9 @@ import {
   formatTimestamp,
 } from '@/lib/format';
 import { messageOf } from '@/lib/rpc-error';
+import { randomUuid } from '@/lib/uuid';
 import { useNow } from '@/lib/use-now';
+import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
 
 /**
@@ -46,7 +48,7 @@ import { useRemote } from '@/lib/use-remote';
 export default function ComposeScreen() {
   const router = useRouter();
   const { to } = useLocalSearchParams<{ to?: string }>();
-  const { profile } = useProfile();
+  const { profile, error: profileError } = useProfile();
   const friendships = useRemote(fetchFriendships);
   const roost = useRemote(fetchRoost);
   const now = useNow(1000);
@@ -54,10 +56,21 @@ export default function ComposeScreen() {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [dispatched, setDispatched] = useState<Dispatch | null>(null);
+  // Who it went to is kept with the answer, so the confirmation stays on screen
+  // even if the friend list is fetched again behind it and has changed.
+  const [dispatched, setDispatched] = useState<{
+    dispatch: Dispatch;
+    name: string;
+    city: string | null;
+  } | null>(null);
   // The button disables itself while loading, but a second tap can land in the
   // same frame as the first. A letter costs a bat; this makes sure it is one.
   const inFlight = useRef(false);
+  // Names the letter being written, for the server to recognise a retry: kept
+  // while the words and the recipient stay the same - a send whose answer was
+  // lost is retried as the same letter - and replaced the moment either
+  // changes, since that is a different letter.
+  const attempt = useRef<{ ref: string; to: string; text: string } | null>(null);
 
   const friends = groupFriendships(friendships.data ?? []).friends;
   const recipient = to ? (friends.find((f) => f.friend.id === to) ?? null) : null;
@@ -65,6 +78,11 @@ export default function ComposeScreen() {
   const bats = roost.data ?? [];
   const atHome = countAtHome(bats);
   const nextHomeAt = nextHomecoming(bats)?.getTime() ?? null;
+
+  // A courier waiting here for a bat must be able to send the moment it lands,
+  // without leaving the screen and losing what they wrote. Fetching the roost
+  // again is what lands it.
+  useRefreshAt(nextHomeAt, roost.settledAt, roost.reload);
 
   async function send(friendship: Friendship) {
     if (inFlight.current) return;
@@ -74,10 +92,19 @@ export default function ComposeScreen() {
 
     inFlight.current = true;
     setSending(true);
+    const to = friendship.friend.id;
+    if (attempt.current?.to !== to || attempt.current.text !== text) {
+      attempt.current = { ref: randomUuid(), to, text };
+    }
     try {
-      const dispatch = await sendMessage(friendship.friend.id, text);
-      setDispatched(dispatch);
+      const dispatch = await sendMessage(to, text, attempt.current.ref);
+      setDispatched({
+        dispatch,
+        name: friendName(friendship.friend),
+        city: friendship.friend.city?.name ?? null,
+      });
       setText('');
+      attempt.current = null;
     } catch (caught) {
       setError(messageOf(caught));
       // A refusal for want of a bat means the roost on screen was stale.
@@ -88,7 +115,10 @@ export default function ComposeScreen() {
     }
   }
 
-  if (dispatched && recipient) {
+  if (dispatched) {
+    const { dispatch, name, city } = dispatched;
+    const remaining = dispatch.deliverAt.getTime() - now;
+    const where = city ? ` in ${city}` : '';
     return (
       <Screen center scroll edges={['bottom']} style={styles.screen}>
         <BatMark size={120} tint={Colors.batFlying} />
@@ -96,13 +126,12 @@ export default function ComposeScreen() {
           Your bat is on its way
         </Text>
         <Text variant="body" tone="secondary" center style={styles.spaced}>
-          It will reach {friendName(recipient.friend)}
-          {recipient.friend.city ? ` in ${recipient.friend.city.name}` : ''} in{' '}
-          {formatDuration(dispatched.deliverAt.getTime() - now)}, at{' '}
-          {formatTimestamp(dispatched.deliverAt)}.
+          {remaining > 0
+            ? `It will reach ${name}${where} in ${formatDuration(remaining)}, at ${formatTimestamp(dispatch.deliverAt)}.`
+            : `It is reaching ${name}${where} any moment now.`}
         </Text>
-        <Text variant="caption" tone="muted" center>
-          {formatDistance(dispatched.distanceKm)} as the bat flies.
+        <Text variant="caption" tone="muted" center style={styles.distance}>
+          {formatDistance(dispatch.distanceKm)} as the bat flies.
         </Text>
         <View style={styles.actions}>
           <Button label="Back to the roost" onPress={() => router.dismissTo('/home')} />
@@ -170,14 +199,21 @@ export default function ComposeScreen() {
   const tooLong = length > MESSAGE_MAX_LENGTH;
   const canSend = Boolean(route) && Boolean(profile?.city) && atHome > 0;
 
+  // The only place that says why "Send by bat" might be disabled, so it must
+  // say something in every state - including when the bats could not be counted.
   let batLine: string | null = null;
   if (roost.data) {
+    const remaining = nextHomeAt === null ? null : nextHomeAt - now;
     batLine =
       atHome > 0
         ? `${atHome} of ${bats.length} bats at home. This letter takes one; it comes back when the letter lands.`
-        : nextHomeAt !== null
-          ? `All your bats are out. The next one is home in ${formatDuration(nextHomeAt - now)}.`
-          : 'All your bats are out.';
+        : remaining === null
+          ? 'All your bats are out.'
+          : remaining > 0
+            ? `All your bats are out. The next one is home in ${formatDuration(remaining)}.`
+            : 'All your bats are out. The next one is landing any moment now.';
+  } else if (roost.error) {
+    batLine = roost.error;
   }
 
   return (
@@ -190,10 +226,20 @@ export default function ComposeScreen() {
         <Text variant="caption" tone="secondary" style={styles.lead}>
           {describeRoute(recipient)}
         </Text>
+        {profile?.move ? (
+          <Text variant="caption" tone="muted" style={styles.note}>
+            Your bats still leave from {describeCity(profile.move.from)} until{' '}
+            {formatTimestamp(profile.move.settlesAt)}, when your move settles.
+          </Text>
+        ) : null}
 
         {profile && !profile.city ? (
           <Text variant="caption" tone="danger" style={styles.spaced}>
             Choose your city first. Your bats need to know where home is.
+          </Text>
+        ) : !profile && profileError ? (
+          <Text variant="caption" tone="danger" style={styles.spaced}>
+            {profileError}
           </Text>
         ) : null}
 
@@ -221,7 +267,11 @@ export default function ComposeScreen() {
           </Text>
 
           {batLine ? (
-            <Text variant="caption" tone={atHome > 0 ? 'muted' : 'flying'} style={styles.note}>
+            <Text
+              variant="caption"
+              tone={!roost.data ? 'danger' : atHome > 0 ? 'muted' : 'flying'}
+              style={styles.note}
+            >
               {batLine}
             </Text>
           ) : null}
@@ -257,6 +307,7 @@ const styles = StyleSheet.create({
   list: { marginTop: Spacing.lg, paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   form: { gap: Spacing.sm, marginTop: Spacing.lg },
   counter: { alignSelf: 'flex-end' },
+  distance: { marginTop: Spacing.sm },
   note: { lineHeight: 19 },
   actions: { alignSelf: 'stretch', gap: Spacing.sm, marginTop: Spacing.xl },
 });

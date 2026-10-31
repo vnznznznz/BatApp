@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -22,6 +22,7 @@ import {
   type Friendship,
 } from '@/features/friends/friends';
 import { useProfile } from '@/features/profile/use-profile';
+import { confirmAction } from '@/lib/confirm';
 import { formatFlightEstimate, formatTimestamp } from '@/lib/format';
 import { messageOf } from '@/lib/rpc-error';
 import { useRemote } from '@/lib/use-remote';
@@ -44,8 +45,12 @@ export default function FriendsScreen() {
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
-  /** The friendship an action is running on, so its buttons show progress. */
-  const [busyId, setBusyId] = useState<string | null>(null);
+  /**
+   * The friendship an action is running on, and which action - so the button
+   * that was pressed shows progress, and declining never looks like accepting.
+   */
+  const [busy, setBusy] = useState<{ id: string; action: FriendAction } | null>(null);
+  const busyId = busy?.id ?? null;
   const [actionError, setActionError] = useState<string | null>(null);
 
   const groups = groupFriendships(list.data ?? []);
@@ -69,8 +74,8 @@ export default function FriendsScreen() {
     }
   }
 
-  async function act(friendship: Friendship, action: (id: string) => Promise<void>) {
-    setBusyId(friendship.id);
+  async function act(friendship: Friendship, action: FriendAction) {
+    setBusy({ id: friendship.id, action });
     setActionError(null);
     try {
       await action(friendship.id);
@@ -80,37 +85,25 @@ export default function FriendsScreen() {
       // Whatever went wrong, the list on screen may be out of date now.
       await reload();
     } finally {
-      setBusyId(null);
+      setBusy(null);
     }
   }
 
   function confirmRemove(friendship: Friendship) {
-    const name = friendName(friendship.friend);
-    Alert.alert(
-      `Stop being friends with ${name}?`,
-      'Neither of you will be able to send the other letters. Letters already in the air ' +
+    confirmAction({
+      title: `Stop being friends with ${friendName(friendship.friend)}?`,
+      message:
+        'Neither of you will be able to send the other letters. Letters already in the air ' +
         'still arrive, and the letters you have exchanged stay where they are.',
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => void act(friendship, removeFriend),
-        },
-      ],
-    );
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep',
+      destructive: true,
+      onConfirm: () => void act(friendship, removeFriend),
+    });
   }
 
-  function openFriend(friendship: Friendship) {
-    const name = friendName(friendship.friend);
-    Alert.alert(name, `@${friendship.friend.username}`, [
-      {
-        text: 'Write a letter',
-        onPress: () => router.push({ pathname: '/compose', params: { to: friendship.friend.id } }),
-      },
-      { text: 'Remove friend', style: 'destructive', onPress: () => confirmRemove(friendship) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  function writeTo(friendship: Friendship) {
+    router.push({ pathname: '/compose', params: { to: friendship.friend.id } });
   }
 
   return (
@@ -184,7 +177,7 @@ export default function FriendsScreen() {
                   <Button
                     label="Accept"
                     size="compact"
-                    loading={busyId === friendship.id}
+                    loading={busyId === friendship.id && busy?.action === acceptFriend}
                     disabled={busyId !== null}
                     onPress={() => void act(friendship, acceptFriend)}
                   />
@@ -192,6 +185,7 @@ export default function FriendsScreen() {
                     label="Decline"
                     size="compact"
                     variant="ghost"
+                    loading={busyId === friendship.id && busy?.action === removeFriend}
                     disabled={busyId !== null}
                     onPress={() => void act(friendship, removeFriend)}
                   />
@@ -214,16 +208,20 @@ export default function FriendsScreen() {
                 key={friendship.id}
                 title={friendName(friendship.friend)}
                 subtitle={describeFriend(friendship)}
+                detail={describeRoute(friendship)}
+                accessibilityHint="Write a letter"
                 disabled={busyId !== null}
-                onPress={() => openFriend(friendship)}
+                onPress={() => writeTo(friendship)}
                 trailing={
-                  busyId === friendship.id ? (
-                    <ActivityIndicator color={Colors.textMuted} />
-                  ) : (
-                    <Text variant="heading" tone="muted">
-                      ›
-                    </Text>
-                  )
+                  <Button
+                    label="Remove"
+                    size="compact"
+                    variant="ghost"
+                    accessibilityLabel={`Remove ${friendName(friendship.friend)}`}
+                    loading={busyId === friendship.id}
+                    disabled={busyId !== null}
+                    onPress={() => confirmRemove(friendship)}
+                  />
                 }
               />
             ))
@@ -256,16 +254,22 @@ export default function FriendsScreen() {
   );
 }
 
-/** "@ben · Munich, DE · about 6h 18m", or why there is no flight time. */
+type FriendAction = (friendshipId: string) => Promise<void>;
+
+/** "@ben · Munich, DE", or why there is no city to show. */
 function describeFriend(friendship: Friendship): string {
-  const parts = [`@${friendship.friend.username}`];
-  if (!friendship.friend.city) {
-    parts.push('has not chosen a city yet');
-  } else {
-    parts.push(describeCity(friendship.friend.city));
-    if (friendship.route) parts.push(formatFlightEstimate(friendship.route.flightSeconds));
-  }
-  return parts.join(' · ');
+  const { city, username } = friendship.friend;
+  return `@${username} · ${city ? describeCity(city) : 'has not chosen a city yet'}`;
+}
+
+/**
+ * "about 6h 18m by bat" - on a line of its own, so that the figure people look
+ * for is never the part a narrow screen cuts off.
+ */
+function describeRoute(friendship: Friendship): string | undefined {
+  return friendship.route
+    ? `${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
+    : undefined;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

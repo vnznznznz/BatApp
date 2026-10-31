@@ -209,9 +209,23 @@ export type Dispatch = {
   distanceKm: number;
 };
 
-export async function sendMessage(recipientId: string, text: string): Promise<Dispatch> {
+/**
+ * Sends a letter. `clientRef` names this letter rather than this attempt: pass
+ * the same one when retrying the same letter, so that a send whose answer was
+ * lost - but which went - is answered with the letter that went instead of
+ * spending a second bat on a copy.
+ */
+export async function sendMessage(
+  recipientId: string,
+  text: string,
+  clientRef: string,
+): Promise<Dispatch> {
   const { data, error } = await supabase
-    .rpc('send_message', { recipient_id: recipientId, body: prepareBody(text) })
+    .rpc('send_message', {
+      recipient_id: recipientId,
+      body: prepareBody(text),
+      client_ref: clientRef,
+    })
     .single();
   if (error) throw toRpcError(error, 'Your letter could not be sent. Check your connection.');
 

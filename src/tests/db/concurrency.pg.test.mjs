@@ -195,6 +195,41 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.deepEqual(rows[0], { letters: 3, bats: 3 });
     });
 
+    /**
+     * The retry of a send whose answer was lost can reach the server while the
+     * original is still running. Neither can see the other's letter yet; the
+     * unique client_ref decides, and the loser gives its bat back.
+     */
+    it('lets two runs of the same send at once create one letter on one bat', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const ref = '44444444-4444-4444-8444-444444444444';
+
+      const original = await connectAs(anna);
+      const retry = await connectAs(anna);
+      await original.query('begin');
+      const first = await original.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      const repeating = retry.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await original.query('commit');
+      const second = await repeating;
+
+      assert.equal(second.rows[0].message_id, first.rows[0].message_id);
+      const { rows } = await admin.query(
+        `select count(*)::int as letters from public.messages where sender_id = $1`,
+        [anna],
+      );
+      assert.equal(rows[0].letters, 1);
+      assert.equal(await flyingBats(anna), 1);
+    });
+
     it('does not let one courier’s sends wait on another’s', async () => {
       const anna = await createCourier('anna', ['Berlin', 'DE']);
       const ben = await createCourier('ben', ['Munich', 'DE']);
@@ -353,6 +388,96 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.deepEqual(rows[0], { in_flight: 0, letters: 6 });
       assert.equal(await flyingBats(anna), 0);
       assert.equal(await flyingBats(ben), 0);
+    });
+  });
+
+  describe('account deletion', () => {
+    /**
+     * Holds every landing for a moment between taking a letter's lock and
+     * bringing its bat home, so a deletion arriving in that window really
+     * overlaps it. Without the pause the race exists but is rarely hit.
+     */
+    async function slowLandings(run) {
+      await admin.query(`
+        create function public._slow_landing() returns trigger language plpgsql as $$
+        begin
+          if old.delivered_at is null and new.delivered_at is not null then
+            perform pg_sleep(1);
+          end if;
+          return new;
+        end $$;
+        create trigger _slow_landing before update on public.messages
+          for each row execute function public._slow_landing();
+      `);
+      try {
+        return await run();
+      } finally {
+        await admin.query(`
+          drop trigger _slow_landing on public.messages;
+          drop function public._slow_landing();
+        `);
+      }
+    }
+
+    /**
+     * Deletion used to reach a courier's bats before their letters, while a
+     * landing takes letters before bats: opposite lock orders, and a deadlock
+     * when a letter landed as its sender deleted their account. Found in review.
+     */
+    it('waits for a landing in progress instead of deadlocking with it', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const annaSession = await connectAs(anna);
+      const { rows } = await annaSession.query(
+        `select message_id from public.send_message($1, 'due now')`,
+        [ben],
+      );
+      await admin.query(
+        `update public.messages
+         set sent_at = now() - interval '2 hours', deliver_at = now() - interval '1 minute'
+         where id = $1`,
+        [rows[0].message_id],
+      );
+
+      const outcomes = await slowLandings(async () => {
+        const benReading = await connectAs(ben);
+        const annaLeaving = await connectAs(anna);
+        const landing = benReading.query('select * from public.list_inbox()');
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const deleting = annaLeaving.query('select public.delete_own_account()');
+        return Promise.allSettled([landing, deleting]);
+      });
+
+      for (const outcome of outcomes) {
+        assert.equal(outcome.status, 'fulfilled', outcome.reason?.message);
+      }
+      const { rows: left } = await admin.query(
+        `select count(*)::int as count from auth.users where id = $1`,
+        [anna],
+      );
+      assert.equal(left[0].count, 0);
+    });
+
+    it('lets two friends with letters to each other delete their accounts at once', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const annaSession = await connectAs(anna);
+      const benSession = await connectAs(ben);
+      await annaSession.query(`select * from public.send_message($1, 'to ben')`, [ben]);
+      await benSession.query(`select * from public.send_message($1, 'to anna')`, [anna]);
+
+      const outcomes = await Promise.allSettled([
+        annaSession.query('select public.delete_own_account()'),
+        benSession.query('select public.delete_own_account()'),
+      ]);
+
+      for (const outcome of outcomes) {
+        assert.equal(outcome.status, 'fulfilled', outcome.reason?.message);
+      }
+      const { rows } = await admin.query(`select count(*)::int as count from public.messages`);
+      assert.equal(rows[0].count, 0);
     });
   });
 

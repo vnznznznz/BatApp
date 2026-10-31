@@ -100,22 +100,16 @@ describe('a fourth bat', () => {
   });
 });
 
-describe('row level security', () => {
-  it('lets a user see their own bats', async () => {
+describe('direct access', () => {
+  /**
+   * The roost is read through get_roost(), which lands what is due first. A
+   * direct read could show a bat coming home at the moment a friend's request
+   * landed its letter - a trace of when they opened the app.
+   */
+  it('does not let a user read the bats table, even their own', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    const { rows } = await asUser(db, anna, () => readBats(anna));
-
-    assert.equal(rows.length, 3);
-  });
-
-  it('does not let a user see anyone else', async () => {
-    const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
-    const ben = await createUser(db, { username: 'ben', displayName: 'Ben' });
-
-    const { rows } = await asUser(db, anna, () => readBats(ben));
-
-    assert.equal(rows.length, 0);
+    await assert.rejects(() => asUser(db, anna, () => readBats(anna)));
   });
 
   it('shows nothing to a signed-out visitor', async () => {

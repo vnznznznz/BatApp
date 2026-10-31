@@ -73,15 +73,16 @@ on conflict (owner_id, slot) do nothing;
 alter table public.bats enable row level security;
 alter table public.bats force row level security;
 
--- `(select auth.uid())` rather than `auth.uid()`: wrapped, Postgres evaluates it
--- once per statement instead of once per row. The answer is the same.
-create policy bats_select_own on public.bats
-  for select
-  to authenticated
-  using ((select auth.uid()) = owner_id);
-
--- Deliberately absent: INSERT, UPDATE and DELETE, as policies and as grants.
--- Bats are issued by the trigger above, change state only inside send_message
--- and the delivery worker, and are removed only by cascade with their owner.
+-- No client reads or writes this table directly, by any route: no policies and
+-- no grants. Bats are issued by the trigger above, change state only inside
+-- send_message and the delivery worker, and are removed only by cascade with
+-- their owner.
+--
+-- Reads go through get_roost(), which first lands whatever is due for its
+-- caller, so what it reports depends only on the time. A direct read would not:
+-- a letter that has come due is landed by whichever request touches it first,
+-- and if that is the recipient opening the app between two runs of the
+-- scheduler, the sender polling this table would see their bat come home at
+-- that moment - a trace of when their friend was online, which this product
+-- does not show anyone. (Found in review; the app never used the direct read.)
 revoke all on table public.bats from anon, authenticated;
-grant select on table public.bats to authenticated;

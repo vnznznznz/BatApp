@@ -100,9 +100,12 @@ function describeJourney(letter: Letter, now: number): string[] {
   const duration = formatDuration(letter.deliverAt.getTime() - letter.sentAt.getTime());
 
   if (!letter.delivered) {
+    const remaining = letter.deliverAt.getTime() - now;
+    const landing =
+      remaining > 0 ? `Lands in ${formatDuration(remaining)}` : 'Landing any moment now';
     return [
       `Flying ${distance} from ${from} to ${to}.`,
-      `Sent ${formatTimestamp(letter.sentAt)}. Lands in ${formatDuration(letter.deliverAt.getTime() - now)}, at ${formatTimestamp(letter.deliverAt)}.`,
+      `Sent ${formatTimestamp(letter.sentAt)}. ${landing}, at ${formatTimestamp(letter.deliverAt)}.`,
     ];
   }
 

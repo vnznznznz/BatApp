@@ -259,8 +259,10 @@ as $$
     on me.id in (f.requester_id, f.addressee_id)
   join public.profiles friend
     on friend.id = case when f.requester_id = me.id then f.addressee_id else f.requester_id end
-  left join public.cities city on city.id = friend.city_id
-  left join public.cities home on home.id = me.city_id
+  -- Where letters actually fly between - see private.flight_city - so the
+  -- estimate is the flight a letter sent now would take, even mid-move.
+  left join public.cities city on city.id = private.flight_city(friend.id)
+  left join public.cities home on home.id = private.flight_city(me.id)
   left join lateral (
     select private.distance_km(home.latitude, home.longitude, city.latitude, city.longitude) as km
     where f.status = 'accepted'

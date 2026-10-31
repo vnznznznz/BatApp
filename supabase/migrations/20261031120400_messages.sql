@@ -38,6 +38,9 @@ create table public.messages (
   -- When the recipient first opened it. The recipient's own business: no
   -- function ever shows it to the sender. There are no read receipts.
   opened_at timestamptz,
+  -- Chosen by the sender's app for each letter it tries to send, and sent again
+  -- with any retry of the same letter. See send_message.
+  client_ref uuid,
 
   constraint messages_not_to_self check (sender_id <> recipient_id),
   -- 2000 is MESSAGE_MAX_LENGTH in src/constants/config.ts.
@@ -66,6 +69,11 @@ create index messages_in_flight_idx on public.messages (deliver_at)
 
 create index messages_recipient_idx on public.messages (recipient_id, deliver_at desc);
 create index messages_sender_idx on public.messages (sender_id, sent_at desc);
+
+-- One letter per send the app attempted, however many times the request was
+-- repeated - and the arbiter when two repeats run at once.
+create unique index messages_client_ref_idx on public.messages (sender_id, client_ref)
+  where client_ref is not null;
 
 /* -------------------------------------------------------------------------- */
 /* Delivery                                                                    */
@@ -120,11 +128,13 @@ begin
       from due
       where m.id = due.id
         and m.delivered_at is null
-      returning m.bat_id
+      returning m.bat_id, m.deliver_at
     ),
     homecoming as (
+      -- Home at the moment the letter landed, not at the moment some request
+      -- noticed: nothing recorded here depends on who looked, or when.
       update public.bats b
-      set status = 'available', updated_at = now()
+      set status = 'available', updated_at = landed.deliver_at
       from landed
       where b.id = landed.bat_id
         and b.status = 'flying'
@@ -149,11 +159,13 @@ begin
       from due
       where m.id = due.id
         and m.delivered_at is null
-      returning m.bat_id
+      returning m.bat_id, m.deliver_at
     ),
     homecoming as (
+      -- Home at the moment the letter landed, not at the moment some request
+      -- noticed: nothing recorded here depends on who looked, or when.
       update public.bats b
-      set status = 'available', updated_at = now()
+      set status = 'available', updated_at = landed.deliver_at
       from landed
       where b.id = landed.bat_id
         and b.status = 'flying'
@@ -196,6 +208,47 @@ create trigger messages_release_bat
   execute function private.release_bat();
 
 /* -------------------------------------------------------------------------- */
+/* Account deletion, now that there are letters                                */
+/* -------------------------------------------------------------------------- */
+
+-- Replaces the version in the profiles migration, which deleted the auth user
+-- and let the cascades run. Those reach the caller's bats and profile before
+-- their letters, while delivery locks letters before bats - opposite orders,
+-- and two transactions taking locks in opposite orders can deadlock. Review
+-- reproduced it three ways against a real Postgres: a letter landing as its
+-- sender deletes their account, a send to someone deleting theirs, and two
+-- friends deleting at once. Postgres would break each deadlock by failing one
+-- side, so nothing was corrupted, but a request failed or a minute of the
+-- worker's landings rolled back.
+--
+-- Taking the caller's letters first, in delivery's own order, removes the
+-- inversion: anything landing one of them finishes before the deletion goes on.
+-- Privileges are unchanged by `create or replace`; the caller is still the only
+-- account this can ever delete.
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := auth.uid();
+begin
+  if caller is null then
+    raise exception 'not authenticated' using errcode = '28000';
+  end if;
+
+  perform 1
+  from public.messages m
+  where caller in (m.sender_id, m.recipient_id)
+  order by m.deliver_at, m.id
+  for update;
+
+  delete from auth.users where id = caller;
+end;
+$$;
+
+/* -------------------------------------------------------------------------- */
 /* Sending                                                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -213,7 +266,19 @@ create trigger messages_release_bat
 -- None of this can be exercised by PGlite, which is a single connection;
 -- src/tests/db/concurrency.pg.test.mjs runs real concurrent sends against a real
 -- Postgres.
-create or replace function public.send_message(recipient_id uuid, body text)
+--
+-- A phone can lose the answer to a send that succeeded - it changes networks, or
+-- the OS suspends the app mid-request - and the courier, told it failed, taps
+-- Send again. Without help that sends a second copy on a second bat: one letter
+-- costing two of three bats for days. So the app sends a `client_ref` it chose
+-- for this letter, and repeats it with every retry of the same letter; a ref
+-- already used by this sender returns the letter it created, and nothing else
+-- happens. (Found in review.)
+create or replace function public.send_message(
+  recipient_id uuid,
+  body text,
+  client_ref uuid default null
+)
 returns table (message_id uuid, deliver_at timestamptz, distance_km double precision)
 language plpgsql
 security definer
@@ -227,7 +292,20 @@ declare
   km double precision;
   arrival timestamptz;
   created uuid;
+  violated text;
 begin
+  -- A repeat of a send that already went: answer with what it created.
+  if send_message.client_ref is not null then
+    return query
+      select m.id, m.deliver_at, m.distance_km
+      from public.messages m
+      where m.sender_id = caller
+        and m.client_ref = send_message.client_ref;
+    if found then
+      return;
+    end if;
+  end if;
+
   if send_message.body is null or send_message.body !~ '\S' then
     raise exception 'a letter needs at least one word'
       using errcode = 'P0001', hint = 'empty_message';
@@ -244,10 +322,11 @@ begin
       using errcode = 'P0001', hint = 'not_friends';
   end if;
 
+  -- From where the sender's bats are, to where the recipient's are: a city
+  -- chosen less than a day ago does not count yet (see private.flight_city).
   select c.* into origin
-  from public.profiles p
-  join public.cities c on c.id = p.city_id
-  where p.id = caller;
+  from public.cities c
+  where c.id = private.flight_city(caller);
 
   if not found then
     raise exception 'choose a city before sending a letter'
@@ -255,9 +334,8 @@ begin
   end if;
 
   select c.* into destination
-  from public.profiles p
-  join public.cities c on c.id = p.city_id
-  where p.id = send_message.recipient_id;
+  from public.cities c
+  where c.id = private.flight_city(send_message.recipient_id);
 
   if not found then
     raise exception 'the recipient has not chosen a city yet'
@@ -269,37 +347,54 @@ begin
   -- are free.
   perform private.deliver_due_messages(caller);
 
-  update public.bats b
-  set status = 'flying', updated_at = now()
-  where b.id = (
-      select free.id
-      from public.bats free
-      where free.owner_id = caller
-        and free.status = 'available'
-      order by free.slot
-      limit 1
-      for update skip locked
+  -- The claim and the letter stand or fall together: see the handler below.
+  begin
+    update public.bats b
+    set status = 'flying', updated_at = now()
+    where b.id = (
+        select free.id
+        from public.bats free
+        where free.owner_id = caller
+          and free.status = 'available'
+        order by free.slot
+        limit 1
+        for update skip locked
+      )
+      and b.status = 'available'
+    returning b.id into claimed;
+
+    if claimed is null then
+      raise exception 'every bat is out flying'
+        using errcode = 'P0001', hint = 'no_available_bat';
+    end if;
+
+    km := private.distance_km(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+    arrival := now() + private.flight_duration(km);
+
+    insert into public.messages (
+      sender_id, recipient_id, bat_id, body,
+      origin_city_id, destination_city_id, distance_km, deliver_at, client_ref
     )
-    and b.status = 'available'
-  returning b.id into claimed;
-
-  if claimed is null then
-    raise exception 'every bat is out flying'
-      using errcode = 'P0001', hint = 'no_available_bat';
-  end if;
-
-  km := private.distance_km(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
-  arrival := now() + private.flight_duration(km);
-
-  insert into public.messages (
-    sender_id, recipient_id, bat_id, body,
-    origin_city_id, destination_city_id, distance_km, deliver_at
-  )
-  values (
-    caller, send_message.recipient_id, claimed, send_message.body,
-    origin.id, destination.id, km, arrival
-  )
-  returning id into created;
+    values (
+      caller, send_message.recipient_id, claimed, send_message.body,
+      origin.id, destination.id, km, arrival, send_message.client_ref
+    )
+    returning id into created;
+  exception when unique_violation then
+    -- Two repeats of the same send at once: the other one committed first.
+    -- Leaving this block has undone this one's claim on a bat, so the courier
+    -- is charged once; answer with the letter that went.
+    get stacked diagnostics violated = constraint_name;
+    if violated is distinct from 'messages_client_ref_idx' then
+      raise;
+    end if;
+    return query
+      select m.id, m.deliver_at, m.distance_km
+      from public.messages m
+      where m.sender_id = caller
+        and m.client_ref = send_message.client_ref;
+    return;
+  end;
 
   return query select created, arrival, km;
 end;
@@ -318,5 +413,5 @@ alter table public.messages force row level security;
 -- SELECT policy would hand over whole rows, and a whole row is a read receipt.
 revoke all on table public.messages from anon, authenticated;
 
-revoke all on function public.send_message(uuid, text) from public, anon;
-grant execute on function public.send_message(uuid, text) to authenticated;
+revoke all on function public.send_message(uuid, text, uuid) from public, anon;
+grant execute on function public.send_message(uuid, text, uuid) to authenticated;

@@ -104,6 +104,23 @@ declare
 begin
   perform private.deliver_due_messages(caller);
 
+  -- A cursor that names no letter of the caller's - deleted with its sender's
+  -- account since the last page, or never theirs - cannot say where the next
+  -- page starts. Saying so lets the app start again from the top; returning an
+  -- empty page instead would read as the end of the list, and every older
+  -- letter would be out of reach. (Found in review.) The same answer for gone
+  -- and for someone else's keeps it from saying which.
+  if list_inbox.older_than is not null and not exists (
+    select 1
+    from public.messages c
+    where c.id = list_inbox.older_than
+      and c.recipient_id = caller
+      and c.delivered_at is not null
+  ) then
+    raise exception 'the letter this page continues from is gone'
+      using errcode = 'P0001', hint = 'cursor_not_found';
+  end if;
+
   return query
     select
       m.id,
@@ -167,6 +184,17 @@ declare
   caller uuid := private.caller();
 begin
   perform private.deliver_due_messages(caller);
+
+  -- As in list_inbox: an unusable cursor is said, not answered with nothing.
+  if list_sent.older_than is not null and not exists (
+    select 1
+    from public.messages c
+    where c.id = list_sent.older_than
+      and c.sender_id = caller
+  ) then
+    raise exception 'the letter this page continues from is gone'
+      using errcode = 'P0001', hint = 'cursor_not_found';
+  end if;
 
   return query
     select

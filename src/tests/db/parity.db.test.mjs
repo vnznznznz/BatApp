@@ -35,6 +35,7 @@ const MINIMUM_FLIGHT_MINUTES = constant('MINIMUM_FLIGHT_MINUTES');
 const MESSAGE_MAX_LENGTH = constant('MESSAGE_MAX_LENGTH');
 const PRODUCTION_TIME_MULTIPLIER = constant('PRODUCTION_TIME_MULTIPLIER');
 const DEBUG_TIME_MULTIPLIER = constant('DEBUG_TIME_MULTIPLIER');
+const RELOCATION_HOURS = constant('RELOCATION_HOURS');
 const USERNAME_MIN_LENGTH = constant('USERNAME_MIN_LENGTH');
 const USERNAME_MAX_LENGTH = constant('USERNAME_MAX_LENGTH');
 
@@ -122,6 +123,14 @@ describe('the database agrees with src/constants/config.ts', () => {
     ]);
 
     assert.equal(await flightSeconds(0), MINIMUM_FLIGHT_MINUTES * 60 * DEBUG_TIME_MULTIPLIER);
+  });
+
+  it('on RELOCATION_HOURS', async () => {
+    const { rows } = await db.query(
+      `select extract(epoch from private.relocation_period()) / 3600 as hours`,
+    );
+
+    assert.equal(Number(rows[0].hours), RELOCATION_HOURS);
   });
 
   it('on USERNAME_MIN_LENGTH and USERNAME_MAX_LENGTH', async () => {

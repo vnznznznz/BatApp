@@ -6,6 +6,7 @@ import {
   MINIMUM_FLIGHT_MINUTES,
   MONETISATION_ENABLED,
   PRODUCTION_TIME_MULTIPLIER,
+  RELOCATION_HOURS,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
   USERNAME_PATTERN,
@@ -45,6 +46,14 @@ describe('product invariants', () => {
 
   it('bounds message length', () => {
     expect(MESSAGE_MAX_LENGTH).toBeGreaterThan(0);
+  });
+
+  /**
+   * A move that took effect at once would let a courier borrow a friend's city
+   * for one short flight and move straight back.
+   */
+  it('makes a new city take time to become where bats fly from', () => {
+    expect(RELOCATION_HOURS).toBeGreaterThan(0);
   });
 });
 

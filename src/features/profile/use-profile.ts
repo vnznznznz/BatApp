@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { RELOCATION_HOURS } from '@/constants/config';
 import { useAuth } from '@/features/auth/auth-context';
 import { supabase } from '@/lib/supabase';
 
@@ -9,6 +10,16 @@ export type ProfileCity = {
   countryCode: string;
 };
 
+/**
+ * A move that has not settled yet. A new city takes RELOCATION_HOURS to become
+ * where the bats fly from (see the flight migration), so until then letters
+ * still leave from `from`.
+ */
+export type ProfileMove = {
+  from: ProfileCity;
+  settlesAt: Date;
+};
+
 export type Profile = {
   id: string;
   username: string;
@@ -16,27 +27,51 @@ export type Profile = {
   avatarUrl: string | null;
   /** Null until the user has chosen one. No message can be sent without it. */
   city: ProfileCity | null;
+  /** Present while a change of city is settling. */
+  move: ProfileMove | null;
 };
+
+type CityRow = { id: number; name: string; country_code: string };
 
 type Row = {
   id: string;
   username: string;
   display_name: string;
   avatar_url: string | null;
-  cities: { id: number; name: string; country_code: string } | null;
+  city_changed_at: string | null;
+  cities: CityRow | null;
+  settled: CityRow | null;
 };
 
-const SELECT = 'id, username, display_name, avatar_url, cities(id, name, country_code)';
+// The foreign keys are named because profiles refers to cities twice - the
+// city, and while a move settles the one the bats still fly from - and
+// PostgREST refuses an embed it cannot attribute to exactly one of them.
+const SELECT =
+  'id, username, display_name, avatar_url, city_changed_at, ' +
+  'cities!profiles_city_id_fkey(id, name, country_code), ' +
+  'settled:cities!profiles_settled_city_id_fkey(id, name, country_code)';
 
-function toProfile(row: Row): Profile {
+const toCity = (row: CityRow): ProfileCity => ({
+  id: row.id,
+  name: row.name,
+  countryCode: row.country_code,
+});
+
+export function toProfile(row: Row, now: number = Date.now()): Profile {
+  const settlesAt = row.city_changed_at
+    ? new Date(new Date(row.city_changed_at).getTime() + RELOCATION_HOURS * 3_600_000)
+    : null;
+
   return {
     id: row.id,
     username: row.username,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
-    city: row.cities
-      ? { id: row.cities.id, name: row.cities.name, countryCode: row.cities.country_code }
-      : null,
+    city: row.cities ? toCity(row.cities) : null,
+    move:
+      row.settled && settlesAt && settlesAt.getTime() > now
+        ? { from: toCity(row.settled), settlesAt }
+        : null,
   };
 }
 

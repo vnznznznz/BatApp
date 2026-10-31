@@ -84,7 +84,8 @@ describe('table privileges', () => {
    */
   it('gives a signed-in user exactly what the app uses, and only by SELECT', async () => {
     assert.deepEqual(await tablePrivileges('authenticated'), {
-      bats: ['SELECT'],
+      // Read through get_roost(), which lands what is due first; see the bats migration.
+      bats: [],
       cities: ['SELECT'],
       friendships: ['SELECT'],
       // Letters are read only through functions that choose their columns.

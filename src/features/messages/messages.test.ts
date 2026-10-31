@@ -294,26 +294,30 @@ describe('sendMessage', () => {
     distance_km: 504.6,
   };
 
+  const REF = '0f9e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f';
+
   /**
    * Which bat, how far, and when it lands are the server's decisions. The
-   * client names a recipient and supplies the words - and nothing else.
+   * client names a recipient, supplies the words, and names the letter so a
+   * retry is recognised - and nothing else.
    */
-  it('sends only the recipient and the trimmed words, in one call', async () => {
+  it('sends only the recipient, the trimmed words and the letter’s ref, in one call', async () => {
     answer([dispatched]);
 
-    await sendMessage('anna-id', '\n  Dear Anna,\n\nSee you soon.  \n');
+    await sendMessage('anna-id', '\n  Dear Anna,\n\nSee you soon.  \n', REF);
 
     expect(mockRpc).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith('send_message', {
       recipient_id: 'anna-id',
       body: 'Dear Anna,\n\nSee you soon.',
+      client_ref: REF,
     });
   });
 
   it('reports when the letter will land, as the server worked it out', async () => {
     answer([dispatched]);
 
-    const dispatch = await sendMessage('anna-id', 'Dear Anna,');
+    const dispatch = await sendMessage('anna-id', 'Dear Anna,', REF);
 
     expect(mockSingle).toHaveBeenCalledTimes(1);
     expect(dispatch).toEqual({
@@ -331,7 +335,7 @@ describe('sendMessage', () => {
     };
     fail(error);
 
-    const sending = sendMessage('anna-id', 'Dear Anna,');
+    const sending = sendMessage('anna-id', 'Dear Anna,', REF);
 
     await expect(sending).rejects.toBeInstanceOf(RpcError);
     await expect(sending).rejects.toMatchObject({
@@ -344,7 +348,7 @@ describe('sendMessage', () => {
   it('explains that letters only go to friends', async () => {
     fail({ message: 'not friends', code: 'P0001', hint: 'not_friends' });
 
-    await expect(sendMessage('stranger-id', 'Hello')).rejects.toMatchObject({
+    await expect(sendMessage('stranger-id', 'Hello', REF)).rejects.toMatchObject({
       message: REFUSALS.not_friends,
       reason: 'not_friends',
     });
@@ -353,7 +357,7 @@ describe('sendMessage', () => {
   it('says the letter could not be sent when anything else goes wrong', async () => {
     fail(UNEXPECTED);
 
-    await expect(sendMessage('anna-id', 'Dear Anna,')).rejects.toMatchObject({
+    await expect(sendMessage('anna-id', 'Dear Anna,', REF)).rejects.toMatchObject({
       message: 'Your letter could not be sent. Check your connection.',
       reason: null,
     });

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { REFUSALS, RpcError } from '@/lib/rpc-error';
 import { usePaged } from '@/lib/use-paged';
 
 /**
@@ -225,6 +226,29 @@ describe('usePaged', () => {
       await act(() => result.current.loadMore());
 
       expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c', 'd']);
+      expect(result.current.error).toBeNull();
+    });
+  });
+
+  describe('when the item a page continues from has gone', () => {
+    /**
+     * A letter can be deleted between pages - with its sender's account - and
+     * the server then cannot place the next page. An empty answer would read as
+     * the end of the list, leaving every older letter out of reach.
+     */
+    it('starts the list again from the top instead of ending it', async () => {
+      const loadPage = pages(
+        page('a', 'b', 'c'),
+        new RpcError(REFUSALS.cursor_not_found, 'cursor_not_found'),
+        page('a', 'b', 'd'),
+      );
+      const { result } = await renderList(loadPage);
+
+      await act(() => result.current.loadMore());
+      await waitFor(() => expect(idsOf(result.current.items)).toEqual(['a', 'b', 'd']));
+
+      expect(loadPage).toHaveBeenLastCalledWith();
+      expect(result.current.hasMore).toBe(true);
       expect(result.current.error).toBeNull();
     });
   });

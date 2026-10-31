@@ -59,6 +59,7 @@ const courier: Profile = {
   username: 'mara',
   displayName: 'Mara Lind',
   avatarUrl: null,
+  move: null,
   city: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
 };
 

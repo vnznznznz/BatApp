@@ -144,6 +144,7 @@ export type Database = {
         Row: {
           bat_id: string;
           body: string;
+          client_ref: string | null;
           deliver_at: string;
           delivered_at: string | null;
           destination_city_id: number;
@@ -159,6 +160,7 @@ export type Database = {
         Insert: {
           bat_id: string;
           body: string;
+          client_ref?: string | null;
           deliver_at: string;
           delivered_at?: string | null;
           destination_city_id: number;
@@ -173,6 +175,7 @@ export type Database = {
         Update: {
           bat_id?: string;
           body?: string;
+          client_ref?: string | null;
           deliver_at?: string;
           delivered_at?: string | null;
           destination_city_id?: number;
@@ -225,29 +228,35 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null;
+          city_changed_at: string | null;
           city_id: number | null;
           created_at: string;
           display_name: string;
           id: string;
+          settled_city_id: number | null;
           updated_at: string;
           username: string;
         };
         ComputedFields: never;
         Insert: {
           avatar_url?: string | null;
+          city_changed_at?: string | null;
           city_id?: number | null;
           created_at?: string;
           display_name: string;
           id: string;
+          settled_city_id?: number | null;
           updated_at?: string;
           username: string;
         };
         Update: {
           avatar_url?: string | null;
+          city_changed_at?: string | null;
           city_id?: number | null;
           created_at?: string;
           display_name?: string;
           id?: string;
+          settled_city_id?: number | null;
           updated_at?: string;
           username?: string;
         };
@@ -255,6 +264,13 @@ export type Database = {
           {
             foreignKeyName: 'profiles_city_id_fkey';
             columns: ['city_id'];
+            isOneToOne: false;
+            referencedRelation: 'cities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profiles_settled_city_id_fkey';
+            columns: ['settled_city_id'];
             isOneToOne: false;
             referencedRelation: 'cities';
             referencedColumns: ['id'];
@@ -371,7 +387,7 @@ export type Database = {
         }[];
       };
       send_message: {
-        Args: { body: string; recipient_id: string };
+        Args: { body: string; client_ref?: string; recipient_id: string };
         Returns: {
           deliver_at: string;
           distance_km: number;
