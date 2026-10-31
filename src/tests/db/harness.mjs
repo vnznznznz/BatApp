@@ -16,20 +16,24 @@ import { fileURLToPath } from 'node:url';
  * What this does NOT cover, and must not be mistaken for:
  *
  * - Supabase's actual `auth` schema. The stub below reproduces only the parts
- *   the migrations depend on — `auth.users`, `auth.uid()`, and the `anon` and
- *   `authenticated` roles. It is faithful to the contract, not to Supabase's
- *   implementation.
+ *   the migrations depend on — `auth.users`, `auth.uid()`, the `anon` and
+ *   `authenticated` roles, and the default privileges Supabase grants them. It
+ *   is faithful to the contract, not to Supabase's implementation.
  * - Concurrency. PGlite is a single embedded connection, so two transactions
- *   cannot genuinely race here. The concurrent-send test the product requires
- *   (Phase 7) needs a real Postgres with two connections and cannot be
- *   satisfied by this harness.
+ *   cannot genuinely race here. `concurrency.pg.test.mjs` runs the races that
+ *   matter against a real Postgres, using the same stub and migrations.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(HERE, '..', '..', '..', 'supabase', 'migrations');
 
-/** The subset of Supabase's platform that the migrations rely on. */
-const AUTH_STUB = `
+/**
+ * The subset of Supabase's platform that the migrations rely on.
+ *
+ * Idempotent, because roles are cluster-wide on a real Postgres and a second
+ * test database on the same server would otherwise fail to create them.
+ */
+export const AUTH_STUB = `
   create schema if not exists auth;
 
   create table auth.users (
@@ -48,21 +52,44 @@ const AUTH_STUB = `
     select nullif(current_setting('request.jwt.claims', true)::json ->> 'sub', '')::uuid
   $$;
 
-  create role anon;
-  create role authenticated;
+  do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
+  do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
   grant usage on schema auth to anon, authenticated;
+
+  -- Supabase grants everything created in public to the API roles by default,
+  -- and leaves row level security to stop them. Reproducing that here is what
+  -- makes a migration that forgets to narrow its grants fail a test: without
+  -- it, a missing grant would read as "permission denied" in this harness while
+  -- production quietly allowed the request.
+  alter default privileges in schema public grant all on tables to anon, authenticated;
+  alter default privileges in schema public grant all on sequences to anon, authenticated;
+  alter default privileges in schema public grant all on functions to anon, authenticated;
 `;
 
-export async function createTestDatabase() {
-  const db = new PGlite();
-  await db.exec(AUTH_STUB);
-
-  for (const file of readdirSync(MIGRATIONS_DIR)
+/** The migration files, in the order Supabase applies them. */
+export function migrationFiles() {
+  return readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
-    .sort()) {
+    .sort();
+}
+
+/**
+ * Applies migrations to `db`. `after` and `until` bound the range by filename
+ * prefix, inclusive of `until` and exclusive of `after`, so a test can stop
+ * part-way, create data the way an older schema would have, and then carry on.
+ */
+export async function applyMigrations(db, { after, until } = {}) {
+  for (const file of migrationFiles()) {
+    if (after && file <= after) continue;
+    if (until && file > until) break;
     await db.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
   }
+}
 
+export async function createTestDatabase({ until } = {}) {
+  const db = new PGlite();
+  await db.exec(AUTH_STUB);
+  await applyMigrations(db, { until });
   return db;
 }
 

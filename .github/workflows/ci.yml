@@ -15,6 +15,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # A real Postgres for src/tests/db/concurrency.pg.test.mjs. The rest of the
+    # database tests run in PGlite, which is a single connection and cannot make
+    # two transactions race; these can. Without DATABASE_URL they skip, so this
+    # service is what makes CI run them rather than report them as skipped.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+
     steps:
       - uses: actions/checkout@v4
 
