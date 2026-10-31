@@ -1,4 +1,4 @@
-import { Redirect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { BatMark } from '@/components/bat-mark';
@@ -30,7 +30,9 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const { session } = useAuth();
 
-  if (session) return <Redirect href="/home" />;
+  // A signed-in user is on their way to the roost - the root layout sends them -
+  // so the pitch is not shown to someone who already has an account.
+  if (session) return null;
 
   return (
     // Scrolls rather than clips: this content does not fit a smaller iPhone

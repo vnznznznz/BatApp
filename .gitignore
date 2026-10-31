@@ -36,6 +36,11 @@ yarn-error.*
 .env.*
 !.env.example
 
+# Supabase CLI state: `supabase link` writes the project ref and connection
+# details here, and `supabase start` its local branch data.
+supabase/.temp/
+supabase/.branches/
+
 # typescript
 *.tsbuildinfo
 

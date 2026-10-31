@@ -35,15 +35,32 @@ export function readSupabaseConfig(env: Record<string, string | undefined>): Sup
     throw new SupabaseConfigError(`Missing ${missing.join(' and ')}. ${SETUP_HINT}`);
   }
 
-  if (!/^https:\/\/[^\s]+$/.test(url!)) {
+  if (!isAcceptableUrl(url!)) {
     throw new SupabaseConfigError(
-      `EXPO_PUBLIC_SUPABASE_URL must be an https URL, got "${url}". ${SETUP_HINT}`,
+      `EXPO_PUBLIC_SUPABASE_URL must be an https URL, got "${url}". Plain http is accepted ` +
+        `only for a local Supabase on this machine or your own network. ${SETUP_HINT}`,
     );
   }
 
   assertNotAServiceKey(anonKey!);
 
   return { url: url!, anonKey: anonKey! };
+}
+
+/**
+ * A local Supabase stack (`npx supabase start`) serves plain http on
+ * 127.0.0.1, and a phone running Expo Go reaches it at the computer's address
+ * on the local network. Those are the only places http is accepted: anywhere
+ * else, a session token would cross the internet unencrypted.
+ *
+ * Matched by pattern rather than parsed with `URL`, whose React Native
+ * implementation has historically lacked `hostname`.
+ */
+const LOCAL_HTTP =
+  /^http:\/\/(localhost|127(\.\d{1,3}){3}|\[::1\]|10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2})(:\d{1,5})?(\/[^\s]*)?$/;
+
+function isAcceptableUrl(url: string): boolean {
+  return /^https:\/\/[^\s]+$/.test(url) || LOCAL_HTTP.test(url);
 }
 
 /**

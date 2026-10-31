@@ -1,4 +1,4 @@
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -42,13 +42,32 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { isRestoring } = useAuth();
+  const { session, isRestoring } = useAuth();
+  const router = useRouter();
+  const inApp = useSegments()[0] === '(app)';
 
   useEffect(() => {
     // Holding the splash until the stored session has been read is what stops
     // the welcome screen flashing in front of an already signed-in user.
     if (!isRestoring) SplashScreen.hideAsync().catch(() => {});
   }, [isRestoring]);
+
+  // The way in. A session can appear while the user is on any screen outside
+  // the app - restored at launch on the welcome screen, or created by the
+  // sign-in or sign-up form they are looking at - and wherever it appears, they
+  // go to the roost. The (app) layout does the reverse when a session ends.
+  //
+  // This guard was missing until Phase 4: sign-in and sign-up both succeeded
+  // and then left the user on the form, because the only redirect lived on the
+  // welcome screen and fires only while that screen is in front.
+  //
+  // Dismissing first leaves the roost as the only screen in the stack, so back
+  // does not return to a sign-in form for an account that is signed in.
+  useEffect(() => {
+    if (isRestoring || !session || inApp) return;
+    if (router.canDismiss()) router.dismissAll();
+    router.replace('/home');
+  }, [isRestoring, session, inApp, router]);
 
   if (isRestoring) return null;
 

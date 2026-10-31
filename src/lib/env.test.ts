@@ -50,6 +50,39 @@ describe('readSupabaseConfig', () => {
       }),
     ).toThrow(/must be an https URL/);
   });
+
+  /**
+   * `npx supabase start` serves plain http, and a phone in Expo Go reaches it
+   * over the local network. Refusing those made local development impossible.
+   */
+  it.each([
+    'http://127.0.0.1:54321',
+    'http://localhost:54321',
+    'http://192.168.1.20:54321',
+    'http://10.0.0.5:54321',
+    'http://172.20.10.2:54321',
+  ])('accepts plain http for a local stack at %s', (url) => {
+    expect(
+      readSupabaseConfig({
+        EXPO_PUBLIC_SUPABASE_URL: url,
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: ANON_KEY,
+      }),
+    ).toEqual({ url, anonKey: ANON_KEY });
+  });
+
+  it.each([
+    'http://172.32.0.1:54321',
+    'http://192.168.1.20.example.com',
+    'http://127.0.0.1.evil.example',
+    'http://8.8.8.8:54321',
+  ])('still rejects plain http to %s, which is not a local address', (url) => {
+    expect(() =>
+      readSupabaseConfig({
+        EXPO_PUBLIC_SUPABASE_URL: url,
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: ANON_KEY,
+      }),
+    ).toThrow(/must be an https URL/);
+  });
 });
 
 /**

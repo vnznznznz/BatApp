@@ -29,8 +29,8 @@ export default function SignInScreen() {
     setBusy(true);
     try {
       await signIn(email, password);
-      // The root guard sends the user onward once the session lands; nothing to
-      // navigate to from here.
+      // The root layout sends the user onward once the session lands (see
+      // RootNavigator in src/app/_layout.tsx); nothing to navigate to from here.
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
