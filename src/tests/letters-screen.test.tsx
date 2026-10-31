@@ -573,6 +573,20 @@ describe('LettersScreen', () => {
       expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, 1 + PAGE_SIZE);
     });
 
+    it('takes the unread mark off a letter as soon as it is opened', async () => {
+      mockedFetchInbox.mockResolvedValue([received({ id: 'letter-1' })]);
+      await renderScreen(<LettersScreen />);
+      expect(await screen.findByLabelText('Unread')).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByText('Anna Weber'));
+
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/letters/[id]',
+        params: { id: 'letter-1' },
+      });
+      expect(screen.queryByLabelText('Unread')).toBeNull();
+    });
+
     /**
      * Returning from a letter refreshes everything on screen, not just the
      * newest page: a letter read deep in the list must not keep its unread mark.

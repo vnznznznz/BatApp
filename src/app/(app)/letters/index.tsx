@@ -55,13 +55,17 @@ export default function LettersScreen() {
 function ReceivedList() {
   const router = useRouter();
   const letters = usePaged(fetchInbox, PAGE_SIZE, MAX_PAGE_SIZE);
+  // Letters opened from this list. Opening marks a letter read on the server,
+  // but a refresh brings back at most a hundred letters; remembering here keeps
+  // the unread mark off a letter just read however deep in the list it was.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
 
   return (
     <LetterList
       paged={letters}
       empty="Nothing has landed yet. When a friend’s bat arrives, the letter will be here."
       renderItem={(letter: ReceivedLetter) => {
-        const unread = letter.openedAt === null;
+        const unread = letter.openedAt === null && !opened.has(letter.id);
         return (
           <ListRow
             title={correspondentName(letter.sender)}
@@ -69,7 +73,10 @@ function ReceivedList() {
             detail={asOneLine(letter.preview)}
             emphasised={unread}
             leading={<UnreadDot visible={unread} label="Unread" />}
-            onPress={() => router.push({ pathname: '/letters/[id]', params: { id: letter.id } })}
+            onPress={() => {
+              setOpened((previous) => new Set(previous).add(letter.id));
+              router.push({ pathname: '/letters/[id]', params: { id: letter.id } });
+            }}
           />
         );
       }}
