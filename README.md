@@ -79,6 +79,16 @@ Put the printed API URL and publishable key into `.env` (`http://127.0.0.1:54321
 accepted for local and private-network addresses only). To use Expo Go on a phone, use your
 computer's LAN address instead of `127.0.0.1`.
 
+The local database starts with two couriers who are already friends, from
+[`supabase/seed.sql`](supabase/seed.sql) - which only ever runs locally:
+
+| Email               | Password        | City   |
+| ------------------- | --------------- | ------ |
+| `anna@example.test` | `night-courier` | Berlin |
+| `ben@example.test`  | `night-courier` | Munich |
+
+Sign in as one on your phone and as the other in a browser (`npm run web`), and write.
+
 Real flights take hours. To watch one land in under a minute, scale every flight down - on a
 development project only:
 
