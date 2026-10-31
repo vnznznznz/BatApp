@@ -191,6 +191,9 @@ security definer
 set search_path = ''
 as $$
 begin
+  -- now() is the moment of someone's account deletion. That is safe to record
+  -- only because no client can read the bats table (see the bats migration);
+  -- if a direct read is ever granted, this must stop saying when it happened.
   update public.bats b
   set status = 'available', updated_at = now()
   where b.id = old.bat_id
