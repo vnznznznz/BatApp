@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -66,7 +67,15 @@ export function Button({
   );
 }
 
-const COMPACT_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 };
+// 36pt drawn plus slop on each side: 44pt, Apple's minimum, and on Android
+// 48dp, Material's.
+const COMPACT_SLOP = Platform.OS === 'android' ? 6 : 4;
+const COMPACT_HIT_SLOP = {
+  top: COMPACT_SLOP,
+  bottom: COMPACT_SLOP,
+  left: COMPACT_SLOP,
+  right: COMPACT_SLOP,
+};
 
 const styles = StyleSheet.create({
   base: {

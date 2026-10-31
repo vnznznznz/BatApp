@@ -109,8 +109,13 @@ export function ListRow({
   );
 }
 
-/** The text size beyond which a row's actions move below its text. */
-const LARGE_TEXT_SCALE = 1.3;
+/**
+ * The text size from which a row's actions move below its text. 1.2 rather
+ * than a round 1.3: Android reports its 130% setting as a widened float,
+ * 1.2999999523162842, which a `>= 1.3` test misses; and iOS's xxLarge (1.235)
+ * already leaves a title too little room beside two buttons.
+ */
+const LARGE_TEXT_SCALE = 1.2;
 
 const styles = StyleSheet.create({
   stack: {

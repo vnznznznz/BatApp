@@ -136,7 +136,7 @@ Delivered:
   by default; a migration narrows that to exactly what the app uses, and the test harness now
   reproduces the platform's defaults so a forgotten grant fails a test.
 
-Verified: the full `npm run verify` gate - 453 app tests and 182 database tests, 11 of them races
+Verified: the full `npm run verify` gate - 468 app tests and 183 database tests, 12 of them races
 run against a real Postgres - and an end-to-end run of the web build in Chromium against a local
 Supabase stack (GoTrue, PostgREST, Postgres 17, pg_cron): sign up, choose a city, ask a friend, send
 a letter, watch the bat land on screen, sign in as the recipient and read it - with no console
@@ -152,6 +152,10 @@ code, all fixed and each with a test that fails without the fix:
 - Account deletion could deadlock with a landing, a send, or another deletion.
 - A send retried after its answer was lost went out twice, on two bats. Sends are now idempotent.
 - A page cursor whose letter had been deleted silently ended the list.
+- On the client: an offline retry loop at the end of the letters list, stale older pages after
+  reading, a Remove button VoiceOver could not reach, request rows that large text made unreadable,
+  errors never spoken to screen readers, the keyboard covering "Send by bat" on iOS, muted text
+  below WCAG AA contrast, and dialogs that did nothing on the web build.
 
 **Found and fixed while doing this, in code from earlier phases:**
 

@@ -65,6 +65,14 @@ describe('ListRow', () => {
     expect(screen.getByRole('button', { name: 'Accept' })).toBeOnTheScreen();
   });
 
+  /** Android sends its 130% setting as a widened float, just under 1.3. */
+  it('moves them below at Android’s 130% text size, which arrives as 1.2999…', async () => {
+    withTextScale(Math.fround(1.3));
+    await render(<ListRow title="Carla Brandt" subtitle="@carla" actions={actions} />);
+
+    expect(sideBySide()).toBe(false);
+  });
+
   it('is never itself a button when it has actions', async () => {
     withTextScale(1);
     await render(

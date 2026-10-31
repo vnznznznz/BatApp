@@ -36,4 +36,20 @@ describe('TextField', () => {
 
     expect(screen.getByLabelText('Username').props.accessibilityHint).toBe('How friends find you.');
   });
+
+  /** The letter field passes a hint of its own; an error must still win. */
+  it('gives the error priority over a hint passed in by the screen', async () => {
+    await render(
+      <TextField
+        label="Your letter"
+        value=""
+        accessibilityHint="Up to 2000 characters."
+        error="Write something first."
+      />,
+    );
+
+    expect(screen.getByLabelText('Your letter').props.accessibilityHint).toBe(
+      'Write something first.',
+    );
+  });
 });

@@ -17,6 +17,7 @@ export function TextField({
   error,
   hint,
   multiline,
+  accessibilityHint,
   onFocus,
   onBlur,
   ...rest
@@ -40,7 +41,7 @@ export function TextField({
         // The error, while there is one, is what a screen reader should hear
         // on returning to the field. aria-invalid reaches assistive technology
         // only on the web; native platforms ignore it.
-        accessibilityHint={error ?? hint}
+        accessibilityHint={error ?? accessibilityHint ?? hint}
         aria-invalid={Boolean(error)}
         placeholderTextColor={Colors.textMuted}
         selectionColor={Colors.accent}

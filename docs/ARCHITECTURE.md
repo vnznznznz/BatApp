@@ -516,6 +516,27 @@ account were impossible there. `src/lib/confirm.ts` uses the browser's own dialo
 `Alert` elsewhere. The friend list also stopped hiding its actions in an alert: tapping a friend
 opens a letter to them, and Remove is a button of its own.
 
+### Accessibility, checked rather than assumed
+
+The product review read the new screens as a VoiceOver user, a TalkBack user and someone with large
+text would, and four things changed:
+
+- **No control inside a pressable row.** iOS exposes an accessible pressable as one element, so a
+  button nested in it can never be focused - a VoiceOver user could not remove a friend. A
+  `ListRow` with `actions` is never pressable itself; each action is its own button.
+- **Rows reflow at large text.** From a font scale of 1.2, a row's actions move below its text,
+  where beside it two scaled-up buttons squeezed a requester's name to an ellipsis. 1.2, not 1.3,
+  because Android reports its 130% setting as 1.2999999523162842.
+- **Errors and outcomes are spoken.** `aria-invalid` reaches assistive technology only on the web.
+  `TextField` announces an error as it appears and makes it the field's hint; sends, friend
+  requests and saves announce how they went (`src/lib/announce.ts`).
+- **Contrast and touch targets.** `textMuted` meets WCAG AA (4.5:1) on every surface it rests on,
+  and compact buttons take a 44pt touch on iOS and 48dp on Android while drawn 36pt tall.
+
+The compose screen also stopped using a `KeyboardAvoidingView` inside a scroll view under a header,
+which on iOS padded too little and left "Send by bat" under the keyboard; `Screen`'s
+`avoidKeyboard` lets the scroll view's insets follow the keyboard instead.
+
 ### Navigation
 
 A native header carrying only a back button on every signed-in screen but the roost, painted in the
