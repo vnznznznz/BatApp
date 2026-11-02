@@ -581,11 +581,20 @@ account. Their own letters land, as far as they can see, the way letters always 
 read receipts to withhold. The blocker, by contrast, is told plainly why they cannot ask someone they
 have blocked.
 
-What a block cannot hide is everything else that stays as it was. The letters the blocker sent
-before it remain in the blocked courier's inbox, where a deleted account's would have gone, so
-someone who thinks about it can tell the difference. Deleting those letters would hide the block
-better, but it would take the blocker's own words back out of someone's inbox without asking, and
-it would make blocking destroy things - which would make people slower to use it.
+What a block cannot hide is everything else that stays as it was, and a blocked courier who looks
+can tell a block from a deleted account (review compared the two call by call):
+
+- the letters the blocker sent them stay in their inbox, and their own letters to the blocker stay
+  in their sent list, still readable, and a bat still flying there stays out until it lands - where
+  a deleted account's letters would all have gone, and the bat come home;
+- `block_courier` or `report_courier` with the blocker's id, which they hold from their friends
+  list, answers as for a courier who exists, where a deleted one would be `courier_not_found`.
+
+Hiding all of that would mean deleting letters on a block, from both sides - taking the blocker's
+own words out of someone's inbox without asking, and making blocking destroy things, which would
+make people slower to use it - and pretending existing couriers do not exist. Not worth it: the
+refusal to a new request, which is what a blocked courier is most likely to meet, gives nothing
+away, and nothing ever says "blocked".
 
 **Rejected:** telling the blocked person, or a softer "this courier is not accepting requests". Both
 announce the block to the person most likely to react badly to it.
@@ -594,10 +603,16 @@ announce the block to the person most likely to react badly to it.
 
 Letters from a blocked courier - those already received, and any still in the air - are left out of
 the inbox, the unread count and `read_message` for as long as the block stands, and come back when it
-is lifted. Deleting them instead would make a block irreversible, would delete the evidence a report
-might need, and would change what the sender sees in their own sent list, which would give the block
-away. A letter still in the air when the block is made lands as usual and its bat comes home; only
-the blocker stops seeing it.
+is lifted. Deleting them instead would look more like a deleted account from the other side (see
+above), but it would make a block irreversible and would delete the letters a report might need. A
+letter still in the air when the block is made lands as usual and its bat comes home; only the
+blocker stops seeing it.
+
+A blocked courier's display name stops reaching the blocker too. It is theirs to change at any
+time, to anything - "I know where you live" - and the blocker would otherwise still see it on every
+letter they ever sent them and on a bat flying there. `get_roost`, `list_sent` and `read_message`
+name someone the caller has blocked by username alone, as `list_blocked` always did. (Found in
+review.)
 
 Unblocking does not restore the friendship. Being friends again takes a new request and a yes, as it
 did the first time.
@@ -624,22 +639,37 @@ either account without the ids.
 Reports are for the operator only. No API role can read the table, not even the reporter, and the
 reported courier is never told who reported them.
 
-**Trade-off:** the reported text outlives the sender's own deletion request, for at most 180 days.
-That is the narrow case Art. 17(3)(e) and legitimate interest (Art. 6(1)(f)) exist for: handling
-abuse, and keeping what a victim might need. The privacy policy has to say so, and the account
-deletion dialog does.
+**Trade-off:** the reported text outlives the sender's own deletion request, until the report is
+180 days old - and so does what a reporter wrote in their own report. That is the narrow case
+Art. 17(3)(e) and legitimate interest (Art. 6(1)(f)) exist for: handling abuse, and keeping what a
+victim might need. The privacy policy has to say so, and the account deletion dialog does.
 
 ### Limits, and how long reports are kept
 
-- A reason from a fixed list (`REPORT_REASONS`), a note of at most 500 characters, at most 20
-  reports per courier per day, one report per letter, and one open report per courier. A repeated
-  report is not an error: it returns `already_reported` and changes nothing, except that "also
-  block" still blocks.
+- A reason from a fixed list (`REPORT_REASONS`), a note of at most 500 characters, and one open
+  report per letter or per courier: a repeated report returns `already_reported` and adds nothing.
+  Once the operator has resolved a report, the same letter or courier can be reported again - with
+  something new to say, after a "no action".
+- At most 20 reports per courier per day. Past that, a report returns `limit_reached` and is not
+  recorded - an answer, not a refusal, because a refusal rolls back the whole request, and with it
+  the block that "also block" asked for. (Found in review: the limit used to cancel the block, while
+  telling the courier to block instead.) Reports by one courier are counted one request at a time,
+  under a lock: counted side by side, forty sent at once had all been recorded. A real-Postgres test
+  sends 25 at once and fails without the lock.
 - Reports are deleted 180 days after they were made, by a pg_cron job
-  (`private.forget_old_reports`, daily at 03:17). As with delivery, the job is scheduled only where
-  pg_cron exists.
+  (`private.forget_old_reports`) that runs hourly, so the 180 days hold to within the hour. As with
+  delivery, the job is scheduled only where pg_cron exists.
 - The numbers live in `src/constants/config.ts` and the migration, and a parity test fails if they
   drift apart.
+
+### Deleting two accounts that had blocked or reported each other
+
+Account deletion takes its blocks and clears its id from reports, both ways, and the cascade reaches
+each pair's two rows in opposite orders for its two people. Two couriers who had blocked or reported
+each other, deleting their accounts at the same moment, deadlocked (8 pairs in 200 in review).
+`delete_own_account` now takes those rows first, in one order for everyone - after the letters and
+bats, as before - so the second deletion waits for the first. Two real-Postgres tests delete both
+accounts at once and fail without it.
 
 ### Reporting blocks by default
 
@@ -647,12 +677,52 @@ deletion dialog does.
 stop, and a report alone changes nothing they can see until the operator acts. It can be turned off,
 for a report about someone the reporter still wants to hear from.
 
+Blocking first and reporting later must also work, and once someone is blocked their letters and
+their page are out of reach. The blocked list therefore has Report beside Unblock. Unblocking asks
+first: one stray tap would bring back the letters of someone blocked for a reason and let them ask
+again.
+
+### Contact and privacy links are configuration
+
+Guideline 1.2 asks for published contact information and 5.1.1 for an in-app link to the privacy
+policy. Both addresses come from the build's environment (`EXPO_PUBLIC_CONTACT_URL`,
+`EXPO_PUBLIC_PRIVACY_POLICY_URL`; see `src/lib/links.ts`) rather than from the source, because this
+repository is public and the operator's address must never be in it. Only `https:` and `mailto:` are
+accepted, and an unset link hides its button - fine for development, and caught by GO-LIVE's
+checklist before a build for anyone else.
+
 ### The house rules live outside the signed-in group
 
 `/rules` has to be readable from the sign-up form, before an account exists, and from the profile.
 It is the one route outside `(app)` that the root guard lets a signed-in courier stay on. Creating an
 account agrees to the rules, and the form says so beside the button - the zero-tolerance terms App
 Review asks of apps with user content.
+
+### What the review changed on the client
+
+- Going back from a report that blocked showed the letter that had just been hidden: the letter
+  screen kept its old data through the failed reload. After such a report, Done, Android's back
+  button and the (now hidden) header back button all go past it, and the letter screen shows "This
+  letter is no longer here" whenever a reload says `message_not_found` - `useRemote` now says why a
+  fetch was refused.
+- Leaving after a block goes to the list by name (`dismissTo`), not one step back, which would pop
+  whatever the courier had opened meanwhile; and Write back is disabled while a block is on its way.
+- The roost sits under every signed-in screen (`initialRouteName`), so a screen opened from a link
+  or a web reload still has somewhere to go back to.
+- On the web, `announce` writes into a live region, since React Native Web's
+  `announceForAccessibility` does nothing; the reason radios use `aria-checked`, which it reads and
+  `accessibilityState` it does not; after a report, focus moves to what happened.
+
+**Known gaps:**
+
+- With more than 100 letters loaded, a blocked courier's letters beyond the first 100 stay in the
+  list until it is opened afresh, because a refresh re-fetches at most 100 and keeps the older ones
+  it holds. Opening one says it is no longer here. Rare enough to leave.
+- A block does not survive the blocked courier deleting their account and signing up again: the
+  block goes with the old account, and the username is free again at once. Sign-up is open, so a
+  new username was always possible anyway; what the operator can do is keep a removed account's
+  sign-in banned, so that the same email cannot return (GO-LIVE, "Handling a report"). Retiring
+  usernames for a while after deletion would close the rest, at the cost of more data kept.
 
 ### A row's text may open it, beside its actions
 

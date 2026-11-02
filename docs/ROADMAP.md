@@ -241,8 +241,8 @@ under Apple Guideline 1.2, and Beta App Review checks it. The decisions are reco
   letter, or from a courier's page (tap their name in Friends). A block ends the friendship or any
   request between the two, stops the blocked courier asking again, and hides their letters - those
   already received and any still in the air - until it is lifted. It is one-sided and silent: the
-  blocked courier is answered exactly as if the username did not exist. Profile → Blocked couriers
-  lists them, each with Unblock.
+  blocked courier is answered exactly as if the username did not exist, and their display name no
+  longer reaches the blocker. Profile → Blocked couriers lists them, each with Report and Unblock.
 - **Report** a letter or a courier, with a reason and an optional note, blocking in the same step
   unless that is turned off. A report keeps a copy of what it is about, so it can still be judged
   once the letter or the account is gone, and is deleted after 180 days; at most 20 a day per
@@ -255,6 +255,15 @@ under Apple Guideline 1.2, and Beta App Review checks it. The decisions are reco
   write to a stranger. That gate, with report and block behind it, is the filter. There is no
   automated scanning of letters: they are private correspondence between friends, and reading them
   by machine would be a larger intrusion than the risk it addresses in an invite-only app.
-- **A contact route**: in the app, the report form reaches the operator. The support URL and postal
-  address for the store listing are paperwork for group C in GO-LIVE, and stay out of this
-  repository.
+- **A contact route**: Contact and Privacy policy buttons in the profile, the house rules and the
+  sign-up form, whose addresses come from the build's environment so that nothing personal is ever
+  committed. The postal address for the store listing is paperwork for group C in GO-LIVE.
+
+Then three independent reviews - the database, the client, and App Review with GDPR - found, among
+smaller things: a blocked courier could go on writing to the blocker through their display name;
+the daily report limit rolled back the block asked for with it, and did not hold under parallel
+requests; two couriers who had blocked each other deadlocked deleting their accounts at once; going
+back from a report that blocked showed the hidden letter again; nothing could be reported once
+blocked; the app had no contact route or privacy link; and several sentences promised more than
+the code does - anonymity, deletion, what a block stops. All fixed, each with a test, and the races
+with tests that fail without their locks.

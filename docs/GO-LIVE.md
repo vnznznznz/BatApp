@@ -54,7 +54,7 @@ cost on the iOS side; nothing in the app itself costs money.
 | Item                              | Required by                    | Notes                                                                                                                                  |
 | --------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | Needed in App Store Connect **and** linked in-app. Must name Switzerland as the hosting location, and say what a report keeps (below). |
-| Support URL                       | Apple 1.2                      | Published contact route                                                                                                                |
+| Support URL                       | Apple 1.2                      | Published contact route. In the app: `EXPO_PUBLIC_CONTACT_URL` (see "Before first submission")                                         |
 | Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                                                           |
 | EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                       |
 | App Privacy "nutrition label"     | App Store Connect              | Answered per data type collected                                                                                                       |
@@ -147,7 +147,10 @@ _(Built: Phase 13a.)_
 
 Reports arrive in the `public.reports` table of the hosted project. Nothing announces them — there
 is no push and no email — so **look at least once a day**: Apple expects "timely responses" to
-reports, and a reviewer may file one to see what happens.
+reports, and a reviewer may file one to see what happens. If a day can be missed (holidays,
+illness), set up an alert: a Database Webhook on inserts into `public.reports` (Dashboard →
+Database → Webhooks) calling an Edge Function that emails you through the SMTP provider below. The
+destination address goes in the function's secrets, never in this repository.
 
 **Where:** Supabase dashboard → Table Editor → schema `public` → `reports`. The open ones, oldest
 first, in the SQL editor:
@@ -161,23 +164,33 @@ order by created_at;
 
 Each row says who was reported (`reported_id`, plus the username and display name as they were),
 why, the reporter's note, and for a reported letter its full text (`letter_body`). The reporter is
-`reporter_id`; the person reported is never told who that was, so do not tell them.
+`reporter_id`; the person reported is never told who that was, so do not tell them — and remember
+that a letter has one reader, so acting on a letter can tell its sender who reported it anyway.
+
+Identify people by `reported_id`, not by the username. When `reported_id` is null the account has
+been deleted, and its username is free: it may belong to someone else by now.
 
 **What to do**, by how serious it is:
 
 - **Nothing breaks the rules** — mark it resolved.
-- **Serious, or repeated** — remove the account: Authentication → Users → the user → Delete user.
-  That deletes their profile, bats, friendships and every letter they sent or received, on both
-  sides; the reports about them stay, without their id.
 - **Somewhere in between** — the reporter has usually blocked them already (the report screen does
-  that by default). A warning has to go by email, from the address on their account.
+  that by default). A warning has to go by email, from the address on their account, saying why.
+- **Serious, or repeated** — remove the account. Ban it first, so the same email cannot simply sign
+  up again, then delete what it holds:
 
-To keep someone from signing in again with the same account without deleting it (for example while
-deciding):
+  ```sql
+  update auth.users set banned_until = now() + interval '100 years' where id = '<reported_id>';
+  delete from public.profiles where id = '<reported_id>';
+  ```
 
-```sql
-update auth.users set banned_until = now() + interval '100 years' where id = '<reported_id>';
-```
+  Deleting the profile deletes their bats, friendships, blocks and every letter they sent or
+  received, on both sides; the reports about them stay, without their id. The banned sign-in
+  stays behind to stop a re-registration with the same address — the privacy policy has to say
+  so, and for how long. (Authentication → Users → Delete user also works, but frees the email.)
+
+- **A threat** — ban first, as above, and write to the reporter before deleting anything: removing
+  the account takes every letter between them with it, and the report keeps only the one reported.
+  Give them time to keep copies.
 
 Then record the outcome, so the report leaves the queue:
 
@@ -187,8 +200,9 @@ set resolved_at = now(), resolution = 'account removed'   -- or 'no action', 'wa
 where id = '<report id>';
 ```
 
-Reports delete themselves 180 days after they were made (a daily pg_cron job). If one is needed for
-longer — handed to the police, say — export it first.
+Reports delete themselves 180 days after they were made (an hourly pg_cron job). If one is needed
+for longer — handed to the police, say — export it, hand it over, and delete your own copy; the
+privacy policy has to name the police as a possible recipient.
 
 ---
 
@@ -375,12 +389,38 @@ transits it, so a content-free push keeps message text out of a US processor.
 - **In-app account deletion** (Guideline 5.1.1(v), in force since 30 June 2022). Deactivation is
   not sufficient. Already in the plan for Phase 2 — build it as a real hard delete, which also
   satisfies GDPR Art. 17.
-- ~~**Report, block, and a contact route**~~ — built in Phase 13a. The report form is the in-app
-  route to the operator; the store listing still needs its support URL (below).
+- ~~**Report, block, and a contact route**~~ — built in Phase 13a. The contact route is a
+  **Contact** button in the profile and in the house rules, and a **Privacy policy** button there
+  and on the sign-up form. Both read their address from the build's environment —
+  `EXPO_PUBLIC_CONTACT_URL` (a `mailto:` or an https page) and `EXPO_PUBLIC_PRIVACY_POLICY_URL` —
+  and are hidden while unset. **Set both for every build anyone else will use**, in `.env` and in
+  the EAS environment: an App Reviewer looks for exactly these. They end up in the app bundle, so
+  use an address made for the purpose, never a home address.
+- **Beta App Review needs a way in.** A fresh account has no friends and no letters, so a reviewer
+  who signs up finds no Report or Block button anywhere. Before submitting, create a reviewer
+  account and a "Demo Friend" on the hosted project, make them friends, and a day before, send two
+  harmless letters from Demo Friend to the reviewer. Put the reviewer's sign-in in Beta App Review
+  Information, with notes along these lines:
+
+  > Report and block: Letters → a letter from Demo Friend → Report this letter, or Block; or
+  > Friends → tap Demo Friend → Block / Report. Profile → Safety holds Blocked couriers (each can be
+  > reported from there too), the house rules (our terms, with a zero-tolerance clause, agreed to at
+  > sign-up), Contact and the privacy policy. Filtering: letters only travel between two people who
+  > have both accepted a friend request made by exact username; there is no search, no public
+  > profile and no way to write to a stranger. Blocking is private to the user; Report, which also
+  > blocks by default, reaches the operator, who removes offending accounts.
+
+- **Decide the minimum age**, and state it in the house rules. Nothing in the app says one today.
+  Germany sets 16 as the age for consenting to an online service's processing on one's own
+  (Art. 8 GDPR with the German default), and the App Store age rating should agree with whatever is
+  chosen. The house rules already forbid any sexual content involving or sent to anyone under 18.
 - **The privacy policy must cover reports**: that a report goes to the operator with a copy of
-  what was reported, that the reported person is not told who reported them, that it is kept for
-  180 days and then deleted, and that it outlives account deletion — without the ids of the people
-  involved, but with the reported username, display name and letter text.
+  what was reported; that the reported person is not told who reported them (but may guess, a
+  letter having one reader); that it is deleted 180 days after it was made, unless passed to the
+  police, who are therefore a possible recipient; and that it outlives account deletion, both ways —
+  without the ids of the people involved, but with the reported username, display name and letter
+  text, and with the note the reporter wrote. If removed accounts are kept banned (see "Handling a
+  report"), it must say that too, and for how long.
 - **The privacy policy must name Switzerland as the hosting location.** The Supabase project is
   in Zurich (`eu-central-2`), which is outside the EU. The transfer is lawful under the
   Commission's January 2024 adequacy decision for Switzerland, but Art. 13 requires telling users

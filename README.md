@@ -59,6 +59,10 @@ npm start
 
 Then scan the QR code with Expo Go, or press `i` / `a` for a simulator.
 
+A build anyone else will use also needs `EXPO_PUBLIC_CONTACT_URL` and
+`EXPO_PUBLIC_PRIVACY_POLICY_URL` in `.env` (see `.env.example`); without them the Contact and
+Privacy policy buttons are hidden.
+
 ### The Supabase project
 
 The app needs its schema in your Supabase project. Once, after creating the project:
