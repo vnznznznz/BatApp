@@ -422,8 +422,8 @@ includes hosted and local Supabase and excludes PGlite and plain CI Postgres.
 
 Every function the app reads through first runs the same delivery for the caller. Correctness
 therefore never depends on the schedule: if pg_cron stopped, letters would still be readable and
-bats home on time, the moment anybody involved looked. The worker makes delivery timely - which
-push notifications will need - not correct.
+bats home on time, the moment anybody involved looked. The worker makes delivery timely, not
+correct.
 
 The two modes lock differently, and the first version got this wrong. The worker uses `skip locked`
 so overlapping runs divide the work. The per-caller path originally did too, and the end-to-end run
@@ -452,6 +452,8 @@ so while it applies.
 
 **Trade-off:** someone who genuinely moves waits a day before their letters fly from the new place.
 For an app whose letters take hours anyway, that is in character.
+
+**Confirmed** by the operator on 2 November 2026.
 
 ### Nothing reads the bats table directly
 
@@ -494,6 +496,10 @@ before bats - opposite orders, which review reproduced as deadlocks three ways (
 its sender deletes their account, a send to someone deleting theirs, two friends deleting at once).
 Postgres broke each by failing one side, so nothing was corrupted, but a request failed or a minute
 of the worker's landings rolled back.
+
+**Confirmed** by the operator on 2 November 2026. One exception came with Phase 13a: a report keeps
+its own copy of a reported letter for up to 180 days, deleted account or not - see "A report keeps a
+copy, and outlives both accounts" below.
 
 ### Client: three small hooks, no query library
 
@@ -555,6 +561,99 @@ now runs the file through `babel-preset-expo` and asserts both values are inline
 `process.env` remains. The URL check also accepts plain http for loopback and private-network
 addresses, so the app can run against `npx supabase start` - from a phone too.
 
+## Phase 13a - blocking and reporting
+
+Apple's Guideline 1.2 makes both a condition of review for any app with user-generated content. They
+are built like the rest of the API: `public.blocks` and `public.reports` have row level security
+forced, no policies and no grants, and are reached only through `block_courier`, `unblock_courier`,
+`list_blocked`, `report_letter` and `report_courier`
+([`20261102120000_safety.sql`](../supabase/migrations/20261102120000_safety.sql)).
+
+### A block is one-sided and silent
+
+A block ends whatever was between the two - a friendship, or a request either way - so the blocked
+courier no longer sees the blocker's city. Letters then stop both ways, because letters only travel
+between friends, and the blocked courier cannot ask again.
+
+They are never told. Asking to be friends with someone who has blocked you is refused with the
+unknown-username refusal, message and all, so a block looks exactly like a deleted account. Their
+own letters land, as far as they can see, the way letters always land: the app has no read receipts
+to withhold. The blocker, by contrast, is told plainly why they cannot ask someone they have blocked.
+
+**Rejected:** telling the blocked person, or a softer "this courier is not accepting requests". Both
+announce the block to the person most likely to react badly to it.
+
+### Hidden, not deleted
+
+Letters from a blocked courier - those already received, and any still in the air - are left out of
+the inbox, the unread count and `read_message` for as long as the block stands, and come back when it
+is lifted. Deleting them instead would make a block irreversible, would delete the evidence a report
+might need, and would change what the sender sees in their own sent list, which would give the block
+away. A letter still in the air when the block is made lands as usual and its bat comes home; only
+the blocker stops seeing it.
+
+Unblocking does not restore the friendship. Being friends again takes a new request and a yes, as it
+did the first time.
+
+### A request and a block take the same lock
+
+A block sweeps away the pair's friendship rows; a request inserts one. Run at the same moment, the
+sweep cannot see a row whose insert has not committed, and a request from someone already blocked
+would survive in the blocker's list. Both therefore take a transaction-scoped advisory lock on the
+pair first (`private.lock_pair`), and decide only once they hold it. Two real-Postgres tests hold one
+side's transaction open while the other arrives, in each order; each fails when the lock is removed
+from either function. `accept_friend` needs no lock: an update and a delete of the same row already
+serialise.
+
+### A report keeps a copy, and outlives both accounts
+
+A report stores what it is about as it was: the courier's username and display name, and for a
+letter its text and when it was sent. Without the copy, a report would point at nothing as soon as
+the letter went - and letters go from both sides when either person deletes their account, so
+deleting an account would be a way to take back a threat along with the only copy of it. The
+reporter and the reported courier are referenced with `on delete set null`, so the report survives
+either account without the ids.
+
+Reports are for the operator only. No API role can read the table, not even the reporter, and the
+reported courier is never told who reported them.
+
+**Trade-off:** the reported text outlives the sender's own deletion request, for at most 180 days.
+That is the narrow case Art. 17(3)(e) and legitimate interest (Art. 6(1)(f)) exist for: handling
+abuse, and keeping what a victim might need. The privacy policy has to say so, and the account
+deletion dialog does.
+
+### Limits, and how long reports are kept
+
+- A reason from a fixed list (`REPORT_REASONS`), a note of at most 500 characters, at most 20
+  reports per courier per day, one report per letter, and one open report per courier. A repeated
+  report is not an error: it returns `already_reported` and changes nothing, except that "also
+  block" still blocks.
+- Reports are deleted 180 days after they were made, by a pg_cron job
+  (`private.forget_old_reports`, daily at 03:17). As with delivery, the job is scheduled only where
+  pg_cron exists.
+- The numbers live in `src/constants/config.ts` and the migration, and a parity test fails if they
+  drift apart.
+
+### Reporting blocks by default
+
+"Also block" is on when the report screen opens. Someone reporting a letter almost always wants it to
+stop, and a report alone changes nothing they can see until the operator acts. It can be turned off,
+for a report about someone the reporter still wants to hear from.
+
+### The house rules live outside the signed-in group
+
+`/rules` has to be readable from the sign-up form, before an account exists, and from the profile.
+It is the one route outside `(app)` that the root guard lets a signed-in courier stay on. Creating an
+account agrees to the rules, and the form says so beside the button - the zero-tolerance terms App
+Review asks of apps with user content.
+
+### A row's text may open it, beside its actions
+
+Friends' rows have actions (Write, Remove, Accept, Decline), and a row with actions could not itself
+be pressable: VoiceOver treats a pressable row as a single element and cannot reach a button inside
+it. To make a courier's page reachable from their name, `ListRow` now makes only the text a button,
+beside the actions rather than around them, at any text size.
+
 ## Deferred to later phases
 
 Recorded here so the reasoning is not lost between phases.
@@ -565,9 +664,10 @@ Recorded here so the reasoning is not lost between phases.
 - ~~**Delivery time algorithm** (Phase 8).~~ Built: see "Delivery time lives in SQL" above.
 - ~~**Scheduled delivery** (Phase 9).~~ Built: pg_cron calling a SQL function directly; see
   "Delivery: a worker, and every read" above.
-- **Push notifications** (Phase 10). The worker is where a landing becomes known. The push itself
-  needs an HTTP call to Expo's service, which SQL should not make inline: the expected shape is
-  the worker recording landings in an outbox table that `pg_net` or an Edge Function drains, so a
-  failed push can be retried without touching the letter's state - which is the Phase 10 test.
+- ~~**Push notifications** (Phase 10).~~ Dropped by the operator's decision on 2 November 2026:
+  the app has no push notifications. A letter lands on schedule either way; its recipient sees it
+  the next time they open the app. Kept for the record, should that ever change: the worker is
+  where a landing becomes known, and the push should go through an outbox table that `pg_net` or
+  an Edge Function drains, so that a failed push can be retried without touching the letter.
 - **Nocturnal delivery.** Still undecided (see the roadmap). It would change only
   `private.flight_duration`, which is why that function takes nothing but a distance.

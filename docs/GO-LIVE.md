@@ -11,53 +11,55 @@ with Phases 2–14, not when the code is finished.
 
 ## Readiness checklist
 
-Where this actually stands, as of Phase 11 of 18. The four groups below are independent and
+Where this actually stands, as of Phase 13a of 18 (2 November 2026). The four groups below are independent and
 have different owners, so they can proceed in parallel — and two of them have lead times that
 make starting late expensive.
 
-### A. The application — the product works; four phases stand between it and review
+### A. The application — the product works; what remains is polish and checking
 
 You can sign up, choose a city, ask friends by username, send letters that fly the real distance,
 watch bats come home, and read what has landed. Delivery is decided by the database and runs on
 pg_cron; every product rule is enforced server-side and tested, including the reservation race
 against a real Postgres.
 
-| Phase | What it adds           | Why it blocks go-live                                      |
-| ----- | ---------------------- | ---------------------------------------------------------- |
-| 10    | Push notifications     | **Needs a paid Apple account** for a development build     |
-| 12    | Bat flight animation   | Decorative, and the last thing that should be built        |
-| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains   |
-| 13a   | Safety and moderation  | **App Review rejects a chat app without report and block** |
-| 14    | Testing                | Mostly done in passing; device testing remains             |
+| Phase | What it adds           | Where it stands                                                  |
+| ----- | ---------------------- | ---------------------------------------------------------------- |
+| 10    | Push notifications     | **Dropped** by decision, 2 November 2026                         |
+| 12    | Bat flight animation   | Decorative, and the last thing that should be built              |
+| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains         |
+| 13a   | Safety and moderation  | **Done**: report, block, house rules - what App Review looks for |
+| 14    | Testing                | Mostly done in passing; testing on real devices remains          |
 
-Without push, a letter that lands is seen the next time its recipient opens the app. That is
-usable among friends who know to look, and it is not what the product should finally be.
+There are no push notifications, by the operator's choice: a letter that lands is seen the next
+time its recipient opens the app. Push would not have cost anything itself - Expo's push service,
+APNs and FCM are free - but it needs a development build, so dropping it also means the whole app
+runs in Expo Go.
 
 ### B. Accounts and services — yours, and two have lead times
 
-| Item                              | Cost      | Status          | Blocks                                 |
-| --------------------------------- | --------- | --------------- | -------------------------------------- |
-| Supabase project in Zurich        | free tier | **not created** | everything — the app cannot run at all |
-| Custom SMTP (Resend/Postmark/SES) | free tier | not started     | any second user; password reset        |
-| Apple Developer Program           | €99/year  | not started     | Phase 10, and Phases 15–17             |
-| Expo account for EAS builds       | free tier | not started     | Phases 15–16                           |
-| Google Play Console               | $25 once  | not started     | Android only; skip if iOS-only         |
+| Item                              | Cost      | Status          | Blocks                                           |
+| --------------------------------- | --------- | --------------- | ------------------------------------------------ |
+| Supabase project in Zurich        | free tier | **not created** | everything — see "Setting up the hosted project" |
+| Custom SMTP (Resend/Postmark/SES) | free tier | not started     | any second user; password reset                  |
+| Apple Developer Program           | €99/year  | not started     | Phases 15–17: any install beyond Expo Go         |
+| Expo account for EAS builds       | free tier | not started     | Phases 15–16                                     |
+| Google Play Console               | $25 once  | not started     | Android only; skip if iOS-only                   |
 
 **Apple enrolment is the longest pole.** Individual identity verification takes days to weeks, and
-it gates push notifications in Phase 10 — not just the final build. Starting it now costs nothing
-but €99 and removes it from the critical path.
+it gates every build that is not Expo Go — TestFlight included. It is also the only unavoidable
+cost on the iOS side; nothing in the app itself costs money.
 
-### C. Compliance artifacts — none of these exist yet
+### C. Compliance artifacts — one exists so far
 
-| Item                              | Required by                    | Notes                                                                                             |
-| --------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | Needed in App Store Connect **and** linked in-app. Must name Switzerland as the hosting location. |
-| Support URL                       | Apple 1.2                      | Published contact route                                                                           |
-| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                      |
-| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | For user-generated content                                                                        |
-| App Privacy "nutrition label"     | App Store Connect              | Answered per data type collected                                                                  |
-| Age rating questionnaire          | App Store Connect              | Mandatory since 31 Jan 2026; blocks submission if incomplete                                      |
-| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                      |
+| Item                              | Required by                    | Notes                                                                                                                                  |
+| --------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | Needed in App Store Connect **and** linked in-app. Must name Switzerland as the hosting location, and say what a report keeps (below). |
+| Support URL                       | Apple 1.2                      | Published contact route                                                                                                                |
+| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                                                           |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                       |
+| App Privacy "nutrition label"     | App Store Connect              | Answered per data type collected                                                                                                       |
+| Age rating questionnaire          | App Store Connect              | Mandatory since 31 Jan 2026; blocks submission if incomplete                                                                           |
+| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                                                           |
 
 Account deletion is already built and tested, which is the one item on Apple's list that is code
 rather than paperwork.
@@ -65,7 +67,7 @@ rather than paperwork.
 ### D. Build and distribution plumbing — not started
 
 - `eas.json` does not exist. Build profiles for development, preview and production.
-- EAS project link, plus credentials: an APNs key for iOS push, FCM for Android.
+- EAS project link, plus signing credentials. No APNs key or FCM project: there is no push.
 - First TestFlight upload, and Beta App Review on the first build of each version.
 - Automation for the **90-day TestFlight expiry**. Worth setting up with the first build rather
   than rediscovering it a quarter later when the app dies on everyone's phone.
@@ -86,12 +88,12 @@ Both recorded where the work is, not only here:
 ### The shortest path to friends using it
 
 1. Create the Supabase project in Zurich, link it, push config and migrations. _(unblocks everything)_
-2. Start Apple enrolment. _(long lead time, gates Phase 10)_
+2. Start Apple enrolment. _(long lead time, gates TestFlight)_
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
    Phase 11. Push the migrations to the hosted project (`npx supabase db push`).
 4. Custom SMTP, then email confirmation on, then finish password reset.
-5. Phase 10 push, needing the Apple account from step 2.
-6. Phases 11–14, including 13a, which App Review will check.
+5. ~~Phase 10 push.~~ Dropped.
+6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
 7. Privacy policy and the rest of group C.
 8. `eas.json`, first build, TestFlight, invite the circle.
 
@@ -137,6 +139,88 @@ Review Guidelines, and 1.2 is exactly what reviewers check on a messaging app.
 Night Courier's design helps here: it is invite-only, one-to-one, and friendship-gated, so
 "block" largely already exists as "remove friend". But report, block-as-a-distinct-action and
 a contact route have to be built. **A new phase is needed** — see the roadmap change below.
+_(Built: Phase 13a.)_
+
+---
+
+## Handling a report
+
+Reports arrive in the `public.reports` table of the hosted project. Nothing announces them — there
+is no push and no email — so **look at least once a day**: Apple expects "timely responses" to
+reports, and a reviewer may file one to see what happens.
+
+**Where:** Supabase dashboard → Table Editor → schema `public` → `reports`. The open ones, oldest
+first, in the SQL editor:
+
+```sql
+select created_at, reason, reported_username, reported_display_name, letter_body, note, id
+from public.reports
+where resolved_at is null
+order by created_at;
+```
+
+Each row says who was reported (`reported_id`, plus the username and display name as they were),
+why, the reporter's note, and for a reported letter its full text (`letter_body`). The reporter is
+`reporter_id`; the person reported is never told who that was, so do not tell them.
+
+**What to do**, by how serious it is:
+
+- **Nothing breaks the rules** — mark it resolved.
+- **Serious, or repeated** — remove the account: Authentication → Users → the user → Delete user.
+  That deletes their profile, bats, friendships and every letter they sent or received, on both
+  sides; the reports about them stay, without their id.
+- **Somewhere in between** — the reporter has usually blocked them already (the report screen does
+  that by default). A warning has to go by email, from the address on their account.
+
+To keep someone from signing in again with the same account without deleting it (for example while
+deciding):
+
+```sql
+update auth.users set banned_until = now() + interval '100 years' where id = '<reported_id>';
+```
+
+Then record the outcome, so the report leaves the queue:
+
+```sql
+update public.reports
+set resolved_at = now(), resolution = 'account removed'   -- or 'no action', 'warned', ...
+where id = '<report id>';
+```
+
+Reports delete themselves 180 days after they were made (a daily pg_cron job). If one is needed for
+longer — handed to the police, say — export it first.
+
+---
+
+## Setting up the hosted project
+
+What a session with access does, so the steps do not depend on anyone remembering them. It needs a
+Supabase personal access token (dashboard → Account → Access Tokens) stored in the cloud
+environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and network access to
+`api.supabase.com` and `*.supabase.co`. Revoke the token afterwards.
+
+1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan,
+   in the operator's organisation (`npx supabase orgs list`), with a generated database password
+   that goes to the operator, not into the repository:
+   `npx supabase projects create night-courier --org-id <org> --region eu-central-2 --db-password <password>`.
+2. **Link and push the auth settings:** `npx supabase link --project-ref <ref>`, then
+   `npx supabase config push`. This applies `supabase/config.toml`, including **email confirmation
+   off** — until custom SMTP exists, Supabase's own mailer reaches nobody but the operator, so with
+   confirmation on a friend's sign-up would never complete (see "Before a second person can sign up"
+   above).
+3. **Apply the migrations:** `npx supabase db push`. It needs a direct Postgres connection; where
+   the network allows only HTTPS, run each file in `supabase/migrations` in order through the
+   Management API instead (`POST /v1/projects/<ref>/database/query`) and record each version in
+   `supabase_migrations.schema_migrations`, so that a later `db push` skips them. The seed file is
+   for the local stack only — never run it here.
+4. **Check it:** `select jobname, schedule from cron.job` shows `deliver-due-messages` and
+   `forget-old-reports`; `select count(*) from public.cities` is 4,310; and
+   `select time_multiplier from private.flight_settings` is 1.
+5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
+   `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
+   key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git.
+6. **Try it:** sign up two accounts, choose cities, become friends, send a letter, watch it land;
+   report it and check the row in `public.reports`; then delete both test accounts.
 
 ---
 
@@ -213,12 +297,8 @@ You do not need a developer account to start. Three options, in the order they a
 ### 1. Expo Go — free, instant, no Mac (do this one)
 
 Run `npm start` and scan the QR code with the camera. The app runs on your iPhone in seconds,
-reloads as the code changes, and costs nothing. This covers Phases 1–9, 11 and 12.
-
-The one gap is **push notifications (Phase 10)**, which need a development build rather than
-Expo Go, and a development build needs a paid account for signing. Expo removed Android push
-from Expo Go in SDK 53 and iOS support has been in flux since — re-check the current state when
-Phase 10 arrives rather than assuming either way.
+reloads as the code changes, and costs nothing. With push notifications dropped, that is the whole
+app: nothing in it needs a development build.
 
 ### 2. Free Apple personal team — works, but painful
 
@@ -258,11 +338,12 @@ is the cleaner foundation.
 ### This week — these gate later phases
 
 1. **Enrol in the Apple Developer Program** (€99/yr). Individual enrolment identity verification
-   can take days to weeks. This gates Phase 10 — push notifications need an APNs key — as well
-   as Phases 15–16. It is the longest pole; start it first.
+   can take days to weeks. This gates Phases 15–16 — every build that is not Expo Go. It is the
+   longest pole; start it first.
 2. **Create the Google Play Console account** ($25 one-time).
-3. **Create the Supabase project in `eu-central-1` (Frankfurt).** This is the Phase 2 blocker and
-   a **one-way door**: the region is immutable after creation. Encryption at rest (AES-256) and
+3. **Create the Supabase project in `eu-central-2` (Zurich)** — the operator's choice; see
+   `ARCHITECTURE.md`. This is the Phase 2 blocker and a **one-way door**: the region is immutable
+   after creation. Encryption at rest (AES-256) and
    in transit is on by default. Note that Supabase Inc. is a US corporation, so region choice
    gives data _residency_, not sovereignty — transfers rest on SCCs in their DPA, which is
    appropriate for a hobby project but worth knowing.
@@ -281,12 +362,11 @@ Configure a provider under Authentication → Emails → SMTP Settings (Resend, 
 have free tiers large enough for this app), which also lifts the cap to 30 messages per hour, and
 then turn email confirmation on. Both are dashboard settings, not code.
 
-### Before Phase 10 (push)
+### Push notifications: none
 
-Keep the notification content-free, as already specified — "A bat has arrived 🦇", body fetched
-from the EU backend on open. APNs is US-operated and every payload transits it, so a content-free
-push keeps message text out of a US processor, shrinks the App Privacy declaration, and leaves
-the door open to end-to-end encryption later.
+Decided on 2 November 2026. Should that ever be revisited, keep the notification content-free —
+"A bat has arrived 🦇", body fetched from the backend on open. APNs is US-operated and every payload
+transits it, so a content-free push keeps message text out of a US processor.
 
 ### Before first submission
 
@@ -295,7 +375,12 @@ the door open to end-to-end encryption later.
 - **In-app account deletion** (Guideline 5.1.1(v), in force since 30 June 2022). Deactivation is
   not sufficient. Already in the plan for Phase 2 — build it as a real hard delete, which also
   satisfies GDPR Art. 17.
-- **Report, block, and a contact route** — the new Phase 13a below.
+- ~~**Report, block, and a contact route**~~ — built in Phase 13a. The report form is the in-app
+  route to the operator; the store listing still needs its support URL (below).
+- **The privacy policy must cover reports**: that a report goes to the operator with a copy of
+  what was reported, that the reported person is not told who reported them, that it is kept for
+  180 days and then deleted, and that it outlives account deletion — without the ids of the people
+  involved, but with the reported username, display name and letter text.
 - **The privacy policy must name Switzerland as the hosting location.** The Supabase project is
   in Zurich (`eu-central-2`), which is outside the EU. The transfer is lawful under the
   Commission's January 2024 adequacy decision for Switzerland, but Art. 13 requires telling users
@@ -332,11 +417,11 @@ Phase 13a is inserted, because App Review will reject a messaging app without it
 ## Sequence
 
 ```
-now ─────────────────────────────────────────────► Apple enrolment (slow, gates Phase 10)
+now ─────────────────────────────────────────────► Apple enrolment (slow, gates TestFlight)
 now ─────────────────────────────────────────────► Play Console account
-now ─────────────────────────────────────────────► Supabase project, eu-central-1  ← gates Phase 2
+now ─────────────────────────────────────────────► Supabase project, eu-central-2  ← gates Phase 2
                 Phases 2 ──────────────────► 13
-                                             Phase 13a  safety and moderation
+                                             Phase 13a  safety and moderation (done)
                                              Phase 14   testing
                                              Phase 15   EAS production builds
                                              Phase 16   TestFlight + Play internal

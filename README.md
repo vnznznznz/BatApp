@@ -22,6 +22,9 @@ the build.
 - No read receipts, no typing indicators, no online status, no public profiles, no feeds.
 - A new city takes a day to become where your bats fly from. Otherwise anyone could borrow a
   friend's city for one short flight and move straight back - choosing their own delivery time.
+- Anyone can be blocked, at any time, and is never told. A block ends the friendship and hides
+  their letters; a report goes to the people who run the service, never to the person reported.
+- No push notifications: what has landed is there the next time you open the app.
 
 ## Status
 
@@ -31,8 +34,11 @@ delivery time decided by the database, three bats that are really three, and no 
 Phases 1–9 and 11 are done; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when,
 and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the decisions and why.
 
-Not built yet: push notifications (Phase 10 - until then, open the app to see what has landed), the
-flight animation (12), and report/block (13a, required before App Store review).
+Reporting and blocking are built (13a, which App Review checks), with house rules that every new
+account agrees to; operators, see "Handling a report" in [`docs/GO-LIVE.md`](docs/GO-LIVE.md). There
+are no push notifications, by decision. Not built yet: the flight animation (12). Not done yet: the
+hosted Supabase project (see "Setting up the hosted project" in GO-LIVE), and testing on real
+devices.
 
 ## Requirements
 
@@ -134,7 +140,7 @@ src/
   app/          Expo Router routes. Files here are URLs.
   components/   Design-system primitives: Screen, Text, Button, Card, ListRow, Badge, ...
   constants/    Product invariants (config.ts) and the design tokens (theme.ts)
-  features/     One folder per domain - auth, profile, cities, roost, friends, messages - each
+  features/     One folder per domain - auth, profile, cities, roost, friends, messages, safety - each
                 with the calls it makes and the types it maps them to
   lib/          Framework-level helpers: the Supabase client, data hooks, formatting, errors
   tests/        Screen tests (never under app/, where every file is a route) and db/, the

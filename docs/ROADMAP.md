@@ -17,15 +17,21 @@ See [`GO-LIVE.md`](GO-LIVE.md).
 | 7   | Atomic bat reservation          | **Done** |
 | 8   | Delivery calculation            | **Done** |
 | 9   | Scheduled delivery worker       | **Done** |
-| 10  | Push notifications              | Next     |
+| 10  | Push notifications              | Dropped  |
 | 11  | Inbox and message detail        | **Done** |
 | 12  | Bat flight animation            | Planned  |
 | 13  | Security and RLS audit          | Started  |
-| 13a | Safety and moderation           | Planned  |
+| 13a | Safety and moderation           | **Done** |
 | 14  | Testing                         | Planned  |
 | 15  | iOS/Android production builds   | Planned  |
 | 16  | TestFlight / Play internal test | Planned  |
 | 17  | Production release              | Planned  |
+
+Phase 10 is dropped by the operator's decision of 2 November 2026: Night Courier has no push
+notifications. Nothing about delivery depends on them - the database lands every letter on
+schedule - so a letter is simply seen the next time its recipient opens the app, where the roost,
+the badges and the letters list show what has arrived. It also removes the one thing Expo Go could
+not run, so the app can be tried on a phone without a development build.
 
 ## Phase 1 — Project foundation (done)
 
@@ -170,8 +176,8 @@ code, all fixed and each with a test that fails without the fix:
 - **A local Supabase stack could not be used.** The URL check refused plain http outright; it now
   accepts http for loopback and private-network addresses only.
 
-Not built, by design: push notifications (Phase 10 - needs a development build and a paid Apple
-account), the flight animation (12), and safety and moderation (13a, below).
+Not built, by design: the flight animation (12). Push notifications (10) were later dropped
+altogether, and safety and moderation (13a) is below.
 
 ## The tests that matter
 
@@ -192,10 +198,11 @@ possible.
 | A client cannot manipulate `delivery_at`                 | 8     | `messages.db.test.mjs`                                                |
 | The delivery worker is idempotent                        | 9     | `messages.db.test.mjs`                                                |
 | A duplicate worker run does not deliver twice            | 9     | `concurrency.pg.test.mjs` (real Postgres)                             |
-| A push failure does not corrupt message state            | 10    | not yet - Phase 10                                                    |
+| A push failure does not corrupt message state            | 10    | not applicable - Phase 10 is dropped, so there is no push             |
 | Account deletion removes or anonymises the required data | 2     | `messages.db.test.mjs`, `bats.db.test.mjs`, `friendships.db.test.mjs` |
 
-Every one of them except the push test now exists, under its own name, in `src/tests/db`. The two
+Every one of them now exists, under its own name, in `src/tests/db` - all but the push test, which
+has nothing left to test. The two
 concurrency tests run only where `DATABASE_URL` points at a real Postgres - CI provides one, and
 locally they are skipped with a message saying so.
 
@@ -210,18 +217,44 @@ Recorded rather than guessed at:
 - **Nocturnal delivery.** Bats flying only at night is the strongest theming hook available and
   is not in the current requirements. It would change the delivery formula in Phase 8, so it
   needs a decision before then, not after.
-- ~~**Message retention.**~~ Decided in Phase 6: a letter is kept until either of the two people
-  deletes their account, and then it goes from both sides - out of the recipient's inbox as well
-  as the sender's list. A per-letter "delete" for one side is not built; if it is wanted, it is a
-  hidden-for-me flag, not a deletion, since the other person still holds the letter.
+- ~~**Message retention.**~~ Decided in Phase 6, and confirmed by the operator on 2 November 2026:
+  a letter is kept until either of the two people deletes their account, and then it goes from
+  both sides - out of the recipient's inbox as well as the sender's list. A per-letter "delete" for
+  one side is not built; if it is wanted, it is a hidden-for-me flag, not a deletion, since the
+  other person still holds the letter. The one copy that outlives a deletion is a report's, for
+  at most 180 days (Phase 13a).
+- ~~**Changing city.**~~ Decided in review, and confirmed by the operator on 2 November 2026: a new
+  city takes a day (`RELOCATION_HOURS`) to become where a courier's bats fly from, so nobody can
+  borrow a friend's city for one short flight.
+- ~~**Push notifications.**~~ Dropped by the operator on 2 November 2026; see Phase 10 above.
 - ~~**Contact address for store listings.**~~ Decided: a personal postal address will be used.
   It is deliberately **not** recorded in this repository, which is public — it goes straight into
   App Store Connect and the hosted privacy policy at Phase 16. See [`GO-LIVE.md`](GO-LIVE.md).
 
-## Phase 13a — Safety and moderation
+## Phase 13a — Safety and moderation (done)
 
 Inserted after researching submission requirements: a chat app is a user-generated-content app
-under Apple Guideline 1.2, and Beta App Review checks it. Report a message or user, block a user
-as an action distinct from removing a friend, a contact route, and a EULA with a zero-tolerance
-clause. Invite-only one-to-one messaging makes the "filtering" limb easy to satisfy, but it has
-to be a deliberate documented answer rather than an omission.
+under Apple Guideline 1.2, and Beta App Review checks it. The decisions are recorded under
+"Phase 13a" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Built:
+
+- **Block**, as an act of its own rather than another word for removing a friend: from a received
+  letter, or from a courier's page (tap their name in Friends). A block ends the friendship or any
+  request between the two, stops the blocked courier asking again, and hides their letters - those
+  already received and any still in the air - until it is lifted. It is one-sided and silent: the
+  blocked courier is answered exactly as if the username did not exist. Profile → Blocked couriers
+  lists them, each with Unblock.
+- **Report** a letter or a courier, with a reason and an optional note, blocking in the same step
+  unless that is turned off. A report keeps a copy of what it is about, so it can still be judged
+  once the letter or the account is gone, and is deleted after 180 days; at most 20 a day per
+  courier. The operator reads reports in the Supabase dashboard - see "Handling a report" in
+  [`GO-LIVE.md`](GO-LIVE.md).
+- **House rules** with a zero-tolerance clause. Creating an account agrees to them, which the
+  sign-up form says beside its button, with a link; they are also in the profile.
+- **Filtering**, answered deliberately: letters only travel between two couriers who have both
+  agreed to be friends, found by exact username. There is no search, no public profile and no way to
+  write to a stranger. That gate, with report and block behind it, is the filter. There is no
+  automated scanning of letters: they are private correspondence between friends, and reading them
+  by machine would be a larger intrusion than the risk it addresses in an invite-only app.
+- **A contact route**: in the app, the report form reaches the operator. The support URL and postal
+  address for the store listing are paperwork for group C in GO-LIVE, and stay out of this
+  repository.
