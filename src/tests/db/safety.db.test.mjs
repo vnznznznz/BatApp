@@ -255,6 +255,43 @@ describe('blocking', () => {
     assert.equal(await pairRows(anna, ben), 1);
   });
 
+  /**
+   * A display name is the other person's to change, at any time, to anything:
+   * "I know where you live". Wherever the blocker still sees a blocked courier -
+   * on letters the blocker sent them, on a bat still flying to them - it would
+   * be a way to go on writing to them. (Found in review.)
+   */
+  it('keeps a blocked courier’s display name from the blocker', async () => {
+    const { anna, ben } = await friends();
+    const landed = await delivered(anna, ben, 'Landed.');
+    await send(anna, ben, 'In the air.');
+    await block(anna, ben);
+    await db.query(
+      `update public.profiles set display_name = 'I know where you live' where id = $1`,
+      [ben],
+    );
+
+    const sent = await rpc(db, anna, 'list_sent');
+    assert.deepEqual(
+      sent.map((letter) => [letter.recipient_username, letter.recipient_display_name]),
+      [
+        ['ben', null],
+        ['ben', null],
+      ],
+    );
+    const [letter] = await read(anna, landed);
+    assert.equal(letter.other_display_name, null);
+    const roost = await rpc(db, anna, 'get_roost');
+    assert.deepEqual(
+      roost.filter((bat) => bat.recipient_id).map((bat) => bat.recipient_display_name),
+      [null],
+    );
+
+    // Unblocking gives the name back, whatever it now is.
+    await unblock(anna, ben);
+    assert.equal((await read(anna, landed))[0].other_display_name, 'I know where you live');
+  });
+
   it('lists the caller’s blocks, newest first, by username only', async () => {
     const anna = await createCourier(db, { name: 'anna' });
     const ben = await createCourier(db, { name: 'ben' });
@@ -441,7 +478,48 @@ describe('reporting a letter', () => {
 
     await db.query(`delete from public.reports`);
     await fill('1 hour');
-    await rejectsWithHint(reportLetter(anna, letter), 'too_many_reports');
+    assert.equal(await reportLetter(anna, letter), 'limit_reached');
+    assert.equal(await count(db, `select 1 from public.reports where message_id is not null`), 0);
+  });
+
+  /**
+   * The limit used to be a refusal, which rolled back the block the same
+   * request had asked for: someone on the end of a bad day was told to block,
+   * and the block they had just asked for had not been made. (Found in review.)
+   */
+  it('still blocks when the day’s reports are used up', async () => {
+    const { anna, ben } = await friends();
+    const letter = await delivered(ben, anna);
+    await db.query(
+      `insert into public.reports (reporter_id, reported_id, reason, reported_username, resolved_at)
+       select $1, $2, 'spam', 'ben', now() from generate_series(1, 20)`,
+      [anna, ben],
+    );
+
+    assert.equal(await reportLetter(anna, letter, { also_block: true }), 'limit_reached');
+
+    assert.deepEqual(
+      (await listBlocked(anna)).map((row) => row.courier_id),
+      [ben],
+    );
+    assert.equal(await pairRows(anna, ben), 0);
+  });
+
+  it('takes a letter again once its first report has been dealt with', async () => {
+    const { anna, ben } = await friends();
+    const letter = await delivered(ben, anna);
+    await reportLetter(anna, letter);
+    await db.query(`update public.reports set resolved_at = now(), resolution = 'no action'`);
+
+    assert.equal(await reportLetter(anna, letter, { note: 'He came to my door.' }), 'reported');
+
+    assert.deepEqual(
+      (await reports()).map((report) => [report.note, report.resolved_at === null]),
+      [
+        [null, false],
+        ['He came to my door.', true],
+      ],
+    );
   });
 });
 

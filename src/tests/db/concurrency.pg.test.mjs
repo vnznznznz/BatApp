@@ -611,6 +611,95 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.equal(await friendshipsLeft(), 0);
     });
 
+    /** Makes every row `event`ed on `table` take a moment, so that two transactions overlap. */
+    async function slowly(table, event, run) {
+      await admin.query(`
+        create function public._slowly() returns trigger language plpgsql as $$
+        begin
+          perform pg_sleep(0.3);
+          return case when tg_op = 'DELETE' then old else new end;
+        end $$;
+        create trigger _slowly before ${event} on public.${table}
+          for each row execute function public._slowly();
+      `);
+      try {
+        return await run();
+      } finally {
+        await admin.query(`
+          drop trigger _slowly on public.${table};
+          drop function public._slowly();
+        `);
+      }
+    }
+
+    /**
+     * Deleting an account takes its blocks and its reports with it, and the
+     * cascade reaches a pair's two rows in opposite orders for its two people.
+     * Two couriers who had blocked each other deleted their accounts at once
+     * and deadlocked: 8 pairs in 200 without help, every time with a pause
+     * like this one. (Found in review.)
+     */
+    for (const [label, table, event, setup] of [
+      [
+        'blocked',
+        'blocks',
+        'delete',
+        `insert into public.blocks (blocker_id, blocked_id) values ($1, $2), ($2, $1)`,
+      ],
+      [
+        'reported',
+        'reports',
+        'update',
+        `insert into public.reports (reporter_id, reported_id, reason, reported_username)
+         values ($1, $2, 'spam', 'ben'), ($2, $1, 'spam', 'anna')`,
+      ],
+    ]) {
+      it(`lets two couriers who ${label} each other delete their accounts at once`, async () => {
+        const anna = await createCourier('anna', ['Berlin', 'DE']);
+        const ben = await createCourier('ben', ['Munich', 'DE']);
+        await admin.query(setup, [anna, ben]);
+        const annaSession = await connectAs(anna);
+        const benSession = await connectAs(ben);
+
+        const outcomes = await slowly(table, event, () =>
+          Promise.allSettled([
+            annaSession.query('select public.delete_own_account()'),
+            benSession.query('select public.delete_own_account()'),
+          ]),
+        );
+
+        for (const outcome of outcomes) {
+          assert.equal(outcome.status, 'fulfilled', outcome.reason?.message);
+        }
+        const { rows } = await admin.query(`select count(*)::int as count from auth.users`);
+        assert.equal(rows[0].count, 0);
+      });
+    }
+
+    /**
+     * Counted side by side, forty reports sent at once each saw fewer than
+     * twenty and were all recorded. (Found in review.)
+     */
+    it('holds a courier to twenty reports a day however many arrive at once', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const others = [];
+      for (let i = 0; i < 25; i++) others.push(await createCourier(`other${i}`, ['Munich', 'DE']));
+      const sessions = await Promise.all(others.map(() => connectAs(anna)));
+
+      const outcomes = await Promise.all(
+        sessions.map((session, i) =>
+          session
+            .query(`select public.report_courier($1, 'spam') as outcome`, [others[i]])
+            .then((result) => result.rows[0].outcome),
+        ),
+      );
+
+      const tally = outcomes.reduce((t, o) => ({ ...t, [o]: (t[o] ?? 0) + 1 }), {});
+      assert.deepEqual(tally, { reported: 20, limit_reached: 5 });
+      const { rows } = await admin.query(`select count(*)::int as count from public.reports`);
+      assert.equal(rows[0].count, 20);
+    });
+
     it('records the same letter reported twice at once as one report', async () => {
       const anna = await createCourier('anna', ['Berlin', 'DE']);
       const ben = await createCourier('ben', ['Munich', 'DE']);

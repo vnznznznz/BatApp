@@ -11,8 +11,8 @@
 --   * whatever was between the two - a friendship, a request either way - ends,
 --     so the blocked courier no longer sees the blocker's city;
 --   * the blocked courier cannot ask again, and is answered exactly as if the
---     username did not exist, so asking gives the block away no more than a
---     deleted account would;
+--     username did not exist (what else still tells a block from a deleted
+--     account is listed under "Phase 13a" in docs/ARCHITECTURE.md);
 --   * letters from the blocked courier - those already received, and any still
 --     in the air - are hidden from the blocker while the block stands. They are
 --     not deleted: the bat that carried one still comes home, and unblocking
@@ -20,11 +20,15 @@
 --
 -- Nothing tells the blocked courier. Their letters land, as far as they can
 -- tell, the way letters always land: the app never says whether one was read.
+-- And their display name - theirs to change at any time, to anything - stops
+-- reaching the blocker: wherever the blocker still sees them, on letters the
+-- blocker sent them, they are their username.
 --
 -- Reports go to the operator, who reads them in the Supabase dashboard (see
 -- docs/GO-LIVE.md). A report keeps a copy of what it is about - the letter's
 -- text, the courier's names as they were - so that it can still be judged once
--- the letter is gone or the names have changed. Reports are kept for 180 days.
+-- the letter is gone or the names have changed. Reports are deleted 180 days
+-- after they were made.
 
 /* -------------------------------------------------------------------------- */
 /* Blocks                                                                      */
@@ -96,9 +100,11 @@ create table public.reports (
 comment on table public.reports is
   'Reports of letters and couriers, for the operator. Written only through report_letter and report_courier; read in the dashboard. Deleted 180 days after they were made.';
 
--- Reporting a letter again changes nothing.
+-- Reporting a letter again while the first report is open changes nothing. Once
+-- the operator has dealt with it, the letter can be reported again - with
+-- something new to say, say, when the first answer was "no action".
 create unique index reports_letter_once on public.reports (reporter_id, message_id)
-  where message_id is not null;
+  where message_id is not null and resolved_at is null;
 
 -- Nor does reporting a courier again while the first report is still open.
 create unique index reports_courier_once on public.reports (reporter_id, reported_id)
@@ -223,26 +229,36 @@ begin
 end;
 $$;
 
-create or replace function private.check_report_rate(reporter uuid)
-returns void
+-- Whether the reporter has used up the day's reports. Answered rather than
+-- raised: a refusal would roll back the block that the same request may also
+-- have asked for, and the block matters more than the report.
+--
+-- Reports by the same courier are counted one request at a time, under a lock
+-- held until the request's transaction ends: counted side by side, forty
+-- requests sent at once would each see nineteen and all be recorded. (Found in
+-- review.) Volatile, so that the count is taken after the lock is held rather
+-- than from a snapshot taken while waiting for it.
+create or replace function private.over_report_limit(reporter uuid)
+returns boolean
 language plpgsql
-stable
+volatile
 set search_path = ''
 as $$
 begin
-  if (
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('report-limit:' || over_report_limit.reporter::text, 0)
+  );
+
+  return (
     select count(*)
     from public.reports r
-    where r.reporter_id = check_report_rate.reporter
+    where r.reporter_id = over_report_limit.reporter
       and r.created_at > now() - interval '1 day'
-  ) >= private.reports_per_day() then
-    raise exception 'too many reports in a day'
-      using errcode = 'P0001', hint = 'too_many_reports';
-  end if;
+  ) >= private.reports_per_day();
 end;
 $$;
 
--- Run daily by pg_cron, below. Returns how many went.
+-- Run hourly by pg_cron, below. Returns how many went.
 create or replace function private.forget_old_reports()
 returns integer
 language sql
@@ -262,7 +278,7 @@ revoke all on function private.block(uuid, uuid) from public, anon, authenticate
 revoke all on function private.report_retention() from public, anon, authenticated;
 revoke all on function private.reports_per_day() from public, anon, authenticated;
 revoke all on function private.check_report(text, text) from public, anon, authenticated;
-revoke all on function private.check_report_rate(uuid) from public, anon, authenticated;
+revoke all on function private.over_report_limit(uuid) from public, anon, authenticated;
 revoke all on function private.forget_old_reports() from public, anon, authenticated;
 
 /* -------------------------------------------------------------------------- */
@@ -335,7 +351,15 @@ $$;
 /* -------------------------------------------------------------------------- */
 
 -- Reports a letter the caller received, and blocks its sender if asked to.
--- 'reported', or 'already_reported' if the caller had reported it before.
+-- Answers what happened to the report:
+--
+--   'reported'          it is with the operator
+--   'already_reported'  an earlier report of the same letter by the caller is
+--                       still open, so nothing was added
+--   'limit_reached'     the caller has made private.reports_per_day() reports in
+--                       the last day; this one was not recorded
+--
+-- The block, when asked for, is made whatever the answer.
 --
 -- Only a letter that has landed for the caller can be reported by them - what
 -- they have read, nothing else - and any other letter is refused exactly as
@@ -374,14 +398,17 @@ begin
   from public.profiles p
   where p.id = letter.sender_id;
 
-  if not exists (
+  if exists (
     select 1
     from public.reports r
     where r.reporter_id = caller
       and r.message_id = letter.id
+      and r.resolved_at is null
   ) then
-    perform private.check_report_rate(caller);
-
+    outcome := 'already_reported';
+  elsif private.over_report_limit(caller) then
+    outcome := 'limit_reached';
+  else
     begin
       insert into public.reports (
         reporter_id, reported_id, message_id, reason, note,
@@ -407,8 +434,8 @@ end;
 $$;
 
 -- Reports a courier - a request from a stranger, a name chosen to hurt - and
--- blocks them if asked to. 'reported', or 'already_reported' while an earlier
--- report of the same courier by the caller is still open.
+-- blocks them if asked to. Answers as report_letter does; 'already_reported'
+-- means an earlier report of the same courier by the caller is still open.
 create or replace function public.report_courier(
   courier_id uuid,
   reason text,
@@ -440,7 +467,7 @@ begin
       using errcode = 'P0001', hint = 'courier_not_found';
   end if;
 
-  if not exists (
+  if exists (
     select 1
     from public.reports r
     where r.reporter_id = caller
@@ -448,8 +475,10 @@ begin
       and r.message_id is null
       and r.resolved_at is null
   ) then
-    perform private.check_report_rate(caller);
-
+    outcome := 'already_reported';
+  elsif private.over_report_limit(caller) then
+    outcome := 'limit_reached';
+  else
     begin
       insert into public.reports (
         reporter_id, reported_id, reason, note, reported_username, reported_display_name
@@ -636,7 +665,9 @@ end;
 $$;
 
 -- As before, except that a letter from someone the caller has blocked is
--- refused like any letter that is not theirs to read, and is not marked opened.
+-- refused like any letter that is not theirs to read, and is not marked opened;
+-- and a letter the caller sent to someone they have blocked names them by
+-- username alone.
 create or replace function public.read_message(message_id uuid)
 returns table (
   id uuid,
@@ -678,7 +709,7 @@ begin
       case when m.sender_id = caller then 'sent' else 'received' end,
       other.id,
       other.username,
-      other.display_name,
+      case when not private.has_blocked(caller, other.id) then other.display_name end,
       origin.name,
       origin.country_code,
       destination.name,
@@ -708,6 +739,119 @@ begin
     raise exception 'no such letter'
       using errcode = 'P0001', hint = 'message_not_found';
   end if;
+end;
+$$;
+
+-- As before (see the reading migration), except that a bat flying to someone
+-- the caller has blocked names them by username alone: a display name is theirs
+-- to change, and a block must not leave them a way to put words in front of the
+-- blocker.
+create or replace function public.get_roost()
+returns table (
+  bat_id uuid,
+  slot smallint,
+  status text,
+  message_id uuid,
+  recipient_id uuid,
+  recipient_username text,
+  recipient_display_name text,
+  sent_at timestamptz,
+  deliver_at timestamptz,
+  distance_km double precision
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := private.caller();
+begin
+  perform private.deliver_due_messages(caller);
+
+  return query
+    select
+      b.id,
+      b.slot,
+      b.status,
+      m.id,
+      r.id,
+      r.username,
+      case when not private.has_blocked(caller, r.id) then r.display_name end,
+      m.sent_at,
+      m.deliver_at,
+      m.distance_km
+    from public.bats b
+    left join public.messages m
+      on m.bat_id = b.id
+     and m.delivered_at is null
+    left join public.profiles r
+      on r.id = m.recipient_id
+    where b.owner_id = caller
+    order by b.slot;
+end;
+$$;
+
+-- As before, with the same rule for the names on letters the caller sent.
+create or replace function public.list_sent(
+  max_results integer default 50,
+  older_than uuid default null
+)
+returns table (
+  message_id uuid,
+  recipient_id uuid,
+  recipient_username text,
+  recipient_display_name text,
+  destination_city_name text,
+  destination_country_code text,
+  distance_km double precision,
+  sent_at timestamptz,
+  deliver_at timestamptz,
+  delivered boolean,
+  preview text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := private.caller();
+  after_at timestamptz;
+  after_id uuid;
+begin
+  perform private.deliver_due_messages(caller);
+
+  if list_sent.older_than is not null then
+    select c.sent_at, c.id into after_at, after_id
+    from public.messages c
+    where c.id = list_sent.older_than
+      and c.sender_id = caller;
+
+    if not found then
+      raise exception 'the letter this page continues from is gone'
+        using errcode = 'P0001', hint = 'cursor_not_found';
+    end if;
+  end if;
+
+  return query
+    select
+      m.id,
+      r.id,
+      r.username,
+      case when not private.has_blocked(caller, r.id) then r.display_name end,
+      destination.name,
+      destination.country_code,
+      m.distance_km,
+      m.sent_at,
+      m.deliver_at,
+      m.delivered_at is not null,
+      left(m.body, 200)
+    from public.messages m
+    join public.profiles r on r.id = m.recipient_id
+    join public.cities destination on destination.id = m.destination_city_id
+    where m.sender_id = caller
+      and (after_id is null or (m.sent_at, m.id) < (after_at, after_id))
+    order by m.sent_at desc, m.id desc
+    limit least(greatest(coalesce(list_sent.max_results, 50), 1), 100);
 end;
 $$;
 
@@ -743,6 +887,62 @@ end;
 $$;
 
 /* -------------------------------------------------------------------------- */
+/* Account deletion, now with blocks and reports to lock                       */
+/* -------------------------------------------------------------------------- */
+
+-- As before (see the messages migration), with two more steps before the
+-- cascade. Deleting an account deletes its blocks, both ways, and clears its id
+-- from reports, both ways - and the cascade reaches each pair's two rows in
+-- opposite orders for the two people. Two couriers who had blocked or reported
+-- each other, deleting their accounts at the same moment, would each hold one
+-- row and wait for the other's. (Found in review: 8 pairs in 200 deadlocked.)
+-- Taking every such row first, in one order for everyone, makes the second
+-- deletion wait for the first instead.
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := auth.uid();
+begin
+  if caller is null then
+    raise exception 'not authenticated' using errcode = '28000';
+  end if;
+
+  perform 1
+  from public.messages m
+  where caller in (m.sender_id, m.recipient_id)
+  order by m.deliver_at, m.id
+  for update;
+
+  perform 1
+  from public.bats b
+  where b.owner_id = caller
+  order by b.slot
+  for update;
+
+  perform 1
+  from public.blocks k
+  where caller in (k.blocker_id, k.blocked_id)
+  order by k.blocker_id, k.blocked_id
+  for update;
+
+  perform 1
+  from public.reports r
+  where caller in (r.reporter_id, r.reported_id)
+  order by r.id
+  for update;
+
+  delete from auth.users where id = caller;
+end;
+$$;
+
+revoke all on function public.delete_own_account() from public, anon;
+grant execute on function public.delete_own_account() to authenticated;
+
+/* -------------------------------------------------------------------------- */
 /* Privileges                                                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -773,9 +973,11 @@ begin
 
   create extension if not exists pg_cron;
 
+  -- Hourly rather than daily, so that a report is gone within an hour of its
+  -- 180 days rather than within a day.
   perform cron.schedule(
     'forget-old-reports',
-    '17 3 * * *',
+    '17 * * * *',
     'select private.forget_old_reports()'
   );
 end;
