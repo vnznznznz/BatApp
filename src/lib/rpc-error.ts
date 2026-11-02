@@ -1,4 +1,4 @@
-import { MESSAGE_MAX_LENGTH } from '@/constants/config';
+import { MESSAGE_MAX_LENGTH, REPORT_NOTE_MAX_LENGTH } from '@/constants/config';
 
 /**
  * Errors from the database functions, in words a person can act on.
@@ -24,6 +24,14 @@ export const REFUSALS = {
   message_not_found: 'That letter could not be found.',
   // Handled by starting the list again; the words show only if that fails too.
   cursor_not_found: 'Your letters have changed. Pull down to see them again.',
+  courier_blocked: 'You have blocked that courier. Unblock them in your profile first.',
+  courier_not_found: 'That courier could not be found.',
+  cannot_block_self: 'That is you.',
+  cannot_report_self: 'That is you.',
+  unknown_reason: 'Choose what is wrong first.',
+  note_too_long: `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`,
+  too_many_reports:
+    'You have sent a lot of reports today. Block the courier for now, and report again tomorrow.',
   try_again: 'That did not go through. Try again.',
 } as const;
 

@@ -1,4 +1,6 @@
 import { normaliseUsername } from '@/features/auth/validation';
+import { describeCity } from '@/features/cities/search';
+import { formatDay, formatFlightEstimate } from '@/lib/format';
 import { toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 
@@ -120,6 +122,28 @@ export function groupFriendships(list: readonly Friendship[]): FriendGroups {
 /** The name to show: their own, or their username until they have shared it. */
 export function friendName(friend: Pick<Friend, 'displayName' | 'username'>): string {
   return friend.displayName ?? `@${friend.username}`;
+}
+
+/**
+ * "Munich, DE · about 6h 18m by bat" - where a friend is and how long a bat
+ * takes to get there, or why that cannot be said yet.
+ */
+export function describeRoute(friendship: Friendship): string {
+  const { city } = friendship.friend;
+  if (!city) return 'Has not chosen a city yet';
+  return friendship.route
+    ? `${describeCity(city)} · ${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
+    : describeCity(city);
+}
+
+/** "Friends since today", "Asked to be friends on 2 Oct", "You asked yesterday". */
+export function describeStanding(friendship: Friendship, now: Date = new Date()): string {
+  if (friendship.status === 'accepted') {
+    return `Friends since ${formatDay(friendship.acceptedAt ?? friendship.requestedAt, now)}`;
+  }
+  return friendship.direction === 'incoming'
+    ? `Asked to be friends ${formatDay(friendship.requestedAt, now)}`
+    : `You asked ${formatDay(friendship.requestedAt, now)}`;
 }
 
 /** What `request_friend` reports, when it is not a refusal. */

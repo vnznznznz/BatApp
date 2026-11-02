@@ -25,9 +25,10 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
    * reader has turned their text size up, where beside it they would squeeze
    * the text - a requester's name - down to an ellipsis.
    *
-   * A row with actions is never itself pressable, whatever `onPress` says:
-   * VoiceOver treats a pressable row as one element, and a button inside it
-   * could not be reached at all.
+   * With actions, `onPress` makes only the text pressable - a button of its
+   * own, beside the actions - never the whole row: VoiceOver treats a
+   * pressable row as one element, and a button inside it could not be reached
+   * at all.
    */
   actions?: ReactNode;
   /** Draws the title in the heading weight, for unread or otherwise new rows. */
@@ -74,18 +75,33 @@ export function ListRow({
         ) : null}
       </View>
       {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
-      {actions && !stacked ? <View style={styles.trailing}>{actions}</View> : null}
     </>
   );
 
   if (actions) {
+    const main = onPress ? (
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.main, pressed && styles.mainPressed]}
+        {...rest}
+      >
+        {content}
+      </Pressable>
+    ) : (
+      <View style={styles.main}>{content}</View>
+    );
+
     return stacked ? (
       <View style={styles.stack}>
-        <View style={[styles.row, styles.stackedText]}>{content}</View>
+        <View style={[styles.row, styles.stackedText]}>{main}</View>
         <View style={styles.stackedActions}>{actions}</View>
       </View>
     ) : (
-      <View style={styles.row}>{content}</View>
+      <View style={styles.row}>
+        {main}
+        <View style={styles.trailing}>{actions}</View>
+      </View>
     );
   }
 
@@ -141,6 +157,18 @@ const styles = StyleSheet.create({
   },
   pressed: {
     backgroundColor: Colors.surface,
+  },
+  /** The text of a row with actions: the part that may open it. */
+  main: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    alignSelf: 'stretch',
+    borderRadius: Radius.sm,
+  },
+  mainPressed: {
+    backgroundColor: Colors.surfacePressed,
   },
   leading: {
     alignItems: 'center',

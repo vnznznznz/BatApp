@@ -10,10 +10,10 @@ import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Colors, Spacing } from '@/constants/theme';
 import { validateUsername } from '@/features/auth/validation';
-import { describeCity } from '@/features/cities/search';
 import {
   acceptFriend,
   describeRequestOutcome,
+  describeRoute,
   fetchFriendships,
   friendName,
   groupFriendships,
@@ -24,7 +24,7 @@ import {
 import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
 import { confirmAction } from '@/lib/confirm';
-import { formatFlightEstimate, formatTimestamp } from '@/lib/format';
+import { formatTimestamp } from '@/lib/format';
 import { messageOf } from '@/lib/rpc-error';
 import { useRemote } from '@/lib/use-remote';
 
@@ -111,6 +111,11 @@ export default function FriendsScreen() {
     router.push({ pathname: '/compose', params: { to: friendship.friend.id } });
   }
 
+  /** Their page: more about them, and the way to block or report them. */
+  function open(friendship: Friendship) {
+    router.push({ pathname: '/courier/[id]', params: { id: friendship.friend.id } });
+  }
+
   return (
     <Screen
       scroll
@@ -177,6 +182,8 @@ export default function FriendsScreen() {
               key={friendship.id}
               title={friendName(friendship.friend)}
               subtitle={`@${friendship.friend.username} · asked ${formatTimestamp(friendship.requestedAt)}`}
+              onPress={() => open(friendship)}
+              accessibilityHint={OPEN_HINT}
               actions={
                 <>
                   <Button
@@ -214,6 +221,8 @@ export default function FriendsScreen() {
                 title={friendName(friendship.friend)}
                 subtitle={describeFriend(friendship)}
                 detail={describeRoute(friendship)}
+                onPress={() => open(friendship)}
+                accessibilityHint={OPEN_HINT}
                 actions={
                   <>
                     <Button
@@ -248,6 +257,8 @@ export default function FriendsScreen() {
               key={friendship.id}
               title={`@${friendship.friend.username}`}
               subtitle={`Asked ${formatTimestamp(friendship.requestedAt)}`}
+              onPress={() => open(friendship)}
+              accessibilityHint={OPEN_HINT}
               actions={
                 <Button
                   label="Withdraw"
@@ -262,27 +273,23 @@ export default function FriendsScreen() {
           ))}
         </Section>
       ) : null}
+
+      {list.data && list.data.length > 0 ? (
+        <Text variant="caption" tone="muted" style={styles.section}>
+          Tap a name to see more about someone, or to block or report them.
+        </Text>
+      ) : null}
     </Screen>
   );
 }
 
 type FriendAction = (friendshipId: string) => Promise<void>;
 
+const OPEN_HINT = 'Opens their page, where you can also block or report them.';
+
 /** "@ben" - alone on its line, so a long username cannot crowd out the city. */
 function describeFriend(friendship: Friendship): string {
   return `@${friendship.friend.username}`;
-}
-
-/**
- * "Munich, DE · about 6h 18m by bat" - the line people look at, given a line of
- * its own (wrapping to two) so that a narrow screen cannot cut it off.
- */
-function describeRoute(friendship: Friendship): string {
-  const { city } = friendship.friend;
-  if (!city) return 'Has not chosen a city yet';
-  return friendship.route
-    ? `${describeCity(city)} · ${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
-    : describeCity(city);
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

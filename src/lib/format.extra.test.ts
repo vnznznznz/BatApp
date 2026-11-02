@@ -1,4 +1,4 @@
-import { formatFlightEstimate, formatTimestamp } from '@/lib/format';
+import { formatDay, formatFlightEstimate, formatTimestamp } from '@/lib/format';
 
 /**
  * Every date here is built with the local-time constructor, as the reader's
@@ -131,5 +131,26 @@ describe('formatFlightEstimate', () => {
   it('renders a placeholder for a number it cannot use', () => {
     expect(formatFlightEstimate(Number.NaN)).toBe('—');
     expect(formatFlightEstimate(Number.POSITIVE_INFINITY)).toBe('—');
+  });
+});
+
+describe('formatDay', () => {
+  const now = at(2026, 9, 31, 12, 0);
+
+  it('says "today" and "yesterday" by the calendar', () => {
+    expect(formatDay(at(2026, 9, 31, 0, 1), now)).toBe('today');
+    expect(formatDay(at(2026, 9, 30, 23, 59), now)).toBe('yesterday');
+  });
+
+  it('names an earlier day this year without the year', () => {
+    expect(formatDay(at(2026, 9, 2, 8, 0), now)).toBe('on 2 Oct');
+  });
+
+  it('adds the year for a day in another year', () => {
+    expect(formatDay(at(2025, 11, 31, 22, 0), now)).toBe('on 31 Dec 2025');
+  });
+
+  it('says nothing misleading about a date it cannot read', () => {
+    expect(formatDay(new Date('not a date'), now)).toBe('—');
   });
 });

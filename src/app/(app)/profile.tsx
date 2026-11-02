@@ -7,6 +7,7 @@ import { Card } from '@/components/card';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
+import { REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { validateDisplayName } from '@/features/auth/validation';
@@ -72,6 +73,7 @@ export default function ProfileScreen() {
       message:
         'Your profile, your bats, your friendships and every letter you have sent or received ' +
         'are removed permanently. Letters you sent disappear from your friends’ inboxes too. ' +
+        `Only a report someone made keeps its copy, for up to ${REPORT_RETENTION_DAYS} days. ` +
         'This cannot be undone.',
       confirmLabel: 'Delete',
       cancelLabel: 'Keep my account',
@@ -177,7 +179,19 @@ export default function ProfileScreen() {
         </>
       ) : null}
 
-      <View style={[styles.form, styles.account]}>
+      <View style={[styles.form, styles.divided]}>
+        <Text variant="caption" tone="secondary">
+          Safety
+        </Text>
+        <Button
+          label="Blocked couriers"
+          variant="secondary"
+          onPress={() => router.push('/blocked')}
+        />
+        <Button label="House rules" variant="ghost" onPress={() => router.push('/rules')} />
+      </View>
+
+      <View style={[styles.form, styles.divided]}>
         <Text variant="caption" tone="secondary">
           Account
         </Text>
@@ -196,7 +210,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: { paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   card: { marginTop: Spacing.lg, gap: Spacing.xs },
-  account: {
+  divided: {
     paddingTop: Spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border,

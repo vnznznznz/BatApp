@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as ReactNative from 'react-native';
 
 import { Button } from '@/components/button';
@@ -73,13 +73,35 @@ describe('ListRow', () => {
     expect(sideBySide()).toBe(false);
   });
 
-  it('is never itself a button when it has actions', async () => {
+  it('is not a button at all when it has actions and nothing to open', async () => {
     withTextScale(1);
-    await render(
-      <ListRow title="Carla Brandt" subtitle="@carla" actions={actions} onPress={jest.fn()} />,
-    );
+    await render(<ListRow title="Carla Brandt" subtitle="@carla" actions={actions} />);
 
     expect(screen.queryByRole('button', { name: /Carla Brandt/ })).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(2);
   });
+
+  /**
+   * A row that opens something and has actions too: its text becomes a button
+   * of its own, beside the actions and not around them, so that a screen
+   * reader can still reach every one of them.
+   */
+  it.each([1, 1.8])(
+    'makes only its text the button that opens it, at text scale %s',
+    async (fontScale) => {
+      withTextScale(fontScale);
+      const open = jest.fn();
+      await render(
+        <ListRow title="Carla Brandt" subtitle="@carla" actions={actions} onPress={open} />,
+      );
+
+      const opener = screen.getByRole('button', { name: /Carla Brandt/ }) as unknown as HostNode;
+      const accept = screen.getByRole('button', { name: 'Accept' }) as unknown as HostNode;
+      expect(contains(opener, accept)).toBe(false);
+      expect(screen.getAllByRole('button')).toHaveLength(3);
+
+      fireEvent.press(screen.getByRole('button', { name: /Carla Brandt/ }));
+      expect(open).toHaveBeenCalledTimes(1);
+    },
+  );
 });

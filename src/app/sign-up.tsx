@@ -131,7 +131,16 @@ export default function SignUpScreen() {
             </Text>
           ) : null}
 
+          <Text variant="caption" tone="secondary" style={styles.rules}>
+            By creating an account, you agree to the house rules: no harassment, threats, hate,
+            unwanted sexual content or spam. Accounts that break them are removed.
+          </Text>
           <Button label="Create account" loading={busy} onPress={submit} />
+          <Button
+            label="Read the house rules"
+            variant="ghost"
+            onPress={() => router.push('/rules')}
+          />
           <Button label="Back" variant="ghost" onPress={() => router.back()} />
         </View>
       </KeyboardAvoidingView>
@@ -144,4 +153,5 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: Spacing.xs },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
   confirmBody: { marginVertical: Spacing.lg },
+  rules: { lineHeight: 19 },
 });

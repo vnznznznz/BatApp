@@ -44,7 +44,11 @@ export default function RootLayout() {
 function RootNavigator() {
   const { session, isRestoring } = useAuth();
   const router = useRouter();
-  const inApp = useSegments()[0] === '(app)';
+  const segment = useSegments()[0];
+  const inApp = segment === '(app)';
+  // The house rules are read from the sign-up form and from the profile alike,
+  // so a signed-in courier may stay on them.
+  const forAnyone = segment === 'rules';
 
   useEffect(() => {
     // Holding the splash until the stored session has been read is what stops
@@ -64,10 +68,10 @@ function RootNavigator() {
   // Dismissing first leaves the roost as the only screen in the stack, so back
   // does not return to a sign-in form for an account that is signed in.
   useEffect(() => {
-    if (isRestoring || !session || inApp) return;
+    if (isRestoring || !session || inApp || forAnyone) return;
     if (router.canDismiss()) router.dismissAll();
     router.replace('/home');
-  }, [isRestoring, session, inApp, router]);
+  }, [isRestoring, session, inApp, forAnyone, router]);
 
   if (isRestoring) return null;
 

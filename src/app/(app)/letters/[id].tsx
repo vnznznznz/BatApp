@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -9,7 +9,11 @@ import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import { describeCity } from '@/features/cities/search';
 import { correspondentName, readMessage, type Letter } from '@/features/messages/messages';
+import { blockCourier } from '@/features/safety/safety';
+import { announce } from '@/lib/announce';
+import { confirmAction } from '@/lib/confirm';
 import { formatDistance, formatDuration, formatTimestamp } from '@/lib/format';
+import { messageOf } from '@/lib/rpc-error';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
@@ -28,6 +32,8 @@ export default function LetterScreen() {
   const letter = useRemote(load);
   const now = useNow(1000);
   const { reload } = letter;
+  const [blocking, setBlocking] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   const landsAt = letter.data && !letter.data.delivered ? letter.data.deliverAt.getTime() : null;
 
@@ -55,6 +61,38 @@ export default function LetterScreen() {
 
   const data = letter.data;
   const received = data.direction === 'received';
+  const handle = `@${data.other.username}`;
+
+  function confirmBlock() {
+    confirmAction({
+      title: `Block ${handle}?`,
+      message:
+        'Your friendship ends, they cannot ask to be friends again, and their letters - this ' +
+        'one too - are hidden from you. They are not told. You can unblock them later in ' +
+        'your profile.',
+      confirmLabel: 'Block',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: () => void block(),
+    });
+  }
+
+  async function block() {
+    setBlocking(true);
+    setBlockError(null);
+    try {
+      await blockCourier(data.other.id);
+      announce(`${handle} is blocked.`);
+      // The letter is hidden now; there is nothing left here to show.
+      router.back();
+    } catch (caught) {
+      const problem = messageOf(caught);
+      setBlockError(problem);
+      announce(problem);
+    } finally {
+      setBlocking(false);
+    }
+  }
 
   return (
     <Screen scroll edges={['bottom']} style={styles.screen}>
@@ -81,12 +119,45 @@ export default function LetterScreen() {
       </View>
 
       {received ? (
-        <View style={styles.actions}>
-          <Button
-            label="Write back"
-            onPress={() => router.push({ pathname: '/compose', params: { to: data.other.id } })}
-          />
-        </View>
+        <>
+          <View style={styles.actions}>
+            <Button
+              label="Write back"
+              onPress={() => router.push({ pathname: '/compose', params: { to: data.other.id } })}
+            />
+          </View>
+
+          {/* Apart from writing back, and quieter: what to do about a letter that should not
+              have been sent. */}
+          <View style={styles.safety}>
+            {blockError ? (
+              <Text variant="caption" tone="danger">
+                {blockError}
+              </Text>
+            ) : null}
+            <Button
+              label="Report this letter"
+              variant="ghost"
+              disabled={blocking}
+              onPress={() =>
+                router.push({
+                  pathname: '/report',
+                  params: {
+                    letter: data.id,
+                    courier: data.other.id,
+                    username: data.other.username,
+                  },
+                })
+              }
+            />
+            <Button
+              label={`Block ${handle}`}
+              variant="ghost"
+              loading={blocking}
+              onPress={confirmBlock}
+            />
+          </View>
+        </>
       ) : null}
     </Screen>
   );
@@ -121,4 +192,12 @@ const styles = StyleSheet.create({
   meta: { marginTop: Spacing.lg, gap: Spacing.xs },
   line: { lineHeight: 19 },
   actions: { alignSelf: 'stretch', marginTop: Spacing.xl },
+  safety: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.xl,
+    paddingTop: Spacing.md,
+    gap: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
 });

@@ -86,6 +86,23 @@ export function formatTimestamp(date: Date, now: Date = new Date()): string {
     : `${day} ${date.getFullYear()}`;
 }
 
+/**
+ * "today", "yesterday", "on 31 Oct", or "on 31 Oct 2025" - when something
+ * happened, to the day, worded to follow a verb: "Friends since today",
+ * "You asked on 31 Oct".
+ */
+export function formatDay(date: Date, now: Date = new Date()): string {
+  if (Number.isNaN(date.getTime())) return '—';
+  if (sameDay(date, now)) return 'today';
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(date, yesterday)) return 'yesterday';
+
+  const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  return date.getFullYear() === now.getFullYear() ? `on ${day}` : `on ${day} ${date.getFullYear()}`;
+}
+
 /** "about 6h 18m" — how long a bat will take, for an estimate shown before sending. */
 export function formatFlightEstimate(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '—';

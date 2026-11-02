@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { Alert } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
@@ -419,16 +419,46 @@ describe('FriendsScreen', () => {
 
     /**
      * VoiceOver treats a pressable row as a single element, so a button nested
-     * inside one can never be focused. Each action is its own button instead.
+     * inside one can never be focused. The name, which opens the friend's page,
+     * is a button of its own; each action is its own button beside it.
      */
     it('keeps each action a button of its own, reachable by a screen reader', async () => {
       serve(() => [anna]);
       await renderScreen(<FriendsScreen />);
       await screen.findByText('Anna Weber');
 
-      expect(screen.queryByRole('button', { name: /^Anna Weber/ })).toBeNull();
+      const opener = screen.getByRole('button', { name: /^Anna Weber/ });
+      expect(within(opener).queryAllByRole('button')).toHaveLength(0);
       expect(screen.getByRole('button', { name: 'Write to Anna Weber' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Remove Anna Weber' })).toBeEnabled();
+    });
+
+    it.each([
+      ['a friend', () => anna],
+      ['someone asking', () => carla],
+      ['someone the courier asked', () => dora],
+    ])('opens the page of %s from their name', async (_, who) => {
+      const friendship = who();
+      serve(() => [friendship]);
+      await renderScreen(<FriendsScreen />);
+
+      const name = friendship.friend.displayName ?? `@${friendship.friend.username}`;
+      const opener = await screen.findByRole('button', { name: new RegExp(`^${name}`) });
+      await fireEvent.press(opener);
+
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/courier/[id]',
+        params: { id: friendship.friend.id },
+      });
+    });
+
+    it('says where blocking and reporting are', async () => {
+      serve(() => [anna]);
+      await renderScreen(<FriendsScreen />);
+
+      expect(
+        await screen.findByText('Tap a name to see more about someone, or to block or report them.'),
+      ).toBeOnTheScreen();
     });
 
     it('offers no letter to a friend no bat can reach yet', async () => {
