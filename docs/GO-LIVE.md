@@ -232,7 +232,9 @@ environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and netw
    `select time_multiplier from private.flight_settings` is 1.
 5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
    `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
-   key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git.
+   key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git. Add
+   `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` once the operator has an address
+   and a hosted policy for them (see "Before first submission").
 6. **Try it:** sign up two accounts, choose cities, become friends, send a letter, watch it land;
    report it and check the row in `public.reports`; then delete both test accounts.
 

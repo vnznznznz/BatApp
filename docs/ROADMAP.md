@@ -267,3 +267,9 @@ back from a report that blocked showed the hidden letter again; nothing could be
 blocked; the app had no contact route or privacy link; and several sentences promised more than
 the code does - anonymity, deletion, what a block stops. All fixed, each with a test, and the races
 with tests that fail without their locks.
+
+Verified: 767 app tests and 226 database tests, 18 of them races run against a real Postgres; and
+the web build in Chromium against a local Supabase stack, end to end - report a letter and block its
+sender, go back without seeing it again, a blocked courier's request refused as if unknown and their
+renamed display name withheld, report from the blocked list, unblock, the house rules and the
+contact links - with no errors but the one refusal the test provokes on purpose.
