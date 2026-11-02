@@ -38,6 +38,15 @@ const DEBUG_TIME_MULTIPLIER = constant('DEBUG_TIME_MULTIPLIER');
 const RELOCATION_HOURS = constant('RELOCATION_HOURS');
 const USERNAME_MIN_LENGTH = constant('USERNAME_MIN_LENGTH');
 const USERNAME_MAX_LENGTH = constant('USERNAME_MAX_LENGTH');
+const REPORT_NOTE_MAX_LENGTH = constant('REPORT_NOTE_MAX_LENGTH');
+const REPORTS_PER_DAY = constant('REPORTS_PER_DAY');
+const REPORT_RETENTION_DAYS = constant('REPORT_RETENTION_DAYS');
+
+const REPORT_REASONS = (() => {
+  const match = CONFIG.match(/export const REPORT_REASONS = \[([^\]]*)\]/);
+  assert.ok(match, 'REPORT_REASONS not found in src/constants/config.ts');
+  return [...match[1].matchAll(/'([a-z_]+)'/g)].map((reason) => reason[1]);
+})();
 
 let db;
 
@@ -139,5 +148,59 @@ describe('the database agrees with src/constants/config.ts', () => {
 
     await assert.rejects(() => createUser(db, { username: 'c'.repeat(USERNAME_MIN_LENGTH - 1) }));
     await assert.rejects(() => createUser(db, { username: 'd'.repeat(USERNAME_MAX_LENGTH + 1) }));
+  });
+  it('on REPORT_REASONS, accepting each one and nothing else', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const couriers = [];
+    for (const reason of REPORT_REASONS) {
+      const target = await createCourier(db, {});
+      couriers.push(target);
+      await rpc(db, anna, 'report_courier', { courier_id: target, reason });
+    }
+    await rejectsWithHint(
+      rpc(db, anna, 'report_courier', { courier_id: couriers[0], reason: 'other_things' }),
+      'unknown_reason',
+    );
+
+    const { rows } = await db.query(
+      `select pg_get_constraintdef(oid) as definition from pg_constraint
+       where conname = 'reports_reason_known'`,
+    );
+    const allowed = [...rows[0].definition.matchAll(/'([a-z_]+)'/g)].map((reason) => reason[1]);
+    assert.deepEqual([...allowed].sort(), [...REPORT_REASONS].sort());
+  });
+
+  it('on REPORT_NOTE_MAX_LENGTH', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const ben = await createCourier(db, { name: 'ben' });
+    const cleo = await createCourier(db, { name: 'cleo' });
+
+    await rpc(db, anna, 'report_courier', {
+      courier_id: ben,
+      reason: 'spam',
+      note: 'n'.repeat(REPORT_NOTE_MAX_LENGTH),
+    });
+    await rejectsWithHint(
+      rpc(db, anna, 'report_courier', {
+        courier_id: cleo,
+        reason: 'spam',
+        note: 'n'.repeat(REPORT_NOTE_MAX_LENGTH + 1),
+      }),
+      'note_too_long',
+    );
+  });
+
+  it('on REPORTS_PER_DAY', async () => {
+    const { rows } = await db.query(`select private.reports_per_day() as limit`);
+
+    assert.equal(rows[0].limit, REPORTS_PER_DAY);
+  });
+
+  it('on REPORT_RETENTION_DAYS', async () => {
+    const { rows } = await db.query(
+      `select extract(epoch from private.report_retention()) / 86400 as days`,
+    );
+
+    assert.equal(Number(rows[0].days), REPORT_RETENTION_DAYS);
   });
 });

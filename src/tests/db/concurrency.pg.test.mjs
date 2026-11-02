@@ -129,8 +129,11 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
   });
 
   beforeEach(async () => {
-    await admin.query(`truncate auth.users cascade`);
+    // Connections first: a test that failed while holding a transaction open
+    // would otherwise keep its locks, and the truncate would wait on them for
+    // ever instead of the next test starting.
     await Promise.allSettled(opened.splice(0).map((client) => client.end()));
+    await admin.query(`truncate auth.users cascade`);
   });
 
   describe('the bat reservation', () => {
@@ -544,6 +547,106 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.deepEqual(outcomes.map((o) => o.rows[0].outcome).sort(), ['accepted', 'requested']);
       const { rows } = await admin.query(`select status from public.friendships`);
       assert.deepEqual(rows, [{ status: 'accepted' }]);
+    });
+  });
+
+  describe('blocking and reporting', () => {
+    /** Whether `promise` settles within `ms` - false means it is still waiting. */
+    const settlesWithin = (promise, ms) =>
+      Promise.race([
+        promise.then(
+          () => true,
+          () => true,
+        ),
+        new Promise((resolve) => setTimeout(() => resolve(false), ms)),
+      ]);
+
+    const friendshipsLeft = async () =>
+      (await admin.query(`select count(*)::int as count from public.friendships`)).rows[0].count;
+
+    /**
+     * A request still being made when a block between the same two is made. The
+     * block's sweep of their friendships cannot see a row that is not committed
+     * yet, so without waiting for it, the request would survive the block and
+     * sit in the blocker's list, from someone they had blocked.
+     */
+    it('waits for a request in progress, then ends it', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const benSession = await connectAs(ben);
+      const annaSession = await connectAs(anna);
+
+      await benSession.query('begin');
+      const asked = await benSession.query(`select public.request_friend('anna') as outcome`);
+      assert.equal(asked.rows[0].outcome, 'requested');
+
+      await annaSession.query('begin');
+      const blocking = annaSession.query(`select public.block_courier($1) as outcome`, [ben]);
+      assert.equal(await settlesWithin(blocking, 300), false, 'the block did not wait');
+
+      await benSession.query('commit');
+      assert.equal((await blocking).rows[0].outcome, 'blocked');
+      await annaSession.query('commit');
+
+      assert.equal(await friendshipsLeft(), 0);
+    });
+
+    it('refuses a request that arrives while a block is being made', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const annaSession = await connectAs(anna);
+      const benSession = await connectAs(ben);
+
+      await annaSession.query('begin');
+      await annaSession.query(`select public.block_courier($1)`, [ben]);
+
+      await benSession.query('begin');
+      const asking = benSession.query(`select public.request_friend('anna')`);
+      assert.equal(await settlesWithin(asking, 300), false, 'the request did not wait');
+
+      await annaSession.query('commit');
+      await assert.rejects(asking, (error) => error.hint === 'unknown_username');
+      await benSession.query('rollback');
+
+      assert.equal(await friendshipsLeft(), 0);
+    });
+
+    it('records the same letter reported twice at once as one report', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const { rows } = await (
+        await connectAs(ben)
+      ).query(`select message_id from public.send_message($1, 'Unkind.')`, [anna]);
+      const letter = rows[0].message_id;
+      await admin.query(
+        `update public.messages
+         set sent_at = now() - interval '2 hours', deliver_at = now() - interval '1 minute'
+         where id = $1`,
+        [letter],
+      );
+      await admin.query(`select private.deliver_due_messages()`);
+
+      const first = await connectAs(anna);
+      const second = await connectAs(anna);
+      await first.query('begin');
+      await second.query('begin');
+      const report = (session) =>
+        session.query(`select public.report_letter($1, 'harassment') as outcome`, [letter]);
+
+      const one = await report(first);
+      const other = report(second);
+      assert.equal(await settlesWithin(other, 300), false, 'the second report did not wait');
+      await first.query('commit');
+      const two = await other;
+      await second.query('commit');
+
+      assert.deepEqual(
+        [one.rows[0].outcome, two.rows[0].outcome],
+        ['reported', 'already_reported'],
+      );
+      const { rows: kept } = await admin.query(`select count(*)::int as count from public.reports`);
+      assert.equal(kept[0].count, 1);
     });
   });
 });

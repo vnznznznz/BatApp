@@ -68,3 +68,25 @@ export const MESSAGE_MAX_LENGTH = 2000;
 export const USERNAME_MIN_LENGTH = 3;
 export const USERNAME_MAX_LENGTH = 20;
 export const USERNAME_PATTERN = /^[a-z0-9_]+$/;
+
+/**
+ * What a report can say is wrong, as the database records it. The words shown
+ * for each live with the report screen; the database refuses anything else.
+ */
+export const REPORT_REASONS = [
+  'spam',
+  'harassment',
+  'hate',
+  'sexual',
+  'violence',
+  'other',
+] as const;
+
+/** The longest note a report may carry, enforced client-side and in the database. */
+export const REPORT_NOTE_MAX_LENGTH = 500;
+
+/** How many reports one courier may make in a day, as the database counts them. */
+export const REPORTS_PER_DAY = 20;
+
+/** How long the operator keeps a report, and the copy of what it was about. */
+export const REPORT_RETENTION_DAYS = 180;

@@ -66,6 +66,40 @@ export type Database = {
           },
         ];
       };
+      blocks: {
+        Row: {
+          blocked_id: string;
+          blocker_id: string;
+          created_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          blocked_id: string;
+          blocker_id: string;
+          created_at?: string;
+        };
+        Update: {
+          blocked_id?: string;
+          blocker_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'blocks_blocked_id_fkey';
+            columns: ['blocked_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'blocks_blocker_id_fkey';
+            columns: ['blocker_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       cities: {
         Row: {
           country_code: string;
@@ -277,12 +311,77 @@ export type Database = {
           },
         ];
       };
+      reports: {
+        Row: {
+          created_at: string;
+          id: string;
+          letter_body: string | null;
+          letter_sent_at: string | null;
+          message_id: string | null;
+          note: string | null;
+          reason: string;
+          reported_display_name: string | null;
+          reported_id: string | null;
+          reported_username: string;
+          reporter_id: string | null;
+          resolution: string | null;
+          resolved_at: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          letter_body?: string | null;
+          letter_sent_at?: string | null;
+          message_id?: string | null;
+          note?: string | null;
+          reason: string;
+          reported_display_name?: string | null;
+          reported_id?: string | null;
+          reported_username: string;
+          reporter_id?: string | null;
+          resolution?: string | null;
+          resolved_at?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          letter_body?: string | null;
+          letter_sent_at?: string | null;
+          message_id?: string | null;
+          note?: string | null;
+          reason?: string;
+          reported_display_name?: string | null;
+          reported_id?: string | null;
+          reported_username?: string;
+          reporter_id?: string | null;
+          resolution?: string | null;
+          resolved_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'reports_reported_id_fkey';
+            columns: ['reported_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'reports_reporter_id_fkey';
+            columns: ['reporter_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
       accept_friend: { Args: { friendship_id: string }; Returns: undefined };
+      block_courier: { Args: { courier_id: string }; Returns: string };
       delete_own_account: { Args: Record<PropertyKey, never>; Returns: undefined };
       get_badges: {
         Args: Record<PropertyKey, never>;
@@ -304,6 +403,14 @@ export type Database = {
           sent_at: string;
           slot: number;
           status: string;
+        }[];
+      };
+      list_blocked: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          blocked_at: string;
+          courier_id: string;
+          username: string;
         }[];
       };
       list_friends: {
@@ -376,6 +483,14 @@ export type Database = {
         }[];
       };
       remove_friend: { Args: { friendship_id: string }; Returns: undefined };
+      report_courier: {
+        Args: { also_block?: boolean; courier_id: string; note?: string; reason: string };
+        Returns: string;
+      };
+      report_letter: {
+        Args: { also_block?: boolean; message_id: string; note?: string; reason: string };
+        Returns: string;
+      };
       request_friend: { Args: { username: string }; Returns: string };
       search_cities: {
         Args: { folded_query: string; max_results?: number };
@@ -394,6 +509,7 @@ export type Database = {
           message_id: string;
         }[];
       };
+      unblock_courier: { Args: { courier_id: string }; Returns: undefined };
     };
     Enums: {
       [_ in never]: never;

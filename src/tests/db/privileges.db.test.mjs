@@ -86,11 +86,15 @@ describe('table privileges', () => {
     assert.deepEqual(await tablePrivileges('authenticated'), {
       // Read through get_roost(), which lands what is due first; see the bats migration.
       bats: [],
+      // Read through list_blocked(), which shows only the caller's own blocks.
+      blocks: [],
       cities: ['SELECT'],
       friendships: ['SELECT'],
       // Letters are read only through functions that choose their columns.
       messages: [],
       profiles: ['SELECT'],
+      // For the operator, in the dashboard; written only by the report functions.
+      reports: [],
     });
   });
 
@@ -121,17 +125,22 @@ describe('function privileges', () => {
   it('lets a signed-in user execute exactly the API', async () => {
     assert.deepEqual(await executableFunctions('authenticated'), [
       'accept_friend',
+      'block_courier',
       'delete_own_account',
       'get_badges',
       'get_roost',
+      'list_blocked',
       'list_friends',
       'list_inbox',
       'list_sent',
       'read_message',
       'remove_friend',
+      'report_courier',
+      'report_letter',
       'request_friend',
       'search_cities',
       'send_message',
+      'unblock_courier',
     ]);
   });
 
