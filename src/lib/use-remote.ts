@@ -2,12 +2,18 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
-import { messageOf } from '@/lib/rpc-error';
+import { messageOf, RpcError, type RefusalReason } from '@/lib/rpc-error';
 
 export type Remote<T> = {
   /** The last successful result. Kept through a failed reload, so a screen does not blank. */
   data: T | null;
   error: string | null;
+  /**
+   * Why the latest fetch was refused, when the server said - `message_not_found`
+   * for a letter that has gone, or been hidden by a block, since it was loaded.
+   * Null after a success, and for failures that were not refusals.
+   */
+  reason: RefusalReason | null;
   /** True until the first load settles, either way. */
   isLoading: boolean;
   /** True while a refresh the user asked for is running - for pull-to-refresh. */
@@ -39,6 +45,7 @@ export type Remote<T> = {
 export function useRemote<T>(load: () => Promise<T>): Remote<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState<RefusalReason | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [settledAt, setSettledAt] = useState(0);
@@ -55,9 +62,11 @@ export function useRemote<T>(load: () => Promise<T>): Remote<T> {
         if (request !== latest.current) return;
         setData(next);
         setError(null);
+        setReason(null);
       } catch (caught) {
         if (request !== latest.current) return;
         setError(messageOf(caught));
+        setReason(caught instanceof RpcError ? caught.reason : null);
       } finally {
         if (request === latest.current) {
           setIsLoading(false);
@@ -82,5 +91,5 @@ export function useRemote<T>(load: () => Promise<T>): Remote<T> {
     }, [reload]),
   );
 
-  return { data, error, isLoading, isRefreshing, settledAt, reload, refresh };
+  return { data, error, reason, isLoading, isRefreshing, settledAt, reload, refresh };
 }

@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -9,21 +10,47 @@ import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import { fetchBlocked, unblockCourier, type BlockedCourier } from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
-import { formatDay } from '@/lib/format';
+import { confirmAction } from '@/lib/confirm';
+import { formatOnDay } from '@/lib/format';
 import { messageOf } from '@/lib/rpc-error';
 import { useRemote } from '@/lib/use-remote';
 
 /**
- * The couriers you have blocked, and the way to let one back.
+ * The couriers you have blocked: the way to report one - their letters and
+ * their page are out of reach once they are blocked, so this is the only place
+ * left to do it from - and the way to let one back.
  *
  * Unblocking shows their letters again but does not make you friends again:
  * that takes a new request, and their yes.
  */
 export default function BlockedScreen() {
+  const router = useRouter();
   const list = useRemote(fetchBlocked);
   const { reload, refresh } = list;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Asked first: one stray tap would bring back the letters of someone blocked
+  // for a reason and let them ask again - and someone blocked from a request
+  // could not be blocked again until they sent another. (Found in review.)
+  function confirmUnblock(courier: BlockedCourier) {
+    confirmAction({
+      title: `Unblock @${courier.username}?`,
+      message:
+        'Their letters come back, and they can ask to be friends again. You can block them ' +
+        'again at any time.',
+      confirmLabel: 'Unblock',
+      cancelLabel: 'Keep blocked',
+      onConfirm: () => void unblock(courier),
+    });
+  }
+
+  function report(courier: BlockedCourier) {
+    router.push({
+      pathname: '/report',
+      params: { courier: courier.id, username: courier.username, blocked: '1' },
+    });
+  }
 
   async function unblock(courier: BlockedCourier) {
     setBusyId(courier.id);
@@ -57,8 +84,8 @@ export default function BlockedScreen() {
       <Text variant="title">Blocked couriers</Text>
       <Text variant="caption" tone="secondary" style={styles.lead}>
         They cannot write to you or ask to be friends, and you do not see their letters. Unblocking
-        brings their letters back; to write to each other again, one of you has to ask to be
-        friends.
+        brings their letters back and lets them ask again; to write to each other, one of you has to
+        ask to be friends.
       </Text>
 
       {actionError ? (
@@ -91,17 +118,27 @@ export default function BlockedScreen() {
               <ListRow
                 key={courier.id}
                 title={`@${courier.username}`}
-                subtitle={`Blocked ${formatDay(courier.blockedAt)}`}
+                subtitle={`Blocked ${formatOnDay(courier.blockedAt)}`}
                 actions={
-                  <Button
-                    label="Unblock"
-                    size="compact"
-                    variant="secondary"
-                    accessibilityLabel={`Unblock @${courier.username}`}
-                    loading={busyId === courier.id}
-                    disabled={busyId !== null}
-                    onPress={() => void unblock(courier)}
-                  />
+                  <>
+                    <Button
+                      label="Report"
+                      size="compact"
+                      variant="ghost"
+                      accessibilityLabel={`Report @${courier.username}`}
+                      disabled={busyId !== null}
+                      onPress={() => report(courier)}
+                    />
+                    <Button
+                      label="Unblock"
+                      size="compact"
+                      variant="secondary"
+                      accessibilityLabel={`Unblock @${courier.username}`}
+                      loading={busyId === courier.id}
+                      disabled={busyId !== null}
+                      onPress={() => confirmUnblock(courier)}
+                    />
+                  </>
                 }
               />
             ))

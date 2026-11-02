@@ -85,10 +85,11 @@ describe('toBat', () => {
     expect(flight?.deliverAt.toISOString()).toBe('2026-11-02T03:07:41.250Z');
   });
 
-  it('falls back to the username when the recipient has no name to show', () => {
+  /** As for someone the courier has blocked, whose own name is withheld. */
+  it('falls back to the @username when the recipient has no name to show', () => {
     const flight = toBat(flyingRow(1, { recipient_display_name: null })).flight;
 
-    expect(flight?.recipient.displayName).toBe('anna');
+    expect(flight?.recipient.displayName).toBe('@anna');
   });
 
   it('reads a missing distance as zero rather than as no number at all', () => {

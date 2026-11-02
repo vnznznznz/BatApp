@@ -1,4 +1,4 @@
-import { StyleSheet, Switch, View } from 'react-native';
+import { Platform, StyleSheet, Switch, View } from 'react-native';
 
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
@@ -30,6 +30,7 @@ export function ToggleRow({ label, hint, value, onValueChange, disabled }: Toggl
         ) : null}
       </View>
       <Switch
+        {...ON_WEB}
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
@@ -42,6 +43,13 @@ export function ToggleRow({ label, hint, value, onValueChange, disabled }: Toggl
     </View>
   );
 }
+
+/**
+ * React Native Web paints the knob of a switch that is on with its own
+ * `activeThumbColor`, a Material teal unless told otherwise, and ignores
+ * `thumbColor` for that state. Not part of React Native's own types.
+ */
+const ON_WEB: object = Platform.OS === 'web' ? { activeThumbColor: Colors.text } : {};
 
 const styles = StyleSheet.create({
   row: {

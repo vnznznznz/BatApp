@@ -87,9 +87,8 @@ export function formatTimestamp(date: Date, now: Date = new Date()): string {
 }
 
 /**
- * "today", "yesterday", "on 31 Oct", or "on 31 Oct 2025" - when something
- * happened, to the day, worded to follow a verb: "Friends since today",
- * "You asked on 31 Oct".
+ * "today", "yesterday", "31 Oct", or "31 Oct 2025" - a day, worded to follow
+ * "since": "Friends since 31 Oct".
  */
 export function formatDay(date: Date, now: Date = new Date()): string {
   if (Number.isNaN(date.getTime())) return '—';
@@ -100,7 +99,16 @@ export function formatDay(date: Date, now: Date = new Date()): string {
   if (sameDay(date, yesterday)) return 'yesterday';
 
   const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
-  return date.getFullYear() === now.getFullYear() ? `on ${day}` : `on ${day} ${date.getFullYear()}`;
+  return date.getFullYear() === now.getFullYear() ? day : `${day} ${date.getFullYear()}`;
+}
+
+/**
+ * "today", "yesterday", or "on 31 Oct" - the same day, worded to follow a verb:
+ * "You asked on 31 Oct", "Blocked yesterday".
+ */
+export function formatOnDay(date: Date, now: Date = new Date()): string {
+  const day = formatDay(date, now);
+  return day === 'today' || day === 'yesterday' || day === '—' ? day : `on ${day}`;
 }
 
 /** "about 6h 18m" — how long a bat will take, for an estimate shown before sending. */

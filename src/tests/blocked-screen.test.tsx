@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Alert } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import BlockedScreen from '@/app/(app)/blocked';
@@ -12,9 +12,12 @@ import { RpcError } from '@/lib/rpc-error';
 // count against whichever test runs first.
 jest.setTimeout(20_000);
 
+const mockPush = jest.fn();
+
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
+    useRouter: () => ({ push: mockPush }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
       React.useEffect(() => effect(), [effect]),
@@ -64,10 +67,12 @@ const dora: BlockedCourier = {
   blockedAt: new Date(2025, 11, 24, 18, 0),
 };
 
+const USERNAMES = ['anna', 'ben', 'carla', 'dora'];
+
 const LEAD =
   'They cannot write to you or ask to be friends, and you do not see their letters. ' +
-  'Unblocking brings their letters back; to write to each other again, one of you has to ask ' +
-  'to be friends.';
+  'Unblocking brings their letters back and lets them ask again; to write to each other, ' +
+  'one of you has to ask to be friends.';
 const NOBODY = 'You have not blocked anyone.';
 const LOAD_FAILED = 'Your blocked couriers could not be loaded.';
 const UNBLOCK_FAILED = 'That courier could not be unblocked. Try again.';
@@ -99,10 +104,12 @@ type Element = ReturnType<typeof screen.getByText>;
 /** Resolves once the list is on screen, with the courier blocked most recently. */
 const listLoaded = () => screen.findByText('@anna');
 
+const reportButton = (username: string) =>
+  screen.getByRole('button', { name: `Report @${username}` });
 const unblockButton = (username: string) =>
   screen.getByRole('button', { name: `Unblock @${username}` });
 
-/** The row a courier is listed in: the nearest container of their name that also holds their button. */
+/** The row a courier is listed in: the nearest container of their name that also holds their Unblock button. */
 function rowOf(username: string): Element {
   const name = screen.getByText(`@${username}`);
   const button = unblockButton(username);
@@ -124,6 +131,36 @@ async function pullToRefresh() {
   await fireEvent(control, 'refresh');
 }
 
+let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
+
+/** The alert the screen raised most recently: its title, its message and its buttons. */
+function lastAlert() {
+  const call = alertSpy.mock.lastCall;
+  if (!call) throw new Error('No alert was shown.');
+  const [title, message, buttons = []] = call;
+  return {
+    title,
+    message,
+    buttons: buttons.map((choice) => choice.text),
+    /** The way out of the alert, which leaves things as they are. */
+    cancel: buttons.filter((choice) => choice.style === 'cancel').map((choice) => choice.text),
+  };
+}
+
+/** Taps a button on the alert the screen raised most recently. */
+async function chooseInAlert(label: string) {
+  const choice = alertSpy.mock.lastCall?.[2]?.find((candidate) => candidate.text === label);
+  if (!choice) throw new Error(`The alert has no "${label}" button.`);
+  await act(async () => choice.onPress?.());
+}
+
+/** Lifts a block as the courier does: Unblock on their row, then Unblock again when asked. */
+async function unblock(username: string) {
+  await fireEvent.press(unblockButton(username));
+  expect(lastAlert().title).toBe(`Unblock @${username}?`);
+  await chooseInAlert('Unblock');
+}
+
 let announceSpy: jest.SpiedFunction<typeof AccessibilityInfo.announceForAccessibility>;
 
 /** Everything said aloud to a screen reader so far, in order. */
@@ -131,15 +168,18 @@ const announced = () => announceSpy.mock.calls.map(([message]) => message);
 
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
+  mockPush.mockClear();
   mockedFetchBlocked.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedUnblockCourier.mockReset().mockResolvedValue(undefined);
+  alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   announceSpy = jest
     .spyOn(AccessibilityInfo, 'announceForAccessibility')
     .mockImplementation(() => {});
 });
 
 afterEach(() => {
+  alertSpy.mockRestore();
   announceSpy.mockRestore();
   jest.useRealTimers();
 });
@@ -148,10 +188,11 @@ describe('BlockedScreen', () => {
   describe('the list', () => {
     /**
      * Unblocking lifts the block and nothing more: the friendship the block
-     * ended stays ended. Someone who expects to be friends again learns it
-     * here, rather than from a letter that has nobody to go to.
+     * ended stays ended, though the courier may now ask again. Someone who
+     * expects to be friends again learns it here, rather than from a letter
+     * that has nobody to go to.
      */
-    it('says what a block does, and that unblocking does not make you friends again', async () => {
+    it('says what a block does, that unblocking lets them ask again, and that it does not make you friends again', async () => {
       await renderScreen(<BlockedScreen />);
       await listLoaded();
 
@@ -188,16 +229,21 @@ describe('BlockedScreen', () => {
 
     /**
      * A screen reader moving from button to button reads each label on its
-     * own, away from the row it sits in. Four buttons that all said "Unblock"
-     * would not say whom.
+     * own, away from the row it sits in. Eight buttons that said only
+     * "Report" and "Unblock" would not say whom.
      */
-    it('names on each Unblock button whom it unblocks', async () => {
+    it('offers on each row to report or unblock that courier, naming them on each button', async () => {
       await renderScreen(<BlockedScreen />);
       await listLoaded();
 
-      for (const username of ['anna', 'ben', 'carla', 'dora']) {
-        expect(unblockButton(username)).toBeEnabled();
+      for (const username of USERNAMES) {
+        const row = within(rowOf(username));
+        expect(row.getByText('Report')).toBeOnTheScreen();
+        expect(row.getByText('Unblock')).toBeOnTheScreen();
+        expect(row.getByRole('button', { name: `Report @${username}` })).toBeEnabled();
+        expect(row.getByRole('button', { name: `Unblock @${username}` })).toBeEnabled();
       }
+      expect(screen.queryByRole('button', { name: 'Report' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull();
     });
 
@@ -206,7 +252,7 @@ describe('BlockedScreen', () => {
       await renderScreen(<BlockedScreen />);
 
       expect(await screen.findByText(NOBODY)).toBeOnTheScreen();
-      expect(screen.queryByRole('button', { name: /^Unblock/ })).toBeNull();
+      expect(screen.queryAllByRole('button')).toHaveLength(0);
     });
 
     it('fetches the list again when pulled down', async () => {
@@ -250,22 +296,86 @@ describe('BlockedScreen', () => {
     });
   });
 
+  describe('reporting', () => {
+    /**
+     * Once a courier is blocked their letters and their page are out of
+     * reach, so this list is the one place left to report them from. The form
+     * is told they are blocked already, and so does not offer to block them.
+     */
+    it('opens the report form about the courier on that row, saying they are blocked already', async () => {
+      await renderScreen(<BlockedScreen />);
+      await listLoaded();
+
+      await fireEvent.press(reportButton('carla'));
+
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/report',
+        params: { courier: 'user-carla', username: 'carla', blocked: '1' },
+      });
+      // Reporting asks nothing here, and lifts nothing: the block stays.
+      expect(alertSpy).not.toHaveBeenCalled();
+      expect(mockedUnblockCourier).not.toHaveBeenCalled();
+    });
+  });
+
   describe('unblocking', () => {
-    it('unblocks a courier, says so aloud, and shows the list without them', async () => {
+    /**
+     * One stray tap would otherwise bring back the letters of someone blocked
+     * for a reason, and let them ask again.
+     */
+    it('asks before unblocking, and says what unblocking brings back', async () => {
+      await renderScreen(<BlockedScreen />);
+      await listLoaded();
+
+      await fireEvent.press(unblockButton('carla'));
+
+      expect(mockedUnblockCourier).not.toHaveBeenCalled();
+      expect(lastAlert()).toEqual({
+        title: 'Unblock @carla?',
+        message:
+          'Their letters come back, and they can ask to be friends again. You can block them ' +
+          'again at any time.',
+        buttons: ['Keep blocked', 'Unblock'],
+        cancel: ['Keep blocked'],
+      });
+      expect(unblockButton('carla')).not.toBeBusy();
+    });
+
+    it('keeps the block if the courier thinks better of it', async () => {
+      await renderScreen(<BlockedScreen />);
+      await listLoaded();
+      await fireEvent.press(unblockButton('carla'));
+
+      await chooseInAlert('Keep blocked');
+
+      expect(mockedUnblockCourier).not.toHaveBeenCalled();
+      expect(announced()).toEqual([]);
+      expect(mockedFetchBlocked).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('@carla')).toBeOnTheScreen();
+      for (const username of USERNAMES) {
+        expect(reportButton(username)).toBeEnabled();
+        expect(unblockButton(username)).toBeEnabled();
+        expect(unblockButton(username)).not.toBeBusy();
+      }
+    });
+
+    it('unblocks a courier once the courier confirms, says so aloud, and shows the list without them', async () => {
       mockedUnblockCourier.mockImplementation(async () => {
         serve(() => [ben, carla, dora]);
       });
       await renderScreen(<BlockedScreen />);
       await listLoaded();
 
-      await fireEvent.press(unblockButton('anna'));
+      await unblock('anna');
 
       expect(mockedUnblockCourier).toHaveBeenCalledTimes(1);
       expect(mockedUnblockCourier).toHaveBeenCalledWith('user-anna');
       await waitFor(() => expect(screen.queryByText('@anna')).toBeNull());
       expect(announced()).toEqual(['@anna is unblocked.']);
       expect(mockedFetchBlocked).toHaveBeenCalledTimes(2);
-      expect(unblockButton('ben')).toBeEnabled();
+      await waitFor(() => expect(unblockButton('ben')).toBeEnabled());
+      expect(reportButton('ben')).toBeEnabled();
     });
 
     it('says when the last block is lifted that nobody is blocked any more', async () => {
@@ -276,7 +386,7 @@ describe('BlockedScreen', () => {
       await renderScreen(<BlockedScreen />);
       await listLoaded();
 
-      await fireEvent.press(unblockButton('anna'));
+      await unblock('anna');
 
       expect(await screen.findByText(NOBODY)).toBeOnTheScreen();
     });
@@ -291,14 +401,15 @@ describe('BlockedScreen', () => {
       await renderScreen(<BlockedScreen />);
       await listLoaded();
 
-      await fireEvent.press(unblockButton('anna'));
+      await unblock('anna');
 
       expect(await screen.findByText(UNBLOCK_FAILED)).toBeOnTheScreen();
       expect(announced()).toEqual([UNBLOCK_FAILED]);
       await waitFor(() => expect(mockedFetchBlocked).toHaveBeenCalledTimes(2));
-      // Still blocked, and the courier can try again.
+      // Still blocked, and the courier can try again - or report them instead.
       await waitFor(() => expect(unblockButton('anna')).toBeEnabled());
       expect(unblockButton('anna')).not.toBeBusy();
+      expect(reportButton('anna')).toBeEnabled();
     });
 
     it('lets go of a failure once the next unblock is tried', async () => {
@@ -307,35 +418,43 @@ describe('BlockedScreen', () => {
         .mockResolvedValue(undefined);
       await renderScreen(<BlockedScreen />);
       await listLoaded();
-      await fireEvent.press(unblockButton('anna'));
+      await unblock('anna');
       expect(await screen.findByText(UNBLOCK_FAILED)).toBeOnTheScreen();
       await waitFor(() => expect(unblockButton('ben')).toBeEnabled());
 
-      await fireEvent.press(unblockButton('ben'));
+      await unblock('ben');
 
       await waitFor(() => expect(screen.queryByText(UNBLOCK_FAILED)).toBeNull());
+      expect(mockedUnblockCourier).toHaveBeenLastCalledWith('user-ben');
       expect(announced()).toEqual([UNBLOCK_FAILED, '@ben is unblocked.']);
     });
 
-    it('takes no other unblock while one is on its way', async () => {
+    it('takes no other unblock, and no report, while one is on its way', async () => {
       const unblocking = deferred<void>();
       mockedUnblockCourier.mockReturnValue(unblocking.promise);
       await renderScreen(<BlockedScreen />);
       await listLoaded();
 
-      await fireEvent.press(unblockButton('anna'));
+      await unblock('anna');
 
       expect(unblockButton('anna')).toBeBusy();
+      expect(reportButton('anna')).toBeDisabled();
       for (const username of ['ben', 'carla', 'dora']) {
         expect(unblockButton(username)).toBeDisabled();
         expect(unblockButton(username)).not.toBeBusy();
+        expect(reportButton(username)).toBeDisabled();
       }
       await fireEvent.press(unblockButton('ben'));
       await fireEvent.press(unblockButton('anna'));
+      await fireEvent.press(reportButton('carla'));
+      // No second question, and no report form.
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(mockPush).not.toHaveBeenCalled();
       expect(mockedUnblockCourier).toHaveBeenCalledTimes(1);
 
       await act(async () => unblocking.resolve());
       await waitFor(() => expect(unblockButton('ben')).toBeEnabled());
+      expect(reportButton('ben')).toBeEnabled();
       expect(mockedUnblockCourier).toHaveBeenCalledTimes(1);
     });
   });

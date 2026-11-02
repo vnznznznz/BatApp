@@ -274,7 +274,12 @@ describe.each([
     expect(sentArguments()).toHaveProperty('also_block', alsoBlock);
   });
 
-  it.each<ReportOutcome>(['reported', 'already_reported'])(
+  /**
+   * 'limit_reached' is an answer rather than a refusal: the day's reports are
+   * used up, and the block asked for with this one has still been made. A
+   * refusal would have rolled the block back. (Found in review.)
+   */
+  it.each<ReportOutcome>(['reported', 'already_reported', 'limit_reached'])(
     'reports "%s" as the server did',
     async (outcome) => {
       answer(outcome);
@@ -289,7 +294,7 @@ describe.each([
     await expect(send(report())).resolves.toBe('reported');
   });
 
-  it.each<RefusalReason>(['unknown_reason', 'note_too_long', 'too_many_reports'])(
+  it.each<RefusalReason>(['unknown_reason', 'note_too_long'])(
     'explains the refusal "%s" in the app’s words',
     async (hint) => {
       const error = refusal(hint);

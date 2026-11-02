@@ -1,6 +1,6 @@
 import { normaliseUsername } from '@/features/auth/validation';
 import { describeCity } from '@/features/cities/search';
-import { formatDay, formatFlightEstimate } from '@/lib/format';
+import { formatDay, formatFlightEstimate, formatOnDay } from '@/lib/format';
 import { toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 
@@ -136,14 +136,14 @@ export function describeRoute(friendship: Friendship): string {
     : describeCity(city);
 }
 
-/** "Friends since today", "Asked to be friends on 2 Oct", "You asked yesterday". */
+/** "Friends since 2 Oct", "Asked to be friends on 2 Oct", "You asked yesterday". */
 export function describeStanding(friendship: Friendship, now: Date = new Date()): string {
   if (friendship.status === 'accepted') {
     return `Friends since ${formatDay(friendship.acceptedAt ?? friendship.requestedAt, now)}`;
   }
   return friendship.direction === 'incoming'
-    ? `Asked to be friends ${formatDay(friendship.requestedAt, now)}`
-    : `You asked ${formatDay(friendship.requestedAt, now)}`;
+    ? `Asked to be friends ${formatOnDay(friendship.requestedAt, now)}`
+    : `You asked ${formatOnDay(friendship.requestedAt, now)}`;
 }
 
 /** What `request_friend` reports, when it is not a refusal. */

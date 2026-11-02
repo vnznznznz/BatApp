@@ -11,7 +11,8 @@ import { MESSAGE_MAX_LENGTH, REPORT_NOTE_MAX_LENGTH } from '@/constants/config';
  */
 
 export const REFUSALS = {
-  unknown_username: 'Nobody has that username. Check the spelling with your friend.',
+  // Also the answer to someone who has been blocked, so it must be true for both.
+  unknown_username: 'Nobody by that username can be asked. Check the spelling with your friend.',
   cannot_befriend_self: 'That is your own username.',
   request_not_found: 'That request is no longer waiting for you.',
   friendship_not_found: 'That friendship has already ended.',
@@ -30,8 +31,6 @@ export const REFUSALS = {
   cannot_report_self: 'That is you.',
   unknown_reason: 'Choose what is wrong first.',
   note_too_long: `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`,
-  too_many_reports:
-    'You have sent a lot of reports today. Block the courier for now, and report again tomorrow.',
   try_again: 'That did not go through. Try again.',
 } as const;
 

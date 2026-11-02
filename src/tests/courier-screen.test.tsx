@@ -11,7 +11,6 @@ import {
   type Friendship,
 } from '@/features/friends/friends';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
-import { formatDay } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 // React Native loads its components on first use, and with a cold transform
@@ -21,14 +20,23 @@ jest.setTimeout(20_000);
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockDismissTo = jest.fn();
 /** The route's search params: whose page this is. */
 const mockParams = { id: 'user-anna' };
+/** Whether the page is still in front when an answer comes back. */
+const mockFocus = { focused: true };
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
-    useRouter: () => ({ push: mockPush, back: mockBack, replace: jest.fn() }),
+    useRouter: () => ({
+      push: mockPush,
+      back: mockBack,
+      replace: jest.fn(),
+      dismissTo: mockDismissTo,
+    }),
     useLocalSearchParams: () => mockParams,
+    useNavigation: () => ({ isFocused: () => mockFocus.focused }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
       React.useEffect(() => effect(), [effect]),
@@ -56,21 +64,26 @@ const mockedAcceptFriend = jest.mocked(acceptFriend);
 const mockedRemoveFriend = jest.mocked(removeFriend);
 const mockedBlockCourier = jest.mocked(blockCourier);
 
-/** A fixed moment, so "Friends since ..." and "You asked ..." read the same on every run. */
-const NOW = new Date('2026-10-31T21:00:00Z').getTime();
-const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
+/**
+ * A fixed moment, in the reader's local time rather than UTC: "today" and
+ * "yesterday" are the reader's days, and an instant given in UTC would fall on
+ * a different one depending on where the tests run. Every date below is local
+ * for the same reason, so the standing line can be written out as it reads.
+ */
+const NOW = new Date(2026, 9, 31, 21, 0).getTime();
+
+/** Days the standing line names, seen from NOW. */
+const EARLIER_TODAY = new Date(2026, 9, 31, 0, 20);
+const YESTERDAY = new Date(2026, 9, 30, 23, 50);
+const OCT_2 = new Date(2026, 9, 2, 17, 45);
+const LAST_YEAR = new Date(2025, 11, 24, 18, 0);
+/** Before all of those: when someone who became a friend on one of them was asked. */
+const ASKED_LONG_AGO = new Date(2025, 10, 30, 9, 0);
 
 /**
- * The courier asked Anna ten days ago, and she has just said yes - which is
- * "today" in every time zone, so the standing line can be written out as read.
+ * A friend in Munich, with the route the server worked out for a bat. The
+ * courier asked her on 21 Oct, and she said yes twenty minutes ago.
  */
-const ANNA_ASKED = new Date(NOW - 10 * DAY);
-const ANNA_ACCEPTED = new Date(NOW);
-const CARLA_ASKED = new Date(NOW - 2 * HOUR);
-const DORA_ASKED = new Date(NOW - 3 * DAY);
-
-/** A friend in Munich, with the route the server worked out for a bat. */
 const anna: Friendship = {
   id: 'friendship-anna',
   status: 'accepted',
@@ -82,8 +95,8 @@ const anna: Friendship = {
     city: { name: 'Munich', countryCode: 'DE' },
   },
   route: { distanceKm: 504.6, flightSeconds: 22_707 },
-  requestedAt: ANNA_ASKED,
-  acceptedAt: ANNA_ACCEPTED,
+  requestedAt: new Date(2026, 9, 21, 18, 30),
+  acceptedAt: new Date(2026, 9, 31, 20, 40),
 };
 
 /** A friend who has not chosen a city, so there is no route to them. */
@@ -93,29 +106,29 @@ const ben: Friendship = {
   direction: 'incoming',
   friend: { id: 'user-ben', username: 'ben', displayName: 'Ben Okafor', city: null },
   route: null,
-  requestedAt: new Date(NOW - 5 * DAY),
-  acceptedAt: new Date(NOW - 4 * DAY),
+  requestedAt: new Date(2026, 9, 26, 12, 0),
+  acceptedAt: new Date(2026, 9, 27, 9, 15),
 };
 
-/** Someone who asked. Asking shares your name, but not yet your city. */
+/** Someone who asked two hours ago. Asking shares your name, but not yet your city. */
 const carla: Friendship = {
   id: 'friendship-carla',
   status: 'pending',
   direction: 'incoming',
   friend: { id: 'user-carla', username: 'carla', displayName: 'Carla Ruiz', city: null },
   route: null,
-  requestedAt: CARLA_ASKED,
+  requestedAt: new Date(2026, 9, 31, 19, 0),
   acceptedAt: null,
 };
 
-/** Someone the courier asked. Until they accept, the server withholds their name and city. */
+/** Someone the courier asked on 28 Oct. Until they accept, the server withholds their name and city. */
 const dora: Friendship = {
   id: 'friendship-dora',
   status: 'pending',
   direction: 'outgoing',
   friend: { id: 'user-dora', username: 'dora', displayName: null, city: null },
   route: null,
-  requestedAt: DORA_ASKED,
+  requestedAt: new Date(2026, 9, 28, 21, 0),
   acceptedAt: null,
 };
 
@@ -164,6 +177,24 @@ async function openPageOf(friendship: Friendship) {
 const button = (name: string) => screen.getByRole('button', { name });
 const spinners = () => screen.container.queryAll((node) => node.type === 'ActivityIndicator');
 
+/**
+ * Waits for the page to take the courier to the friends list, and checks it
+ * went once, and by name. Never one step back: by the time an answer comes the
+ * courier may have gone on to another screen, and a step back would leave that
+ * one instead.
+ */
+async function expectWentToFriends() {
+  await waitFor(() => expect(mockDismissTo).toHaveBeenCalledTimes(1));
+  expect(mockDismissTo).toHaveBeenCalledWith('/friends');
+  expect(mockBack).not.toHaveBeenCalled();
+}
+
+/** The page has taken the courier nowhere. */
+function expectStayed() {
+  expect(mockDismissTo).not.toHaveBeenCalled();
+  expect(mockBack).not.toHaveBeenCalled();
+}
+
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
 
 /** The alert the screen raised most recently: its title, its message and its buttons. */
@@ -198,7 +229,9 @@ beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
   mockBack.mockClear();
+  mockDismissTo.mockClear();
   mockParams.id = 'user-anna';
+  mockFocus.focused = true;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
@@ -234,7 +267,21 @@ describe('CourierScreen', () => {
       await openPageOf(anna);
 
       expect(screen.getByText('Friends since today')).toBeOnTheScreen();
-      expect(screen.queryByText(new RegExp(formatDay(ANNA_ASKED)))).toBeNull();
+      expect(screen.queryByText(/21 Oct/)).toBeNull();
+    });
+
+    /**
+     * "Since" takes the day as it is, where "asked" takes an "on": "Friends
+     * since 2 Oct", but "You asked on 2 Oct". The page once said "Friends
+     * since on 2 Oct".
+     */
+    it('says since which day they have been friends, with no "on" before the date', async () => {
+      const friendship: Friendship = { ...anna, requestedAt: ASKED_LONG_AGO, acceptedAt: OCT_2 };
+      serve(() => [friendship]);
+      await openPageOf(friendship);
+
+      expect(screen.getByText('Friends since 2 Oct')).toBeOnTheScreen();
+      expect(screen.queryByText(/since on/)).toBeNull();
     });
 
     it('says where they are and how long a bat takes to reach them', async () => {
@@ -297,13 +344,13 @@ describe('CourierScreen', () => {
       await chooseInAlert('Keep');
 
       expect(mockedRemoveFriend).not.toHaveBeenCalled();
-      expect(mockBack).not.toHaveBeenCalled();
+      expectStayed();
       expect(announced()).toEqual([]);
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
       expect(button('Remove friend')).toBeEnabled();
     });
 
-    it('removes a friend once the courier confirms, says so, and goes back', async () => {
+    it('removes a friend once the courier confirms, says so, and goes to the friends list', async () => {
       await openPageOf(anna);
       await fireEvent.press(button('Remove friend'));
 
@@ -311,7 +358,7 @@ describe('CourierScreen', () => {
 
       expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
       expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-anna');
-      await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+      await expectWentToFriends();
       expect(announced()).toEqual(['You and Anna Weber are no longer friends.']);
     });
   });
@@ -326,7 +373,7 @@ describe('CourierScreen', () => {
 
       expect(screen.getByText('Carla Ruiz')).toBeOnTheScreen();
       expect(screen.getByText('@carla')).toBeOnTheScreen();
-      expect(screen.getByText(`Asked to be friends ${formatDay(CARLA_ASKED)}`)).toBeOnTheScreen();
+      expect(screen.getByText('Asked to be friends today')).toBeOnTheScreen();
       expect(screen.queryByText('Has not chosen a city yet')).toBeNull();
       expect(button('Accept')).toBeEnabled();
       expect(button('Decline')).toBeEnabled();
@@ -369,7 +416,7 @@ describe('CourierScreen', () => {
       expect(announced()).toEqual(['You and @carla are now friends.']);
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
       // The page stays: there is more to do with a new friend than with a request.
-      expect(mockBack).not.toHaveBeenCalled();
+      expectStayed();
       expect(screen.getByText('Seville, ES · about 21h 47m by bat')).toBeOnTheScreen();
       expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
@@ -378,7 +425,7 @@ describe('CourierScreen', () => {
     });
 
     // As on the friends list: a request declined can be made again.
-    it('declines without asking first, says so, and goes back', async () => {
+    it('declines without asking first, says so, and goes to the friends list', async () => {
       await openPageOf(carla);
 
       await fireEvent.press(button('Decline'));
@@ -387,7 +434,7 @@ describe('CourierScreen', () => {
       expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
       expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-carla');
       expect(mockedAcceptFriend).not.toHaveBeenCalled();
-      await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+      await expectWentToFriends();
       expect(announced()).toEqual(['Declined @carla.']);
     });
   });
@@ -403,14 +450,14 @@ describe('CourierScreen', () => {
       await openPageOf(dora);
 
       expect(screen.getAllByText('@dora')).toHaveLength(1);
-      expect(screen.getByText(`You asked ${formatDay(DORA_ASKED)}`)).toBeOnTheScreen();
+      expect(screen.getByText('You asked on 28 Oct')).toBeOnTheScreen();
       expect(screen.queryByText('Has not chosen a city yet')).toBeNull();
       expect(button('Withdraw request')).toBeEnabled();
       expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Write a letter' })).toBeNull();
     });
 
-    it('withdraws the request without asking first, says so, and goes back', async () => {
+    it('withdraws the request without asking first, says so, and goes to the friends list', async () => {
       await openPageOf(dora);
 
       await fireEvent.press(button('Withdraw request'));
@@ -418,28 +465,78 @@ describe('CourierScreen', () => {
       expect(alertSpy).not.toHaveBeenCalled();
       expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
       expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-dora');
-      await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+      await expectWentToFriends();
       expect(announced()).toEqual(['Withdrew your request to @dora.']);
     });
   });
 
+  describe('when they became friends, or asked', () => {
+    /**
+     * The day in words while it is today or yesterday, as a date before that,
+     * with the year once it was in another one - and "on" before a date only
+     * where a verb comes before it.
+     */
+    it.each<[string, Friendship, string]>([
+      [
+        'a friend since yesterday',
+        { ...anna, requestedAt: ASKED_LONG_AGO, acceptedAt: YESTERDAY },
+        'Friends since yesterday',
+      ],
+      [
+        'a friend since last year',
+        { ...anna, requestedAt: ASKED_LONG_AGO, acceptedAt: LAST_YEAR },
+        'Friends since 24 Dec 2025',
+      ],
+      [
+        'someone who asked yesterday',
+        { ...carla, requestedAt: YESTERDAY },
+        'Asked to be friends yesterday',
+      ],
+      [
+        'someone who asked earlier this year',
+        { ...carla, requestedAt: OCT_2 },
+        'Asked to be friends on 2 Oct',
+      ],
+      [
+        'someone the courier asked earlier today',
+        { ...dora, requestedAt: EARLIER_TODAY },
+        'You asked today',
+      ],
+      [
+        'someone the courier asked yesterday',
+        { ...dora, requestedAt: YESTERDAY },
+        'You asked yesterday',
+      ],
+      [
+        'someone the courier asked last year',
+        { ...dora, requestedAt: LAST_YEAR },
+        'You asked on 24 Dec 2025',
+      ],
+    ])('words the standing line for %s', async (_, friendship, standing) => {
+      serve(() => [friendship]);
+      await openPageOf(friendship);
+
+      expect(screen.getByText(standing)).toBeOnTheScreen();
+    });
+  });
+
   describe('safety', () => {
-    it('sets blocking and reporting apart, and says the courier is told of neither', async () => {
+    it('sets blocking and reporting apart, and says the other courier learns of neither a block nor who reported them', async () => {
       await openPageOf(anna);
 
       expect(screen.getByRole('header', { name: 'Safety' })).toBeOnTheScreen();
       expect(
         screen.getByText(
-          'Blocking ends your friendship, hides their letters from you and stops them asking ' +
-            'again. Reporting tells the people who run Night Courier. @anna is not told about ' +
-            'either.',
+          'Blocking ends any friendship or request between you, hides their letters from you ' +
+            'and stops them asking again; @anna is not told. Reporting tells the person who ' +
+            'runs Night Courier, who never tells @anna who reported them.',
         ),
       ).toBeOnTheScreen();
       expect(button('Block @anna')).toBeEnabled();
       expect(button('Report @anna')).toBeEnabled();
     });
 
-    it('asks before blocking, and says what a block does', async () => {
+    it('asks before blocking, and says what a block does and what it does not', async () => {
       await openPageOf(anna);
 
       await fireEvent.press(button('Block @anna'));
@@ -448,9 +545,11 @@ describe('CourierScreen', () => {
       expect(lastAlert()).toEqual({
         title: 'Block @anna?',
         message:
-          'Your friendship ends, they cannot ask to be friends again, and any letters from ' +
-          'them - already here or still in the air - are hidden from you. They are not told. ' +
-          'You can unblock them later in your profile.',
+          'Any friendship or request between you ends, and they cannot ask again. Their ' +
+          'letters, already here or still in the air, are hidden from you; yours stay with ' +
+          'them. They are not told, though they may notice. Blocking alone tells no one: to ' +
+          'tell the person who runs Night Courier, report them instead - a report can block ' +
+          'them as well.',
         buttons: ['Cancel', 'Block'],
         destructive: ['Block'],
       });
@@ -462,7 +561,7 @@ describe('CourierScreen', () => {
      * Ending that is the server's part of the block, not a removal first.
      */
     it.each(STANDINGS)(
-      'blocks %s once the courier confirms, says so, and goes back',
+      'blocks %s once the courier confirms, says so, and goes to the friends list',
       async (_, friendship) => {
         const handle = `@${friendship.friend.username}`;
         await openPageOf(friendship);
@@ -473,7 +572,7 @@ describe('CourierScreen', () => {
 
         expect(mockedBlockCourier).toHaveBeenCalledTimes(1);
         expect(mockedBlockCourier).toHaveBeenCalledWith(friendship.friend.id);
-        await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+        await expectWentToFriends();
         expect(announced()).toEqual([`${handle} is blocked.`]);
         expect(mockedRemoveFriend).not.toHaveBeenCalled();
       },
@@ -486,7 +585,7 @@ describe('CourierScreen', () => {
       await chooseInAlert('Cancel');
 
       expect(mockedBlockCourier).not.toHaveBeenCalled();
-      expect(mockBack).not.toHaveBeenCalled();
+      expectStayed();
       expect(announced()).toEqual([]);
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
       expect(button('Block @anna')).toBeEnabled();
@@ -509,7 +608,7 @@ describe('CourierScreen', () => {
       expect(announced()).toEqual([offline]);
       // Whatever went wrong, what the two are to each other may have changed with it.
       await waitFor(() => expect(mockedFetchFriendships).toHaveBeenCalledTimes(2));
-      expect(mockBack).not.toHaveBeenCalled();
+      expectStayed();
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
       expect(button('Block @anna')).toBeEnabled();
       expect(button('Block @anna')).not.toBeBusy();
@@ -533,13 +632,13 @@ describe('CourierScreen', () => {
 
       expect(screen.queryByText(offline)).toBeNull();
       await act(async () => retrying.resolve('blocked'));
-      await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+      await expectWentToFriends();
       expect(mockedBlockCourier).toHaveBeenCalledTimes(2);
       expect(announced()).toEqual([offline, '@anna is blocked.']);
     });
 
     // The courier deleted their account between the list and the block.
-    it('says the courier is gone when a block finds them gone', async () => {
+    it('says the courier is gone when a block finds them gone, and offers the way to the friends list', async () => {
       mockedBlockCourier.mockImplementation(async () => {
         serve(() => [ben, carla, dora]);
         throw new RpcError(REFUSALS.courier_not_found, 'courier_not_found');
@@ -551,10 +650,18 @@ describe('CourierScreen', () => {
 
       expect(await screen.findByText(GONE)).toBeOnTheScreen();
       expect(announced()).toEqual([REFUSALS.courier_not_found]);
-      expect(mockBack).not.toHaveBeenCalled();
+      expectStayed();
       expect(button('Back to friends')).toBeEnabled();
+
+      await fireEvent.press(button('Back to friends'));
+
+      await expectWentToFriends();
     });
 
+    /**
+     * Without `blocked`: they are not blocked yet, so the form offers to
+     * block them as well, and whether to is asked there, not here.
+     */
     it.each(STANDINGS)('opens the report form about %s', async (_, friendship) => {
       await openPageOf(friendship);
 
@@ -565,14 +672,13 @@ describe('CourierScreen', () => {
         pathname: '/report',
         params: { courier: friendship.friend.id, username: friendship.friend.username },
       });
-      // Whether to block as well is asked on the report form itself.
       expect(alertSpy).not.toHaveBeenCalled();
       expect(mockedBlockCourier).not.toHaveBeenCalled();
     });
   });
 
   describe('while an answer is on its way', () => {
-    it('takes nothing else while a block is on its way, and goes back once it is made', async () => {
+    it('takes nothing else while a block is on its way, and goes to the friends list once it is made', async () => {
       const blocking = deferred<BlockOutcome>();
       mockedBlockCourier.mockReturnValue(blocking.promise);
       await openPageOf(anna);
@@ -590,12 +696,35 @@ describe('CourierScreen', () => {
       await fireEvent.press(button('Block @anna'));
       expect(alertSpy).toHaveBeenCalledTimes(1);
       expect(mockPush).not.toHaveBeenCalled();
+      // Not before the answer: until it comes, the block may yet fail.
+      expectStayed();
 
       await act(async () => blocking.resolve('blocked'));
 
-      await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+      await expectWentToFriends();
       expect(mockedBlockCourier).toHaveBeenCalledTimes(1);
       expect(mockedRemoveFriend).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The header's back button still works while a block is on its way. If the
+     * courier has gone back - to the roost, even, where the friends list is no
+     * longer in the stack - arriving at the friends list when the answer comes
+     * would yank them away from wherever they are. (Found in review.)
+     */
+    it('stays where the courier has gone if they left before the block was made', async () => {
+      const blocking = deferred<BlockOutcome>();
+      mockedBlockCourier.mockReturnValue(blocking.promise);
+      await openPageOf(anna);
+      await fireEvent.press(button('Block @anna'));
+      await chooseInAlert('Block');
+
+      mockFocus.focused = false;
+      await act(async () => blocking.resolve('blocked'));
+
+      expect(mockedBlockCourier).toHaveBeenCalledTimes(1);
+      expect(announced()).toContain('@anna is blocked.');
+      expectStayed();
     });
 
     it('shows the accept, not a decline, as the answer on its way, and takes no other', async () => {
@@ -624,11 +753,11 @@ describe('CourierScreen', () => {
     });
 
     /**
-     * Each answer that gets through goes back once. A second Decline let
-     * through while the first was on its way would go back twice - past the
-     * friends list as well.
+     * One answer, sent once. A second Decline let through while the first was
+     * on its way would ask the server again - to be told there is no request
+     * left - and that refusal would be said aloud after the decline.
      */
-    it('declines once, and goes back once, however often Decline is pressed', async () => {
+    it('declines once, and goes to the friends list once, however often Decline is pressed', async () => {
       const declining = deferred<void>();
       mockedRemoveFriend.mockReturnValue(declining.promise);
       await openPageOf(carla);
@@ -645,15 +774,20 @@ describe('CourierScreen', () => {
 
       await act(async () => declining.resolve());
 
-      await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+      await expectWentToFriends();
       expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
       expect(mockedAcceptFriend).not.toHaveBeenCalled();
+      expect(announced()).toEqual(['Declined @carla.']);
     });
   });
 
   describe('a courier no longer listed', () => {
-    // Between the list and this page, Carla withdrew her request.
-    it('says the courier is no longer among friends or requests, and goes back to friends', async () => {
+    /**
+     * Between the list and this page, Carla withdrew her request. The way
+     * back goes to the friends list by name, as its label says, whatever lies
+     * under this page - the roost, when it was opened from a link.
+     */
+    it('says the courier is no longer among friends or requests, and goes to the friends list', async () => {
       serve(() => [anna, ben, dora]);
       mockParams.id = carla.friend.id;
       await renderScreen(<CourierScreen />);
@@ -666,7 +800,7 @@ describe('CourierScreen', () => {
 
       await fireEvent.press(button('Back to friends'));
 
-      expect(mockBack).toHaveBeenCalledTimes(1);
+      await expectWentToFriends();
     });
   });
 

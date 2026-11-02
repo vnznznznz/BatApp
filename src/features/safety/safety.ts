@@ -41,7 +41,17 @@ export function toBlockedCourier(row: BlockedRow): BlockedCourier {
 }
 
 export type BlockOutcome = 'blocked' | 'already_blocked';
-export type ReportOutcome = 'reported' | 'already_reported';
+
+/**
+ * What became of a report. `limit_reached`: the courier has made their day's
+ * reports, and this one was not recorded - though a block asked for with it was
+ * still made. Not a refusal, for exactly that reason.
+ */
+export type ReportOutcome = 'reported' | 'already_reported' | 'limit_reached';
+
+function toReportOutcome(data: unknown): ReportOutcome {
+  return data === 'already_reported' || data === 'limit_reached' ? data : 'reported';
+}
 
 export async function blockCourier(courierId: string): Promise<BlockOutcome> {
   const { data, error } = await supabase.rpc('block_courier', { courier_id: courierId });
@@ -77,7 +87,7 @@ export async function reportLetter(letterId: string, report: Report): Promise<Re
     also_block: report.alsoBlock,
   });
   if (error) throw toRpcError(error, 'The report could not be sent. Check your connection.');
-  return data === 'already_reported' ? 'already_reported' : 'reported';
+  return toReportOutcome(data);
 }
 
 /** Reports a courier: a request from a stranger, a name chosen to hurt. */
@@ -89,7 +99,7 @@ export async function reportCourier(courierId: string, report: Report): Promise<
     also_block: report.alsoBlock,
   });
   if (error) throw toRpcError(error, 'The report could not be sent. Check your connection.');
-  return data === 'already_reported' ? 'already_reported' : 'reported';
+  return toReportOutcome(data);
 }
 
 /** The note as it is sent: trimmed, and left out when there is nothing in it. */

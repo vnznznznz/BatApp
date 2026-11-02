@@ -4,8 +4,10 @@ import { Alert, type AlertButton } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ProfileScreen from '@/app/(app)/profile';
+import { REPORT_RETENTION_DAYS } from '@/constants/config';
 import type { Profile } from '@/features/profile/use-profile';
 import { formatTimestamp } from '@/lib/format';
+import { openLink } from '@/lib/links';
 
 // React Native loads its components on first use, and with a cold transform
 // cache the first render compiles them: seconds of work, measured at over five
@@ -50,6 +52,32 @@ jest.mock('@/features/profile/use-profile', () => ({
     updateDisplayName: mockUpdateDisplayName,
   }),
 }));
+
+/** The two links, as this build is configured. Unset in the environment, each is null. */
+const mockLinks: { contact: string | null; privacyPolicy: string | null } = {
+  contact: null,
+  privacyPolicy: null,
+};
+
+// Both links are configuration, read from the build's environment, and the
+// screen leaves out whichever is unset. Getters, so the screen reads them as it
+// renders and each test can configure them as a build would; opening one is the
+// device's business. No spread of the real module: Babel turns a spread beside
+// a getter into a copy, and the copy would read the getter once, too early.
+jest.mock('@/lib/links', () => ({
+  get CONTACT_URL() {
+    return mockLinks.contact;
+  },
+  get PRIVACY_POLICY_URL() {
+    return mockLinks.privacyPolicy;
+  },
+  openLink: jest.fn(),
+}));
+
+const mockedOpenLink = jest.mocked(openLink);
+
+const CONTACT = 'mailto:night-courier@example.com';
+const PRIVACY_POLICY = 'https://example.com/night-courier/privacy';
 
 // Alerts are native. The spy records what would have been shown, and the test
 // presses the buttons itself.
@@ -115,6 +143,9 @@ beforeEach(() => {
   mockUpdateDisplayName.mockImplementation(async (displayName) => {
     mockProfileState.profile = { ...courier, displayName: displayName.trim() };
   });
+  mockLinks.contact = null;
+  mockLinks.privacyPolicy = null;
+  mockedOpenLink.mockReset().mockResolvedValue(undefined);
 });
 
 describe('ProfileScreen', () => {
@@ -194,11 +225,18 @@ describe('ProfileScreen', () => {
   });
 
   describe('your name', () => {
+    /**
+     * Asking someone to be friends shows them your name before they have said
+     * yes, so the hint names everyone who sees it: friends, and anyone you ask.
+     * A screen reader says the same on reaching the field.
+     */
     it('shows the name friends see, ready to change', async () => {
+      const hint = 'What your friends, and anyone you ask to be friends, see.';
       await renderScreen(<ProfileScreen />);
 
       expect(nameField().props.value).toBe('Mara Lind');
-      expect(screen.getByText('What your friends see.')).toBeOnTheScreen();
+      expect(screen.getByText(hint)).toBeOnTheScreen();
+      expect(nameField().props.accessibilityHint).toBe(hint);
     });
 
     it('saves a new name, and says so', async () => {
@@ -321,6 +359,82 @@ describe('ProfileScreen', () => {
     });
   });
 
+  describe('safety', () => {
+    it('opens the couriers you have blocked', async () => {
+      await renderScreen(<ProfileScreen />);
+      expect(screen.getByText('Safety')).toBeOnTheScreen();
+
+      await fireEvent.press(button('Blocked couriers'));
+
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush).toHaveBeenCalledWith('/blocked');
+    });
+
+    it('opens the house rules', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      await fireEvent.press(button('House rules'));
+
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush).toHaveBeenCalledWith('/rules');
+    });
+
+    /**
+     * Nothing here depends on the profile. A courier whose profile will not
+     * load can still unblock someone, read the rules, and get in touch - which,
+     * with their profile gone missing, they may well need to.
+     */
+    it('is all still there when the profile could not be loaded', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = 'Your profile is missing. Signing out and in again may recover it.';
+      mockLinks.contact = CONTACT;
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.getByText('Safety')).toBeOnTheScreen();
+      expect(button('Blocked couriers')).toBeEnabled();
+      expect(button('House rules')).toBeEnabled();
+      expect(button('Contact')).toBeEnabled();
+
+      await fireEvent.press(button('Blocked couriers'));
+
+      expect(mockPush).toHaveBeenCalledWith('/blocked');
+    });
+
+    it('offers no Contact or Privacy policy while neither link is configured', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Privacy policy' })).toBeNull();
+    });
+
+    /**
+     * App Review asks an app with user content for published contact
+     * information, and for its privacy policy to be linked in the app. A build
+     * for anyone else configures both.
+     */
+    it('offers a way to get in touch once a contact address is configured, and opens it', async () => {
+      mockLinks.contact = CONTACT;
+      await renderScreen(<ProfileScreen />);
+      expect(screen.queryByRole('button', { name: 'Privacy policy' })).toBeNull();
+
+      await fireEvent.press(button('Contact'));
+
+      expect(mockedOpenLink).toHaveBeenCalledTimes(1);
+      expect(mockedOpenLink).toHaveBeenCalledWith(CONTACT);
+    });
+
+    it('offers the privacy policy once one is configured, and opens it', async () => {
+      mockLinks.privacyPolicy = PRIVACY_POLICY;
+      await renderScreen(<ProfileScreen />);
+      expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+
+      await fireEvent.press(button('Privacy policy'));
+
+      expect(mockedOpenLink).toHaveBeenCalledTimes(1);
+      expect(mockedOpenLink).toHaveBeenCalledWith(PRIVACY_POLICY);
+    });
+  });
+
   describe('your account', () => {
     it('signs out', async () => {
       await renderScreen(<ProfileScreen />);
@@ -344,13 +458,36 @@ describe('ProfileScreen', () => {
       expect(mockedAlert).toHaveBeenCalledTimes(1);
       const [title, message] = mockedAlert.mock.calls[0] ?? [];
       expect(title).toBe('Delete your account?');
-      expect(message).toContain('Letters you sent disappear from your friends’ inboxes too.');
+      expect(message).toContain(
+        'every letter you have sent or received are removed permanently, from your friends’ ' +
+          'letters as well as yours.',
+      );
       expect(message).toContain('This cannot be undone.');
       expect(alertButtons().map(({ text, style }) => ({ text, style }))).toEqual([
         { text: 'Keep my account', style: 'cancel' },
         { text: 'Delete', style: 'destructive' },
       ]);
       expect(mockDeleteAccount).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Reports are the exception to a deletion, both ways: the people who run
+     * Night Courier may still have to act on one, about the courier or made by
+     * them. The courier is told what each keeps, and for how long, in the
+     * number the database deletes by - parity.db.test.mjs holds the two
+     * together.
+     */
+    it('says what reports keep once the account is gone, and when each is deleted', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      await fireEvent.press(button('Delete my account'));
+
+      const [, message] = mockedAlert.mock.calls[0] ?? [];
+      expect(message).toContain(
+        'Reports are the exception: a report about you keeps your names and any letter of ' +
+          'yours it is about, and a report you made keeps what you wrote in it.',
+      );
+      expect(message).toContain(`Each is deleted ${REPORT_RETENTION_DAYS} days after it was made.`);
     });
 
     it('keeps the account when the courier thinks better of it', async () => {

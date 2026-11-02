@@ -457,7 +457,9 @@ describe('FriendsScreen', () => {
       await renderScreen(<FriendsScreen />);
 
       expect(
-        await screen.findByText('Tap a name to see more about someone, or to block or report them.'),
+        await screen.findByText(
+          'Tap a name to see more about someone, or to block or report them.',
+        ),
       ).toBeOnTheScreen();
     });
 

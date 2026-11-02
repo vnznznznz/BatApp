@@ -44,7 +44,11 @@ export function ChoiceList<T extends string>({
             <Pressable
               key={choice.value}
               accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
+              // aria-checked rather than accessibilityState: React Native maps it
+              // to the same state on iOS and Android, and React Native Web
+              // reads only this one - with accessibilityState, every reason was
+              // announced as not checked on the web. (Found in review.)
+              aria-checked={selected}
               accessibilityLabel={choice.label}
               onPress={() => onChange(choice.value)}
               style={({ pressed }) => [
@@ -105,7 +109,9 @@ const styles = StyleSheet.create({
     height: MARK,
     borderRadius: MARK / 2,
     borderWidth: 2,
-    borderColor: Colors.borderStrong,
+    // textMuted, not a border colour: the empty ring is what says "this is a
+    // choice", and borderStrong left it at 1.7:1 against the row.
+    borderColor: Colors.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },

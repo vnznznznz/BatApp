@@ -4,6 +4,13 @@ import { Colors } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 
 /**
+ * The roost sits under every other screen, even one opened straight from a
+ * link or a reload of the web build: without it, that screen would be the
+ * whole stack, and its back button and "Done" would have nowhere to go.
+ */
+export const unstable_settings = { initialRouteName: 'home' };
+
+/**
  * Everything under this group requires a signed-in user.
  *
  * This is a convenience, not a security boundary: the real enforcement is row

@@ -15,6 +15,7 @@ import {
   validatePassword,
   validateUsername,
 } from '@/features/auth/validation';
+import { openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
 type Errors = Partial<Record<'email' | 'password' | 'username' | 'displayName', string | null>>;
 
@@ -86,7 +87,7 @@ export default function SignUpScreen() {
             value={displayName}
             onChangeText={setDisplayName}
             error={errors.displayName}
-            hint="What your friends will see."
+            hint="What your friends, and anyone you ask to be friends, will see."
             autoCapitalize="words"
             autoComplete="name"
             returnKeyType="next"
@@ -131,16 +132,26 @@ export default function SignUpScreen() {
             </Text>
           ) : null}
 
+          {/* The terms come before the button that agrees to them. */}
           <Text variant="caption" tone="secondary" style={styles.rules}>
-            By creating an account, you agree to the house rules: no harassment, threats, hate,
-            unwanted sexual content or spam. Accounts that break them are removed.
+            By creating an account, you agree to the house rules - the terms of using Night Courier.
+            There is no tolerance for harassment, threats, hate, scams, spam, or sexual content
+            nobody asked for, and none at all for sexual content involving or sent to anyone under
+            18. Accounts that break them may be removed.
           </Text>
-          <Button label="Create account" loading={busy} onPress={submit} />
           <Button
             label="Read the house rules"
             variant="ghost"
             onPress={() => router.push('/rules')}
           />
+          {PRIVACY_POLICY_URL ? (
+            <Button
+              label="Privacy policy"
+              variant="ghost"
+              onPress={() => void openLink(PRIVACY_POLICY_URL)}
+            />
+          ) : null}
+          <Button label="Create account" loading={busy} onPress={submit} />
           <Button label="Back" variant="ghost" onPress={() => router.back()} />
         </View>
       </KeyboardAvoidingView>

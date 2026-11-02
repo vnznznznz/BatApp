@@ -58,7 +58,10 @@ export function toBat(row: RoostRow): Bat {
           recipient: {
             id: row.recipient_id,
             username: row.recipient_username ?? '',
-            displayName: row.recipient_display_name ?? row.recipient_username ?? '',
+            // Withheld for someone the courier has blocked: their username, then.
+            displayName:
+              row.recipient_display_name ??
+              (row.recipient_username ? `@${row.recipient_username}` : ''),
           },
           sentAt: new Date(row.sent_at),
           deliverAt: new Date(row.deliver_at),

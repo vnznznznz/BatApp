@@ -1,4 +1,4 @@
-import { formatDay, formatFlightEstimate, formatTimestamp } from '@/lib/format';
+import { formatDay, formatFlightEstimate, formatOnDay, formatTimestamp } from '@/lib/format';
 
 /**
  * Every date here is built with the local-time constructor, as the reader's
@@ -142,15 +142,32 @@ describe('formatDay', () => {
     expect(formatDay(at(2026, 9, 30, 23, 59), now)).toBe('yesterday');
   });
 
-  it('names an earlier day this year without the year', () => {
-    expect(formatDay(at(2026, 9, 2, 8, 0), now)).toBe('on 2 Oct');
+  /** It follows "since": "Friends since 2 Oct", never "since on 2 Oct". (Found in review.) */
+  it('names an earlier day this year without the year, and without "on"', () => {
+    expect(formatDay(at(2026, 9, 2, 8, 0), now)).toBe('2 Oct');
   });
 
   it('adds the year for a day in another year', () => {
-    expect(formatDay(at(2025, 11, 31, 22, 0), now)).toBe('on 31 Dec 2025');
+    expect(formatDay(at(2025, 11, 31, 22, 0), now)).toBe('31 Dec 2025');
   });
 
   it('says nothing misleading about a date it cannot read', () => {
     expect(formatDay(new Date('not a date'), now)).toBe('—');
+  });
+});
+
+describe('formatOnDay', () => {
+  const now = at(2026, 9, 31, 12, 0);
+
+  /** It follows a verb: "You asked on 2 Oct", "Blocked yesterday". */
+  it('puts "on" before a date, and nothing before today or yesterday', () => {
+    expect(formatOnDay(at(2026, 9, 31, 9, 0), now)).toBe('today');
+    expect(formatOnDay(at(2026, 9, 30, 9, 0), now)).toBe('yesterday');
+    expect(formatOnDay(at(2026, 9, 2, 9, 0), now)).toBe('on 2 Oct');
+    expect(formatOnDay(at(2025, 11, 31, 9, 0), now)).toBe('on 31 Dec 2025');
+  });
+
+  it('says nothing misleading about a date it cannot read', () => {
+    expect(formatOnDay(new Date('not a date'), now)).toBe('—');
   });
 });

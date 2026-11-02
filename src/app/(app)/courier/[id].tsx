@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
@@ -32,6 +32,7 @@ type Busy = 'accept' | 'end' | 'block';
  */
 export default function CourierScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
   const { reload } = list;
@@ -49,7 +50,11 @@ export default function CourierScreen() {
               This courier is no longer among your friends or requests.
             </Text>
             <View style={styles.actions}>
-              <Button label="Back to friends" variant="secondary" onPress={() => router.back()} />
+              <Button
+                label="Back to friends"
+                variant="secondary"
+                onPress={() => router.dismissTo('/friends')}
+              />
             </View>
           </>
         ) : list.error ? (
@@ -79,7 +84,10 @@ export default function CourierScreen() {
     try {
       await work();
       announce(said);
-      if (leaves) router.back();
+      // To the list by name rather than one step back, and only if this page is
+      // still in front: by now the courier may have gone on somewhere else -
+      // back to the roost, even, where `/friends` is no longer in the stack.
+      if (leaves && navigation.isFocused()) router.dismissTo('/friends');
       else await reload();
     } catch (caught) {
       const problem = messageOf(caught);
@@ -124,9 +132,11 @@ export default function CourierScreen() {
     confirmAction({
       title: `Block ${handle}?`,
       message:
-        'Your friendship ends, they cannot ask to be friends again, and any letters from ' +
-        'them - already here or still in the air - are hidden from you. They are not told. ' +
-        'You can unblock them later in your profile.',
+        'Any friendship or request between you ends, and they cannot ask again. Their ' +
+        'letters, already here or still in the air, are hidden from you; yours stay with ' +
+        'them. They are not told, though they may notice. Blocking alone tells no one: to ' +
+        'tell the person who runs Night Courier, report them instead - a report can block ' +
+        'them as well.',
       confirmLabel: 'Block',
       cancelLabel: 'Cancel',
       destructive: true,
@@ -205,8 +215,9 @@ export default function CourierScreen() {
           Safety
         </Text>
         <Text variant="caption" tone="muted" style={styles.line}>
-          Blocking ends your friendship, hides their letters from you and stops them asking again.
-          Reporting tells the people who run Night Courier. {handle} is not told about either.
+          Blocking ends any friendship or request between you, hides their letters from you and
+          stops them asking again; {handle} is not told. Reporting tells the person who runs Night
+          Courier, who never tells {handle} who reported them.
         </Text>
         <Button
           label={`Block ${handle}`}

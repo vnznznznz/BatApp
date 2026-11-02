@@ -16,6 +16,7 @@ import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
 import { confirmAction, notify } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
+import { CONTACT_URL, openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -72,9 +73,10 @@ export default function ProfileScreen() {
       title: 'Delete your account?',
       message:
         'Your profile, your bats, your friendships and every letter you have sent or received ' +
-        'are removed permanently. Letters you sent disappear from your friends’ inboxes too. ' +
-        `Only a report someone made keeps its copy, for up to ${REPORT_RETENTION_DAYS} days. ` +
-        'This cannot be undone.',
+        'are removed permanently, from your friends’ letters as well as yours. Reports are the ' +
+        'exception: a report about you keeps your names and any letter of yours it is about, ' +
+        'and a report you made keeps what you wrote in it. Each is deleted ' +
+        `${REPORT_RETENTION_DAYS} days after it was made. This cannot be undone.`,
       confirmLabel: 'Delete',
       cancelLabel: 'Keep my account',
       destructive: true,
@@ -136,7 +138,7 @@ export default function ProfileScreen() {
                 setSaved(false);
               }}
               error={nameError}
-              hint="What your friends see."
+              hint="What your friends, and anyone you ask to be friends, see."
               autoCapitalize="words"
               returnKeyType="done"
               onSubmitEditing={save}
@@ -180,7 +182,7 @@ export default function ProfileScreen() {
       ) : null}
 
       <View style={[styles.form, styles.divided]}>
-        <Text variant="caption" tone="secondary">
+        <Text variant="caption" tone="secondary" accessibilityRole="header">
           Safety
         </Text>
         <Button
@@ -189,10 +191,20 @@ export default function ProfileScreen() {
           onPress={() => router.push('/blocked')}
         />
         <Button label="House rules" variant="ghost" onPress={() => router.push('/rules')} />
+        {CONTACT_URL ? (
+          <Button label="Contact" variant="ghost" onPress={() => void openLink(CONTACT_URL)} />
+        ) : null}
+        {PRIVACY_POLICY_URL ? (
+          <Button
+            label="Privacy policy"
+            variant="ghost"
+            onPress={() => void openLink(PRIVACY_POLICY_URL)}
+          />
+        ) : null}
       </View>
 
       <View style={[styles.form, styles.divided]}>
-        <Text variant="caption" tone="secondary">
+        <Text variant="caption" tone="secondary" accessibilityRole="header">
           Account
         </Text>
         <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />

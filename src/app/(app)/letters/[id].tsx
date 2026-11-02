@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
@@ -27,6 +27,7 @@ import { useRemote } from '@/lib/use-remote';
  */
 export default function LetterScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const load = useCallback(() => readMessage(id), [id]);
   const letter = useRemote(load);
@@ -35,10 +36,35 @@ export default function LetterScreen() {
   const [blocking, setBlocking] = useState(false);
   const [blockError, setBlockError] = useState<string | null>(null);
 
-  const landsAt = letter.data && !letter.data.delivered ? letter.data.deliverAt.getTime() : null;
+  // Refused: deleted with an account, or hidden by a block - on the first load
+  // or on a reload after it had loaded. Whatever was on screen is no longer the
+  // courier's to read, and there is nothing left to wait for. (Found in review:
+  // going back from a report that blocked its sender showed the hidden letter
+  // again, and a letter gone while in the air was fetched again every minute.)
+  const gone = letter.reason === 'message_not_found';
+
+  const landsAt =
+    !gone && letter.data && !letter.data.delivered ? letter.data.deliverAt.getTime() : null;
 
   // Fetching again once the arrival time passes is what lands it.
   useRefreshAt(landsAt, letter.settledAt, reload);
+
+  if (gone) {
+    return (
+      <Screen center edges={['bottom']} style={styles.screen}>
+        <Text variant="body" tone="secondary" center>
+          This letter is no longer here.
+        </Text>
+        <View style={styles.actions}>
+          <Button
+            label="Back to your letters"
+            variant="secondary"
+            onPress={() => router.dismissTo('/letters')}
+          />
+        </View>
+      </Screen>
+    );
+  }
 
   if (!letter.data) {
     return (
@@ -67,9 +93,10 @@ export default function LetterScreen() {
     confirmAction({
       title: `Block ${handle}?`,
       message:
-        'Your friendship ends, they cannot ask to be friends again, and their letters - this ' +
-        'one too - are hidden from you. They are not told. You can unblock them later in ' +
-        'your profile.',
+        'Your friendship ends and they cannot ask again. Their letters - this one too - are ' +
+        'hidden from you; yours stay with them. They are not told, though they may notice. ' +
+        'Blocking alone tells no one: to tell the person who runs Night Courier, report the ' +
+        'letter instead - a report can block them as well.',
       confirmLabel: 'Block',
       cancelLabel: 'Cancel',
       destructive: true,
@@ -83,8 +110,10 @@ export default function LetterScreen() {
     try {
       await blockCourier(data.other.id);
       announce(`${handle} is blocked.`);
-      // The letter is hidden now; there is nothing left here to show.
-      router.back();
+      // The letter is hidden now; there is nothing left here to show. To the list
+      // by name, not one step back - and only if this is still in front: by the
+      // time the block is made, the courier may have gone on somewhere else.
+      if (navigation.isFocused()) router.dismissTo('/letters');
     } catch (caught) {
       const problem = messageOf(caught);
       setBlockError(problem);
@@ -123,6 +152,7 @@ export default function LetterScreen() {
           <View style={styles.actions}>
             <Button
               label="Write back"
+              disabled={blocking}
               onPress={() => router.push({ pathname: '/compose', params: { to: data.other.id } })}
             />
           </View>

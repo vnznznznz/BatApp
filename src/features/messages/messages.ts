@@ -17,7 +17,8 @@ import { supabase } from '@/lib/supabase';
 export type Correspondent = {
   id: string;
   username: string;
-  displayName: string;
+  /** Null when withheld: someone you have blocked is shown by username alone. */
+  displayName: string | null;
 };
 
 export type Place = { name: string; countryCode: string };
@@ -95,7 +96,8 @@ export type SentRow = {
   message_id: string;
   recipient_id: string;
   recipient_username: string;
-  recipient_display_name: string;
+  /** Null for a recipient the caller has blocked. */
+  recipient_display_name: string | null;
   destination_city_name: string;
   destination_country_code: string;
   distance_km: number;
@@ -110,7 +112,8 @@ export type LetterRow = {
   direction: string;
   other_id: string;
   other_username: string;
-  other_display_name: string;
+  /** Null for someone the caller has blocked. */
+  other_display_name: string | null;
   origin_city_name: string;
   origin_country_code: string;
   destination_city_name: string;
@@ -284,7 +287,7 @@ export async function fetchBadges(): Promise<Badges> {
   return { unreadLetters: row.unread_messages, friendRequests: row.friend_requests };
 }
 
-/** "Anna" - or their username if, somehow, they have no name to show. */
+/** "Anna" - or "@anna" when there is no name to show, as for someone you have blocked. */
 export function correspondentName(person: Pick<Correspondent, 'displayName' | 'username'>): string {
   return person.displayName || `@${person.username}`;
 }

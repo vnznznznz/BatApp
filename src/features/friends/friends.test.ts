@@ -1,6 +1,8 @@
 import {
   acceptFriend,
   describeRequestOutcome,
+  describeRoute,
+  describeStanding,
   fetchFriendships,
   friendName,
   groupFriendships,
@@ -245,6 +247,51 @@ describe('friendName', () => {
 
   it('shows only the username of someone who has not accepted yet', () => {
     expect(friendName(toFriendship(outgoingRow()).friend)).toBe('@ben');
+  });
+});
+
+describe('describeStanding', () => {
+  /** Local-time dates, so these hold in any time zone the tests run in. */
+  const now = new Date(2026, 10, 2, 12, 0);
+  const at = (month: number, day: number) => new Date(2026, month, day, 9, 30).toISOString();
+
+  /** "since" takes a bare day: "Friends since on 2 Oct" was a bug found in review. */
+  it('says since when two couriers have been friends', () => {
+    const friendship = toFriendship(acceptedRow({ accepted_at: at(9, 2) }));
+
+    expect(describeStanding(friendship, now)).toBe('Friends since 2 Oct');
+  });
+
+  it('says today and yesterday in words', () => {
+    expect(describeStanding(toFriendship(acceptedRow({ accepted_at: at(10, 2) })), now)).toBe(
+      'Friends since today',
+    );
+    expect(describeStanding(toFriendship(incomingRow({ requested_at: at(10, 1) })), now)).toBe(
+      'Asked to be friends yesterday',
+    );
+  });
+
+  it('says on which day someone asked, or the courier did', () => {
+    expect(describeStanding(toFriendship(incomingRow({ requested_at: at(9, 28) })), now)).toBe(
+      'Asked to be friends on 28 Oct',
+    );
+    expect(describeStanding(toFriendship(outgoingRow({ requested_at: at(9, 28) })), now)).toBe(
+      'You asked on 28 Oct',
+    );
+  });
+});
+
+describe('describeRoute', () => {
+  it('says where a friend is and how long a bat takes', () => {
+    expect(describeRoute(toFriendship(acceptedRow()))).toMatch(/^.+, [A-Z]{2} · about .+ by bat$/);
+  });
+
+  it('says so when a friend has not chosen a city', () => {
+    const friendship = toFriendship(
+      acceptedRow({ city_name: null, country_code: null, distance_km: null, flight_seconds: null }),
+    );
+
+    expect(describeRoute(friendship)).toBe('Has not chosen a city yet');
   });
 });
 
