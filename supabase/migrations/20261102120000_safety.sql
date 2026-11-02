@@ -11,7 +11,8 @@
 --   * whatever was between the two - a friendship, a request either way - ends,
 --     so the blocked courier no longer sees the blocker's city;
 --   * the blocked courier cannot ask again, and is answered exactly as if the
---     username did not exist, so a block cannot be told from a deleted account;
+--     username did not exist, so asking gives the block away no more than a
+--     deleted account would;
 --   * letters from the blocked courier - those already received, and any still
 --     in the air - are hidden from the blocker while the block stands. They are
 --     not deleted: the bat that carried one still comes home, and unblocking

@@ -576,9 +576,16 @@ courier no longer sees the blocker's city. Letters then stop both ways, because 
 between friends, and the blocked courier cannot ask again.
 
 They are never told. Asking to be friends with someone who has blocked you is refused with the
-unknown-username refusal, message and all, so a block looks exactly like a deleted account. Their
-own letters land, as far as they can see, the way letters always land: the app has no read receipts
-to withhold. The blocker, by contrast, is told plainly why they cannot ask someone they have blocked.
+unknown-username refusal, message and all, so the answer says no more than it would about a deleted
+account. Their own letters land, as far as they can see, the way letters always land: the app has no
+read receipts to withhold. The blocker, by contrast, is told plainly why they cannot ask someone they
+have blocked.
+
+What a block cannot hide is everything else that stays as it was. The letters the blocker sent
+before it remain in the blocked courier's inbox, where a deleted account's would have gone, so
+someone who thinks about it can tell the difference. Deleting those letters would hide the block
+better, but it would take the blocker's own words back out of someone's inbox without asking, and
+it would make blocking destroy things - which would make people slower to use it.
 
 **Rejected:** telling the blocked person, or a softer "this courier is not accepting requests". Both
 announce the block to the person most likely to react badly to it.
