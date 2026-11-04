@@ -22,13 +22,13 @@ watch bats come home, and read what has landed. Delivery is decided by the datab
 pg_cron; every product rule is enforced server-side and tested, including the reservation race
 against a real Postgres.
 
-| Phase | What it adds           | Where it stands                                                       |
-| ----- | ---------------------- | --------------------------------------------------------------------- |
-| 10    | Push notifications     | **Dropped** by decision, 2 November 2026                              |
-| 12    | Bat flight animation   | **Done**: wing beat, drift, a drawn flight; still under Reduce Motion |
-| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains              |
-| 13a   | Safety and moderation  | **Done**: report, block, house rules - what App Review looks for      |
-| 14    | Testing                | Mostly done in passing; testing on real devices remains               |
+| Phase | What it adds           | Where it stands                                                                      |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------ |
+| 10    | Push notifications     | **Dropped** by decision, 2 November 2026                                             |
+| 12    | Bat flight animation   | **Done**: wing beat, drift, a drawn flight; wings and drift stop under Reduce Motion |
+| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains                             |
+| 13a   | Safety and moderation  | **Done**: report, block, house rules - what App Review looks for                     |
+| 14    | Testing                | Mostly done in passing; testing on real devices remains                              |
 
 There are no push notifications, by the operator's choice: a letter that lands is seen the next
 time its recipient opens the app. Push would not have cost anything itself - Expo's push service,
@@ -51,15 +51,15 @@ cost on the iOS side; nothing in the app itself costs money.
 
 ### C. Compliance artifacts — drafted in `docs/store/`; personal details and hosting still open
 
-| Item                              | Required by                    | Notes                                                                                                                                                             |
-| --------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | **Drafted**: `docs/store/privacy-policy.de.md` (binding) and `.en.md`. Needs the operator's name and address filled in, outside this repository, and a public URL |
-| Support URL                       | Apple 1.2                      | Contact address decided, kept out of this repository; in the app via `EXPO_PUBLIC_CONTACT_URL`. Needs a public https page, which the hosted policy can be         |
-| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                                                                                      |
-| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                  |
-| App Privacy "nutrition label"     | App Store Connect              | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                         |
-| Age rating questionnaire          | App Store Connect              | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                     |
-| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                                                                                      |
+| Item                              | Required by                    | Notes                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | **Drafted**: `docs/store/privacy-policy.de.md` (binding) and `.en.md`. Needs the operator's name and address filled in, outside this repository, and a public URL                                                                                                                                                  |
+| Support URL                       | Apple 1.2                      | **Drafted**: `docs/store/support-page.md`, to be hosted as a public https page; it names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the hosted policy, if Apple wants the address on the Support URL itself |
+| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided. Published only in the hosted privacy policy, section 1 (the support page points there); in App Store Connect where a form asks; never in this repository                                                                                                                                                  |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                   |
+| App Privacy "nutrition label"     | App Store Connect              | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                          |
+| Age rating questionnaire          | App Store Connect              | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                      |
+| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                                                                                                                                                                                                                                       |
 
 Account deletion is already built and tested, which is the one item on Apple's list that is code
 rather than paperwork.
@@ -167,7 +167,8 @@ order by created_at;
 
 Each row says who was reported (`reported_id`, plus the username and display name as they were),
 why, the reporter's note, and for a reported letter its full text (`letter_body`). The reporter is
-`reporter_id`; the person reported is never told who that was, so do not tell them — and remember
+`reporter_id`; the person reported is not told who that was, unless the law requires it, so do not
+tell them — and remember
 that a letter has one reader, so acting on a letter can tell its sender who reported it anyway.
 
 Identify people by `reported_id`, not by the username. When `reported_id` is null the account has
@@ -177,7 +178,8 @@ been deleted, and its username is free: it may belong to someone else by now.
 
 - **Nothing breaks the rules** — mark it resolved.
 - **Somewhere in between** — the reporter has usually blocked them already (the report screen does
-  that by default). A warning has to go by email, from the address on their account, saying why.
+  that by default). A warning goes by email to the address on their account, from the contact
+  mailbox, saying why.
 - **Serious, or repeated** — remove the account:
 
   ```sql
@@ -186,10 +188,10 @@ been deleted, and its username is free: it may belong to someone else by now.
 
   That deletes their profile, and with it their bats, friendships, blocks and every letter they
   sent or received, on both sides; the reports about them stay, without their id. Their sign-in
-  stays behind, banned for two years (`private.ban_period()`), so that the same email cannot
-  simply sign up again, and the daily tidy-up deletes it when the ban runs out. The privacy policy
-  says exactly this, so do not ban for longer by hand. (Authentication → Users → Delete user also
-  works, but frees the email at once.)
+  stays behind, banned for two years from the removal (`private.ban_period()`), so that the same
+  email cannot simply sign up again, and the daily tidy-up deletes it when the ban runs out. The
+  privacy policy says exactly this, so do not ban for longer by hand. (Authentication → Users →
+  Delete user also works, but frees the email at once.)
 
 - **A threat** — stop the account at once, but delete nothing yet: removing it takes every letter
   between the two of them with it, and the report keeps only the one reported.
@@ -199,7 +201,9 @@ been deleted, and its username is free: it may belong to someone else by now.
   ```
 
   They can no longer sign in, and their app stops working within the hour, when its sign-in would
-  be renewed. Then write to the reporter, from the address on their account, that the account will
+  be renewed. This is a suspension: the account still exists, with its profile and letters, and the
+  two years the privacy policy names count from the removal, which sets the ban afresh. Then write
+  to the reporter, at the address on their account, from the contact mailbox, that the account will
   be removed in a week and why they may want copies (screenshots) of their letters first. If the
   police are to have the report, export it now, together with the account's sign-in records - the
   privacy policy says these may go with it:
@@ -395,7 +399,9 @@ is the cleaner foundation.
    after creation. Encryption at rest (AES-256) and
    in transit is on by default. Note that Supabase Inc. is a US corporation, so region choice
    gives data _residency_, not sovereignty — transfers rest on SCCs in their DPA, which is
-   appropriate for a hobby project but worth knowing.
+   appropriate for a hobby project but worth knowing. The DPA has to be requested and signed
+   (`docs/store/gdpr-records.md`, 5.1) before the privacy policy is published, since its sections 7
+   and 8 say it exists.
 
 ### Before a second person can sign up: custom SMTP
 
@@ -409,7 +415,10 @@ Until a custom SMTP provider is configured:
 
 Configure a provider under Authentication → Emails → SMTP Settings (Resend, Postmark and SES all
 have free tiers large enough for this app), which also lifts the cap to 30 messages per hour, and
-then turn email confirmation on. Both are dashboard settings, not code.
+then turn email confirmation on. Set `enable_confirmations = true` under `[auth.email]` in
+`supabase/config.toml` in the same change, as its comment says: otherwise the next
+`npx supabase config push` switches confirmation off again, and section 3.10 of the privacy policy
+stops being true.
 
 ### Push notifications: none
 
@@ -448,20 +457,24 @@ transits it, so a content-free push keeps message text out of a US processor.
 - ~~**Decide the minimum age.**~~ Decided on 4 November 2026: **12**, and under 16 only with a parent's
   or guardian's permission - 16 being the age at which German law lets someone agree to an online
   service on their own (Art. 8 GDPR). The house rules say so and sign-up asks for it; nobody's age is
-  checked or stored. Including 12-year-olds brings Google Play's Families Policy into play, and the
-  App Store's computed age rating may come out higher than 12: see `docs/store/`. The house rules
-  forbid any sexual content involving or sent to anyone under 18.
+  checked or stored. Including 12-year-olds brings Google Play's Families Policy into play, and on
+  the App Store the computed rating (expected 4+) has to be overridden to 13+, Apple's lowest tier
+  at or above 12, so the store shows one year more than the house rules: see
+  `docs/store/app-store.md`, "Age rating". The house rules forbid any sexual content involving or
+  sent to anyone under 18.
 - **The privacy policy must cover reports**: that a report goes to the operator with a copy of
   what was reported; that the reported person is not told who reported them (but may guess, a
-  letter having one reader); that it is deleted 180 days after it was made, unless passed to the
-  police, who are therefore a possible recipient; and that it outlives account deletion, both ways —
-  without the ids of the people involved, but with the reported username, display name and letter
-  text, and with the note the reporter wrote. Removed accounts are kept banned for two years and
-  then deleted (see "Handling a report"); it must say that too.
+  letter having one reader); that it is deleted 180 days after it was made, whether or not it was
+  passed to the police, who keep their own copy under their own rules and are therefore a possible
+  recipient; and that it outlives account deletion, both ways — without the ids of the people
+  involved, but with the reported username, display name and letter text, and with the note the
+  reporter wrote. Removed accounts are kept banned for two years from the removal and then deleted
+  (see "Handling a report"); it must say that too.
 - **The privacy policy must name Switzerland as the hosting location.** The Supabase project is
   in Zurich (`eu-central-2`), which is outside the EU. The transfer is lawful under the
-  Commission's January 2024 adequacy decision for Switzerland, but Art. 13 requires telling users
-  where their data actually goes — "hosted in the EU" would be untrue.
+  Commission's adequacy decision for Switzerland (Decision 2000/518/EC, kept in force by Art. 45(9)
+  GDPR; the Commission's January 2024 review found the protection still adequate), but Art. 13
+  requires telling users where their data actually goes — "hosted in the EU" would be untrue.
 
 - **A support URL and a reachable contact address.** You cannot stay fully anonymous: Guideline
   1.2 requires published contact information and GDPR Art. 13 requires the controller's identity.
@@ -473,8 +486,10 @@ transits it, so a content-free push keeps message text out of a US processor.
   The operator has decided to use a personal postal address. **It is deliberately not stored in
   this repository, and must not be.** This repository is public; anything committed here is
   scraped, mirrored, and permanent in git history even after deletion. The address belongs in
-  App Store Connect's contact fields and in the privacy policy hosted at its own URL — both
-  entered directly, at Phase 16, and neither of them in version control.
+  App Store Connect's contact fields where a form asks for it, and in section 1 of the privacy
+  policy hosted at its own URL — both entered directly, at Phase 16, and neither of them in version
+  control. The policy is the only public page that carries it: the support page names the operator
+  and points to the policy for the postal address.
 
   The same applies to the privacy policy: host it somewhere you control and link to it, rather
   than committing a document containing a home address to a public repo.

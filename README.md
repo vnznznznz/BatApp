@@ -23,7 +23,8 @@ the build.
 - A new city takes a day to become where your bats fly from. Otherwise anyone could borrow a
   friend's city for one short flight and move straight back - choosing their own delivery time.
 - Anyone can be blocked, at any time, and is never told. A block ends the friendship and hides
-  their letters; a report goes to the people who run the service, never to the person reported.
+  their letters; a report goes to the person who runs the service, and the person reported is not
+  told who made it, unless the law requires it.
 - No push notifications: what has landed is there the next time you open the app.
 
 ## Status
@@ -31,14 +32,15 @@ the build.
 The product works end to end. You can sign up, choose your city, ask friends by username, write
 to a friend, watch your bat fly the real distance, and read what lands in your inbox - with the
 delivery time decided by the database, three bats that are really three, and no read receipts.
-Phases 1–9 and 11 are done; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when,
+Phases 1–9, 11 and 12 are done; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when,
 and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the decisions and why.
 
 Reporting and blocking are built (13a, which App Review checks), with house rules that every new
 account agrees to; operators, see "Handling a report" in [`docs/GO-LIVE.md`](docs/GO-LIVE.md). There
-are no push notifications, by decision. Not built yet: the flight animation (12). Not done yet: the
-hosted Supabase project (see "Setting up the hosted project" in GO-LIVE), and testing on real
-devices.
+are no push notifications, by decision. The flight animation (12) is built: wing beat, drift and a
+drawn flight. Under Reduce Motion the wings and the drift stop; where each bat is on its way still
+updates. Not done yet: the hosted Supabase project (see
+"Setting up the hosted project" in GO-LIVE), and testing on real devices.
 
 ## Requirements
 

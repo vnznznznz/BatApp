@@ -10,11 +10,11 @@ Notes for the operator - remove before publishing, like every comment in this fi
 4. This version describes the code including the migration
    supabase/migrations/20261104120000_privacy_housekeeping.sql: the daily "tidy-up" job, sessions
    ended after 90 days unused, the sign-in log kept 30 days and deleted with the account, the names
-   from sign-up, the old city, private.remove_account with a two-year ban. If that changes, update
-   sections 3.1, 3.2, 3.8, 3.9, 5, 9 and 11 and "In short". On the hosted project,
-   "select private.tidy_up();" must return {} (docs/GO-LIVE.md, "Setting up the hosted project",
-   step 4). Otherwise the list names every step the job skips for want of a privilege, and what
-   this policy says about it is wrong.
+   from sign-up, the old city, private.remove_account with a ban of two years from the removal. If
+   that changes, update sections 3.1, 3.2, 3.8, 3.9, 5, 6, 9 and 11 and "In short". On the hosted
+   project, "select private.tidy_up();" must return {} (docs/GO-LIVE.md, "Setting up the hosted
+   project", step 4). Otherwise the list names every step the job skips for want of a privilege,
+   and what this policy says about it is wrong.
 5. Section 5 (iPhone) describes the keychain with WHEN_UNLOCKED_THIS_DEVICE_ONLY (KEYCHAIN_OPTIONS
    in src/lib/secure-storage.ts, commit 3a343b0). If that is reverted, put the old sentence back:
    "Keychain entries can be included in encrypted backups and moved to a new iPhone."
@@ -204,12 +204,12 @@ letters from that person.
 
 **What I do with a report:** I read every report. Depending on what happened, I do nothing, send the
 person a warning to the email address of their account, or remove their account (section 3.8). If
-it is about a threat, I ban the reported account at once, but remove it only a week later. Before
-that, I write to the person who reported it, at the email address of their account: every letter
-between the two of you goes with the other account, and they should be able to keep copies first.
-With threats or possible crimes, I may pass a report on to the police, together with the reported
-account's sign-in data as far as it is still stored by then: its sessions and its entries in the
-sign-in log, each with an IP address (section 3.9).
+it is about a threat, I suspend the reported account at once, but remove it only a week later.
+Before that, I write to the person who reported it, at the email address of their account: every
+letter between the two of you goes with the other account, and they should be able to keep copies
+first. With threats or possible crimes, I may pass a report on to the police, together with the
+reported account's sign-in data as far as it is still stored by then: its sessions and its entries
+in the sign-in log, each with an IP address (section 3.9).
 
 **How long:** a report is deleted automatically 180 days after it was made – whether it has been
 dealt with or not. If either person deletes their account before then, the report still stays until
@@ -232,22 +232,32 @@ requires me to, the legal basis is Art. 6(1)(c) GDPR.
 
 If someone breaks the house rules seriously or repeatedly, I remove their account. Their profile,
 bats, friendships, blocks and every letter the account sent or received are then deleted – on both
-sides. If it is about a threat, I ban the account at once and remove it a week later, so that the
-person who reported it can keep copies first (section 3.7).
+sides. If it is about a threat, I suspend the account at once: it can no longer sign in, and the
+app stops working on it within the hour, but nothing is deleted yet. I remove it a week later, so that the person who reported it can keep copies
+first (section 3.7).
 
 So that the same person cannot simply sign up again with the same email address, I ban the
-account's sign-in when I do this. The account record then stays at Supabase: the email address, the
-password hash and the times from section 3.1. It is kept for **two years**; then a daily job
-deletes it. The account's sessions end after 90 days already, because a banned account can no
-longer use them, and its entries in the sign-in log are deleted after 30 days (section 3.9).
+account's sign-in when I remove it. The account record then stays at Supabase: the email address,
+the password hash and the times from section 3.1. It is kept for **two years from the removal**;
+then a daily job deletes it. Its sessions end sooner: a daily job deletes each once it has gone
+unused for 90 days, and a banned account can no longer use them. Its entries in the sign-in log are
+deleted once they are 30 days old (section 3.9).
+
+This ban is only for accounts removed for breaking the rules. An account deleted for any other
+reason – by its owner, by me at its owner's request, or by me in the cases in sections 3.10 and
+10 – leaves no ban behind: its
+email address can be used again at once.
 
 <!-- TO CHECK: this section follows private.remove_account and the runbook (docs/GO-LIVE.md,
-"Handling a report"): a ban for private.ban_period() = two years, after which "tidy-up" deletes the
-sign-in and its identities; for a threat, ban first and remove a week later. "Two years" holds only
-as long as nobody bans for longer by hand. Keeping the account record with its password hash is
-deliberate: without it the ban could be got round. The sessions end after 90 days unused, like any
-others (tidy_up); what the police are to have of them, the runbook exports in the week between the
-ban and the removal. -->
+"Handling a report"): remove_account sets the ban to now() + private.ban_period(), two years from
+the removal, after which "tidy-up" deletes the sign-in and its identities. For a threat, the
+runbook suspends first (the same update, a week earlier) and removes a week later; the removal
+starts the two years afresh. "Two years from the removal" holds only as long as nobody bans for
+longer by hand. Keeping the account record with its password hash is deliberate: without it the
+ban could be got round. The sessions end after 90 days unused, like any others (tidy_up); that a
+refused renewal does not count as use (updated_at) is still to check (gdpr-records.md V7). What the
+police are to have of them, the runbook exports in the week between the suspension and the removal.
+Other deletions (the user's own, or Authentication → Users → Delete user) set no ban. -->
 
 **Legal basis:** Art. 6(1)(f) GDPR – the legitimate interest in protecting everyone else from
 someone who was removed for breaking the rules.
@@ -312,7 +322,18 @@ app. No newsletters, no ads. When I write to you myself (section 3.1), the email
 mailbox (section 3.11).
 
 At the moment, an email address is not yet confirmed at sign-up. If someone has used your email
-address for an account without your knowledge, write to me, and I will delete that account.
+address for an account without your knowledge, write to me, and I will delete that account. Once
+confirmation is switched on, a daily job deletes every sign-up whose email address has not been
+confirmed within 7 days, profile and all.
+
+<!-- TO CHECK: email confirmation is off today (supabase/config.toml, enable_confirmations = false),
+because until custom SMTP is set up Supabase's own mailer reaches only the operator
+(docs/GO-LIVE.md, "Before a second person can sign up"). Once custom SMTP and email confirmation
+are on, replace "At the moment, an email address is not yet confirmed at sign-up." with "When you
+sign up, I send you a link to confirm your email address.", drop "– once it is switched on –"
+above, and in the paragraph's last sentence replace "Once confirmation is switched on, a daily job
+deletes" with "A daily job deletes". Until then, keep the current sentences. The 7 days are
+private.unconfirmed_sign_up_lifetime() (tidy_up). -->
 
 **Legal basis:** Art. 6(1)(b) GDPR.
 
@@ -362,7 +383,10 @@ legitimate interest in finding and fixing crashes.
 
 - **Your age.** At sign-up you only confirm that you are at least 12 and, if you are under 16, that
   a parent or guardian has said yes. This is not stored.
-- **Your location, your contacts, photos, camera or microphone.** The app does not ask for them.
+- **Your device's location, the address book on your phone, photos, camera or microphone.** The app
+  does not ask for access to any of them. (The city you choose from a list is described in section
+  3.2, and your friends, requests and blocks in the app in sections 3.3 and 3.6. In the privacy
+  labels Apple and Google show in their stores, these appear under "Location" and "Contacts".)
 - **Device or advertising IDs, push tokens, cookies.** The app has none.
 - **Analytics, advertising, tracking, crash reporting from inside the app.** The app contains no
   such components. It connects only to the Night Courier server at Supabase. When you tap "Contact"
@@ -418,9 +442,9 @@ note 5 at the top. -->
   city, friendships, letters, bats, blocking, sign-in and the emails about your account.
 - **Art. 6(1)(f) GDPR (legitimate interests):** security (sessions and logs), dealing with abuse
   (reports, warnings, removing accounts), keeping reports for 180 days, keeping removed accounts
-  banned for two years, passing a report to the police voluntarily, and crash reports. The
-  interests behind them: a safe app, protecting the people who use it – children and young people
-  above all – and evidence for victims.
+  banned for two years from the removal, passing a report to the police voluntarily, and crash
+  reports. The interests behind them: a safe app, protecting the people who use it – children and
+  young people above all – and evidence for victims.
 - **Art. 6(1)(c) GDPR (legal obligation):** where the law requires me to hand data over, for example
   to the police, a public prosecutor or a court, and when I answer your requests about your data
   protection rights.
@@ -453,6 +477,9 @@ Receiving no data about you: Expo, a service I use to build the app, and GeoName
 cities comes from – the list is in Night Courier's database, and GeoNames is never asked.
 
 <!-- TO CHECK:
+- Supabase DPA: publish only after the Supabase DPA (with the standard contractual clauses) is
+  signed, gdpr-records.md 5.1; until then "on the basis of a data processing agreement" above is
+  untrue.
 - Supabase: open the list of sub-processors (probably https://supabase.com/legal/subprocessors) and
   link it here; check whether it lists a service in front of the API (such as Cloudflare) or a
   logging service outside Switzerland.
@@ -478,29 +505,34 @@ cities comes from – the list is in Night Courier's database, and GeoNames is n
 - **Apple, Google and Microsoft** may also process data in the USA and other countries. How they
   safeguard it is set out in their own privacy policies.
 
-<!-- TO CHECK: if a Supabase sub-processor (for logs, say, or in front of the API) processes data in a
-third country other than the USA, name it here, with its safeguard. -->
+<!-- TO CHECK:
+- Publish only after the Supabase DPA (with the standard contractual clauses) is signed,
+  gdpr-records.md 5.1; until then the sentence on the USA, and the offer of a copy of the clauses,
+  are untrue.
+- If a Supabase sub-processor (for logs, say, or in front of the API) processes data in a third
+  country other than the USA, name it here, with its safeguard. -->
 
 ## 9. How long I keep data
 
-| What                                        | How long                                                                            |
-| ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Account, profile, city, bats                | until you delete your account, or I remove it                                       |
-| Copy of the names from sign-up              | at most one day (section 3.1)                                                       |
-| Previous city and time of a move            | at most two days after the change (section 3.2)                                     |
-| Letters                                     | until you or the other person deletes their account; there is no period             |
-| Friendships and requests                    | until ended, declined or withdrawn, or until an account is deleted                  |
-| Blocks                                      | until you lift them, or until an account is deleted                                 |
-| Reports                                     | 180 days from the report, even if an account is deleted before then                 |
-| Reports passed to the police                | with the police, under their rules; I delete my exported copy after handing it over |
-| Account record of a banned, removed account | two years, then deleted automatically (section 3.8)                                 |
-| Sessions                                    | until you sign out or the account is deleted; at most 90 days after last use        |
-| Sign-in tokens                              | at most as long as the session                                                      |
-| Sign-in log                                 | 30 days; your entries are deleted with your account                                 |
-| Server logs at Supabase                     | a short time, then deleted automatically (section 3.9)                              |
-| Database backups                            | deleted data may remain in them until the backup is overwritten automatically       |
-| Emails to me                                | as long as I need them for your request                                             |
-| List of testers on Google Play              | until you write to tell me you no longer want to test                               |
+| What                                             | How long                                                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Account, profile, city, bats                     | until you delete your account, or I remove it                                                          |
+| Copy of the names from sign-up                   | at most one day (section 3.1)                                                                          |
+| Previous city and time of a move                 | at most two days after the change (section 3.2)                                                        |
+| Letters                                          | until you or the other person deletes their account, or I remove one of the two; there is no period    |
+| Friendships and requests                         | until ended, declined or withdrawn, or until an account is deleted                                     |
+| Blocks                                           | until you lift them, or until an account is deleted                                                    |
+| Reports                                          | 180 days from the report, even if an account is deleted before then                                    |
+| Reports passed to the police                     | with the police, under their rules; I delete my exported copy after handing it over                    |
+| Account record of a banned, removed account      | two years from the removal, then deleted automatically (section 3.8)                                   |
+| Sessions                                         | until you sign out or the account is deleted; otherwise a daily job deletes it once unused for 90 days |
+| Sign-in tokens                                   | at most as long as the session                                                                         |
+| Sign-in log                                      | 30 days; your entries are deleted with your account                                                    |
+| A sign-up whose email address is never confirmed | 7 days, once confirmation is switched on (section 3.10)                                                |
+| Server logs at Supabase                          | a short time, then deleted automatically (section 3.9)                                                 |
+| Database backups                                 | deleted data may remain in them until the backup is overwritten automatically                          |
+| Emails to me                                     | as long as I need them for your request                                                                |
+| List of testers on Google Play                   | until you write to tell me you no longer want to test                                                  |
 
 <!-- TO CHECK: backups - whether, and for how long, the chosen Supabase plan keeps backups; write the
 period into the table (or delete the row if there are none). -->
@@ -521,14 +553,17 @@ period into the table (or delete the row if there are none). -->
   questions, want to report something, or their child has created an account without their
   permission. If a child under 16 has an account without permission, I delete it when the parents
   ask. Before that, I may ask questions to make sure the request really comes from the parents. If I
-  learn that someone is younger than 12, I remove their account.
+  learn that someone is younger than 12, I delete their account – without keeping their email
+  address banned (section 3.8 is only for accounts removed for breaking the rules).
 - Good to know: when an account is deleted, all its letters are gone. Anyone who wants to keep a
   letter – as evidence, for example – should take a screenshot first.
 
 <!-- TO CHECK: whether a parent's permission under 16 must legally be consent under Art. 8 GDPR, or
 whether Art. 6(1)(b) GDPR is enough (and what the rules on contracts with minors say). This policy
-deliberately draws no conclusion. Deleting an account when the parents ask, and removing the account
-of anyone under 12, are operator decisions: confirm them. -->
+deliberately draws no conclusion. Deleting an account when the parents ask is an operator decision:
+confirm it. The account of anyone under 12 is deleted without a ban (Authentication → Users →
+Delete user, or the user's own deletion), not with private.remove_account; gdpr-records.md 5.4 has
+the steps. -->
 
 ## 11. Your rights
 

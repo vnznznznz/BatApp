@@ -136,10 +136,12 @@ Supabase's two EU-central regions are Frankfurt and Zurich. Frankfurt is inside 
 Switzerland, which is not.
 
 Sending the data to Zurich would be a third-country transfer under GDPR. It is lawful today —
-the Commission's January 2024 adequacy decision covers Switzerland — but it is a dependency on a
-decision that can be challenged and withdrawn, as _Schrems I_ and _II_ both were. Frankfurt
-removes the question rather than answering it, is roughly 150 km from the operator instead of
-450, and is AWS's largest European region, which is where Supabase features tend to land first.
+the Commission's adequacy decision for Switzerland (Decision 2000/518/EC, kept in force by Art.
+45(9) GDPR; the Commission's January 2024 review found the protection still adequate) covers it —
+but it is a dependency on a decision that can be challenged and withdrawn, as _Schrems I_ and _II_
+both were. Frankfurt removes the question rather than answering it, is roughly 150 km from the
+operator instead of 450, and is AWS's largest European region, which is where Supabase features
+tend to land first.
 
 The region is immutable after project creation, so this is worth getting right while the database
 is still empty.
@@ -150,8 +152,9 @@ The operator chose Zurich after reading the above. Recording what that actually 
 choice is documented rather than merely made:
 
 - **The transfer is lawful.** Switzerland is a third country under GDPR, but the Commission's
-  adequacy decision of January 2024 covers it, so no standard contractual clauses or transfer
-  impact assessment are needed for the hosting location itself.
+  adequacy decision for Switzerland (Decision 2000/518/EC, kept in force by Art. 45(9) GDPR; the
+  Commission's January 2024 review found the protection still adequate) covers it, so no standard
+  contractual clauses or transfer impact assessment are needed for the hosting location itself.
 - **Swiss data protection is not a downgrade.** The revised FADP is close in substance to the
   GDPR, and Switzerland's reputation on privacy is a legitimate reason to prefer it.
 - **The residual risk is the one named above** — the arrangement rests on an adequacy decision,
@@ -671,7 +674,7 @@ reporter and the reported courier are referenced with `on delete set null`, so t
 either account without the ids.
 
 Reports are for the operator only. No API role can read the table, not even the reporter, and the
-reported courier is never told who reported them.
+reported courier is not told who reported them, unless the law requires it.
 
 **Trade-off:** the reported text outlives the sender's own deletion request, until the report is
 180 days old - and so does what a reporter wrote in their own report. That is the narrow case
@@ -782,15 +785,21 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
   changed; GoTrue keeps another copy in the email identity. The profile is the record of who
   someone is, so both copies are removed once the profile has been made.
 - **Removed accounts.** The operator removes an account with `private.remove_account`, which
-  deletes everything it holds and bans its sign-in for exactly `private.ban_period()` - two years,
-  the operator's decision - so that the same email cannot simply sign up again. The ban used to be
-  a hundred years, set by hand, and kept for ever. When it runs out, the sign-in is deleted.
+  deletes everything it holds and bans its sign-in for exactly `private.ban_period()` - two years
+  from the removal, the operator's decision - so that the same email cannot simply sign up again.
+  The ban used to be a hundred years, set by hand, and kept for ever. When it runs out, the sign-in
+  is deleted.
 - **Sessions.** A session, with the IP address and device it was opened from, lasted until its
   owner signed out - on a phone lost years ago, for ever. Supabase limits that only on its paid
   plans, so the tidy-up ends a session nobody has used for 90 days
   (`private.idle_session_lifetime()`). GoTrue stamps `updated_at` at every renewal, about hourly
   while the app is open, so that is when it was last used; deleting it takes its refresh tokens,
   the app is refused its next renewal, and its owner signs in again.
+- **Unconfirmed sign-ups.** Once email confirmation is on, a sign-up whose address is never
+  confirmed can never sign in, but `handle_new_user` has already made its profile - with someone's
+  email address, perhaps not the sign-up's own. The tidy-up deletes it after 7 days
+  (`private.unconfirmed_sign_up_lifetime()`), long after any link has expired. While confirmation is
+  off, GoTrue confirms every address at sign-up, and the step finds nothing.
 - **Moves.** The city a courier moved away from stays on their profile only while the move
   settles, then goes.
 - **pg_cron's own log** is kept a week.

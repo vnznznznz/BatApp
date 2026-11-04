@@ -9,10 +9,11 @@ muss.
 ergibt – die Migrationen unter `supabase/migrations`, die App unter `src/`, `supabase/config.toml` –
 geprüft am lokalen Stack (Postgres 17, GoTrue v2.197.0). Die Kontolöschung wurde dort in einer
 Transaktion getestet, die anschließend zurückgerollt wurde. Eingeschlossen ist die Migration
-`20261104120000_privacy_housekeeping.sql` (täglicher Auftrag `tidy-up`, `private.remove_account`,
+`20261104120000_privacy_housekeeping.sql` (täglicher Auftrag `tidy-up`, der jeden Schritt an einer
+Tabelle von Supabase für sich absichert und die übersprungenen zurückgibt; `private.remove_account`;
 Ende unbenutzter Sitzungen nach 90 Tagen), die Schlüsselbund-Einstellung aus
-`src/lib/secure-storage.ts` und das Runbook in `docs/GO-LIVE.md` (Commits 67562f9, 3a343b0,
-611813b und 665924d).
+`src/lib/secure-storage.ts`, die gesperrten Android-Berechtigungen in `app.json` und das Runbook in
+`docs/GO-LIVE.md` (Commits 67562f9, 3a343b0, 611813b, 665924d, acd4efe und 191bc50).
 
 **Persönliche Daten stehen nicht in dieser Datei.** Dieses Repository ist öffentlich. Wo das
 Verzeichnis Angaben zum Betreiber braucht, steht ein Platzhalter: `{{OPERATOR_NAME}}`,
@@ -47,7 +48,7 @@ Meldung einer Datenpanne.
 | Angabe                              | Eintrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Verantwortlicher                    | `{{OPERATOR_NAME}}`, Privatperson. Keine Firma, keine Einnahmen                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Anschrift                           | `{{OPERATOR_ADDRESS}}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Anschrift                           | `{{OPERATOR_ADDRESS}}`. Öffentlich nur in der gehosteten Datenschutzerklärung, Abschnitt 1; die Kontaktseite nennt den Betreiber und verweist für die Anschrift dorthin                                                                                                                                                                                                                                                                                                                          |
 | E-Mail                              | `{{CONTACT_EMAIL}}` (auch hinter „Contact“ in der App)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Kontaktseite                        | `{{SUPPORT_URL}}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Datenschutzerklärung                | `{{PRIVACY_POLICY_URL}}`, Stand `{{EFFECTIVE_DATE}}`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -87,7 +88,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 - **Betroffene Nutzer** sind registrierte Personen ab 12 Jahren, darunter Minderjährige: nach den
   Hausregeln von 12 bis 15 mit der Erlaubnis der Eltern oder anderer Erziehungsberechtigter, ab 16
   ohne sie. Das Alter wird weder geprüft noch gespeichert; es können also auch Jüngere darunter
-  sein, deren Konto der Betreiber entfernt, sobald er davon erfährt (Datenschutzerklärung 10).
+  sein, deren Konto der Betreiber löscht, ohne Sperre, sobald er davon erfährt
+  (Datenschutzerklärung 10; 5.4).
 - **Speicherort** ist das Supabase-Projekt in Zürich. **Drittland:** Schweiz (Angemessenheit) und
   möglicher Zugriff von Supabase aus den USA (Standardvertragsklauseln), wie in Abschnitt 2.
 - **Rechtsgrundlagen** sind nicht Teil von Art. 30, stehen hier aber, damit Verzeichnis und
@@ -329,15 +331,19 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   entfernt wurde, mit derselben E-Mail-Adresse gleich neu anmeldet.
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – berechtigtes Interesse, alle anderen vor dieser
   Person zu schützen.
-- **Betroffene:** Nutzer, deren Konto entfernt wurde.
+- **Betroffene:** Nutzer, deren Konto wegen Verstößen gegen die Hausregeln entfernt wurde. Ein
+  Konto, das aus einem anderen Grund gelöscht wird – von der Person selbst, auf Bitte der Eltern,
+  wegen einer fremden E-Mail-Adresse oder weil jemand jünger als 12 ist –, hinterlässt keine Sperre
+  (5.4; Datenschutzerklärung 3.8).
 - **Wie:** Der Betreiber entfernt ein Konto mit `select private.remove_account('<reported_id>')`
   (GO-LIVE, „Handling a report“). Die Funktion sperrt die Anmeldung für genau
-  `private.ban_period()` – zwei Jahre – und löscht das Profil, mit ihm Fledermäuse, Freundschaften,
-  Blockierungen und alle Briefe auf beiden Seiten. Über die API ist sie nicht aufrufbar. Bei einer
-  Drohung sperrt er zuerst nur (`banned_until = now() + private.ban_period()`), schreibt der
-  meldenden Person, exportiert gegebenenfalls die Anmeldedaten für die Polizei (V6) und entfernt
-  das Konto eine Woche später mit `remove_account`; die zwei Jahre laufen dann ab diesem zweiten
-  Schritt (5.6).
+  `private.ban_period()` – zwei Jahre ab dem Entfernen – und löscht das Profil, mit ihm
+  Fledermäuse, Freundschaften, Blockierungen und alle Briefe auf beiden Seiten. Über die API ist sie
+  nicht aufrufbar. Bei einer Drohung sperrt er zuerst nur vorläufig
+  (`banned_until = now() + private.ban_period()`): Das Konto besteht dann noch, mit Profil und
+  Briefen. Er schreibt der meldenden Person, exportiert gegebenenfalls die Anmeldedaten für die
+  Polizei (V6) und entfernt das Konto eine Woche später mit `remove_account`, das die Sperre neu
+  setzt; die zwei Jahre laufen also ab dem Entfernen (5.6).
 - **Daten während der Sperre:** Der Datensatz in `auth.users` bleibt stehen – E-Mail-Adresse,
   Passwort-Hash, die Zeitpunkte aus V1, `banned_until` –, dazu die Identität (ohne die Namen, die
   `tidy_up` entfernt). Die Sitzungen mit IP-Adresse und User-Agent bleiben, bis sie 90 Tage nicht
@@ -346,9 +352,10 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   `updated_at` nicht setzt: zu prüfen). Die Einträge im Anmeldeprotokoll lässt `remove_account`
   bewusst stehen, weil sie nach einer Drohung das sind, was man der Polizei geben kann; sie gehen
   nach 30 Tagen (V8).
-- **Löschfrist:** **zwei Jahre**, die Entscheidung des Betreibers (Datenschutzerklärung 3.8). Ist
-  die Sperre abgelaufen, löscht der tägliche Auftrag `tidy_up` den Anmeldedatensatz, und mit ihm per
-  Kaskade Identität und Sitzungen. Das gilt nur, solange niemand von Hand länger sperrt.
+- **Löschfrist:** **zwei Jahre ab dem Entfernen**, die Entscheidung des Betreibers
+  (Datenschutzerklärung 3.8). Ist die Sperre abgelaufen, löscht der tägliche Auftrag `tidy_up` den
+  Anmeldedatensatz, und mit ihm per Kaskade Identität und Sitzungen. Das gilt nur, solange niemand
+  von Hand länger sperrt.
 
 ### V8 Anmeldeprotokoll und Server-Protokolle
 
@@ -375,12 +382,14 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     löscht die Einträge des Kontos sofort mit, erkannt an `payload->>'actor_id'`; Einträge ohne
     `actor_id`, die trotzdem die E-Mail-Adresse enthalten, gehen erst nach den 30 Tagen. Die Tabelle
     selbst hat keine Nutzer-ID-Spalte und keinen Fremdschlüssel, und GoTrue räumt sie nicht auf.
-  - **Vorbehalt:** Beide Schritte werden ohne Fehler übersprungen, wenn die Rolle `postgres` auf
-    dem gehosteten Projekt kein `DELETE`-Recht auf `auth.audit_log_entries` hat (lokal hat sie es).
-    Auf dem gehosteten Projekt deshalb gleich nach dem ersten `db push` die Rechte prüfen (5.2), und
-    frühestens 31 Tage nach dem Start, wenn es überhaupt ältere Einträge geben kann, dass
+  - **Vorbehalt:** Hat die Rolle `postgres` auf dem gehosteten Projekt kein `DELETE`-Recht auf
+    `auth.audit_log_entries` (lokal hat sie es), überspringen beide Funktionen diesen Schritt ohne
+    Fehler: `tidy_up` nennt ihn dann in seinem Ergebnis (`sign-in log: …`, 4.5),
+    `delete_own_account()` meldet nichts. Auf dem gehosteten Projekt deshalb gleich nach dem
+    ersten `db push` `select private.tidy_up();` ausführen; es muss `{}` ergeben (5.2). Frühestens
+    31 Tage nach dem Start, wenn es überhaupt ältere Einträge geben kann, zusätzlich prüfen, dass
     `select count(*) from auth.audit_log_entries where created_at < now() - interval '31 days'`
-    nichts findet (Lücke L8).
+    nichts findet, der Auftrag also auch täglich läuft (Lücke L8).
   - Server-Protokolle: nach dem Supabase-Tarif; im kostenlosen Tarif nach öffentlichen Angaben
     vermutlich ein Tag (zu prüfen). Wo sie gespeichert werden: zu prüfen. Die Kontolöschung erreicht
     sie nicht.
@@ -556,6 +565,11 @@ fehlt, steht in 4.8.
 - Auf dem Gerät nur die Sitzung. Briefe, Entwürfe, Freundeslisten und Notizen zu Meldungen sind nur
   im Speicher und mit dem Schließen der App weg.
 - Inhalte in POST-Bodies statt in URLs, keine Parameter in den Postgres-Protokollen (V8).
+- Auf Android fordert die App nur die Berechtigung `INTERNET` an: `app.json` sperrt
+  `SYSTEM_ALERT_WINDOW`, `VIBRATE`, `READ_EXTERNAL_STORAGE` und `WRITE_EXTERNAL_STORAGE`, die Expos
+  Vorlage und `expo-file-system` sonst ins Manifest brächten, obwohl die App sie nicht nutzt; das
+  erzeugte Manifest behält nur `INTERNET` (Commit 191bc50). `src/tests/app-config.test.ts` schlägt
+  fehl, wenn sich diese Zeilen ändern, ebenso bei Face ID (4.1).
 - Kontakt- und Datenschutz-Links kommen aus der Build-Konfiguration (`src/lib/links.ts`); Angaben
   zum Betreiber stehen weder im Code noch im Repository.
 
@@ -568,21 +582,26 @@ fehlt, steht in 4.8.
   gleichzeitige Löschungen aufeinander warten, statt sich gegenseitig festzufahren (Deadlock); ein
   Trigger gibt einem Freund die Fledermaus zurück, deren Brief noch flog.
 - **Entfernen durch den Betreiber** (`private.remove_account`): löscht dasselbe und sperrt die
-  Anmeldung für genau `private.ban_period()` (zwei Jahre).
+  Anmeldung für genau `private.ban_period()` (zwei Jahre ab dem Entfernen).
 - **Täglicher Auftrag** `private.tidy_up()` (pg_cron-Job `tidy-up`, `43 4 * * *`, UTC): löscht
   Einträge im Anmeldeprotokoll nach 30 Tagen; entfernt die Namen von der Registrierung aus
   `auth.users` und `auth.identities`; löscht Sitzungen, die 90 Tage nicht benutzt wurden, mit ihren
   Refresh-Token; löscht den Anmeldedatensatz eines entfernten Kontos, sobald die Sperre abgelaufen
-  ist; leert die vorherige Stadt nach einem abgeschlossenen Umzug; behält das Laufprotokoll von
+  ist; löscht eine Registrierung, deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde, samt Profil (`private.unconfirmed_sign_up_lifetime()`; findet nichts, solange die Bestätigung aus ist); leert die vorherige Stadt nach einem abgeschlossenen Umzug; behält das Laufprotokoll von
   pg_cron (`cron.job_run_details`) eine Woche.
-- **Was bei fehlenden Rechten passiert:** Die Schritte an `auth.audit_log_entries`,
-  `auth.identities`, `auth.sessions` und `cron.job_run_details` werden ohne Fehler übersprungen,
-  wenn das Recht fehlt. Die beiden Schritte an `auth.users` (Namen entfernen, abgelaufene Sperren
-  löschen) sind nicht so abgesichert: Fehlt dort `UPDATE` oder `DELETE`, bricht der ganze Auftrag
-  ab, und weil er eine einzige Transaktion ist, wird auch das schon Gelöschte zurückgerollt.
-  Sichtbar ist das nur in `cron.job_run_details` (5.6, 5.7). Am lokalen Stack mit einer Rolle ohne
-  `UPDATE` auf `auth.users` geprüft, in einer zurückgerollten Transaktion. `docs/ARCHITECTURE.md`
-  beschreibt jeden Schritt als übersprungen; für diese zwei stimmt das nicht (Lücke L8).
+- **Was bei fehlenden Rechten passiert:** Jeder Schritt an einer Tabelle von Supabase
+  (`auth.audit_log_entries`, `auth.users`, `auth.identities`, `auth.sessions`,
+  `cron.job_run_details`) steht für sich: Fehlt das Recht oder die Tabelle, wird er übersprungen,
+  die anderen laufen weiter, und `tidy_up` gibt die übersprungenen Schritte mit Grund zurück, etwa
+  `sign-in log: permission denied for table audit_log_entries`. Ein leeres Ergebnis, `{}`, heißt:
+  Jeder Schritt lief. Jeder andere Fehler bricht den ganzen Lauf ab. Ein übersprungener Schritt ist
+  kein Fehler; der Lauf steht in `cron.job_run_details` deshalb trotzdem auf `succeeded`, und was
+  fehlt, zeigt nur der Aufruf von Hand (5.2, 5.7). Geprüft in den Datenbanktests
+  (`housekeeping.db.test.mjs`) mit einer Rolle, die `auth.users` nicht anfassen darf: Die übrigen
+  Schritte laufen, die beiden an `auth.users` (Namen entfernen, abgelaufene Sperren löschen) stehen
+  im Ergebnis. Am lokalen Stack ergibt der Aufruf als `postgres` `{}` (Commit acd4efe).
+  `delete_own_account()` überspringt das Löschen im Anmeldeprotokoll ebenso, aber ohne es zu
+  melden (V8).
 - **Meldungen:** Löschung nach 180 Tagen durch den stündlichen pg_cron-Job `forget-old-reports`;
   bei Kontolöschung `on delete set null`.
 - **GoTrue:** löscht Sitzungen selbst nur nach `not_after`, das ohne Höchstdauer nie gesetzt ist;
@@ -614,18 +633,18 @@ fehlt, steht in 4.8.
 Was der Code heute noch nicht leistet, mit dem jeweils naheliegenden Weg. Jede Behebung ändert
 dieses Verzeichnis, die Datenschutzerklärung und die Store-Formulare mit.
 
-| Nr. | Lücke                                                                                                                                                                                                                                                                                                                                  | Möglicher Weg                                                                                                                                                                                                                                                                                                                                                                           |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L1  | Eine benutzte Sitzung läuft nie ab; eine unbenutzte bleibt mit IP-Adresse und User-Agent bis zu 91 Tage (ein verlorenes Handy also bis dahin)                                                                                                                                                                                          | Höchstdauer unter `[auth.sessions]` in `config.toml`, sobald der Tarif das erlaubt (eine Einstellung bezahlter Tarife; zu prüfen). Bis dahin: abmelden, oder den Betreiber bitten, die Sitzungen zu löschen                                                                                                                                                                             |
-| L2  | Briefe bleiben unbegrenzt, und niemand kann einen einzelnen löschen                                                                                                                                                                                                                                                                    | Ob eine Frist oder eine Löschfunktion nötig ist (Speicherbegrenzung, Art. 5 Abs. 1 lit. e): zu prüfen. Bis dahin steht es offen in der Datenschutzerklärung                                                                                                                                                                                                                             |
-| L3  | E-Mail-Bestätigung aus: fremde Adressen können registriert werden; ein Tippfehler sperrt dauerhaft aus; kein Adresswechsel in der App                                                                                                                                                                                                  | Eigenes SMTP, dann Bestätigung an (GO-LIVE), bevor eine zweite Person sich anmeldet                                                                                                                                                                                                                                                                                                     |
-| L4  | Offene Freundschaftsanfragen laufen nie ab                                                                                                                                                                                                                                                                                             | Frist erwägen                                                                                                                                                                                                                                                                                                                                                                           |
-| L5  | Keine Selbstauskunft und kein Export in der App                                                                                                                                                                                                                                                                                        | Abfrage in Abschnitt 5.3                                                                                                                                                                                                                                                                                                                                                                |
-| L6  | Betreiber und Supabase können jeden Brief im Klartext lesen                                                                                                                                                                                                                                                                            | Die Zusage beschließen, nur gemeldete Briefe zu lesen; offen gelegt ist es schon                                                                                                                                                                                                                                                                                                        |
-| L7  | Während einer Sperre bleiben neben der E-Mail-Adresse auch Passwort-Hash und Zeitpunkte zwei Jahre stehen, die Sitzungen mit IP-Adresse und User-Agent bis zu rund 91 Tage                                                                                                                                                             | Beim Entfernen auch die Sitzungen löschen (5.6), nachdem sie bei einer Drohung exportiert sind. Die Datenschutzerklärung (3.8) nennt das Stehenlassen gewollt, weil die Sitzungen nach einer Drohung das sind, was die Polizei bekommen kann; mit dem Export vorher (GO-LIVE) fällt dieser Grund weg. Entscheidung des Betreibers                                                       |
-| L8  | Fehlt auf dem gehosteten Projekt ein Recht, werden Aufräumschritte still übersprungen (Anmeldeprotokoll, Identitäten, Sitzungen) oder der ganze Auftrag bricht ab (`auth.users`, 4.5). Ob GoTrue ersetzte Refresh-Token aufräumt, ist offen; wenn nicht, wächst die Kette einer benutzten Sitzung um etwa eine Zeile je Stunde Nutzung | Rechte nach dem ersten `db push` prüfen, `UPDATE` und `DELETE` auf `auth.users` einzeln (5.2); `cron.job_run_details` monatlich ansehen (5.7). Für die Token: `GOTRUE_DB_CLEANUP_ENABLED` auf dem gehosteten Projekt erfragen, sonst `tidy_up` ersetzte Token nach einem Tag löschen lassen (Code-Änderung; vorher prüfen, dass GoTrues Erkennung wiederverwendeter Token das verträgt) |
-| L9  | Ordnung, keine Nutzerdaten im engeren Sinn: im Supabase Studio gespeicherte SQL-Schnipsel können Nutzer-IDs aus dem Runbook enthalten                                                                                                                                                                                                  | Schnipsel ohne IDs speichern, gelegentlich aufräumen                                                                                                                                                                                                                                                                                                                                    |
-| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung im Klartext in localStorage                                                                                                                                                                                                                                                      | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                                                             |
+| Nr. | Lücke                                                                                                                                                                                                                                                                                                                                                                                                                          | Möglicher Weg                                                                                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1  | Eine benutzte Sitzung läuft nie ab; eine unbenutzte bleibt mit IP-Adresse und User-Agent bis zu 91 Tage (ein verlorenes Handy also bis dahin)                                                                                                                                                                                                                                                                                  | Höchstdauer unter `[auth.sessions]` in `config.toml`, sobald der Tarif das erlaubt (eine Einstellung bezahlter Tarife; zu prüfen). Bis dahin: abmelden, oder den Betreiber bitten, die Sitzungen zu löschen                                                                                                                                             |
+| L2  | Briefe bleiben unbegrenzt, und niemand kann einen einzelnen löschen                                                                                                                                                                                                                                                                                                                                                            | Ob eine Frist oder eine Löschfunktion nötig ist (Speicherbegrenzung, Art. 5 Abs. 1 lit. e): zu prüfen. Bis dahin steht es offen in der Datenschutzerklärung                                                                                                                                                                                             |
+| L3  | E-Mail-Bestätigung aus: fremde Adressen können registriert werden; ein Tippfehler sperrt dauerhaft aus; kein Adresswechsel in der App                                                                                                                                                                                                                                                                                          | Eigenes SMTP, dann Bestätigung an (GO-LIVE), bevor eine zweite Person sich anmeldet                                                                                                                                                                                                                                                                     |
+| L4  | Offene Freundschaftsanfragen laufen nie ab                                                                                                                                                                                                                                                                                                                                                                                     | Frist erwägen                                                                                                                                                                                                                                                                                                                                           |
+| L5  | Keine Selbstauskunft und kein Export in der App                                                                                                                                                                                                                                                                                                                                                                                | Abfrage in Abschnitt 5.3                                                                                                                                                                                                                                                                                                                                |
+| L6  | Betreiber und Supabase können jeden Brief im Klartext lesen                                                                                                                                                                                                                                                                                                                                                                    | Die Zusage beschließen, nur gemeldete Briefe zu lesen; offen gelegt ist es schon                                                                                                                                                                                                                                                                        |
+| L7  | Während einer Sperre bleiben neben der E-Mail-Adresse auch Passwort-Hash und Zeitpunkte zwei Jahre ab dem Entfernen stehen, die Sitzungen mit IP-Adresse und User-Agent bis zu rund 91 Tage                                                                                                                                                                                                                                    | Beim Entfernen auch die Sitzungen löschen (5.6), bei einer Drohung erst nach dem Export für die Polizei (GO-LIVE, „A threat“); einen anderen Grund, sie stehen zu lassen, gibt es dann nicht mehr. Dann die Datenschutzerklärung (3.8) mit ändern. Entscheidung des Betreibers                                                                          |
+| L8  | Ob das gehostete Projekt `tidy_up` jeden Schritt erlaubt, ist offen. Fehlt ein Recht, wird nur dieser Schritt übersprungen und im Ergebnis genannt (4.5); der tägliche Lauf meldet trotzdem `succeeded`, und die Datenschutzerklärung stimmt an dieser Stelle nicht. Ob GoTrue ersetzte Refresh-Token aufräumt, ist ebenfalls offen; wenn nicht, wächst die Kette einer benutzten Sitzung um etwa eine Zeile je Stunde Nutzung | `select private.tidy_up();` nach dem ersten `db push` und monatlich von Hand; es muss `{}` ergeben (5.2, 5.7). Für die Token: `GOTRUE_DB_CLEANUP_ENABLED` auf dem gehosteten Projekt erfragen, sonst `tidy_up` ersetzte Token nach einem Tag löschen lassen (Code-Änderung; vorher prüfen, dass GoTrues Erkennung wiederverwendeter Token das verträgt) |
+| L9  | Ordnung, keine Nutzerdaten im engeren Sinn: im Supabase Studio gespeicherte SQL-Schnipsel können Nutzer-IDs aus dem Runbook enthalten                                                                                                                                                                                                                                                                                          | Schnipsel ohne IDs speichern, gelegentlich aufräumen                                                                                                                                                                                                                                                                                                    |
+| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung im Klartext in localStorage                                                                                                                                                                                                                                                                                                                                              | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                             |
 
 Am 4. November 2026 behoben (Migration `20261104120000_privacy_housekeeping.sql`,
 `src/lib/secure-storage.ts`, `app.json`, GO-LIVE): Das Anmeldeprotokoll überdauerte die
@@ -635,7 +654,12 @@ ab, auch unbenutzte nicht; die vorherige Stadt blieb bis zum nächsten Umzug; da
 pg_cron wuchs ohne Ende; die iOS-Sitzung lag mit `WHEN_UNLOCKED` auch in Backups für andere Geräte;
 `expo-secure-store` deklarierte Face ID; GO-LIVE schlug eine Benachrichtigung über Meldungen vor,
 ohne zu sagen, dass sie inhaltsleer sein muss, und sein Ablauf bei einer Drohung passte nicht mehr
-zu `remove_account` (jetzt: mit `private.ban_period()` sperren, eine Woche später entfernen).
+zu `remove_account` (jetzt: mit `private.ban_period()` sperren, eine Woche später entfernen). Später
+am selben Tag (Commits acd4efe und 191bc50): Die beiden Schritte von `tidy_up` an `auth.users` waren
+nicht abgesichert, sodass ein einziges fehlendes Recht dort den ganzen Lauf zurückgerollt hätte;
+jetzt steht jeder Schritt für sich, und `tidy_up` gibt die übersprungenen zurück. Außerdem trugen
+Expos Vorlage und `expo-file-system` vier Android-Berechtigungen ins Manifest ein, die die App nicht
+nutzt (4.4).
 
 ---
 
@@ -648,7 +672,9 @@ zu `remove_account` (jetzt: mit `private.ban_period()` sperren, eine Woche spät
       Supabase schickt dann ein Dokument über PandaDoc zum Unterzeichnen (Weg zu prüfen, er hat sich
       schon geändert). Er enthält die Standardvertragsklauseln (Durchführungsbeschluss (EU)
       2021/914; welche Module: zu prüfen). Die unterzeichnete Fassung privat ablegen und hier das
-      Datum eintragen: \_\_\_\_\_\_\_\_.
+      Datum eintragen: \_\_\_\_\_\_\_\_. Vorher die Datenschutzerklärung nicht veröffentlichen:
+      Ihre Abschnitte 7 und 8 sagen, dass es den DPA mit den Standardvertragsklauseln gibt
+      (PRÜFEN-Hinweise dort).
 - [ ] Supabases Liste der Unterauftragsverarbeiter lesen; prüfen, ob vor der API ein Dienst wie
       Cloudflare liegt und wo Protokolle gespeichert werden; Abschnitt 2 und die
       Datenschutzerklärung (7, 8) ergänzen. Ob man sich für Änderungen der Liste benachrichtigen
@@ -676,12 +702,16 @@ zu `remove_account` (jetzt: mit `private.ban_period()` sperren, eine Woche spät
 - [ ] Zwei-Faktor-Anmeldung für Supabase, Apple, Google und das Microsoft-Konto des Postfachs;
       Datenbankpasswort und Demo-Zugänge nur im Passwortmanager; Access Tokens nach der Einrichtung
       widerrufen.
-- [ ] Eigenes SMTP und E-Mail-Bestätigung an, bevor eine zweite Person sich anmeldet (L3).
-- [ ] Nach dem ersten `db push` auf das gehostete Projekt: `select jobname, schedule from cron.job`
-      zeigt `deliver-due-messages`, `forget-old-reports` und `tidy-up`, und die Rechteprüfung am
-      Ende dieses Abschnitts ergibt fünfmal `true` (V8, L8). Fehlt ein Recht, die
-      Datenschutzerklärung (3.1, 3.8, 3.9, 9) anpassen, bis es gelöst ist. Frühestens 31 Tage nach
-      dem Start zusätzlich die Abfrage aus V8.
+- [ ] Eigenes SMTP und E-Mail-Bestätigung an, bevor eine zweite Person sich anmeldet (L3; GO-LIVE,
+      „Before a second person can sign up“). Danach den Satz in Datenschutzerklärung 3.10 durch
+      den aus ihrem PRÜFEN-Hinweis ersetzen.
+- [ ] Nach dem ersten `db push` auf das gehostete Projekt (GO-LIVE, „Setting up the hosted
+      project“, Schritt 4): `select jobname, schedule from cron.job` zeigt `deliver-due-messages`,
+      `forget-old-reports` und `tidy-up`, und `select private.tidy_up();` ergibt `{}` (4.5, V8,
+      L8). Der Aufruf löscht nichts, was der tägliche Auftrag nicht auch löschen würde. Nennt das
+      Ergebnis einen Schritt, stimmt die Datenschutzerklärung (3.1, 3.8, 3.9, 9) an dieser Stelle
+      nicht: Supabase-Support fragen oder die Erklärung anpassen, bis es gelöst ist. Frühestens 31
+      Tage nach dem Start zusätzlich die Abfrage aus V8.
 - [ ] Eine Frist für das Postfach festlegen (V11).
 - [ ] Entscheiden, ob die Zusage „Ich lese Briefe nur, wenn sie mir gemeldet werden“ gilt (L6).
 - [ ] Im gewählten Supabase-Tarif nachsehen: wie lange Protokolle aufbewahrt werden und wo, ob und
@@ -698,23 +728,6 @@ zu `remove_account` (jetzt: mit `private.ban_period()` sperren, eine Woche spät
 - [ ] Bei Google Play die Folgen der Altersgrenze 12 für die Families Policy entscheiden
       (`google-play.md`, Abschnitt 5). Ein dafür gespeichertes Altersmerkmal wäre eine neue
       Datenkategorie in V1.
-- [ ] Die Datenschutzerklärung zu Ende an die 90 Tage für unbenutzte Sitzungen anpassen (Commit
-      665924d): 3.9 und 9 sind angepasst, 3.8 sagt noch, die Sitzungen eines gesperrten Kontos
-      blieben mit dem Kontodatensatz zwei Jahre gespeichert (V7: rund 91 Tage nach der Sperre).
-
-Die Rechteprüfung, im SQL-Editor des gehosteten Projekts:
-
-```sql
-select has_table_privilege('auth.audit_log_entries', 'DELETE') as anmeldeprotokoll,
-       has_table_privilege('auth.sessions', 'DELETE') as sitzungen,
-       has_table_privilege('auth.identities', 'UPDATE') as identitaeten,
-       has_table_privilege('auth.users', 'UPDATE') as namen_entfernen,
-       has_table_privilege('auth.users', 'DELETE') as sperren_loeschen;
-```
-
-`UPDATE` und `DELETE` auf `auth.users` hier einzeln: `has_table_privilege` mit `'UPDATE, DELETE'`,
-wie in GO-LIVE („Setting up the hosted project“, Schritt 4), ist schon wahr, wenn nur eines der
-beiden Rechte da ist (am lokalen Stack geprüft).
 
 ### 5.3 Eine Auskunftsanfrage beantworten (Art. 15, auch Art. 20)
 
@@ -856,10 +869,11 @@ Anmeldeprotokoll weiter, aber kein Profil mehr.
 2. **Konto löschen:** Dashboard → Authentication → Users → Delete user. Das gibt die E-Mail-Adresse
    frei und löscht per Kaskade wie `delete_own_account()` Profil, Fledermäuse, Freundschaften,
    Blockierungen und alle Briefe auf beiden Seiten. (`private.remove_account` ist für entfernte
-   Konten und sperrt die Adresse zwei Jahre: V7. Bei einer Löschanfrage nicht sperren.)
+   Konten und sperrt die Adresse zwei Jahre ab dem Entfernen: V7. Bei einer Löschanfrage nicht
+   sperren.)
 3. **Anmeldeprotokoll löschen.** Anders als `delete_own_account()` lässt das Löschen im Dashboard
-   die Einträge stehen; der tägliche Auftrag löscht sie erst nach 30 Tagen. Auf Wunsch sofort (ob
-   das im gehosteten Projekt erlaubt ist: zu prüfen, V8):
+   die Einträge stehen; der tägliche Auftrag löscht sie erst nach 30 Tagen. Auf Wunsch sofort
+   (das geht, wenn `select private.tidy_up();` keinen Schritt `sign-in log` meldet, 5.2; V8):
 
    ```sql
    delete from auth.audit_log_entries
@@ -875,14 +889,15 @@ Anmeldeprotokoll weiter, aber kein Profil mehr.
 6. Die Person von Testerlisten nehmen (Play Console, TestFlight), wenn sie dort steht.
 7. Die Löschung bestätigen und Datum notieren.
 
-Sonderfälle, die die Datenschutzerklärung zusagt: Hat ein Kind unter 16 ohne Erlaubnis ein Konto,
-wird es auf Bitte der Eltern gelöscht, nachdem geklärt ist, dass die Bitte von ihnen kommt
-(Datenschutzerklärung 10). Hat jemand eine fremde E-Mail-Adresse registriert, wird das Konto auf
-Bitte des Inhabers der Adresse gelöscht (3.10). Erfährt der Betreiber, dass jemand jünger als 12
-ist, „entfernt“ er das Konto (Datenschutzerklärung 10). Mit `private.remove_account` bliebe dann die
-E-Mail-Adresse eines Kindes zwei Jahre gesperrt gespeichert; ein Löschen wie in Schritt 2, ohne
-Sperre, hält weniger fest. Welcher Weg gilt: Entscheidung des Betreibers, dann hier und in der
-Datenschutzerklärung festhalten.
+Sonderfälle, die die Datenschutzerklärung zusagt, jeweils mit den Schritten 2 und 3, also **ohne
+Sperre**: Hat ein Kind unter 16 ohne Erlaubnis ein Konto, wird es auf Bitte der Eltern gelöscht,
+nachdem geklärt ist, dass die Bitte von ihnen kommt (Datenschutzerklärung 10). Hat jemand eine
+fremde E-Mail-Adresse registriert, wird das Konto auf Bitte des Inhabers der Adresse gelöscht
+(3.10). Erfährt der Betreiber, dass jemand jünger als 12 ist, löscht er das Konto
+(Datenschutzerklärung 10): Dashboard → Authentication → Users → Delete user, oder die Person löscht
+es selbst. Nicht mit `private.remove_account`: Dessen Sperre gilt nur für Konten, die wegen
+Regelverstößen entfernt werden (V7, Datenschutzerklärung 3.8), und hielte die E-Mail-Adresse eines
+Kindes zwei Jahre gespeichert.
 
 Die anderen Rechte: **Berichtigung** (Art. 16) – Anzeigename und Stadt ändert die Person selbst;
 Benutzername oder E-Mail-Adresse ändert der Betreiber im Dashboard (Weg zu prüfen). **Einschränkung**
@@ -941,11 +956,11 @@ Schritte:
 
 ### 5.6 Sperren nach spätestens zwei Jahren beenden
 
-Die Entscheidung: Ein entferntes Konto bleibt zwei Jahre gesperrt, dann wird es gelöscht. Der Code
-setzt das um: `private.remove_account` sperrt für genau `private.ban_period()`, und der tägliche
-Auftrag `tidy_up` löscht den Anmeldedatensatz, sobald die Sperre abgelaufen ist. `banned_until`
-trägt damit das Ende der Sperre selbst; eine eigene Liste ist nicht nötig. Was der Betreiber noch
-selbst tut:
+Die Entscheidung: Ein entferntes Konto bleibt zwei Jahre ab dem Entfernen gesperrt, dann wird es
+gelöscht. Der Code setzt das um: `private.remove_account` sperrt für genau `private.ban_period()`,
+und der tägliche Auftrag `tidy_up` löscht den Anmeldedatensatz, sobald die Sperre abgelaufen ist.
+`banned_until` trägt damit das Ende der Sperre selbst; eine eigene Liste ist nicht nötig. Was der
+Betreiber noch selbst tut:
 
 - **Nie von Hand länger sperren.** Ein Konto entfernen nur mit:
 
@@ -963,7 +978,8 @@ selbst tut:
   select private.remove_account('<reported_id>');
   ```
 
-  Die zwei Jahre zählen dann ab dem zweiten Schritt. GO-LIVE („Handling a report“, „A threat“)
+  Der erste Schritt sperrt ein Konto, das noch besteht, vorläufig; der zweite setzt die Sperre neu,
+  und die zwei Jahre zählen ab dem Entfernen. GO-LIVE („Handling a report“, „A threat“)
   beschreibt genau diesen Ablauf, mit einer Woche Wartezeit, der E-Mail an die meldende Person und
   dem Export für die Polizei; die Datenschutzerklärung (3.7, 3.8) sagt dasselbe.
 
@@ -987,14 +1003,17 @@ selbst tut:
   delete from auth.sessions where user_id = '<reported_id>';
   ```
 
-- **Einmal im Monat** (Kalendererinnerung) nachsehen, dass der Auftrag läuft (`succeeded`) und
-  keine abgelaufene Sperre übrig ist. Die zweite Abfrage muss 0 ergeben; dazu die Abfrage oben
-  nach gesperrten Konten mit Profil:
+- **Einmal im Monat** (Kalendererinnerung) nachsehen, dass der Auftrag läuft (`succeeded`), dass
+  er keinen Schritt überspringt und dass keine abgelaufene Sperre übrig ist. Die zweite Abfrage muss
+  `{}` ergeben, die dritte 0; dazu die Abfrage oben nach gesperrten Konten mit Profil. `succeeded`
+  allein genügt nicht: Ein übersprungener Schritt ist kein Fehler (4.5).
 
   ```sql
   select status, start_time from cron.job_run_details
   where jobid = (select jobid from cron.job where jobname = 'tidy-up')
   order by start_time desc limit 3;
+
+  select private.tidy_up();
 
   select count(*) from auth.users u
   where u.banned_until is not null
@@ -1003,16 +1022,18 @@ selbst tut:
   ```
 
 - **Nach zwei Jahren** ist sonst nichts zu tun. Bleibt eine abgelaufene Sperre doch stehen, läuft
-  `tidy_up` nicht: dann den Fehler in `cron.job_run_details` suchen und den Datensatz von Hand
-  löschen (Dashboard → Authentication → Users → Delete user).
+  `tidy_up` nicht, oder es überspringt den Schritt: Dann nennt `select private.tidy_up();` ihn mit
+  Grund (`expired bans: …`), oder der Fehler steht in `cron.job_run_details`. Bis das gelöst ist,
+  den Datensatz von Hand löschen (Dashboard → Authentication → Users → Delete user).
 
 ### 5.7 Regelmäßig
 
 - **Täglich:** neue Meldungen ansehen (GO-LIVE).
-- **Monatlich:** nachsehen, dass `tidy-up` läuft (Status `succeeded` in `cron.job_run_details`),
-  dass keine abgelaufene Sperre übrig ist und kein gesperrtes Konto länger als eine Woche ein Profil
-  hat (5.6); Testerlisten aufräumen; das Postfach nach der festgelegten Frist aufräumen; prüfen, dass
-  keine Exporte (Auskunft, Polizei) mehr herumliegen.
+- **Monatlich:** nachsehen, dass `tidy-up` läuft (Status `succeeded` in `cron.job_run_details`)
+  und `select private.tidy_up();` `{}` ergibt, dass keine abgelaufene Sperre übrig ist und kein
+  gesperrtes Konto länger als eine Woche ein Profil hat (5.6); Testerlisten aufräumen; das
+  Postfach nach der festgelegten Frist aufräumen; prüfen, dass keine Exporte (Auskunft, Polizei)
+  mehr herumliegen.
 - **Jährlich:** dieses Verzeichnis, die TOM und die Datenschutzerklärung durchgehen; Supabases
   Unterauftragsverarbeiter und die Fristen des Tarifs prüfen; das Datum unten eintragen.
 - **Bei jeder Änderung**, die andere Daten erhebt oder sie anders verwendet – eine neue Spalte oder
@@ -1040,14 +1061,15 @@ selbst tut:
    Verschlüsselung gespeicherter Daten.
 9. Supabase-Tarif: Aufbewahrung der Protokolle (kostenlos vermutlich ein Tag), Sicherungen und ihre
    Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind.
-10. GoTrue und Postgres gehostet: ob die Rolle `postgres` Einträge in `auth.audit_log_entries` und
-    `auth.sessions` löschen, `auth.identities` ändern und `auth.users` ändern und löschen darf
-    (sonst überspringen `tidy_up` und `delete_own_account` das still oder `tidy_up` bricht ab, 4.5);
-    ob `tidy-up` in `cron.job` steht; ob `ip_address` im Anmeldeprotokoll gefüllt wird; dass
-    Abmelden die Sitzungen löscht; dass eine abgelehnte Erneuerung eines gesperrten Kontos
-    `updated_at` der Sitzung nicht setzt; ob `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist und, wenn
-    nicht, ob `tidy_up` ersetzte Refresh-Token selbst löschen kann; Bereinigung abgelaufener
-    Einmal-Token; ob die Sperre greift, wenn beim Entfernen auch die Sitzungen gelöscht werden.
+10. GoTrue und Postgres gehostet: ob `select private.tidy_up();` `{}` ergibt, die Rolle `postgres`
+    also jeden Schritt an den Tabellen von Supabase ausführen darf (sonst überspringt `tidy_up`
+    diesen Schritt und nennt ihn, und `delete_own_account` überspringt das Löschen im
+    Anmeldeprotokoll still, 4.5); ob `tidy-up` in `cron.job` steht; ob `ip_address` im
+    Anmeldeprotokoll gefüllt wird; dass Abmelden die Sitzungen löscht; dass eine abgelehnte
+    Erneuerung eines gesperrten Kontos `updated_at` der Sitzung nicht setzt; ob
+    `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist und, wenn nicht, ob `tidy_up` ersetzte Refresh-Token
+    selbst löschen kann; Bereinigung abgelaufener Einmal-Token; ob die Sperre greift, wenn beim
+    Entfernen auch die Sitzungen gelöscht werden.
 11. Microsoft: Rolle, Vertrag und Drittlandgrundlage für das Outlook.com-Postfach.
 12. Apple und Google: ihre Rolle bei Testerdaten; was App Store Connect bei Testern über einen
     öffentlichen Link zeigt; die Felder in Feedback und Absturzberichten; ob Feedback gelöscht
@@ -1062,14 +1084,14 @@ selbst tut:
     bekommen hat.
 18. Wie lange Nachweise über erledigte Betroffenenanfragen aufbewahrt werden.
 19. Ob die Auskunft offenlegen muss, wer die Person blockiert hat (Art. 15 Abs. 4; 5.3).
-20. Wie das Konto eines Kindes unter 12 entfernt wird: mit Sperre oder ohne (5.4).
-21. Expo Go in der Entwicklung: ob Expo dabei Daten erhält (Abschnitt 2).
+20. Expo Go in der Entwicklung: ob Expo dabei Daten erhält (Abschnitt 2).
 
 ---
 
 ## Änderungsverlauf
 
-| Datum            | Änderung                                                                                                                                                                                                       | Letzte Prüfung durch den Betreiber |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 4. November 2026 | Erste Fassung aus dem Datenbestand des Codes                                                                                                                                                                   | –                                  |
-| 4. November 2026 | Gegen den Code bis Commit 665924d geprüft: 90 Tage für unbenutzte Sitzungen, Ablauf bei einer Drohung, Verhalten von `tidy_up` bei fehlenden Rechten, Auskunftsabfrage, Polizei als Empfänger von Anmeldedaten | –                                  |
+| Datum            | Änderung                                                                                                                                                                                                                                                                                                               | Letzte Prüfung durch den Betreiber |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 4. November 2026 | Erste Fassung aus dem Datenbestand des Codes                                                                                                                                                                                                                                                                           | –                                  |
+| 4. November 2026 | Gegen den Code bis Commit 665924d geprüft: 90 Tage für unbenutzte Sitzungen, Ablauf bei einer Drohung, Verhalten von `tidy_up` bei fehlenden Rechten, Auskunftsabfrage, Polizei als Empfänger von Anmeldedaten                                                                                                         | –                                  |
+| 4. November 2026 | Gegen den Code bis Commit 31cf850 geprüft: jeder Schritt von `tidy_up` abgesichert, Prüfung mit `select private.tidy_up();` statt der Rechteabfrage; Android-Berechtigungen; Konto eines Kindes unter 12 ohne Sperre löschen; zwei Jahre Sperre ab dem Entfernen; Anschrift öffentlich nur in der Datenschutzerklärung | –                                  |

@@ -10,12 +10,12 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
 4. Diese Fassung beschreibt den Code einschließlich der Migration
    supabase/migrations/20261104120000_privacy_housekeeping.sql: täglicher Aufräum-Auftrag
    "tidy-up", Sitzungen nach 90 Tagen ohne Benutzung, Anmeldeprotokoll 30 Tage und Löschen mit dem
-   Konto, Namen von der Registrierung, alte Stadt, private.remove_account mit zwei Jahren Sperre.
-   Ändert sich daran etwas, die Abschnitte 3.1, 3.2, 3.8, 3.9, 5, 9 und 11 und "Kurz gesagt"
-   anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" {} ergeben
-   (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt die Liste jeden
-   Schritt, den der Auftrag mangels Recht überspringt, und was diese Erklärung dazu sagt, stimmt
-   nicht.
+   Konto, Namen von der Registrierung, alte Stadt, private.remove_account mit einer Sperre von zwei
+   Jahren ab dem Entfernen. Ändert sich daran etwas, die Abschnitte 3.1, 3.2, 3.8, 3.9, 5, 6, 9 und
+   11 und "Kurz gesagt" anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" {}
+   ergeben (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt die Liste
+   jeden Schritt, den der Auftrag mangels Recht überspringt, und was diese Erklärung dazu sagt,
+   stimmt nicht.
 5. Abschnitt 5 (iPhone) beschreibt den Schlüsselbund mit WHEN_UNLOCKED_THIS_DEVICE_ONLY
    (KEYCHAIN_OPTIONS in src/lib/secure-storage.ts, Commit 3a343b0). Wird das zurückgenommen, den
    alten Satz wieder einsetzen: "Einträge im Schlüsselbund können in verschlüsselten Backups
@@ -221,13 +221,13 @@ Person weiter Briefe bekommen möchtest.
 
 **Was ich mit einer Meldung mache:** Ich lese jede Meldung. Je nachdem, was passiert ist, unternehme
 ich nichts, schreibe der Person eine Verwarnung an die E-Mail-Adresse ihres Kontos oder entferne ihr
-Konto (Abschnitt 3.8). Geht es um eine Drohung, sperre ich das gemeldete Konto sofort, entferne es
-aber erst eine Woche später. Vorher schreibe ich der Person, die gemeldet hat, an die E-Mail-Adresse
-ihres Kontos: Mit dem anderen Konto verschwinden alle Briefe zwischen euch, und sie soll vorher
-Kopien machen können. Bei Drohungen oder möglichen Straftaten kann ich eine Meldung an die Polizei
-weitergeben, zusammen mit den Anmeldedaten des gemeldeten Kontos, soweit sie dann noch gespeichert
-sind: seinen Sitzungen und seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse (Abschnitt
-3.9).
+Konto (Abschnitt 3.8). Geht es um eine Drohung, sperre ich das gemeldete Konto sofort vorläufig,
+entferne es aber erst eine Woche später. Vorher schreibe ich der Person, die gemeldet hat, an die
+E-Mail-Adresse ihres Kontos: Mit dem anderen Konto verschwinden alle Briefe zwischen euch, und sie
+soll vorher Kopien machen können. Bei Drohungen oder möglichen Straftaten kann ich eine Meldung an
+die Polizei weitergeben, zusammen mit den Anmeldedaten des gemeldeten Kontos, soweit sie dann noch
+gespeichert sind: seinen Sitzungen und seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse
+(Abschnitt 3.9).
 
 **Wie lange:** Eine Meldung wird 180 Tage, nachdem sie gemacht wurde, automatisch gelöscht – egal,
 ob sie erledigt ist oder nicht. Löscht eine der beiden Personen vorher ihr Konto, bleibt die Meldung
@@ -254,23 +254,34 @@ Abs. 1 lit. c DSGVO.
 Wenn jemand schwer oder wiederholt gegen die Hausregeln verstößt, entferne ich das Konto. Profil,
 Fledermäuse, Freundschaften, Blockierungen und alle Briefe, die das Konto geschickt oder bekommen
 hat, werden dann gelöscht – auf beiden Seiten. Geht es um eine Drohung, sperre ich das Konto sofort
-und entferne es eine Woche später, damit die Person, die sie gemeldet hat, vorher Kopien machen kann
-(Abschnitt 3.7).
+vorläufig: Anmelden geht nicht mehr, und die App hört spätestens nach einer Stunde auf zu
+funktionieren; gelöscht wird aber noch nichts. Entfernt wird es eine
+Woche später, damit die Person, die die Drohung gemeldet hat, vorher Kopien machen kann (Abschnitt
+3.7).
 
-Damit sich dieselbe Person nicht gleich mit derselben E-Mail-Adresse neu anmeldet, sperre ich dabei
-die Anmeldung des Kontos. Dann bleibt der Kontodatensatz bei Supabase stehen: die E-Mail-Adresse,
-der Hashwert des Passworts und die Zeitpunkte aus Abschnitt 3.1. Er bleibt **zwei Jahre**
-gespeichert; danach löscht ein täglicher Auftrag ihn. Die Sitzungen des Kontos enden schon nach 90
-Tagen, weil ein gesperrtes Konto sie nicht mehr benutzen kann, und seine Einträge im
-Anmeldeprotokoll werden nach 30 Tagen gelöscht (Abschnitt 3.9).
+Damit sich dieselbe Person nicht gleich mit derselben E-Mail-Adresse neu anmeldet, sperre ich beim
+Entfernen die Anmeldung des Kontos. Dann bleibt der Kontodatensatz bei Supabase stehen: die
+E-Mail-Adresse, der Hashwert des Passworts und die Zeitpunkte aus Abschnitt 3.1. Er bleibt **zwei
+Jahre ab dem Entfernen** gespeichert; danach löscht ein täglicher Auftrag ihn. Die Sitzungen des
+Kontos enden früher: Ein täglicher Auftrag löscht jede, sobald sie 90 Tage nicht benutzt wurde, und
+ein gesperrtes Konto kann sie nicht mehr benutzen. Seine Einträge im Anmeldeprotokoll werden
+gelöscht, sobald sie 30 Tage alt sind (Abschnitt 3.9).
+
+Diese Sperre gibt es nur für Konten, die wegen Regelverstößen entfernt werden. Ein Konto, das aus
+einem anderen Grund gelöscht wird – von dir selbst, von mir auf deine Bitte oder von mir in den
+Fällen aus den Abschnitten 3.10 und 10 –, hinterlässt keine Sperre: Seine E-Mail-Adresse ist sofort wieder frei.
 
 <!-- PRÜFEN: Dieser Abschnitt folgt private.remove_account und dem Runbook (docs/GO-LIVE.md,
-"Handling a report"): Sperre für private.ban_period() = zwei Jahre, danach löscht "tidy-up" die
-Anmeldung samt Identitäten; bei einer Drohung erst sperren, eine Woche später entfernen. "Zwei Jahre"
-stimmt nur, solange niemand von Hand länger sperrt. Dass der Kontodatensatz mit Passwort-Hash
-stehen bleibt, ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 90
-Tagen ohne Benutzung wie alle anderen (tidy_up); was die Polizei davon bekommen soll, exportiert das
-Runbook in der Woche zwischen Sperre und Entfernen. -->
+"Handling a report"): remove_account setzt die Sperre auf now() + private.ban_period(), zwei Jahre
+ab dem Entfernen; danach löscht "tidy-up" die Anmeldung samt Identitäten. Bei einer Drohung sperrt
+das Runbook zuerst vorläufig (dieselbe Anweisung, eine Woche früher) und entfernt eine Woche
+später; mit dem Entfernen beginnen die zwei Jahre neu. "Zwei Jahre ab dem Entfernen" stimmt nur,
+solange niemand von Hand länger sperrt. Dass der Kontodatensatz mit Passwort-Hash stehen bleibt,
+ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 90 Tagen ohne
+Benutzung wie alle anderen (tidy_up); dass eine abgelehnte Erneuerung nicht als Benutzung zählt
+(updated_at), ist noch zu prüfen (gdpr-records.md V7). Was die Polizei davon bekommen soll,
+exportiert das Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
+(durch die Person selbst oder Authentication → Users → Delete user) sperren nichts. -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – das berechtigte Interesse, alle anderen vor
 jemandem zu schützen, der wegen Regelverstößen entfernt wurde.
@@ -340,7 +351,18 @@ Schreibe ich dir selbst (Abschnitt 3.1), kommt die E-Mail aus meinem Postfach (A
 
 Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht bestätigt. Wenn jemand deine
 E-Mail-Adresse ohne dein Wissen für ein Konto benutzt hat, schreib mir; dann lösche ich dieses
-Konto.
+Konto. Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher Auftrag jede Registrierung,
+deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde, samt Profil.
+
+<!-- PRÜFEN: Die E-Mail-Bestätigung ist heute aus (supabase/config.toml, enable_confirmations =
+false), weil Supabases eigener Mailversand bis zum eigenen SMTP nur den Betreiber erreicht
+(docs/GO-LIVE.md, "Before a second person can sign up"). Sobald eigenes SMTP und die
+E-Mail-Bestätigung an sind, "Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht
+bestätigt." ersetzen durch "Bei der Registrierung schicke ich dir einen Link, mit dem du deine
+E-Mail-Adresse bestätigst." und oben "– sobald das eingeschaltet ist –" streichen; im letzten
+Satz des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht" durch "Ein täglicher Auftrag
+löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen. Die 7 Tage sind
+private.unconfirmed_sign_up_lifetime() (tidy_up). -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
 
@@ -394,11 +416,19 @@ Abs. 1 lit. f DSGVO – mein berechtigtes Interesse, Abstürze zu finden und zu 
 - **Dein Alter.** Bei der Registrierung bestätigst du nur, dass du mindestens 12 bist und, falls du
   unter 16 bist, die Erlaubnis deiner Eltern oder anderer Erziehungsberechtigter hast. Gespeichert
   wird das nicht.
-- **Deinen Standort, deine Kontakte, Fotos, Kamera oder Mikrofon.** Die App fragt nicht danach.
+- **Den Standort deines Geräts, das Adressbuch deines Handys, Fotos, Kamera oder Mikrofon.** Auf
+  nichts davon bittet die App um Zugriff. (Die Stadt, die du aus einer Liste wählst, steht in
+  Abschnitt 3.2, deine Freunde, Anfragen und Blockierungen in der App in den Abschnitten 3.3 und
+  3.6. In den Datenschutzangaben, die Apple und Google in ihren Stores zeigen, erscheinen sie unter
+  „Standort“ und „Kontakte“.)
 - **Geräte- oder Werbe-IDs, Push-Token, Cookies.** Gibt es in der App nicht.
 - **Analyse, Werbung, Tracking, Absturzmeldungen aus der App.** Die App enthält keine solchen
   Programmteile. Sie verbindet sich nur mit dem Night-Courier-Server bei Supabase. Wenn du auf
   „Contact“ oder „Privacy policy“ tippst, öffnet sich deine E-Mail-App oder dein Browser.
+
+<!-- PRÜFEN: die deutschen Namen der Kategorien in den Datenschutzangaben auf den Store-Seiten
+nachsehen („Standort“, „Kontakte“). Die Angaben selbst: app-store.md (Location → Coarse Location,
+Contacts) und google-play.md (Location → Approximate location, Contacts). -->
 
 ## 4. Was andere sehen können
 
@@ -456,10 +486,10 @@ Hinweis 5 oben. -->
   zu deinem Konto.
 - **Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen):** Sicherheit (Sitzungen und Protokolle),
   der Umgang mit Missbrauch (Meldungen, Verwarnungen, Entfernen von Konten), das Aufbewahren von
-  Meldungen für 180 Tage, das Sperren entfernter Konten für zwei Jahre, die freiwillige
-  Weitergabe einer Meldung an die Polizei, und Absturzberichte. Die Interessen dahinter: eine
-  sichere App, Schutz der Menschen, die sie nutzen – besonders der Kinder und Jugendlichen –, und
-  Beweise für Opfer.
+  Meldungen für 180 Tage, das Sperren entfernter Konten für zwei Jahre ab dem Entfernen, die
+  freiwillige Weitergabe einer Meldung an die Polizei, und Absturzberichte. Die Interessen dahinter:
+  eine sichere App, Schutz der Menschen, die sie nutzen – besonders der Kinder und Jugendlichen –,
+  und Beweise für Opfer.
 - **Art. 6 Abs. 1 lit. c DSGVO (rechtliche Pflicht):** wenn ein Gesetz mich verpflichtet, Daten
   herauszugeben, etwa an Polizei, Staatsanwaltschaft oder Gericht, und wenn ich deine Anfragen zu
   deinen Datenschutzrechten beantworte.
@@ -494,6 +524,9 @@ Liste der Städte stammt – sie liegt in der Datenbank von Night Courier, und G
 gefragt.
 
 <!-- PRÜFEN:
+- Supabase-DPA: erst veröffentlichen, wenn der DPA von Supabase (mit den
+  Standardvertragsklauseln) unterzeichnet ist, gdpr-records.md 5.1; bis dahin stimmt "auf Grundlage
+  eines Vertrags zur Auftragsverarbeitung" oben nicht.
 - Supabase: Liste der Unterauftragsverarbeiter aufrufen (vermutlich https://supabase.com/legal/subprocessors)
   und hier verlinken; prüfen, ob dort ein Dienst vor der API (z. B. Cloudflare) oder ein
   Protokolldienst außerhalb der Schweiz steht.
@@ -519,29 +552,34 @@ gefragt.
 - **Apple, Google und Microsoft** können Daten auch in den USA und anderen Ländern verarbeiten. Wie
   sie das absichern, steht in ihren eigenen Datenschutzbestimmungen.
 
-<!-- PRÜFEN: Verarbeitet ein Unterauftragsverarbeiter von Supabase (z. B. für Protokolle oder vor der
-API) Daten in einem anderen Drittland als den USA, hier nennen, mit der Absicherung. -->
+<!-- PRÜFEN:
+- Erst veröffentlichen, wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet
+  ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot einer Kopie der
+  Klauseln nicht.
+- Verarbeitet ein Unterauftragsverarbeiter von Supabase (z. B. für Protokolle oder vor der API)
+  Daten in einem anderen Drittland als den USA, hier nennen, mit der Absicherung. -->
 
 ## 9. Wie lange ich Daten speichere
 
-| Was                                                | Wie lange                                                                                     |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Konto, Profil, Stadt, Fledermäuse                  | bis du dein Konto löschst oder ich es entferne                                                |
-| Kopie der Namen von der Registrierung              | höchstens einen Tag (Abschnitt 3.1)                                                           |
-| Vorherige Stadt und Zeitpunkt eines Umzugs         | höchstens zwei Tage nach dem Wechsel (Abschnitt 3.2)                                          |
-| Briefe                                             | bis du oder die andere Person das Konto löscht; eine Frist gibt es nicht                      |
-| Freundschaften und Anfragen                        | bis sie beendet, abgelehnt oder zurückgezogen werden, oder bis zur Kontolöschung              |
-| Blockierungen                                      | bis du sie aufhebst, oder bis zur Kontolöschung                                               |
-| Meldungen                                          | 180 Tage ab der Meldung, auch wenn ein Konto vorher gelöscht wird                             |
-| An die Polizei weitergegebene Meldungen            | bei der Polizei nach deren Regeln; meine Exportkopie lösche ich nach der Übergabe             |
-| Kontodatensatz eines gesperrten, entfernten Kontos | zwei Jahre, dann automatisch gelöscht (Abschnitt 3.8)                                         |
-| Sitzungen                                          | bis zum Abmelden oder zur Kontolöschung, höchstens 90 Tage nach der letzten Benutzung         |
-| Anmelde-Token                                      | höchstens so lange wie die Sitzung                                                            |
-| Anmeldeprotokoll                                   | 30 Tage; deine Einträge werden mit deinem Konto gelöscht                                      |
-| Server-Protokolle bei Supabase                     | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                               |
-| Sicherungskopien der Datenbank                     | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird |
-| E-Mails an mich                                    | solange ich sie für dein Anliegen brauche                                                     |
-| Testerliste bei Google Play                        | bis du mir schreibst, dass du nicht mehr testen möchtest                                      |
+| Was                                                     | Wie lange                                                                                                               |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Konto, Profil, Stadt, Fledermäuse                       | bis du dein Konto löschst oder ich es entferne                                                                          |
+| Kopie der Namen von der Registrierung                   | höchstens einen Tag (Abschnitt 3.1)                                                                                     |
+| Vorherige Stadt und Zeitpunkt eines Umzugs              | höchstens zwei Tage nach dem Wechsel (Abschnitt 3.2)                                                                    |
+| Briefe                                                  | bis du oder die andere Person das Konto löscht oder ich eines der beiden Konten entferne; eine Frist gibt es nicht      |
+| Freundschaften und Anfragen                             | bis sie beendet, abgelehnt oder zurückgezogen werden, oder bis zur Kontolöschung                                        |
+| Blockierungen                                           | bis du sie aufhebst, oder bis zur Kontolöschung                                                                         |
+| Meldungen                                               | 180 Tage ab der Meldung, auch wenn ein Konto vorher gelöscht wird                                                       |
+| An die Polizei weitergegebene Meldungen                 | bei der Polizei nach deren Regeln; meine Exportkopie lösche ich nach der Übergabe                                       |
+| Kontodatensatz eines gesperrten, entfernten Kontos      | zwei Jahre ab dem Entfernen, dann automatisch gelöscht (Abschnitt 3.8)                                                  |
+| Sitzungen                                               | bis zum Abmelden oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
+| Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                      |
+| Anmeldeprotokoll                                        | 30 Tage; deine Einträge werden mit deinem Konto gelöscht                                                                |
+| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                       |
+| Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                         |
+| Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                           |
+| E-Mails an mich                                         | solange ich sie für dein Anliegen brauche                                                                               |
+| Testerliste bei Google Play                             | bis du mir schreibst, dass du nicht mehr testen möchtest                                                                |
 
 <!-- PRÜFEN: Sicherungskopien - ob und wie lange der gewählte Supabase-Tarif Sicherungen aufbewahrt;
 die Dauer in die Tabelle schreiben (oder die Zeile streichen, wenn es keine gibt). -->
@@ -563,15 +601,17 @@ die Dauer in die Tabelle schreiben (oder die Zeile streichen, wenn es keine gibt
   Fragen haben, etwas melden möchten oder ihr Kind ohne ihre Erlaubnis ein Konto angelegt hat. Ist
   ein Kind unter 16 ohne Erlaubnis angemeldet, lösche ich das Konto auf Bitte der Eltern. Vorher
   frage ich gegebenenfalls nach, um sicherzugehen, dass die Bitte wirklich von den Eltern kommt.
-  Erfahre ich, dass jemand jünger als 12 ist, entferne ich das Konto.
+  Erfahre ich, dass jemand jünger als 12 ist, lösche ich das Konto – ohne die E-Mail-Adresse zu
+  sperren (Abschnitt 3.8 gilt nur für Konten, die wegen Regelverstößen entfernt werden).
 - Gut zu wissen: Wird ein Konto gelöscht, sind alle Briefe weg. Wer einen Brief aufbewahren möchte,
   zum Beispiel als Beweis, macht vorher einen Screenshot.
 
 <!-- PRÜFEN: ob die Erlaubnis der Eltern unter 16 rechtlich eine Einwilligung nach Art. 8 DSGVO sein
 muss oder ob Art. 6 Abs. 1 lit. b DSGVO trägt (und was die Regeln über Verträge mit Minderjährigen
-dazu sagen). Diese Erklärung zieht daraus bewusst keinen Schluss. Die Zusagen, ein Konto auf Bitte der
-Eltern zu löschen und das Konto von jemandem unter 12 zu entfernen, sind Entscheidungen des
-Betreibers: bestätigen. -->
+dazu sagen). Diese Erklärung zieht daraus bewusst keinen Schluss. Die Zusage, ein Konto auf Bitte
+der Eltern zu löschen, ist eine Entscheidung des Betreibers: bestätigen. Das Konto von jemandem
+unter 12 wird ohne Sperre gelöscht (Authentication → Users → Delete user oder das Löschen durch die
+Person selbst), nicht mit private.remove_account; die Schritte stehen in gdpr-records.md 5.4. -->
 
 ## 11. Deine Rechte
 

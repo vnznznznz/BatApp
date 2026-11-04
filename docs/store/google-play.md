@@ -15,14 +15,14 @@ before it is relied on.
 operator's details, this file names a placeholder, and the real value is typed straight into Play
 Console (or into the hosted privacy policy), never written here:
 
-| Placeholder              | Means                                                                  |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play   |
-| `{{OPERATOR_ADDRESS}}`   | The operator's postal address (hosted privacy policy only)             |
-| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button              |
-| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button |
-| `{{SUPPORT_URL}}`        | A public https page with the contact route and the deletion steps      |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                               |
+| Placeholder              | Means                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                 |
+| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there |
+| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                            |
+| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button                               |
+| `{{SUPPORT_URL}}`        | A public https page with the contact route and the deletion steps; no postal address                 |
+| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                             |
 
 Values that are not personal data but must not be committed either, such as the demo account's
 sign-in, are written as `<like this>`. They live in the operator's password manager and in Play
@@ -76,7 +76,8 @@ good; it can never change or be used again.
 
 A personal developer account is identity-verified with the operator's legal name and address. What
 Google Play then shows publicly about a personal account, beyond the developer name, is **to check**
-in Play Console's account settings. The hosted privacy policy carries the address anyway.
+in Play Console's account settings. The hosted privacy policy carries the address anyway (section
+1); it is the only one of the operator's pages that does.
 
 ---
 
@@ -138,7 +139,7 @@ Safety
 • The house rules have no tolerance for harassment, threats, hate, scams, spam or sexual content nobody asked for, and none at all for sexual content involving or sent to anyone under 18.
 
 Your data
-• Delete your account at any time from your profile. Your profile, your friendships and every letter you have sent or received go with it, for your friends as well as for you. Reports are the exception: each is deleted 180 days after it was made.
+• Delete your account at any time from your profile. Your profile, your friendships and every letter you have sent or received go with it, for your friends as well as for you. Reports stay: each is deleted 180 days after it was made.
 • Letters are stored on the server so they can be delivered, and stay there until you or your friend deletes their account. They are not end-to-end encrypted. The privacy policy says who can see what, and everything else that is kept and for how long.
 
 Who it is for
@@ -173,7 +174,7 @@ Sicherheit
 • Die Hausregeln dulden keine Belästigung, keine Drohungen, keinen Hass, keinen Betrug, keinen Spam und keine sexuellen Inhalte, um die niemand gebeten hat – und erst recht keine sexuellen Inhalte, an denen Minderjährige beteiligt sind oder die an Minderjährige gehen.
 
 Deine Daten
-• Du kannst dein Konto jederzeit in deinem Profil löschen. Dein Profil, deine Freundschaften und jeder Brief, den du geschickt oder bekommen hast, werden mit gelöscht, bei deinen Freunden genauso wie bei dir. Meldungen sind die Ausnahme: Jede wird 180 Tage nach der Meldung gelöscht.
+• Du kannst dein Konto jederzeit in deinem Profil löschen. Dein Profil, deine Freundschaften und jeder Brief, den du geschickt oder bekommen hast, werden mit gelöscht, bei deinen Freunden genauso wie bei dir. Meldungen bleiben: Jede wird 180 Tage nach der Meldung gelöscht.
 • Briefe werden auf dem Server gespeichert, damit sie zugestellt werden können, und bleiben dort, bis du oder die andere Person das Konto löscht. Sie sind nicht Ende-zu-Ende-verschlüsselt. Die Datenschutzerklärung sagt, wer was sehen kann und was sonst wie lange gespeichert wird.
 
 Für wen
@@ -254,7 +255,7 @@ Letters are never instant. Each one flies the real distance between the two frie
 
 Report and block: Letters → a letter from Demo Friend → Report this letter, or Block. Or Friends → tap Demo Friend → Block / Report. Your profile → Safety holds Blocked couriers (each can be reported from there too), the house rules (our terms, with a zero-tolerance clause, agreed to at sign-up), Contact and the privacy policy.
 
-Account deletion: Your profile → Delete my account. Please try it with a new account (Create an account, on the welcome screen), so that the demo account stays usable.
+Account deletion: Your profile → Delete my account. Please try it with a new account (Create an account, on the welcome screen), so that the demo account stays usable. A new account is confirmed through a link sent to its email address; then sign in with it.
 
 Age: Night Courier is for people aged 12 and over; under 16, only with a parent's or guardian's permission.
 
@@ -268,8 +269,9 @@ so that one store's reviewer deleting theirs cannot break the other's:
 
 1. Through the app's sign-up on the hosted project: display name `Play Review`, username
    `play_review`, an email address the operator controls and has made for this, and a generated
-   password of at least 8 characters, kept in the operator's password manager. Choose a city near
-   Demo Friend's, so that letters land within the hour.
+   password of at least 8 characters, kept in the operator's password manager. Confirm the address
+   with the link in the email, sign in, and choose a city near Demo Friend's, so that letters land
+   within the hour.
 2. As `demo_friend` (made for Apple), send a friend request to `play_review`, and accept it as Play
    Review.
 3. At least a day before it is needed, send two harmless letters from Demo Friend to Play Review.
@@ -284,8 +286,8 @@ days is ended by the daily tidy-up, so a demo account not used for that long sim
 
 **Pre-launch reports:** Google's robots may install builds and explore them (Testing → Pre-launch
 report). Whether that happens on internal testing is **to check**. If it does, turn pre-launch
-reports off in their settings: on the hosted project, with email confirmation off, a robot that taps
-Create an account would make real accounts. Delete any that appear.
+reports off in their settings: a robot that taps Create an account would make real accounts on the
+hosted project (with email confirmation on, unconfirmed ones). Delete any that appear.
 
 ### Ads
 
@@ -298,16 +300,18 @@ If asked whether the app uses an advertising ID: **No**. No library in the app r
 on the first build, in Play Console's App bundle explorer: that the merged manifest has no
 `com.google.android.gms.permission.AD_ID`, and which permissions it does request.
 
-The app itself needs only `INTERNET`, but it will not be the only one. The Android template that
-`expo prebuild` uses (`node_modules/expo/template.tgz`, SDK 57) lists `INTERNET`,
-`SYSTEM_ALERT_WINDOW`, `VIBRATE`, `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (the last two
-only up to Android 12L), and `expo-file-system`, which `expo` depends on, adds the two storage
-permissions again. `app.json` sets neither `android.permissions` nor `android.blockedPermissions`,
-so all of them are expected in the build. As far as is known here none of them needs a declaration
-in Play Console (**to check**), and the app never asks for any at run time, but a build that uses
-none of them should not carry them either: before the first build, add `android.blockedPermissions`
-for the four that are not `INTERNET` to `app.json` (a code change, not made here; check afterwards
-that the build still runs).
+The app itself needs only `INTERNET`. The Android template that `expo prebuild` uses
+(`node_modules/expo/template.tgz`, SDK 57) also lists `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
+`READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (the last two only up to Android 12L), and
+`expo-file-system`, which `expo` depends on, adds the two storage permissions again. **Done:**
+`app.json` now lists those four under `android.blockedPermissions` (commit 191bc50), and
+`src/tests/app-config.test.ts` fails if that list changes or `android.permissions` appears. Expo
+writes each of them into the app's manifest with `tools:node="remove"`, which takes it out of the
+merged manifest too, whichever library asked for it (`npx expo config --type introspect` shows
+`INTERNET` and the four removals). So the merged manifest should keep `INTERNET` alone. **To
+check** on the first build, in App bundle explorer: that it does, that no other library has added
+a permission of its own, and that the build still runs. The app never asks for any permission at
+run time.
 
 ### The other declarations
 
@@ -485,27 +489,28 @@ The rules these answers follow, from Google's help as summarised (**to check** t
 
 ### The questions before the data types
 
-| Question                                                                                  | Answer                                                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Does your app collect or share any of the required user data types?                       | **Yes**                                                               |                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Is all of the user data collected by your app encrypted in transit?                       | **Yes**                                                               | The app talks only to the Supabase project, over HTTPS. `src/lib/env.ts` refuses any URL that is not https, except local and private-network addresses, which a build for testers never has. The two links open in other apps.                                                                                                                                                                                          |
-| Which methods of account creation does your app support?                                  | Username and password (**to check** the option's name)                | Sign-up and sign-in are email address and password. No third-party sign-in, no anonymous accounts.                                                                                                                                                                                                                                                                                                                      |
-| Delete account URL                                                                        | `{{SUPPORT_URL}}`, with the text in "The account deletion page" below | Google wants a web link even when deletion is in the app, so that someone who has uninstalled it can still ask.                                                                                                                                                                                                                                                                                                         |
-| Can users ask for some or all of their data to be deleted without deleting their account? | **Yes**, if the support page says so (the text below does)            | By writing to `{{CONTACT_EMAIL}}`. The GDPR gives the right anyway (Art. 17, with its exceptions), and the deletion page below says how. What can go without the account, by the operator in SQL: for example sign-in log entries, sessions, or a single letter (which then goes for both people). The email address, username and display name cannot while the account exists. Answer No if the page does not say it. |
-| Independent security review (optional)                                                    | No                                                                    | None has been done.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Question                                                                                  | Answer                                                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does your app collect or share any of the required user data types?                       | **Yes**                                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Is all of the user data collected by your app encrypted in transit?                       | **Yes**                                                               | The app talks only to the Supabase project, over HTTPS. `src/lib/env.ts` refuses any URL that is not https, except local and private-network addresses, which a build for testers never has. The two links open in other apps.                                                                                                                                                                                                                                        |
+| Which methods of account creation does your app support?                                  | Username and password (**to check** the option's name)                | Sign-up and sign-in are email address and password. No third-party sign-in, no anonymous accounts.                                                                                                                                                                                                                                                                                                                                                                    |
+| Delete account URL                                                                        | `{{SUPPORT_URL}}`, with the text in "The account deletion page" below | Google wants a web link even when deletion is in the app, so that someone who has uninstalled it can still ask.                                                                                                                                                                                                                                                                                                                                                       |
+| Can users ask for some or all of their data to be deleted without deleting their account? | **Yes**, if the support page says so (the text below does)            | By writing to `{{CONTACT_EMAIL}}`. The GDPR gives the right anyway (Art. 17, with its exceptions), and the deletion page below says how. What can go without the account, by the operator in SQL: for example sign-in log entries or sessions. Single letters are not deleted on request (privacy policy 3.4), and the deletion page says so; the email address, username and display name cannot go while the account exists. Answer No if the page does not say it. |
+| Independent security review (optional)                                                    | No                                                                    | None has been done.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### Every data type, answered
 
 **Required or optional:** a type is optional only where someone can use everything Night Courier is
-for without it. Shared is **No** for every type; see "Why nothing is shared" below.
+for without it. Shared is **No** for every type, as answered for internal testing; see "Why nothing
+is shared" below, which has to be settled before any other track.
 
 | Category                 | Data type                                                              | Collected | Ephemeral | Required or optional | Purposes                                                                                 | What it is, from the data inventory                                                                                                                                                                                                                                                               |
 | ------------------------ | ---------------------------------------------------------------------- | --------- | --------- | -------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Location                 | Approximate location                                                   | **Yes**   | No        | Required             | App functionality                                                                        | The city chosen from a list; during a move, the previous city and the time of the move; each letter's origin and destination city. Google's definition (an area of at least 3 km², "such as the city a user is in") fits a chosen city.                                                           |
 | Location                 | Precise location                                                       | No        |           |                      |                                                                                          | No GPS, no location permission.                                                                                                                                                                                                                                                                   |
-| Personal info            | Name                                                                   | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | The display name and the username, which friends and correspondents see. The copy typed at sign-up is removed from the auth record within a day. A report keeps the names as they were.                                                                                                           |
-| Personal info            | Email address                                                          | **Yes**   | No        | Required             | Account management; Developer communications; Fraud prevention, security, and compliance | Sign-in, password reset, the operator's email about a report (a warning, or to the reporter after a threat), notice of an important change to the privacy policy (its section 15), and keeping a removed account from signing up again (two years). Never shown to other users.                   |
-| Personal info            | User IDs                                                               | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | The account id (UUID) and the username. Friends and correspondents see both; blocks and reports hold ids.                                                                                                                                                                                         |
+| Personal info            | Name                                                                   | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | The display name, which friends, correspondents and anyone the user sends a request to see. The copy typed at sign-up is removed from the auth record within a day. A report keeps it as it was. The username is declared under User IDs only, as in Apple's label (`app-store.md`).              |
+| Personal info            | Email address                                                          | **Yes**   | No        | Required             | Account management; Developer communications; Fraud prevention, security, and compliance | Sign-in, password reset, the operator's email about a report (a warning, or to the reporter after a threat), notice of an important change to the privacy policy (its section 15), and keeping a removed account from signing up again (two years from the removal). Never shown to other users.  |
+| Personal info            | User IDs                                                               | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | The account id (UUID) and the username. Other users see the username only through a friendship, a request, a letter or a block; the id reaches their app too, which does not show it (privacy policy 4). Blocks and reports hold ids; a report keeps the username as it was.                      |
 | Personal info            | Address; Phone number                                                  | No        |           |                      |                                                                                          | Never asked for.                                                                                                                                                                                                                                                                                  |
 | Personal info            | Race and ethnicity; Political or religious beliefs; Sexual orientation | No        |           |                      |                                                                                          | Never asked for. Letters are free text and may hold anything; they are declared as messages (**to check** that this is how Google wants free text handled).                                                                                                                                       |
 | Personal info            | Other info                                                             | No        |           |                      |                                                                                          | Age is never stored: the sign-up toggle stays on the device. The password is stored only as a bcrypt hash, for sign-in (**to check** whether Google expects credentials declared anywhere).                                                                                                       |
@@ -544,10 +549,14 @@ marketing.
   sign-in records with it: its sessions (IP address, user agent, times) and its sign-in log
   entries (GO-LIVE, "Handling a report"; privacy policy 3.7). Google's legal-purposes exception
   names a legal obligation or a government request; a referral the operator makes of their own
-  accord, about a threat say, is less clearly covered: **to check**. If in doubt, declare as
-  **shared**, for Fraud prevention, security, and compliance: Other in-app messages, Other
-  user-generated content, Name, User IDs, App interactions and Diagnostics. That would be honest
-  either way.
+  accord, about a threat say, is less clearly covered: **to check**. For internal testing the
+  answer stays **No**: the app is exempt from the form there. **Before any closed, open or
+  production track** this has to be decided: either confirm that the exception covers a voluntary
+  referral, or use the fallback and declare **Shared**, for Fraud prevention, security, and
+  compliance, for the data types the police may receive: Other in-app messages, Other
+  user-generated content, Name, User IDs, App interactions and Diagnostics. The fallback matches
+  privacy policy section 7, which names the police as a recipient, and would be honest either way.
+  **Decision:** not taken yet; write it here, and in section 9, when it is.
 - **Microsoft** hosts the operator's mailbox, through which the operator's emails to users (a
   warning, a notice) go. Google's form is about what the app collects and passes on; whether mail
   the operator writes from a consumer mailbox counts as sharing with Microsoft is **to check**. The
@@ -557,7 +566,8 @@ marketing.
 
 ### What the public section should then show
 
-- **Data shared:** no data shared with third parties.
+- **Data shared:** no data shared with third parties, as answered for internal testing. Before any
+  other track, the police question above may change this to the six types of the fallback.
 - **Data collected:** Location (approximate location); Personal info (name, email address, user
   IDs); Messages (other in-app messages); Contacts; App activity (app interactions, other
   user-generated content); App info and performance (diagnostics). In-app search history too,
@@ -598,14 +608,14 @@ Your account and sign-in, your profile (username, display name and city), your b
 
 What is kept, and for how long
 • Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made. If I passed a report to the police, they keep their copy under their own rules.
-• The sign-in log at the hosting provider (sign-up and sign-in events, with your email address). Every entry is deleted after 30 days at the latest; when you delete your account in the app, yours go at once.
+• The sign-in log at the hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, yours go at once.
 • Server logs and any backups at the hosting provider, until they are deleted or overwritten automatically. The privacy policy says how long.
 • Emails between you and me, as long as I need them for what you asked.
-• If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years so that it cannot simply sign up again, and is then deleted automatically.
+• If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years from the removal so that it cannot simply sign up again, and is then deleted automatically.
 • If you test the Android version: your Google account's email address on my tester list in Google Play Console, until you tell me you have stopped testing. Asking me to delete your account counts. What Google itself keeps follows Google's own terms.
 
 Deleting only some of your data
-Write to {{CONTACT_EMAIL}} and say what you would like deleted. I will tell you what I can delete while your account stays, and why, if something cannot go.
+Write to {{CONTACT_EMAIL}} and say what you would like deleted. I will tell you what I can delete while your account stays, and why, if something cannot go. Single letters cannot be deleted on their own: a letter goes only when your account or the other person's is deleted.
 
 Privacy policy: {{PRIVACY_POLICY_URL}}
 ```
@@ -631,24 +641,27 @@ Dein Konto und deine Anmeldung, dein Profil (Benutzername, Anzeigename und Stadt
 
 Was bleibt, und wie lange
 • Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben, bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
-• Das Anmeldeprotokoll beim Hosting-Anbieter (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Jeder Eintrag wird spätestens nach 30 Tagen gelöscht; löschst du dein Konto in der App, sind deine sofort weg.
+• Das Anmeldeprotokoll beim Hosting-Anbieter (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
 • Server-Protokolle und etwaige Sicherungskopien beim Hosting-Anbieter, bis sie automatisch gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
 • E-Mails zwischen dir und mir, solange ich sie für dein Anliegen brauche.
-• Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
+• Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
 • Wenn du die Android-Version testest: die E-Mail-Adresse deines Google-Kontos auf meiner Testerliste in der Google Play Console, bis du mir schreibst, dass du nicht mehr testest. Die Bitte, dein Konto zu löschen, zählt dazu. Was Google selbst speichert, regeln Googles eigene Bestimmungen.
 
 Nur einen Teil deiner Daten löschen
-Schreib an {{CONTACT_EMAIL}}, was gelöscht werden soll. Ich sage dir, was ich löschen kann, während dein Konto bleibt, und warum, wenn etwas nicht gehen sollte.
+Schreib an {{CONTACT_EMAIL}}, was gelöscht werden soll. Ich sage dir, was ich löschen kann, während dein Konto bleibt, und warum, wenn etwas nicht gehen sollte. Einen einzelnen Brief kann ich nicht für sich löschen: Ein Brief verschwindet erst, wenn dein Konto oder das der anderen Person gelöscht wird.
 
 Datenschutzerklärung: {{PRIVACY_POLICY_URL}}
 ```
 
 The "kept" list follows the code as of the housekeeping migration
-(`20261104120000_privacy_housekeeping.sql`, up to commit 665924d): sign-in records 30 days and
-deleted with the account, removed accounts banned for `private.ban_period()` and then deleted.
-Sessions are not on the list because they go with the account, both in the app and when the
-operator deletes it in the dashboard. When any of that changes, change this list, the privacy
-policy (sections 3.7, 3.8, 3.9, 9 and 11) and `gdpr-records.md` together.
+(`20261104120000_privacy_housekeeping.sql`, up to commit acd4efe): sign-in records 30 days and
+deleted with the account, removed accounts banned for `private.ban_period()`, two years from the
+removal, and then deleted by the tidy-up. Sessions are not on the list because they go with the
+account, both in the app and when the operator deletes it in the dashboard; a removed account's
+sessions are deleted by the tidy-up once unused for 90 days, like any others (privacy policy 3.8). The single-letter
+sentence follows privacy policy 3.4: there is no per-letter deletion, by the user or on request.
+When any of that changes, change this list, `support-page.md`, the privacy policy (sections 3.4,
+3.7, 3.8, 3.9, 9 and 11) and `gdpr-records.md` together.
 
 ---
 
@@ -677,7 +690,10 @@ A short note, not legal advice.
 - **What to do.** Invite no one under 13 who lives in the US, and do not post the TestFlight link
   where that could happen. If the operator learns that an account belongs to a child under 13 in the
   US, delete it: COPPA would require a parent's verifiable consent, which the app has no way to
-  collect. Build nothing for COPPA unless the app is ever offered in the US.
+  collect. Delete it without a ban, as for anyone found to be under 12 (Authentication → Users →
+  Delete user, not `private.remove_account`): the two-year ban is only for accounts removed for
+  breaking the rules (privacy policy 3.8). Build nothing for COPPA unless the app is ever offered
+  in the US.
 
 ---
 
@@ -686,26 +702,34 @@ A short note, not legal advice.
 - [ ] Play Console developer account (personal) created and identity-verified. Verify its contact
       email and phone, and sign in at least every 180 days (GO-LIVE, "Two multi-year traps").
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project").
-- [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE).
+- [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE, "Before a
+      second person can sign up"). Then change section 3.10 of both privacy policies as their TO
+      CHECK and PRÜFEN comments say.
+- [ ] Supabase DPA, with the standard contractual clauses, signed before the privacy policy is
+      published (`gdpr-records.md` 5.1): until then, its sections 7 and 8 are untrue.
 - [ ] Privacy policy published at `{{PRIVACY_POLICY_URL}}`, with the placeholders filled in on the
-      hosted copy only, and the hosting location named as Switzerland.
+      hosted copy only, and the hosting location named as Switzerland. It is the only page with the
+      postal address.
 - [ ] Support page live at `{{SUPPORT_URL}}` (`support-page.md`), with the account deletion text
-      (section 6).
+      (section 6), and without the postal address: it points to the privacy policy for that.
 - [ ] App created (section 1), store listing in English and German, icon, feature graphic and
       screenshots (section 2).
 - [ ] App content answered: privacy policy, App access, Ads, Advertising ID, the other declarations
       (section 3), content rating (section 4), Target audience (section 5).
 - [ ] The Families Policy decision taken (section 5): build the three social-feature pieces, raise
       the minimum age, or stay internal with no Android tester under 13. Write down which, here.
-- [ ] Data safety filled in if Play Console allows it (section 6). Required before any other track.
+- [ ] Data safety filled in if Play Console allows it (section 6). Required before any other track,
+      and so is the decision on sharing with the police ("Why nothing is shared").
 - [ ] Pre-launch reports off if they run on internal testing, and the credentials option in App
       access unticked (section 3).
 - [ ] First Android App Bundle built with EAS. `eas.json` does not exist yet (GO-LIVE, D). The EAS
       environment has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted
       project, `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL`.
-- [ ] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
-      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID), then the
-      merged manifest checked in App bundle explorer: `INTERNET` only, no `AD_ID`.
+- [x] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
+      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID). Done in
+      commit 191bc50, guarded by `src/tests/app-config.test.ts`.
+- [ ] On the first build, the merged manifest checked in App bundle explorer: `INTERNET` only, no
+      `AD_ID`.
 - [ ] Internal testing: a tester list (at most 100 Google account email addresses), kept only in
       Play Console, and the opt-in link sent to those people. Take testers off the list when they
       stop (privacy policy, section 3.12).
@@ -727,8 +751,9 @@ Collected from above, so none is lost:
 6. Graphic sizes, the category (Communication or Social) and tags.
 7. Google's current privacy policy requirements, and the account deletion page requirements.
 8. Whether pre-launch reports run on internal testing, and turning them off.
-9. The built app's permissions, and that there is no `AD_ID` permission; that blocking the
-   template's extra permissions breaks nothing; that none of them needs a declaration.
+9. The built app's permissions: that the merged manifest keeps only `INTERNET` now that `app.json`
+   blocks the template's other four (commit 191bc50), that no library adds one of its own, and that
+   there is no `AD_ID` permission; that blocking them breaks nothing.
 10. The IARC category names, the exact questions, and whether a self-chosen city counts as "shares
     location". The ratings the certificate gives, especially the USK's. That a rating cannot be
     overridden upwards.
@@ -744,7 +769,10 @@ Collected from above, so none is lost:
 15. The Data safety definitions: ephemeral processing and whether it shows in the public section,
     the sharing exceptions, how free text, passwords and IP addresses are treated, Android vitals,
     whether a voluntary referral to the police (with the account's sign-in records) counts as
-    sharing, and whether the operator's mail through a Microsoft consumer mailbox does.
+    sharing, and whether the operator's mail through a Microsoft consumer mailbox does. The police
+    question has to be decided before any track beyond internal testing (section 6, "Why nothing
+    is shared"): either the exception is confirmed, or the six types are declared Shared for Fraud
+    prevention, security, and compliance. Decision: not taken yet.
 16. The option name for "username and password" account creation.
 17. COPPA: the definitions, its reach to foreign operators, the commercial-purposes question,
     whether Google applies its COPPA requirement outside the US, country limits for Play internal

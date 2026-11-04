@@ -236,7 +236,8 @@ Recorded rather than guessed at:
 Decorative, as planned, and built last. A bat in the air beats its wings and drifts on its roost tile,
 over a thin bar showing how far it has come; a letter in the air is drawn on its way, an arc of dots
 between the two cities with the bat where the clock puts it; the send confirmation shows the flight that
-has just begun. Nothing moves for anyone who has asked their device for less motion. When a letter lands
+has just begun. For anyone who has asked their device for less motion, the wings and the drift stop;
+where the bat is on its way still updates. When a letter lands
 is still the server's answer - the drawing only reads it. Decisions under "Phase 12" in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
