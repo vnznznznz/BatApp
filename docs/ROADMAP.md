@@ -19,7 +19,7 @@ See [`GO-LIVE.md`](GO-LIVE.md).
 | 9   | Scheduled delivery worker       | **Done** |
 | 10  | Push notifications              | Dropped  |
 | 11  | Inbox and message detail        | **Done** |
-| 12  | Bat flight animation            | Planned  |
+| 12  | Bat flight animation            | **Done** |
 | 13  | Security and RLS audit          | Started  |
 | 13a | Safety and moderation           | **Done** |
 | 14  | Testing                         | Planned  |
@@ -176,8 +176,8 @@ code, all fixed and each with a test that fails without the fix:
 - **A local Supabase stack could not be used.** The URL check refused plain http outright; it now
   accepts http for loopback and private-network addresses only.
 
-Not built, by design: the flight animation (12). Push notifications (10) were later dropped
-altogether, and safety and moderation (13a) is below.
+The flight animation (12) and safety and moderation (13a) followed, below; push notifications (10)
+were dropped altogether.
 
 ## The tests that matter
 
@@ -230,6 +230,15 @@ Recorded rather than guessed at:
 - ~~**Contact address for store listings.**~~ Decided: a personal postal address will be used.
   It is deliberately **not** recorded in this repository, which is public — it goes straight into
   App Store Connect and the hosted privacy policy at Phase 16. See [`GO-LIVE.md`](GO-LIVE.md).
+
+## Phase 12 — Bat flight animation (done)
+
+Decorative, as planned, and built last. A bat in the air beats its wings and drifts on its roost tile,
+over a thin bar showing how far it has come; a letter in the air is drawn on its way, an arc of dots
+between the two cities with the bat where the clock puts it; the send confirmation shows the flight that
+has just begun. Nothing moves for anyone who has asked their device for less motion. When a letter lands
+is still the server's answer - the drawing only reads it. Decisions under "Phase 12" in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Phase 13a — Safety and moderation (done)
 

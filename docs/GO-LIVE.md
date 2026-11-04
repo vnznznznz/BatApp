@@ -22,13 +22,13 @@ watch bats come home, and read what has landed. Delivery is decided by the datab
 pg_cron; every product rule is enforced server-side and tested, including the reservation race
 against a real Postgres.
 
-| Phase | What it adds           | Where it stands                                                  |
-| ----- | ---------------------- | ---------------------------------------------------------------- |
-| 10    | Push notifications     | **Dropped** by decision, 2 November 2026                         |
-| 12    | Bat flight animation   | Decorative, and the last thing that should be built              |
-| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains         |
-| 13a   | Safety and moderation  | **Done**: report, block, house rules - what App Review looks for |
-| 14    | Testing                | Mostly done in passing; testing on real devices remains          |
+| Phase | What it adds           | Where it stands                                                       |
+| ----- | ---------------------- | --------------------------------------------------------------------- |
+| 10    | Push notifications     | **Dropped** by decision, 2 November 2026                              |
+| 12    | Bat flight animation   | **Done**: wing beat, drift, a drawn flight; still under Reduce Motion |
+| 13    | Security and RLS audit | Started: the privilege audit tests exist; review remains              |
+| 13a   | Safety and moderation  | **Done**: report, block, house rules - what App Review looks for      |
+| 14    | Testing                | Mostly done in passing; testing on real devices remains               |
 
 There are no push notifications, by the operator's choice: a letter that lands is seen the next
 time its recipient opens the app. Push would not have cost anything itself - Expo's push service,
@@ -49,17 +49,17 @@ runs in Expo Go.
 it gates every build that is not Expo Go — TestFlight included. It is also the only unavoidable
 cost on the iOS side; nothing in the app itself costs money.
 
-### C. Compliance artifacts — one exists so far
+### C. Compliance artifacts — drafted in `docs/store/`; personal details and hosting still open
 
-| Item                              | Required by                    | Notes                                                                                                                                  |
-| --------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | Needed in App Store Connect **and** linked in-app. Must name Switzerland as the hosting location, and say what a report keeps (below). |
-| Support URL                       | Apple 1.2                      | Published contact route. In the app: `EXPO_PUBLIC_CONTACT_URL` (see "Before first submission")                                         |
-| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                                                           |
-| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                       |
-| App Privacy "nutrition label"     | App Store Connect              | Answered per data type collected                                                                                                       |
-| Age rating questionnaire          | App Store Connect              | Mandatory since 31 Jan 2026; blocks submission if incomplete                                                                           |
-| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                                                           |
+| Item                              | Required by                    | Notes                                                                                                                                                             |
+| --------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | **Drafted**: `docs/store/privacy-policy.de.md` (binding) and `.en.md`. Needs the operator's name and address filled in, outside this repository, and a public URL |
+| Support URL                       | Apple 1.2                      | Contact address decided, kept out of this repository; in the app via `EXPO_PUBLIC_CONTACT_URL`. Needs a public https page, which the hosted policy can be         |
+| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided; goes in App Store Connect, never in this repository                                                                                                      |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                  |
+| App Privacy "nutrition label"     | App Store Connect              | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                         |
+| Age rating questionnaire          | App Store Connect              | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                     |
+| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                                                                                      |
 
 Account deletion is already built and tested, which is the one item on Apple's list that is code
 rather than paperwork.
@@ -412,10 +412,12 @@ transits it, so a content-free push keeps message text out of a US processor.
   > profile and no way to write to a stranger. Blocking is private to the user; Report, which also
   > blocks by default, reaches the operator, who removes offending accounts.
 
-- **Decide the minimum age**, and state it in the house rules. Nothing in the app says one today.
-  Germany sets 16 as the age for consenting to an online service's processing on one's own
-  (Art. 8 GDPR with the German default), and the App Store age rating should agree with whatever is
-  chosen. The house rules already forbid any sexual content involving or sent to anyone under 18.
+- ~~**Decide the minimum age.**~~ Decided on 4 November 2026: **12**, and under 16 only with a parent's
+  or guardian's permission - 16 being the age at which German law lets someone agree to an online
+  service on their own (Art. 8 GDPR). The house rules say so and sign-up asks for it; nobody's age is
+  checked or stored. Including 12-year-olds brings Google Play's Families Policy into play, and the
+  App Store's computed age rating may come out higher than 12: see `docs/store/`. The house rules
+  forbid any sexual content involving or sent to anyone under 18.
 - **The privacy policy must cover reports**: that a report goes to the operator with a copy of
   what was reported; that the reported person is not told who reported them (but may guess, a
   letter having one reader); that it is deleted 180 days after it was made, unless passed to the
@@ -430,6 +432,10 @@ transits it, so a content-free push keeps message text out of a US processor.
 
 - **A support URL and a reachable contact address.** You cannot stay fully anonymous: Guideline
   1.2 requires published contact information and GDPR Art. 13 requires the controller's identity.
+
+  The contact email is decided. Like the postal address it stays out of this repository: it goes
+  into `EXPO_PUBLIC_CONTACT_URL` as a `mailto:` link, in `.env` and in the EAS environment, and into
+  the hosted privacy policy.
 
   The operator has decided to use a personal postal address. **It is deliberately not stored in
   this repository, and must not be.** This repository is public; anything committed here is

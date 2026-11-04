@@ -61,11 +61,13 @@ export async function searchCities(query: string, limit = 20): Promise<City[]> {
 /** "Rösrath, DE" — enough to disambiguate two towns sharing a name. */
 /**
  * The city data is GeoNames' (scripts/build-cities.mjs), under CC BY 4.0, which
- * asks for credit wherever it is shown: the city picker and the profile say so.
+ * asks for three things wherever it is shown: credit, a link to the licence, and
+ * a word that it was changed - here, cut down to larger cities and given extra
+ * search names. The city picker and the profile say so.
  */
 export const CITY_DATA_CREDIT =
-  'City names and places from GeoNames (geonames.org), used under the Creative Commons ' +
-  'Attribution 4.0 licence.';
+  'City names and places adapted from GeoNames (geonames.org), licensed under ' +
+  'CC BY 4.0 (creativecommons.org/licenses/by/4.0).';
 
 export function describeCity(city: Pick<City, 'name' | 'countryCode'>): string {
   return `${city.name}, ${city.countryCode}`;

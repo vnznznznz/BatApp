@@ -561,6 +561,40 @@ now runs the file through `babel-preset-expo` and asserts both values are inline
 `process.env` remains. The URL check also accepts plain http for loopback and private-network
 addresses, so the app can run against `npx supabase start` - from a phone too.
 
+## Phase 12 - the flight, drawn
+
+### Plain views and React Native's own Animated
+
+The arc is 25 small views placed along a quadratic curve, and the bat a tinted image moved with a
+transform: no drawing library, so nothing new to install, keep in step with Expo, or mock. The wing beat
+(a quick squash of the silhouette) and the drift (a slow rise and fall) are two `Animated` loops on the
+native driver - transforms only - so they cost the JavaScript thread nothing on a phone; the web build,
+which has no native side, runs them in the browser. Where the bat is along the arc is not animated at
+all: it is computed from the clock that already ticks every second for the countdowns, because a flight
+lasts hours and a second's movement is invisible.
+
+**Rejected:** Reanimated. It is installed, but nothing used it, and its worklets would have been one more
+thing to set up in tests for a decoration.
+
+### Calm until told otherwise
+
+`useReducedMotion` starts as "reduce" and only lets the bats move once the device has said motion is
+fine, and follows the setting while the screen is open: someone who gets dizzy from movement never sees
+a frame of it. A bat that has landed, or is at home, does not move either.
+
+### Decoration, described in words
+
+The drawing is one image to a screen reader, described as "Bat 40% of the way from Berlin to Vienna";
+the moving bat and the progress bar are hidden, since the countdown beside them already says when the
+bat lands.
+
+### Tests run with motion reduced
+
+React Native's test environment has no native animated module, so an endless loop would run frame by
+frame in JavaScript, and a test that lets an hour pass under fake timers ran every frame of it - slowly
+enough to time out. `jest.setup.js` therefore gives every test a reader who asked for less motion, and the
+animation's own tests turn motion back on to check that the loops start, stop and stay off.
+
 ## Phase 13a - blocking and reporting
 
 Apple's Guideline 1.2 makes both a condition of review for any app with user-generated content. They
