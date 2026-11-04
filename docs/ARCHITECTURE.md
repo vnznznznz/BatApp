@@ -798,7 +798,9 @@ ban has run out.
 
 The iOS build also no longer asks for Face ID: expo-secure-store declares that permission by
 default, and the app never uses biometrics, so the store's privacy questions would have had to
-explain an access it never makes.
+explain an access it never makes. And the session kept in the iOS keychain is now kept on that
+device only (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`): a backup restored to another phone no longer
+brings a signed-in session with it, so a new phone signs in again.
 
 What it cannot do from SQL, and the privacy policy therefore says plainly:
 

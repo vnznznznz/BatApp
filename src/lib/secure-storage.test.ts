@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-import { secureStorage } from '@/lib/secure-storage';
+import { KEYCHAIN_OPTIONS, secureStorage } from '@/lib/secure-storage';
 
 /**
  * Stands in for the keychain, and enforces the size ceiling that motivates the
@@ -11,6 +11,8 @@ const KEYCHAIN_LIMIT = 2048;
 let store: Map<string, string>;
 
 jest.mock('expo-secure-store', () => ({
+  WHEN_UNLOCKED: 'WHEN_UNLOCKED',
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
   getItemAsync: jest.fn(),
   setItemAsync: jest.fn(),
   deleteItemAsync: jest.fn(),
@@ -125,5 +127,26 @@ describe('secureStorage', () => {
     store.delete('session.2');
 
     expect(await secureStorage.getItem('session')).toBeNull();
+  });
+
+  it('keeps every entry on this device only, never in a backup for another phone', async () => {
+    expect(KEYCHAIN_OPTIONS).toEqual({
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+
+    // Only this test's calls: the earlier tests' are still on the mocks.
+    jest.clearAllMocks();
+    await secureStorage.setItem('session', 'x'.repeat(5000));
+    await secureStorage.setItem('session', 'small');
+    await secureStorage.getItem('session');
+    await secureStorage.removeItem('session');
+
+    const calls = [
+      ...mocked.setItemAsync.mock.calls.map((call) => call[2]),
+      ...mocked.getItemAsync.mock.calls.map((call) => call[1]),
+      ...mocked.deleteItemAsync.mock.calls.map((call) => call[1]),
+    ];
+    expect(mocked.setItemAsync.mock.calls.length).toBeGreaterThan(3);
+    expect(calls.every((options) => options === KEYCHAIN_OPTIONS)).toBe(true);
   });
 });

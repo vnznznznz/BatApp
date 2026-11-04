@@ -14,6 +14,16 @@ import * as SecureStore from 'expo-secure-store';
  * visible failure for an invisible one.
  */
 
+/**
+ * On this device only, and only while it is unlocked: a backup restored to
+ * another phone does not bring a live session with it. A new phone signs in
+ * again. (iOS; Android leaves these entries out of backups altogether - the
+ * expo-secure-store plugin's default backup rules.)
+ */
+export const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
+
 const CHUNK_SIZE = 1600;
 const MANIFEST_PREFIX = 'ncchunks:';
 
@@ -21,13 +31,13 @@ const chunkKey = (key: string, index: number) => `${key}.${index}`;
 
 async function clearChunks(key: string, from: number, to: number): Promise<void> {
   for (let i = from; i < to; i++) {
-    await SecureStore.deleteItemAsync(chunkKey(key, i));
+    await SecureStore.deleteItemAsync(chunkKey(key, i), KEYCHAIN_OPTIONS);
   }
 }
 
 export const secureStorage = {
   async getItem(key: string): Promise<string | null> {
-    const head = await SecureStore.getItemAsync(key);
+    const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
     // Loose equality on purpose: the declared type is `string | null`, but the
     // native module resolves `undefined` for a missing key on some platforms,
     // and a strict null check would then call `startsWith` on it.
@@ -39,7 +49,7 @@ export const secureStorage = {
 
     const parts: string[] = [];
     for (let i = 0; i < total; i++) {
-      const part = await SecureStore.getItemAsync(chunkKey(key, i));
+      const part = await SecureStore.getItemAsync(chunkKey(key, i), KEYCHAIN_OPTIONS);
       // A partially written value is unusable; treat it as absent so the user
       // is asked to sign in again rather than handed a corrupt token.
       if (part == null) return null;
@@ -49,13 +59,13 @@ export const secureStorage = {
   },
 
   async setItem(key: string, value: string): Promise<void> {
-    const previous = await SecureStore.getItemAsync(key);
+    const previous = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
     const previousCount = previous?.startsWith(MANIFEST_PREFIX)
       ? Number.parseInt(previous.slice(MANIFEST_PREFIX.length), 10) || 0
       : 0;
 
     if (value.length <= CHUNK_SIZE) {
-      await SecureStore.setItemAsync(key, value);
+      await SecureStore.setItemAsync(key, value, KEYCHAIN_OPTIONS);
       await clearChunks(key, 0, previousCount);
       return;
     }
@@ -68,19 +78,19 @@ export const secureStorage = {
     // Chunks first, manifest last: if this is interrupted, the old manifest
     // still points at a complete set rather than at a half-written one.
     for (const [index, chunk] of chunks.entries()) {
-      await SecureStore.setItemAsync(chunkKey(key, index), chunk);
+      await SecureStore.setItemAsync(chunkKey(key, index), chunk, KEYCHAIN_OPTIONS);
     }
-    await SecureStore.setItemAsync(key, `${MANIFEST_PREFIX}${chunks.length}`);
+    await SecureStore.setItemAsync(key, `${MANIFEST_PREFIX}${chunks.length}`, KEYCHAIN_OPTIONS);
     await clearChunks(key, chunks.length, previousCount);
   },
 
   async removeItem(key: string): Promise<void> {
-    const head = await SecureStore.getItemAsync(key);
+    const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
     const total = head?.startsWith(MANIFEST_PREFIX)
       ? Number.parseInt(head.slice(MANIFEST_PREFIX.length), 10) || 0
       : 0;
 
-    await SecureStore.deleteItemAsync(key);
+    await SecureStore.deleteItemAsync(key, KEYCHAIN_OPTIONS);
     await clearChunks(key, 0, total);
   },
 };
