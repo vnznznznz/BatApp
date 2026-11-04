@@ -134,12 +134,12 @@ What it does not have
 
 Safety
 • Block anyone, at any time. They are not told, though they will see that you are no longer friends. Their letters are hidden from you until you unblock them.
-• Report a letter or a person. Reports go to the person who runs Night Courier, never to the person you report.
+• Report a letter or a person. Reports go to the person who runs Night Courier. The person you report is not told who reported them, unless the law requires it.
 • The house rules have no tolerance for harassment, threats, hate, scams, spam or sexual content nobody asked for, and none at all for sexual content involving or sent to anyone under 18.
 
 Your data
-• Delete your account at any time from your profile. Your profile, your friendships and every letter you have sent or received go with it, for your friends as well as for you. Reports are the exception: a report is kept for 180 days.
-• Letters are stored on the server so they can be delivered. They are not end-to-end encrypted. The privacy policy says who can see what.
+• Delete your account at any time from your profile. Your profile, your friendships and every letter you have sent or received go with it, for your friends as well as for you. Reports are the exception: each is deleted 180 days after it was made.
+• Letters are stored on the server so they can be delivered, and stay there until you or your friend deletes their account. They are not end-to-end encrypted. The privacy policy says who can see what, and everything else that is kept and for how long.
 
 Who it is for
 Night Courier is a private, non-commercial project for a small circle of friends. You must be at least 12, and if you are under 16 you need a parent's or guardian's permission.
@@ -169,12 +169,12 @@ Was es nicht gibt
 
 Sicherheit
 • Blockiere jeden, jederzeit. Die Person erfährt es nicht, sieht aber, dass ihr keine Freunde mehr seid. Ihre Briefe sind für dich ausgeblendet, bis du die Blockierung aufhebst.
-• Melde einen Brief oder eine Person. Meldungen gehen an die Person, die Night Courier betreibt, nie an die gemeldete Person.
+• Melde einen Brief oder eine Person. Meldungen gehen an die Person, die Night Courier betreibt. Die gemeldete Person erfährt nicht, wer sie gemeldet hat, außer das Gesetz verlangt es.
 • Die Hausregeln dulden keine Belästigung, keine Drohungen, keinen Hass, keinen Betrug, keinen Spam und keine sexuellen Inhalte, um die niemand gebeten hat – und erst recht keine sexuellen Inhalte, an denen Minderjährige beteiligt sind oder die an Minderjährige gehen.
 
 Deine Daten
-• Du kannst dein Konto jederzeit in deinem Profil löschen. Dein Profil, deine Freundschaften und jeder Brief, den du geschickt oder bekommen hast, werden mit gelöscht, bei deinen Freunden genauso wie bei dir. Meldungen sind die Ausnahme: Eine Meldung wird 180 Tage aufbewahrt.
-• Briefe werden auf dem Server gespeichert, damit sie zugestellt werden können. Sie sind nicht Ende-zu-Ende-verschlüsselt. Die Datenschutzerklärung sagt, wer was sehen kann.
+• Du kannst dein Konto jederzeit in deinem Profil löschen. Dein Profil, deine Freundschaften und jeder Brief, den du geschickt oder bekommen hast, werden mit gelöscht, bei deinen Freunden genauso wie bei dir. Meldungen sind die Ausnahme: Jede wird 180 Tage nach der Meldung gelöscht.
+• Briefe werden auf dem Server gespeichert, damit sie zugestellt werden können, und bleiben dort, bis du oder die andere Person das Konto löscht. Sie sind nicht Ende-zu-Ende-verschlüsselt. Die Datenschutzerklärung sagt, wer was sehen kann und was sonst wie lange gespeichert wird.
 
 Für wen
 Night Courier ist ein privates, nicht-kommerzielles Projekt für einen kleinen Freundeskreis. Du musst mindestens 12 Jahre alt sein. Wenn du unter 16 bist, brauchst du die Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App selbst ist auf Englisch.
@@ -184,7 +184,10 @@ Städtedaten: GeoNames (geonames.org), CC BY 4.0.
 
 Every claim in these texts is something the app does today. Before each new track, check them
 against the build again, and especially "no analytics or tracking", "not end-to-end encrypted" and
-the 180 days.
+the 180 days. "Not told who reported them, unless the law requires it" is the house rules' own
+wording (`src/app/rules.tsx`), and the same as on the App Store. Do not shorten it to "reports
+never reach the person you report": if that person asks for their data (Art. 15 GDPR), they get
+what a report says about them, without the reporter (`gdpr-records.md`, 5.3).
 
 ### Graphics
 
@@ -245,11 +248,11 @@ hosted project and send letters and reports from the demo account.
 ```text
 Night Courier is a private, non-commercial slow-messaging app for a small circle of friends. Nothing is for sale: no purchases, no ads, no analytics, no push notifications.
 
-Sign in on the welcome screen with the account above. It is already friends with "Demo Friend", who has sent it two letters. Both have landed and are under Letters, on the first screen.
+On the welcome screen, tap "I already have one" and sign in with the account above. It is already friends with "Demo Friend", who has sent it two letters. Both have landed and are under Letters, on the first screen.
 
 Letters are never instant. Each one flies the real distance between the two friends' cities, and never takes less than 20 minutes. A letter you send during the review may not land while you watch, which is why the demo letters were sent in advance.
 
-Report and block: Letters → a letter from Demo Friend → Report this letter, or Block. Or Friends → tap Demo Friend → Block / Report. Your profile holds Blocked couriers, the house rules (our terms, agreed to at sign-up), Contact and the privacy policy.
+Report and block: Letters → a letter from Demo Friend → Report this letter, or Block. Or Friends → tap Demo Friend → Block / Report. Your profile → Safety holds Blocked couriers (each can be reported from there too), the house rules (our terms, with a zero-tolerance clause, agreed to at sign-up), Contact and the privacy policy.
 
 Account deletion: Your profile → Delete my account. Please try it with a new account (Create an account, on the welcome screen), so that the demo account stays usable.
 
@@ -275,7 +278,9 @@ so that one store's reviewer deleting theirs cannot break the other's:
 4. Sign out on every device used for this. The sign-in goes only into Play Console.
 
 Afterwards, resolve any test reports with `resolution = 'play review test'` (GO-LIVE, "Handling a
-report").
+report"). If the reviewer blocked Demo Friend, unblock in Your profile → Blocked couriers and become
+friends again; if they deleted the account, make it again from step 1. A session left unused for 90
+days is ended by the daily tidy-up, so a demo account not used for that long simply signs in again.
 
 **Pre-launch reports:** Google's robots may install builds and explore them (Testing → Pre-launch
 report). Whether that happens on internal testing is **to check**. If it does, turn pre-launch
@@ -291,23 +296,32 @@ tested, and the README's rules forbid advertising.
 
 If asked whether the app uses an advertising ID: **No**. No library in the app reads one. **To check**
 on the first build, in Play Console's App bundle explorer: that the merged manifest has no
-`com.google.android.gms.permission.AD_ID`, and which permissions it does request. Only `INTERNET`
-is expected. Expo's templates have added others in the past; `android.blockedPermissions` in
-`app.json` removes any that appear.
+`com.google.android.gms.permission.AD_ID`, and which permissions it does request.
+
+The app itself needs only `INTERNET`, but it will not be the only one. The Android template that
+`expo prebuild` uses (`node_modules/expo/template.tgz`, SDK 57) lists `INTERNET`,
+`SYSTEM_ALERT_WINDOW`, `VIBRATE`, `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (the last two
+only up to Android 12L), and `expo-file-system`, which `expo` depends on, adds the two storage
+permissions again. `app.json` sets neither `android.permissions` nor `android.blockedPermissions`,
+so all of them are expected in the build. As far as is known here none of them needs a declaration
+in Play Console (**to check**), and the app never asks for any at run time, but a build that uses
+none of them should not carry them either: before the first build, add `android.blockedPermissions`
+for the four that are not `INTERNET` to `app.json` (a code change, not made here; check afterwards
+that the build still runs).
 
 ### The other declarations
 
-| Declaration                    | Answer                                                                       |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| Content rating                 | Section 4                                                                    |
-| Target audience and content    | Section 5                                                                    |
-| Data safety                    | Section 6                                                                    |
-| News app                       | No                                                                           |
-| Government app                 | No                                                                           |
-| Financial features             | None                                                                         |
-| Health                         | No health features                                                           |
-| COVID-19 apps (if still asked) | No                                                                           |
-| Permission declarations        | None expected: the app asks for no sensitive permission (see Advertising ID) |
+| Declaration                    | Answer                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| Content rating                 | Section 4                                                                   |
+| Target audience and content    | Section 5                                                                   |
+| Data safety                    | Section 6                                                                   |
+| News app                       | No                                                                          |
+| Government app                 | No                                                                          |
+| Financial features             | None                                                                        |
+| Health                         | No health features                                                          |
+| COVID-19 apps (if still asked) | No                                                                          |
+| Permission declarations        | None expected (**to check** against the built manifest; see Advertising ID) |
 
 ---
 
@@ -375,20 +389,34 @@ check**); a rating can only be appealed through the link in IARC's certificate e
 Summarised from Google's Families pages; the full policy text takes precedence and is **to check**
 before acting on this table.
 
-| Requirement                                                                                                                                               | Night Courier today                                                                                                                                                                                                                                                          | Needed                                |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| Accurate target audience and Play Console answers                                                                                                         | Yes, with 9–12 ticked                                                                                                                                                                                                                                                        | Nothing                               |
-| Content appropriate for children                                                                                                                          | The app's own content, yes. Letters are written by users; the house rules forbid sexual content involving or sent to minors, and report and block exist                                                                                                                      | Nothing                               |
-| A privacy policy that discloses what is collected from children                                                                                           | `privacy-policy.de.md`, section 10, and the rest of the policy                                                                                                                                                                                                               | Publish it                            |
-| No device identifiers (advertising ID, IMEI, MAC, SSID and similar) collected from children or users of unknown age                                       | None collected                                                                                                                                                                                                                                                               | Check the merged manifest (section 3) |
-| Ads only through Families Self-Certified Ads SDKs                                                                                                         | No ads                                                                                                                                                                                                                                                                       | Nothing                               |
-| No location permission in apps that target only children                                                                                                  | No location permission at all; the app does not target only children                                                                                                                                                                                                         | Nothing                               |
-| Compliance with the laws on children's data, which Google names as including COPPA and the GDPR                                                           | GDPR: this folder. COPPA: section 7                                                                                                                                                                                                                                          | Section 7                             |
-| **Social features (1):** an in-app reminder to be safe online and aware of the real-world risk, before child users exchange freeform media or information | **Missing**                                                                                                                                                                                                                                                                  | **Build**                             |
-| **Social features (2):** an adult action before child users exchange personal information                                                                 | **Missing.** The sign-up toggle ("I am 12 or older"; under 16, a parent has said yes) is the user's own statement, not an adult's action. Google describes adult action as a way to establish that the user is not a child, without encouraging children to give a false age | **Build**                             |
-| **Social features (3):** a way for adults to manage social features for child users, such as turning them off or limiting them                            | **Missing.** A parent can only delete the account together with the child, or write to the operator                                                                                                                                                                          | **Build**                             |
-| Apps whose main purpose is chatting with strangers, or chatting anonymously, must not target children (anonymous chat apps: from 26 August 2026)          | Not this app: letters travel only between accepted friends who asked by exact username, and every letter names its sender                                                                                                                                                    | Nothing                               |
-| A content rating suitable for children                                                                                                                    | Expected (section 4). The exact rule is **to check**                                                                                                                                                                                                                         | Record the rating                     |
+| Requirement                                                                                                                                                    | Night Courier today                                                                                                                                                                                                                                                          | Needed                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Accurate target audience and Play Console answers                                                                                                              | Yes, with 9–12 ticked                                                                                                                                                                                                                                                        | Nothing                               |
+| Content appropriate for children                                                                                                                               | The app's own content, yes. Letters are written by users; the house rules forbid sexual content involving or sent to minors, and report and block exist                                                                                                                      | Nothing                               |
+| A privacy policy that discloses what is collected from children                                                                                                | `privacy-policy.de.md`, section 10, and the rest of the policy                                                                                                                                                                                                               | Publish it                            |
+| No device identifiers (advertising ID, IMEI, MAC, SSID and similar) collected from children or users of unknown age                                            | None collected                                                                                                                                                                                                                                                               | Check the merged manifest (section 3) |
+| Ads only through Families Self-Certified Ads SDKs                                                                                                              | No ads                                                                                                                                                                                                                                                                       | Nothing                               |
+| No location permission in apps that target only children                                                                                                       | No location permission at all; the app does not target only children                                                                                                                                                                                                         | Nothing                               |
+| Compliance with the laws on children's data, which Google names as including COPPA and the GDPR                                                                | GDPR: this folder. COPPA: section 7                                                                                                                                                                                                                                          | Section 7                             |
+| **Social features (1):** an in-app reminder to be safe online and aware of the real-world risk, before child users exchange freeform media or information      | **Missing**                                                                                                                                                                                                                                                                  | **Build**                             |
+| **Social features (2):** an adult action before child users exchange personal information                                                                      | **Missing.** The sign-up toggle ("I am 12 or older"; under 16, a parent has said yes) is the user's own statement, not an adult's action. Google describes adult action as a way to establish that the user is not a child, without encouraging children to give a false age | **Build**                             |
+| **Social features (3):** a way for adults to manage social features for child users, such as turning them off or limiting them                                 | **Missing.** A parent can only delete the account together with the child, or write to the operator                                                                                                                                                                          | **Build**                             |
+| Apps whose main purpose is chatting with strangers, or chatting anonymously, must not target children (anonymous chat apps: from 26 August 2026, **to check**) | Not this app: letters travel only between accepted friends who asked by exact username, and every letter names its sender                                                                                                                                                    | Nothing                               |
+| A content rating suitable for children                                                                                                                         | Expected (section 4). The exact rule is **to check**                                                                                                                                                                                                                         | Record the rating                     |
+
+Two things in the policy text decide how much of the three social-feature rows applies, and both
+are **to check** in the full text:
+
+- As remembered here, Google tells a **social app** (one whose main focus is sharing free-form
+  content or communicating with many people) from an app with **social features** (an added
+  function). For a social app it asks for the reminder and the adult action; the adult controls
+  are listed for social features. Night Courier's main purpose is letters, so it is probably a
+  social app; then the adult controls may not be required, and the adult action still is.
+  One-to-one letters between friends are not "many people", but they are free-form content. Treat
+  all three as required until the text says otherwise.
+- Google's "child" is under 13 in the target age groups. Whether the policy anywhere uses a
+  country's own age of consent instead (in Germany 16, the age Art. 8 GDPR is set at) is not known
+  here.
 
 ### The conflict this creates
 
@@ -407,7 +435,8 @@ Options, all the operator's decision, none made here:
 2. **Raise the minimum age to 13.** Then only 13–15 and older are ticked and the Families Policy no
    longer applies (unless Google judges the listing to appeal to children). It would also match the
    13+ that Apple's age rating has to show anyway (`app-store.md`, "Age rating"). It means changing
-   the house rules, sign-up, `src/constants/config.ts` and the privacy policy.
+   the house rules, sign-up, `src/constants/config.ts` and the privacy policy, and it reverses the
+   operator's decision of 4 November 2026 that the minimum age is 12.
 3. **Stay on internal testing with 12**, knowing what that does and does not mean (below).
 
 ### What it means for an app only on internal testing
@@ -445,8 +474,8 @@ The rules these answers follow, from Google's help as summarised (**to check** t
 - **Collected** means sent off the device. Data that is only processed on the device is not
   collected.
 - Data **processed ephemerally** (held only in memory, for no longer than it takes to answer the
-  request in real time) is still declared, marked as ephemeral, and Google then leaves it out of
-  the public section.
+  request in real time) is still declared, and marked as ephemeral. Whether Google then leaves it
+  out of the public section, or shows it with that note, is **to check**.
 - **Shared** means transferred to a third party. Not counted as sharing: transfers to service
   providers that process data on the developer's behalf, transfers for legal purposes (Google's
   examples: a legal obligation or a government request), transfers that follow an action the user
@@ -456,52 +485,54 @@ The rules these answers follow, from Google's help as summarised (**to check** t
 
 ### The questions before the data types
 
-| Question                                                                                  | Answer                                                                | Why                                                                                                                                                                                                                            |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Does your app collect or share any of the required user data types?                       | **Yes**                                                               |                                                                                                                                                                                                                                |
-| Is all of the user data collected by your app encrypted in transit?                       | **Yes**                                                               | The app talks only to the Supabase project, over HTTPS. `src/lib/env.ts` refuses any URL that is not https, except local and private-network addresses, which a build for testers never has. The two links open in other apps. |
-| Which methods of account creation does your app support?                                  | Username and password (**to check** the option's name)                | Sign-up and sign-in are email address and password. No third-party sign-in, no anonymous accounts.                                                                                                                             |
-| Delete account URL                                                                        | `{{SUPPORT_URL}}`, with the text in "The account deletion page" below | Google wants a web link even when deletion is in the app, so that someone who has uninstalled it can still ask.                                                                                                                |
-| Can users ask for some or all of their data to be deleted without deleting their account? | **Yes**, if the support page says so (the text below does)            | By writing to `{{CONTACT_EMAIL}}`. The GDPR gives the right anyway, and the deletion page below says how. Answer No if the page does not say it.                                                                               |
-| Independent security review (optional)                                                    | No                                                                    | None has been done.                                                                                                                                                                                                            |
+| Question                                                                                  | Answer                                                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does your app collect or share any of the required user data types?                       | **Yes**                                                               |                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Is all of the user data collected by your app encrypted in transit?                       | **Yes**                                                               | The app talks only to the Supabase project, over HTTPS. `src/lib/env.ts` refuses any URL that is not https, except local and private-network addresses, which a build for testers never has. The two links open in other apps.                                                                                                                                                                                          |
+| Which methods of account creation does your app support?                                  | Username and password (**to check** the option's name)                | Sign-up and sign-in are email address and password. No third-party sign-in, no anonymous accounts.                                                                                                                                                                                                                                                                                                                      |
+| Delete account URL                                                                        | `{{SUPPORT_URL}}`, with the text in "The account deletion page" below | Google wants a web link even when deletion is in the app, so that someone who has uninstalled it can still ask.                                                                                                                                                                                                                                                                                                         |
+| Can users ask for some or all of their data to be deleted without deleting their account? | **Yes**, if the support page says so (the text below does)            | By writing to `{{CONTACT_EMAIL}}`. The GDPR gives the right anyway (Art. 17, with its exceptions), and the deletion page below says how. What can go without the account, by the operator in SQL: for example sign-in log entries, sessions, or a single letter (which then goes for both people). The email address, username and display name cannot while the account exists. Answer No if the page does not say it. |
+| Independent security review (optional)                                                    | No                                                                    | None has been done.                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ### Every data type, answered
 
 **Required or optional:** a type is optional only where someone can use everything Night Courier is
 for without it. Shared is **No** for every type; see "Why nothing is shared" below.
 
-| Category                 | Data type                                                              | Collected | Ephemeral | Required or optional | Purposes                                                                          | What it is, from the data inventory                                                                                                                                                                                                                                    |
-| ------------------------ | ---------------------------------------------------------------------- | --------- | --------- | -------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Location                 | Approximate location                                                   | **Yes**   | No        | Required             | App functionality                                                                 | The city chosen from a list; during a move, the previous city and the time of the move; each letter's origin and destination city. Google's definition (an area of at least 3 km², "such as the city a user is in") fits a chosen city.                                |
-| Location                 | Precise location                                                       | No        |           |                      |                                                                                   | No GPS, no location permission.                                                                                                                                                                                                                                        |
-| Personal info            | Name                                                                   | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance | The display name and the username, which friends and correspondents see. The copy typed at sign-up is removed from the auth record within a day. A report keeps the names as they were.                                                                                |
-| Personal info            | Email address                                                          | **Yes**   | No        | Required             | Account management; Fraud prevention, security, and compliance                    | Sign-in, password reset, the operator's email about a report, and keeping a removed account from signing up again (two years). Never shown to other users.                                                                                                             |
-| Personal info            | User IDs                                                               | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance | The account id (UUID) and the username. Friends and correspondents see both; blocks and reports hold ids.                                                                                                                                                              |
-| Personal info            | Address; Phone number                                                  | No        |           |                      |                                                                                   | Never asked for.                                                                                                                                                                                                                                                       |
-| Personal info            | Race and ethnicity; Political or religious beliefs; Sexual orientation | No        |           |                      |                                                                                   | Never asked for. Letters are free text and may hold anything; they are declared as messages (**to check** that this is how Google wants free text handled).                                                                                                            |
-| Personal info            | Other info                                                             | No        |           |                      |                                                                                   | Age is never stored: the sign-up toggle stays on the device. The password is stored only as a bcrypt hash, for sign-in (**to check** whether Google expects credentials declared anywhere).                                                                            |
-| Financial info           | All types                                                              | No        |           |                      |                                                                                   | Nothing to buy.                                                                                                                                                                                                                                                        |
-| Health and fitness       | All types                                                              | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| Messages                 | Emails; SMS or MMS                                                     | No        |           |                      |                                                                                   | The app reads and sends no email or SMS. Account emails come from Supabase or the mail provider.                                                                                                                                                                       |
-| Messages                 | Other in-app messages                                                  | **Yes**   | No        | Required             | App functionality; Fraud prevention, security, and compliance                     | Letters: the text (up to 2,000 characters), sender, recipient, bat, cities, distance, and when it was sent, landed and opened (the last shown only to its recipient). Plain text on the server, not end-to-end encrypted. A reported letter is copied into its report. |
-| Photos and videos        | All types                                                              | No        |           |                      |                                                                                   | The app has no images. Avatars are not built.                                                                                                                                                                                                                          |
-| Audio files              | All types                                                              | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| Files and docs           | Files and docs                                                         | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| Calendar                 | Calendar events                                                        | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| Contacts                 | Contacts                                                               | **Yes**   | No        | Required             | App functionality; Fraud prevention, security, and compliance                     | The friend list, friend requests and blocks: the social graph inside the app, which Google's definition includes. The phone's address book is never read.                                                                                                              |
-| App activity             | App interactions                                                       | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance | No analytics, but the server keeps: sign-in times and sessions; a session refresh about once an hour while the app is open, so a record of when it was in use; when each letter was opened; when each bat left or came home; the sign-in log (30 days).                |
-| App activity             | In-app search history                                                  | **Yes**   | **Yes**   | Required             | App functionality                                                                 | What is typed into the city search, and the username in a friend request. Answered and not stored; both travel in request bodies, not in the URLs the server logs record. Because it is ephemeral, it does not appear in the public section.                           |
-| App activity             | Installed apps                                                         | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| App activity             | Other user-generated content                                           | **Yes**   | No        | Optional             | Fraud prevention, security, and compliance                                        | Reports: the reason, the reporter's note (up to 500 characters), and the names as they were. Kept 180 days, even after either account is deleted.                                                                                                                      |
-| App activity             | Other actions                                                          | No        |           |                      |                                                                                   | Blocks and reports are declared above.                                                                                                                                                                                                                                 |
-| Web browsing             | Web browsing history                                                   | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| App info and performance | Crash logs                                                             | No        |           |                      |                                                                                   | No crash reporting in the app. Android vitals are Google's.                                                                                                                                                                                                            |
-| App info and performance | Diagnostics                                                            | **Yes**   | No        | Required             | App functionality; Fraud prevention, security, and compliance                     | The IP address and user agent stored with every sign-in session, and Supabase's request, auth and database logs: IP, user agent, the path (with the account id on profile requests), the email on auth events, error messages.                                         |
-| App info and performance | Other app performance data                                             | No        |           |                      |                                                                                   |                                                                                                                                                                                                                                                                        |
-| Device or other IDs      | Device or other IDs                                                    | No        |           |                      |                                                                                   | No advertising ID, no Android ID, no push token, no installation id. **To check** whether Google counts the IP address as an identifier here; it is declared under Diagnostics.                                                                                        |
+| Category                 | Data type                                                              | Collected | Ephemeral | Required or optional | Purposes                                                                                 | What it is, from the data inventory                                                                                                                                                                                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------- | --------- | --------- | -------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Location                 | Approximate location                                                   | **Yes**   | No        | Required             | App functionality                                                                        | The city chosen from a list; during a move, the previous city and the time of the move; each letter's origin and destination city. Google's definition (an area of at least 3 km², "such as the city a user is in") fits a chosen city.                                                           |
+| Location                 | Precise location                                                       | No        |           |                      |                                                                                          | No GPS, no location permission.                                                                                                                                                                                                                                                                   |
+| Personal info            | Name                                                                   | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | The display name and the username, which friends and correspondents see. The copy typed at sign-up is removed from the auth record within a day. A report keeps the names as they were.                                                                                                           |
+| Personal info            | Email address                                                          | **Yes**   | No        | Required             | Account management; Developer communications; Fraud prevention, security, and compliance | Sign-in, password reset, the operator's email about a report (a warning, or to the reporter after a threat), notice of an important change to the privacy policy (its section 15), and keeping a removed account from signing up again (two years). Never shown to other users.                   |
+| Personal info            | User IDs                                                               | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | The account id (UUID) and the username. Friends and correspondents see both; blocks and reports hold ids.                                                                                                                                                                                         |
+| Personal info            | Address; Phone number                                                  | No        |           |                      |                                                                                          | Never asked for.                                                                                                                                                                                                                                                                                  |
+| Personal info            | Race and ethnicity; Political or religious beliefs; Sexual orientation | No        |           |                      |                                                                                          | Never asked for. Letters are free text and may hold anything; they are declared as messages (**to check** that this is how Google wants free text handled).                                                                                                                                       |
+| Personal info            | Other info                                                             | No        |           |                      |                                                                                          | Age is never stored: the sign-up toggle stays on the device. The password is stored only as a bcrypt hash, for sign-in (**to check** whether Google expects credentials declared anywhere).                                                                                                       |
+| Financial info           | All types                                                              | No        |           |                      |                                                                                          | Nothing to buy.                                                                                                                                                                                                                                                                                   |
+| Health and fitness       | All types                                                              | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| Messages                 | Emails; SMS or MMS                                                     | No        |           |                      |                                                                                          | The app reads and sends no email or SMS. Account emails come from Supabase or the mail provider.                                                                                                                                                                                                  |
+| Messages                 | Other in-app messages                                                  | **Yes**   | No        | Required             | App functionality; Fraud prevention, security, and compliance                            | Letters: the text (up to 2,000 characters), sender, recipient, bat, cities, distance, and when it was sent, landed and opened (the last shown only to its recipient). Plain text on the server, not end-to-end encrypted. A reported letter is copied into its report.                            |
+| Photos and videos        | All types                                                              | No        |           |                      |                                                                                          | The app has no images. Avatars are not built.                                                                                                                                                                                                                                                     |
+| Audio files              | All types                                                              | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| Files and docs           | Files and docs                                                         | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| Calendar                 | Calendar events                                                        | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| Contacts                 | Contacts                                                               | **Yes**   | No        | Required             | App functionality; Fraud prevention, security, and compliance                            | The friend list, friend requests and blocks: the social graph inside the app, which Google's definition includes. The phone's address book is never read.                                                                                                                                         |
+| App activity             | App interactions                                                       | **Yes**   | No        | Required             | App functionality; Account management; Fraud prevention, security, and compliance        | No analytics, but the server keeps: sign-in times and sessions (a session unused for 90 days is deleted); a session refresh about once an hour while the app is open, so a record of when it was in use; when each letter was opened; when each bat left or came home; the sign-in log (30 days). |
+| App activity             | In-app search history                                                  | **Yes**   | **Yes**   | Required             | App functionality                                                                        | What is typed into the city search, and the username in a friend request. Answered and not stored; both travel in request bodies, not in the URLs the server logs record. A friend request that succeeds is stored, as Contacts.                                                                  |
+| App activity             | Installed apps                                                         | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| App activity             | Other user-generated content                                           | **Yes**   | No        | Optional             | Fraud prevention, security, and compliance                                               | Reports: the reason, the reporter's note (up to 500 characters), and the names as they were. Kept 180 days, even after either account is deleted.                                                                                                                                                 |
+| App activity             | Other actions                                                          | No        |           |                      |                                                                                          | Blocks and reports are declared above.                                                                                                                                                                                                                                                            |
+| Web browsing             | Web browsing history                                                   | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| App info and performance | Crash logs                                                             | No        |           |                      |                                                                                          | No crash reporting in the app. Android vitals are Google's.                                                                                                                                                                                                                                       |
+| App info and performance | Diagnostics                                                            | **Yes**   | No        | Required             | App functionality; Fraud prevention, security, and compliance                            | The IP address and user agent stored with every sign-in session, and Supabase's request, auth and database logs: IP, user agent, the path (with the account id on profile requests), the email on auth events, error messages.                                                                    |
+| App info and performance | Other app performance data                                             | No        |           |                      |                                                                                          |                                                                                                                                                                                                                                                                                                   |
+| Device or other IDs      | Device or other IDs                                                    | No        |           |                      |                                                                                          | No advertising ID, no Android ID, no push token, no installation id. **To check** whether Google counts the IP address as an identifier here; it is declared under Diagnostics.                                                                                                                   |
 
-The purposes never include Analytics, Developer communications, Advertising or marketing, or
-Personalisation.
+The purposes never include Analytics, Advertising or marketing, or Personalisation. Developer
+communications appears only for the email address: the operator writes to users from their own
+mailbox when a report or a change to the privacy policy calls for it, never with news or
+marketing.
 
 ### Why nothing is shared
 
@@ -509,11 +540,19 @@ Personalisation.
   data on the operator's behalf: service providers.
 - **Other users** see letters, names and a city because the user befriended them and wrote to them:
   an action the user started and expects.
-- **The police** may receive an exported report (GO-LIVE, "Handling a report"). Google's
-  legal-purposes exception names a legal obligation or a government request; a referral the
-  operator makes of their own accord, about a threat say, is less clearly covered: **to check**. If
-  in doubt, declare Other in-app messages, Other user-generated content, Name and User IDs as
-  **shared**, for Fraud prevention, security, and compliance. That would be honest either way.
+- **The police** may receive an exported report, and after a threat the reported account's
+  sign-in records with it: its sessions (IP address, user agent, times) and its sign-in log
+  entries (GO-LIVE, "Handling a report"; privacy policy 3.7). Google's legal-purposes exception
+  names a legal obligation or a government request; a referral the operator makes of their own
+  accord, about a threat say, is less clearly covered: **to check**. If in doubt, declare as
+  **shared**, for Fraud prevention, security, and compliance: Other in-app messages, Other
+  user-generated content, Name, User IDs, App interactions and Diagnostics. That would be honest
+  either way.
+- **Microsoft** hosts the operator's mailbox, through which the operator's emails to users (a
+  warning, a notice) go. Google's form is about what the app collects and passes on; whether mail
+  the operator writes from a consumer mailbox counts as sharing with Microsoft is **to check**. The
+  privacy policy names Microsoft (section 7) either way. Mail a user writes through Contact is sent
+  by their own mail app, not by Night Courier.
 - No advertising, analytics or data broker receives anything.
 
 ### What the public section should then show
@@ -521,8 +560,8 @@ Personalisation.
 - **Data shared:** no data shared with third parties.
 - **Data collected:** Location (approximate location); Personal info (name, email address, user
   IDs); Messages (other in-app messages); Contacts; App activity (app interactions, other
-  user-generated content); App info and performance (diagnostics). In-app search history does not
-  show, because it is ephemeral.
+  user-generated content); App info and performance (diagnostics). In-app search history too,
+  unless Google leaves ephemeral data out (**to check**).
 - **Security practices:** data is encrypted in transit; you can request that data be deleted.
 
 Answer again before shipping any build that changes what is collected: crash reporting, analytics,
@@ -533,9 +572,10 @@ mail provider that keeps more.
 
 The Delete account URL points here. Google's requirements for the page, as far as they are known
 here: it names the app and the developer as the store listing does, shows the steps prominently,
-and says what is deleted, what is kept and for how long (**to check** the current list). Put this on
-`{{SUPPORT_URL}}` (or a page it links to), with the placeholders filled in on the hosted copy only,
-and keep it in step with the privacy policy's section 9.
+and says what is deleted, what is kept and for how long (**to check** the current list). The page
+at `{{SUPPORT_URL}}` is drafted in `support-page.md`, whose "Deleting your account" section must say
+the same as the text below, with the placeholders filled in on the hosted copy only; keep both in
+step with the privacy policy's section 9.
 
 English:
 
@@ -557,14 +597,15 @@ What is deleted
 Your account and sign-in, your profile (username, display name and city), your bats, your friendships and friend requests, your blocks, and every letter you have sent or received, for the people you wrote with as well as for you.
 
 What is kept, and for how long
-• Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made.
+• Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made. If I passed a report to the police, they keep their copy under their own rules.
 • The sign-in log at the hosting provider (sign-up and sign-in events, with your email address). Every entry is deleted after 30 days at the latest; when you delete your account in the app, yours go at once.
 • Server logs and any backups at the hosting provider, until they are deleted or overwritten automatically. The privacy policy says how long.
 • Emails between you and me, as long as I need them for what you asked.
 • If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years so that it cannot simply sign up again, and is then deleted automatically.
+• If you test the Android version: your Google account's email address on my tester list in Google Play Console, until you tell me you have stopped testing. Asking me to delete your account counts. What Google itself keeps follows Google's own terms.
 
 Deleting only some of your data
-Write to {{CONTACT_EMAIL}} and say what you would like deleted.
+Write to {{CONTACT_EMAIL}} and say what you would like deleted. I will tell you what I can delete while your account stays, and why, if something cannot go.
 
 Privacy policy: {{PRIVACY_POLICY_URL}}
 ```
@@ -578,8 +619,8 @@ Night Courier ist eine private App von {{OPERATOR_NAME}}.
 
 In der App
 1. Öffne Night Courier und melde dich an.
-2. Tippe auf „Your profile".
-3. Tippe auf „Delete my account" und dann auf „Delete".
+2. Tippe auf „Your profile“.
+3. Tippe auf „Delete my account“ und dann auf „Delete“.
 Dein Konto ist dann sofort und endgültig gelöscht.
 
 Ohne die App
@@ -589,22 +630,25 @@ Was gelöscht wird
 Dein Konto und deine Anmeldung, dein Profil (Benutzername, Anzeigename und Stadt), deine Fledermäuse, deine Freundschaften und Anfragen, deine Blockierungen und jeder Brief, den du geschickt oder bekommen hast – bei den Menschen, mit denen du geschrieben hast, genauso wie bei dir.
 
 Was bleibt, und wie lange
-• Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht.
+• Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben, bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
 • Das Anmeldeprotokoll beim Hosting-Anbieter (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Jeder Eintrag wird spätestens nach 30 Tagen gelöscht; löschst du dein Konto in der App, sind deine sofort weg.
 • Server-Protokolle und etwaige Sicherungskopien beim Hosting-Anbieter, bis sie automatisch gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
 • E-Mails zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 • Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
+• Wenn du die Android-Version testest: die E-Mail-Adresse deines Google-Kontos auf meiner Testerliste in der Google Play Console, bis du mir schreibst, dass du nicht mehr testest. Die Bitte, dein Konto zu löschen, zählt dazu. Was Google selbst speichert, regeln Googles eigene Bestimmungen.
 
 Nur einen Teil deiner Daten löschen
-Schreib an {{CONTACT_EMAIL}}, was gelöscht werden soll.
+Schreib an {{CONTACT_EMAIL}}, was gelöscht werden soll. Ich sage dir, was ich löschen kann, während dein Konto bleibt, und warum, wenn etwas nicht gehen sollte.
 
 Datenschutzerklärung: {{PRIVACY_POLICY_URL}}
 ```
 
 The "kept" list follows the code as of the housekeeping migration
-(`20261104120000_privacy_housekeeping.sql`): sign-in records 30 days and deleted with the account,
-removed accounts banned for `private.ban_period()` and then deleted. When any of that changes,
-change this list, the privacy policy (sections 3.8, 3.9 and 9) and `gdpr-records.md` together.
+(`20261104120000_privacy_housekeeping.sql`, up to commit 665924d): sign-in records 30 days and
+deleted with the account, removed accounts banned for `private.ban_period()` and then deleted.
+Sessions are not on the list because they go with the account, both in the app and when the
+operator deletes it in the dashboard. When any of that changes, change this list, the privacy
+policy (sections 3.7, 3.8, 3.9, 9 and 11) and `gdpr-records.md` together.
 
 ---
 
@@ -645,7 +689,8 @@ A short note, not legal advice.
 - [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE).
 - [ ] Privacy policy published at `{{PRIVACY_POLICY_URL}}`, with the placeholders filled in on the
       hosted copy only, and the hosting location named as Switzerland.
-- [ ] Support page live at `{{SUPPORT_URL}}`, with the account deletion text (section 6).
+- [ ] Support page live at `{{SUPPORT_URL}}` (`support-page.md`), with the account deletion text
+      (section 6).
 - [ ] App created (section 1), store listing in English and German, icon, feature graphic and
       screenshots (section 2).
 - [ ] App content answered: privacy policy, App access, Ads, Advertising ID, the other declarations
@@ -658,7 +703,9 @@ A short note, not legal advice.
 - [ ] First Android App Bundle built with EAS. `eas.json` does not exist yet (GO-LIVE, D). The EAS
       environment has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted
       project, `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL`.
-- [ ] The merged manifest checked in App bundle explorer: `INTERNET` only, no `AD_ID`.
+- [ ] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
+      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID), then the
+      merged manifest checked in App bundle explorer: `INTERNET` only, no `AD_ID`.
 - [ ] Internal testing: a tester list (at most 100 Google account email addresses), kept only in
       Play Console, and the opt-in link sent to those people. Take testers off the list when they
       stop (privacy policy, section 3.12).
@@ -680,19 +727,24 @@ Collected from above, so none is lost:
 6. Graphic sizes, the category (Communication or Social) and tags.
 7. Google's current privacy policy requirements, and the account deletion page requirements.
 8. Whether pre-launch reports run on internal testing, and turning them off.
-9. The built app's permissions, and that there is no `AD_ID` permission.
+9. The built app's permissions, and that there is no `AD_ID` permission; that blocking the
+   template's extra permissions breaks nothing; that none of them needs a declaration.
 10. The IARC category names, the exact questions, and whether a self-chosen city counts as "shares
     location". The ratings the certificate gives, especially the USK's. That a rating cannot be
     overridden upwards.
 11. Play's age groups as shown on screen, and whether "appeals to children" is asked.
-12. The full text of the Families Policy, especially the three social-feature rules, what counts as
-    adult action, and the content-rating rule for apps that target children.
+12. The full text of the Families Policy, especially the three social-feature rules, whether
+    Night Courier is a "social app" or an app with "social features" (and so whether the adult
+    controls apply), what counts as adult action, whether "child" ever means a country's own age
+    of consent rather than under 13, the date for anonymous chat apps, and the content-rating rule
+    for apps that target children.
 13. Whether any part of the Families Policy is relaxed for internal testing (none is known).
 14. Google's minimum age for an unsupervised account in Germany, and whether Family Link-supervised
     accounts can join internal tests.
-15. The Data safety definitions: ephemeral processing, the sharing exceptions, how free text,
-    passwords and IP addresses are treated, Android vitals, and whether a voluntary referral to the
-    police counts as sharing.
+15. The Data safety definitions: ephemeral processing and whether it shows in the public section,
+    the sharing exceptions, how free text, passwords and IP addresses are treated, Android vitals,
+    whether a voluntary referral to the police (with the account's sign-in records) counts as
+    sharing, and whether the operator's mail through a Microsoft consumer mailbox does.
 16. The option name for "username and password" account creation.
 17. COPPA: the definitions, its reach to foreign operators, the commercial-purposes question,
     whether Google applies its COPPA requirement outside the US, country limits for Play internal

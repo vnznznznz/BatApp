@@ -9,8 +9,10 @@ muss.
 ergibt – die Migrationen unter `supabase/migrations`, die App unter `src/`, `supabase/config.toml` –
 geprüft am lokalen Stack (Postgres 17, GoTrue v2.197.0). Die Kontolöschung wurde dort in einer
 Transaktion getestet, die anschließend zurückgerollt wurde. Eingeschlossen ist die Migration
-`20261104120000_privacy_housekeeping.sql` (täglicher Auftrag `tidy-up`, `private.remove_account`)
-und die Schlüsselbund-Einstellung aus `src/lib/secure-storage.ts` (Commits 67562f9 und 3a343b0).
+`20261104120000_privacy_housekeeping.sql` (täglicher Auftrag `tidy-up`, `private.remove_account`,
+Ende unbenutzter Sitzungen nach 90 Tagen), die Schlüsselbund-Einstellung aus
+`src/lib/secure-storage.ts` und das Runbook in `docs/GO-LIVE.md` (Commits 67562f9, 3a343b0,
+611813b und 665924d).
 
 **Persönliche Daten stehen nicht in dieser Datei.** Dieses Repository ist öffentlich. Wo das
 Verzeichnis Angaben zum Betreiber braucht, steht ein Platzhalter: `{{OPERATOR_NAME}}`,
@@ -19,7 +21,7 @@ Verzeichnis Angaben zum Betreiber braucht, steht ein Platzhalter: `{{OPERATOR_NA
 des Betreibers. Art. 30 Abs. 3 DSGVO verlangt die Schriftform, wobei elektronisch genügt; nach Art.
 30 Abs. 4 ist das Verzeichnis der Aufsichtsbehörde auf Anfrage vorzulegen.
 
-**„zu prüfen"** markiert jede Angabe, die nicht sicher ist: weil sie vom gehosteten Supabase-Tarif,
+**„zu prüfen“** markiert jede Angabe, die nicht sicher ist: weil sie vom gehosteten Supabase-Tarif,
 von einem noch nicht gewählten Dienst oder von einer Entscheidung des Betreibers abhängt, oder weil
 die Rechtslage hier nicht abschließend geklärt ist. Abschnitt 6 sammelt alle.
 
@@ -33,7 +35,7 @@ Art. 30 Abs. 5 DSGVO nimmt Unternehmen und Einrichtungen mit weniger als 250 Bes
 aber nicht, wenn die Verarbeitung ein Risiko für die Rechte und Freiheiten der Betroffenen birgt,
 **nicht nur gelegentlich** erfolgt oder besondere Kategorien nach Art. 9 Abs. 1 bzw. Daten nach
 Art. 10 einschließt. Night Courier verarbeitet laufend, also nicht nur gelegentlich; nach dem
-Wortlaut greift die Ausnahme deshalb nicht. Ob eine Privatperson überhaupt „Einrichtung" im Sinne
+Wortlaut greift die Ausnahme deshalb nicht. Ob eine Privatperson überhaupt „Einrichtung“ im Sinne
 von Abs. 5 ist: zu prüfen. Unabhängig davon ist das Verzeichnis der einfachste Weg, die
 Rechenschaftspflicht (Art. 5 Abs. 2) zu erfüllen, und die Grundlage für jede Auskunft und jede
 Meldung einer Datenpanne.
@@ -42,38 +44,39 @@ Meldung einer Datenpanne.
 
 ## 1. Verantwortlicher (Art. 30 Abs. 1 lit. a)
 
-| Angabe                              | Eintrag                                                                                                                                                                                                        |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Verantwortlicher                    | `{{OPERATOR_NAME}}`, Privatperson. Keine Firma, keine Einnahmen                                                                                                                                                |
-| Anschrift                           | `{{OPERATOR_ADDRESS}}`                                                                                                                                                                                         |
-| E-Mail                              | `{{CONTACT_EMAIL}}` (auch hinter „Contact" in der App)                                                                                                                                                         |
-| Kontaktseite                        | `{{SUPPORT_URL}}`                                                                                                                                                                                              |
-| Datenschutzerklärung                | `{{PRIVACY_POLICY_URL}}`, Stand `{{EFFECTIVE_DATE}}`                                                                                                                                                           |
-| Gemeinsam Verantwortliche (Art. 26) | Keine                                                                                                                                                                                                          |
-| Vertreter in der Union (Art. 27)    | Entfällt: der Verantwortliche wohnt in Deutschland                                                                                                                                                             |
-| Datenschutzbeauftragter             | Keiner benannt. Nach Art. 37 Abs. 1 DSGVO nicht erforderlich, und § 38 Abs. 1 BDSG verlangt einen erst, wenn in der Regel mindestens 20 Personen ständig mit der automatisierten Verarbeitung beschäftigt sind |
-| Zuständige Aufsichtsbehörde         | Die Datenschutzaufsicht des Bundeslands, in dem der Betreiber wohnt. Name, Anschrift und den Meldeweg für Datenpannen (meist ein Online-Formular) im privaten Exemplar eintragen                               |
+| Angabe                              | Eintrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Verantwortlicher                    | `{{OPERATOR_NAME}}`, Privatperson. Keine Firma, keine Einnahmen                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Anschrift                           | `{{OPERATOR_ADDRESS}}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| E-Mail                              | `{{CONTACT_EMAIL}}` (auch hinter „Contact“ in der App)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Kontaktseite                        | `{{SUPPORT_URL}}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Datenschutzerklärung                | `{{PRIVACY_POLICY_URL}}`, Stand `{{EFFECTIVE_DATE}}`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Gemeinsam Verantwortliche (Art. 26) | Keine                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Vertreter in der Union (Art. 27)    | Entfällt: der Verantwortliche wohnt in Deutschland                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Datenschutzbeauftragter             | Keiner benannt. Nach Art. 37 Abs. 1 DSGVO nicht erforderlich (keine umfangreiche Verarbeitung als Kerntätigkeit), und § 38 Abs. 1 Satz 1 BDSG verlangt einen erst, wenn in der Regel mindestens 20 Personen ständig mit der automatisierten Verarbeitung beschäftigt sind. **Aber:** Nach § 38 Abs. 1 Satz 2 BDSG ist unabhängig davon einer zu benennen, wenn eine Verarbeitung einer Datenschutz-Folgenabschätzung nach Art. 35 unterliegt. Hängt also am Ergebnis von 5.2 (Folgenabschätzung) |
+| Zuständige Aufsichtsbehörde         | Die Datenschutzaufsicht des Bundeslands, in dem der Betreiber wohnt. Name, Anschrift und den Meldeweg für Datenpannen (meist ein Online-Formular) im privaten Exemplar eintragen                                                                                                                                                                                                                                                                                                                 |
 
 ---
 
 ## 2. Empfänger und Drittländer im Überblick (Art. 30 Abs. 1 lit. d und e)
 
-| Empfänger                                                             | Rolle                                                    | Was er bekommt                                                                                               | Wo                                                         | Grundlage für das Drittland                                                                                                                         | Stand                                            |
-| --------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Supabase Inc. (USA)                                                   | Auftragsverarbeiter (Art. 28)                            | Alles in der Datenbank, Anmeldung (GoTrue), API-Gateway, Protokolle, Sicherungen, heute auch den Mailversand | Projekt in `eu-central-2` (Zürich) auf Amazon Web Services | Schweiz: Angemessenheitsbeschluss (Art. 45; Entscheidung 2000/518/EG). Zugriff aus den USA: Standardvertragsklauseln im DPA (Art. 46 Abs. 2 lit. c) | DPA **noch nicht abgeschlossen** (Abschnitt 5.1) |
-| Unterauftragsverarbeiter von Supabase                                 | Unterauftragsverarbeiter                                 | Je nach Dienst                                                                                               | Zu prüfen                                                  | Zu prüfen: ob vor der API ein Dienst wie Cloudflare liegt und wo die Protokolle gespeichert werden                                                  | Liste auf supabase.com lesen (Abschnitt 5.1)     |
-| E-Mail-Versanddienst (Resend, Postmark oder Amazon SES)               | Auftragsverarbeiter                                      | Empfängeradresse, Einmal-Link, Versandprotokoll                                                              | Zu prüfen                                                  | Zu prüfen                                                                                                                                           | **Noch nicht gewählt**                           |
-| Microsoft (Outlook.com-Postfach `{{CONTACT_EMAIL}}`)                  | Zu prüfen: Verbraucherdienst, vermutlich kein AV-Vertrag | Was Nutzer, Eltern und andere dem Betreiber schreiben, und was er ihnen schreibt                             | Zu prüfen (auch USA)                                       | Zu prüfen (etwa das EU-US Data Privacy Framework, Durchführungsbeschluss (EU) 2023/1795, falls Microsoft dafür zertifiziert ist)                    | In Gebrauch                                      |
-| Apple (App Store Connect, TestFlight, Beta App Review)                | Zu prüfen: eigener Verantwortlicher                      | Apple-Konten der Tester, Installations-, Sitzungs- und Absturzdaten, Feedback, die Anmeldung des Demo-Kontos | Zu prüfen (auch USA)                                       | Nach Apples eigenen Bestimmungen                                                                                                                    | Ab der ersten TestFlight-Version                 |
-| Google (Play Console, interner Test)                                  | Zu prüfen: eigener Verantwortlicher                      | Testerliste mit E-Mail-Adressen der Google-Konten, Android-vitals                                            | Zu prüfen (auch USA)                                       | Nach Googles eigenen Bestimmungen                                                                                                                   | Ab dem ersten internen Test                      |
-| Anbieter der Webseiten `{{PRIVACY_POLICY_URL}}` und `{{SUPPORT_URL}}` | Zu prüfen: Auftragsverarbeiter                           | IP-Adresse und User-Agent der Besucher in seinen Protokollen                                                 | Zu prüfen                                                  | Zu prüfen                                                                                                                                           | **Noch nicht gewählt**                           |
-| Polizei, Staatsanwaltschaft, Gerichte                                 | Empfänger im Einzelfall                                  | Eine exportierte Meldung                                                                                     | Deutschland                                                | –                                                                                                                                                   | Nur bei Bedarf                                   |
-| Andere Nutzer                                                         | Empfänger im Rahmen der App-Funktionen (Art. 4 Nr. 9)    | Was V2 bis V5 beschreiben: Namen, Stadt, Briefe                                                              | –                                                          | –                                                                                                                                                   | –                                                |
+| Empfänger                                                             | Rolle                                                    | Was er bekommt                                                                                               | Wo                                                         | Grundlage für das Drittland                                                                                                                                                 | Stand                                            |
+| --------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Supabase Inc. (USA)                                                   | Auftragsverarbeiter (Art. 28)                            | Alles in der Datenbank, Anmeldung (GoTrue), API-Gateway, Protokolle, Sicherungen, heute auch den Mailversand | Projekt in `eu-central-2` (Zürich) auf Amazon Web Services | Schweiz: Angemessenheitsbeschluss (Entscheidung 2000/518/EG, fortgeltend nach Art. 45 Abs. 9). Zugriff aus den USA: Standardvertragsklauseln im DPA (Art. 46 Abs. 2 lit. c) | DPA **noch nicht abgeschlossen** (Abschnitt 5.1) |
+| Unterauftragsverarbeiter von Supabase                                 | Unterauftragsverarbeiter                                 | Je nach Dienst                                                                                               | Zu prüfen                                                  | Zu prüfen: ob vor der API ein Dienst wie Cloudflare liegt und wo die Protokolle gespeichert werden                                                                          | Liste auf supabase.com lesen (Abschnitt 5.1)     |
+| E-Mail-Versanddienst (Resend, Postmark oder Amazon SES)               | Auftragsverarbeiter                                      | Empfängeradresse, Einmal-Link, Versandprotokoll                                                              | Zu prüfen                                                  | Zu prüfen                                                                                                                                                                   | **Noch nicht gewählt**                           |
+| Microsoft (Outlook.com-Postfach `{{CONTACT_EMAIL}}`)                  | Zu prüfen: Verbraucherdienst, vermutlich kein AV-Vertrag | Was Nutzer, Eltern und andere dem Betreiber schreiben, und was er ihnen schreibt                             | Zu prüfen (auch USA)                                       | Zu prüfen (etwa das EU-US Data Privacy Framework, Durchführungsbeschluss (EU) 2023/1795, falls Microsoft dafür zertifiziert ist)                                            | In Gebrauch                                      |
+| Apple (App Store Connect, TestFlight, Beta App Review)                | Zu prüfen: eigener Verantwortlicher                      | Apple-Konten der Tester, Installations-, Sitzungs- und Absturzdaten, Feedback, die Anmeldung des Demo-Kontos | Zu prüfen (auch USA)                                       | Nach Apples eigenen Bestimmungen                                                                                                                                            | Ab der ersten TestFlight-Version                 |
+| Google (Play Console, interner Test)                                  | Zu prüfen: eigener Verantwortlicher                      | Testerliste mit E-Mail-Adressen der Google-Konten, Android-vitals                                            | Zu prüfen (auch USA)                                       | Nach Googles eigenen Bestimmungen                                                                                                                                           | Ab dem ersten internen Test                      |
+| Anbieter der Webseiten `{{PRIVACY_POLICY_URL}}` und `{{SUPPORT_URL}}` | Zu prüfen: Auftragsverarbeiter                           | IP-Adresse und User-Agent der Besucher in seinen Protokollen                                                 | Zu prüfen                                                  | Zu prüfen                                                                                                                                                                   | **Noch nicht gewählt**                           |
+| Polizei, Staatsanwaltschaft, Gerichte                                 | Empfänger im Einzelfall                                  | Eine exportierte Meldung; nach einer Drohung dazu Sitzungen und Anmeldeprotokoll des gemeldeten Kontos (V6)  | Deutschland                                                | –                                                                                                                                                                           | Nur bei Bedarf                                   |
+| Andere Nutzer                                                         | Empfänger im Rahmen der App-Funktionen (Art. 4 Nr. 9)    | Was V2 bis V5 beschreiben: Namen, Stadt, Briefe                                                              | –                                                          | –                                                                                                                                                                           | –                                                |
 
 Keine Nutzerdaten erhalten: **Expo** (EAS Build bekommt zur Build-Zeit nur den Quellcode und die
-`EXPO_PUBLIC_*`-Werte; zur Laufzeit gibt es keinen Kontakt, kein expo-updates, kein Push),
-**GeoNames** (die Städteliste ist zur Build-Zeit eingebaut) und **GitHub** (das öffentliche
-Repository und die CI enthalten nur erfundene Testdaten).
+`EXPO_PUBLIC_*`-Werte; zur Laufzeit gibt es keinen Kontakt, kein expo-updates, kein Push; ob Expo
+Go in der Entwicklung etwas erhält: zu prüfen), **GeoNames** (die Städteliste wurde einmal in eine
+Migration übernommen und liegt in der Datenbank; zur Laufzeit wird GeoNames nie gefragt) und
+**GitHub** (das öffentliche Repository und die CI enthalten nur erfundene Testdaten).
 
 ---
 
@@ -81,9 +84,10 @@ Repository und die CI enthalten nur erfundene Testdaten).
 
 Für alle Einträge gilt, sofern nicht anders angegeben:
 
-- **Betroffene Nutzer** sind registrierte Personen ab 12 Jahren, darunter Minderjährige: von 12 bis
-  15 mit der Erlaubnis der Eltern oder anderer Erziehungsberechtigter, ab 16 aus eigenem Recht. Das
-  Alter wird nicht gespeichert.
+- **Betroffene Nutzer** sind registrierte Personen ab 12 Jahren, darunter Minderjährige: nach den
+  Hausregeln von 12 bis 15 mit der Erlaubnis der Eltern oder anderer Erziehungsberechtigter, ab 16
+  ohne sie. Das Alter wird weder geprüft noch gespeichert; es können also auch Jüngere darunter
+  sein, deren Konto der Betreiber entfernt, sobald er davon erfährt (Datenschutzerklärung 10).
 - **Speicherort** ist das Supabase-Projekt in Zürich. **Drittland:** Schweiz (Angemessenheit) und
   möglicher Zugriff von Supabase aus den USA (Standardvertragsklauseln), wie in Abschnitt 2.
 - **Rechtsgrundlagen** sind nicht Teil von Art. 30, stehen hier aber, damit Verzeichnis und
@@ -127,10 +131,11 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     (`token_hash`, `token_type`, `relates_to` = E-Mail-Adresse, `created_at`). `auth.flow_state`
     (PKCE) wird vermutlich nicht genutzt, weil die App den impliziten Ablauf von supabase-js
     verwendet.
-  - Auf dem Gerät: die Sitzung (Zugangs-Token mit Nutzer-ID und E-Mail-Adresse, am ersten Tag
-    auch den Namen von der Registrierung; Refresh-Token; Nutzerobjekt) im iOS-Schlüsselbund bzw. im
-    Android-Keystore, über `expo-secure-store`, in Stücken von höchstens 1600 Zeichen.
-  - **Nicht** erhoben: das Alter. Der Schalter „I am 12 or older" bleibt im Formular und wird nie
+  - Auf dem Gerät: die Sitzung (Zugangs-Token mit Nutzer-ID und E-Mail-Adresse, bis zur ersten
+    Erneuerung nach dem Aufräumen auch die Namen von der Registrierung; Refresh-Token; Nutzerobjekt)
+    im iOS-Schlüsselbund bzw. verschlüsselt mit dem Android-Keystore, über `expo-secure-store`, in
+    Stücken von höchstens 1600 Zeichen.
+  - **Nicht** erhoben: das Alter. Der Schalter „I am 12 or older“ bleibt im Formular und wird nie
     gesendet.
 - **Empfänger:** Supabase. Keine Funktion gibt einem anderen Nutzer die E-Mail-Adresse heraus.
 - **Löschfristen:**
@@ -139,15 +144,21 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     `users` 1→0, `identities` 1→0, `sessions` 3→0, `refresh_tokens` 3→0). Die Einträge des Kontos
     im Anmeldeprotokoll löscht die Funktion gleich mit (V8).
   - Abmelden beendet die Sitzungen der Person auf allen Geräten (supabase-js `signOut()`,
-    Voreinstellung `global`). Nach der Prüfung für die Datenschutzerklärung löscht GoTrue dabei die
-    Zeilen; auf dem gehosteten Projekt bestätigen (zu prüfen). Erreicht die Abmeldung den Server
-    nicht, bleiben sie.
+    Voreinstellung `global`). Am lokalen Stack geprüft: GoTrue löscht dabei die Zeilen; auf dem
+    gehosteten Projekt bestätigen (zu prüfen). Erreicht die Abmeldung den Server nicht, bleiben sie,
+    bis die 90 Tage unten greifen.
+  - **Unbenutzte Sitzungen:** Der tägliche Auftrag `tidy_up` löscht eine Sitzung, deren
+    `updated_at` älter als 90 Tage ist (`private.idle_session_lifetime()`), mit ihren
+    Refresh-Token. GoTrue setzt `updated_at` bei jeder Erneuerung, also etwa stündlich, solange die
+    App offen ist; 90 Tage ohne Öffnen beenden die Sitzung, die App verlangt dann eine neue
+    Anmeldung (lokal gegen GoTrue geprüft, Commit 665924d). Eine Sitzung, die benutzt wird, hat
+    weiterhin **keine Höchstdauer** (`config.toml` hat keinen Abschnitt `[auth.sessions]`; das wäre
+    eine Einstellung bezahlter Tarife; Lücke L1).
   - Refresh-Token bleiben höchstens so lange wie ihre Sitzung. GoTrues eigenes Aufräumen ersetzter
     Token nach 24 Stunden läuft nur, wenn `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist; der Standard ist
-    aus, lokal ist es aus, gehostet: zu prüfen.
-  - Sitzungen haben **keine Höchstdauer und kein Inaktivitäts-Timeout** (`config.toml` hat keinen
-    Abschnitt `[auth.sessions]`; das ist eine Einstellung bezahlter Tarife). Wer sich nie abmeldet,
-    behält eine Sitzung mit IP-Adresse unbegrenzt (Lücke L1).
+    aus (im GoTrue-Programm v2.197.0 nachgesehen: `cleanup_enabled`, `default:"false"`), lokal ist
+    es aus, gehostet: zu prüfen. Ist es aus, wächst die Kette einer benutzten Sitzung um etwa eine
+    Zeile je Stunde Nutzung, solange die Sitzung lebt (Lücke L8).
   - Einmal-Token: bis sie benutzt oder ersetzt sind, spätestens mit dem Konto. Ob abgelaufene Token
     bereinigt werden: zu prüfen.
   - Auf dem Gerät: beim Abmelden und nach der Kontolöschung entfernt, auch wenn der Server nicht
@@ -164,7 +175,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 
 - **Zweck:** einen Kurier für seine Freunde erkennbar machen; Freunde über den genauen Benutzernamen
   finden; die Flugzeit auf dem Server berechnen; verhindern, dass sich jemand für einen kurzen Flug
-  die Stadt eines Freundes „leiht" (eine neue Stadt gilt erst nach 24 Stunden).
+  die Stadt eines Freundes „leiht“ (eine neue Stadt gilt erst nach 24 Stunden).
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
 - **Betroffene:** Nutzer.
 - **Daten:** `public.profiles`: `id` (UUID), `username`, `display_name`, `city_id`,
@@ -206,7 +217,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 
 ### V4 Briefe und Fledermäuse (Zustellung)
 
-- **Zweck:** Briefe zustellen; die Regel „genau drei Fledermäuse" durchsetzen; die Zustellzeit auf
+- **Zweck:** Briefe zustellen; die Regel „genau drei Fledermäuse“ durchsetzen; die Zustellzeit auf
   dem Server festlegen.
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
 - **Betroffene:** Absender und Empfänger; Dritte, über die in einem Brief geschrieben wird.
@@ -266,10 +277,14 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Meldung an die Polizei geben. Auch Apples Guideline 1.2.
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – berechtigtes Interesse, Missbrauch zu
   verhindern und zu bearbeiten, die Nutzer und besonders die Minderjährigen unter ihnen zu schützen
-  und Beweise zu sichern. Art. 6 Abs. 1 lit. c, wenn ein Gesetz zur Herausgabe verpflichtet. Dass
-  eine Meldung die Löschung eines Kontos bis zu 180 Tage überdauert, stützt sich auf Art. 17 Abs. 3
-  lit. e (Geltendmachung, Ausübung oder Verteidigung von Rechtsansprüchen) und das berechtigte
-  Interesse (`docs/ARCHITECTURE.md`, „A report keeps a copy"); zu prüfen.
+  und Beweise zu sichern. Art. 6 Abs. 1 lit. c, wenn ein Gesetz zur Herausgabe verpflichtet. Für die
+  freiwillige Weitergabe an die Polizei, die die Daten zu einem anderen Zweck verwendet als dem, zu
+  dem sie erhoben wurden: ob neben lit. f die Vereinbarkeitsprüfung nach Art. 6 Abs. 4 oder § 24
+  Abs. 1 Nr. 1 BDSG heranzuziehen ist, zu prüfen (die Datenschutzerklärung nennt die Weitergabe
+  schon als Zweck, 3.7). Dass eine Meldung die Löschung eines Kontos bis zu 180 Tage überdauert,
+  stützt sich auf Art. 17 Abs. 3 lit. e (Geltendmachung, Ausübung oder Verteidigung von
+  Rechtsansprüchen) und das berechtigte Interesse (`docs/ARCHITECTURE.md`, „A report keeps a
+  copy“); zu prüfen.
 - **Betroffene:** die meldende und die gemeldete Person; Dritte, die im gemeldeten Brief vorkommen.
 - **Daten:**
   - `public.reports`: `reporter_id`, `reported_id`, `message_id`, `reason` (aus einer festen Liste),
@@ -280,25 +295,32 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   - Eine Meldung kann den Vorwurf einer Straftat enthalten, etwa einer Drohung. Ob das Daten über
     Straftaten nach Art. 10 DSGVO sind: zu prüfen.
   - Verwarnungen: E-Mails an die Adresse des Kontos, aus dem Postfach des Betreibers (V11).
+  - Bei einer Drohung (GO-LIVE, „Handling a report“, „A threat“): eine E-Mail an die meldende
+    Person, dass das andere Konto in einer Woche entfernt wird; und, soll die Polizei die Meldung
+    bekommen, ein Export der Sitzungen (`created_at`, `refreshed_at`, IP-Adresse, User-Agent) und
+    der Einträge im Anmeldeprotokoll (Zeit, Ereignis, IP-Adresse) des gemeldeten Kontos.
 - **Wer was sieht:** nur der Betreiber, im Supabase-Dashboard. Keine API-Rolle kann die Tabelle
   lesen, auch die meldende Person nicht. Die gemeldete Person erfährt nicht, wer gemeldet hat; weil
   ein Brief nur einen Empfänger hat, kann sie es aber ahnen.
-- **Empfänger:** Supabase; im Einzelfall die Polizei (exportierte Meldung).
-- **Grenzen im Code:** höchstens 20 Meldungen je Person und Tag; eine offene Meldung je Brief und je
-  Person.
+- **Empfänger:** Supabase; im Einzelfall die Polizei (exportierte Meldung, nach einer Drohung mit
+  den Anmeldedaten des gemeldeten Kontos).
+- **Grenzen im Code:** höchstens 20 Meldungen je meldender Person und Tag; je meldender Person
+  höchstens eine offene Meldung zu einem Brief und eine offene Meldung zu einer Person
+  (`reports_letter_once`, `reports_courier_once`).
 - **Löschfristen:**
   - 180 Tage nach `created_at`, erledigt oder nicht: Der pg_cron-Job `forget-old-reports` läuft
     stündlich (`17 * * * *`) und ruft `private.forget_old_reports()` auf.
   - Löscht eine der beiden Personen vorher ihr Konto, werden `reporter_id` bzw. `reported_id` auf
     `null` gesetzt; Brieftext, Namen und Notiz bleiben bis zum Ablauf der 180 Tage.
-  - Eine an die Polizei gegebene Kopie liegt außerhalb des Systems. Der Betreiber löscht seine
-    eigene Exportkopie nach der Übergabe (GO-LIVE, „Handling a report").
-  - Auch Meldungen, die mit „no action" erledigt wurden, bleiben die vollen 180 Tage.
+  - Eine an die Polizei gegebene Kopie liegt außerhalb des Systems und bleibt dort nach den Regeln
+    der Polizei. Der Betreiber löscht seine eigene Exportkopie, auch die der Anmeldedaten, nach der
+    Übergabe (GO-LIVE, „Handling a report“).
+  - Auch Meldungen, die mit „no action“ erledigt wurden, bleiben die vollen 180 Tage.
 - **Hinweise:** `resolution` ist freier Text ohne Regeln: sachlich halten, nichts über die meldende
   Person hineinschreiben. Eine Benachrichtigung über neue Meldungen (GO-LIVE schlägt einen Webhook
-  mit E-Mail vor) bleibt ohne Inhalt – „eine neue Meldung wartet", sonst nichts –, wie GO-LIVE es
+  mit E-Mail vor) bleibt ohne Inhalt – „eine neue Meldung wartet“, sonst nichts –, wie GO-LIVE es
   verlangt; sonst landeten Brieftext und Notiz im Postfach, außerhalb der 180-Tage-Löschung.
-- **Quelle:** `20261102120000_safety.sql`; `docs/GO-LIVE.md`, „Handling a report";
+- **Quelle:** `20261102120000_safety.sql`; `docs/GO-LIVE.md`, „Handling a report“;
   `src/app/(app)/profile.tsx` (Hinweis im Löschdialog).
 
 ### V7 Sperre entfernter Konten
@@ -309,14 +331,21 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Person zu schützen.
 - **Betroffene:** Nutzer, deren Konto entfernt wurde.
 - **Wie:** Der Betreiber entfernt ein Konto mit `select private.remove_account('<reported_id>')`
-  (GO-LIVE, „Handling a report"). Die Funktion sperrt die Anmeldung für genau
+  (GO-LIVE, „Handling a report“). Die Funktion sperrt die Anmeldung für genau
   `private.ban_period()` – zwei Jahre – und löscht das Profil, mit ihm Fledermäuse, Freundschaften,
-  Blockierungen und alle Briefe auf beiden Seiten. Über die API ist sie nicht aufrufbar.
+  Blockierungen und alle Briefe auf beiden Seiten. Über die API ist sie nicht aufrufbar. Bei einer
+  Drohung sperrt er zuerst nur (`banned_until = now() + private.ban_period()`), schreibt der
+  meldenden Person, exportiert gegebenenfalls die Anmeldedaten für die Polizei (V6) und entfernt
+  das Konto eine Woche später mit `remove_account`; die zwei Jahre laufen dann ab diesem zweiten
+  Schritt (5.6).
 - **Daten während der Sperre:** Der Datensatz in `auth.users` bleibt stehen – E-Mail-Adresse,
   Passwort-Hash, die Zeitpunkte aus V1, `banned_until` –, dazu die Identität (ohne die Namen, die
-  `tidy_up` entfernt) und die Sitzungen mit IP-Adresse und User-Agent (Lücke L7). Die Einträge im
-  Anmeldeprotokoll lässt `remove_account` bewusst stehen, weil sie nach einer Drohung das sind, was
-  man der Polizei geben kann; sie gehen nach 30 Tagen (V8).
+  `tidy_up` entfernt). Die Sitzungen mit IP-Adresse und User-Agent bleiben, bis sie 90 Tage nicht
+  benutzt wurden; ein gesperrtes Konto kann sie nicht mehr erneuern (lokal geprüft), sie gehen also
+  spätestens rund 91 Tage nach der Sperre (V1; Lücke L7; dass eine abgelehnte Erneuerung
+  `updated_at` nicht setzt: zu prüfen). Die Einträge im Anmeldeprotokoll lässt `remove_account`
+  bewusst stehen, weil sie nach einer Drohung das sind, was man der Polizei geben kann; sie gehen
+  nach 30 Tagen (V8).
 - **Löschfrist:** **zwei Jahre**, die Entscheidung des Betreibers (Datenschutzerklärung 3.8). Ist
   die Sperre abgelaufen, löscht der tägliche Auftrag `tidy_up` den Anmeldedatensatz, und mit ihm per
   Kaskade Identität und Sitzungen. Das gilt nur, solange niemand von Hand länger sperrt.
@@ -348,9 +377,10 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     selbst hat keine Nutzer-ID-Spalte und keinen Fremdschlüssel, und GoTrue räumt sie nicht auf.
   - **Vorbehalt:** Beide Schritte werden ohne Fehler übersprungen, wenn die Rolle `postgres` auf
     dem gehosteten Projekt kein `DELETE`-Recht auf `auth.audit_log_entries` hat (lokal hat sie es).
-    Auf dem gehosteten Projekt prüfen: Einen Tag nach dem Start darf
+    Auf dem gehosteten Projekt deshalb gleich nach dem ersten `db push` die Rechte prüfen (5.2), und
+    frühestens 31 Tage nach dem Start, wenn es überhaupt ältere Einträge geben kann, dass
     `select count(*) from auth.audit_log_entries where created_at < now() - interval '31 days'`
-    nichts mehr finden (Lücke L8).
+    nichts findet (Lücke L8).
   - Server-Protokolle: nach dem Supabase-Tarif; im kostenlosen Tarif nach öffentlichen Angaben
     vermutlich ein Tag (zu prüfen). Wo sie gespeichert werden: zu prüfen. Die Kontolöschung erreicht
     sie nicht.
@@ -386,13 +416,15 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Empfängers.
 - **Löschfristen:** Versandprotokolle nach dem jeweiligen Anbieter (zu prüfen); das Postfach des
   Empfängers liegt außerhalb. Die Kontolöschung erreicht beides nicht.
-- **Quelle:** `supabase/config.toml`; `docs/GO-LIVE.md`, „Before a second person can sign up";
+- **Quelle:** `supabase/config.toml`; `docs/GO-LIVE.md`, „Before a second person can sign up“;
   `src/features/auth/auth-context.tsx`.
 
 ### V11 Kontakt, Support und Anfragen von Betroffenen
 
 - **Zweck:** Fragen beantworten, Ergänzungen zu Meldungen entgegennehmen, Anfragen nach Art. 15 bis
-  21 DSGVO bearbeiten, Anfragen von Eltern, Verwarnungen nach einer Meldung.
+  21 DSGVO bearbeiten, Anfragen von Eltern, Verwarnungen nach einer Meldung, die Nachricht an die
+  meldende Person nach einer Drohung (V6), Hinweise auf wichtige Änderungen der
+  Datenschutzerklärung (dort Abschnitt 15).
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO, wenn es um das Konto geht; lit. c bei Anfragen zu
   Betroffenenrechten; sonst lit. f.
 - **Betroffene:** Nutzer, Eltern und andere Erziehungsberechtigte, sonstige Absender.
@@ -457,16 +489,17 @@ fehlt, steht in 4.8.
   `src/lib/env.ts` verweigert den Start mit einer Adresse, die nicht `https` ist; unverschlüsseltes
   `http` lässt es nur für lokale und private Netzadressen zu, die eine Version für Tester nie hat.
 - **Gespeicherte Daten:** Supabase verschlüsselt die Datenträger (AES-256) und den Transport
-  standardmäßig (GO-LIVE, „What to do now"); in Supabases Sicherheitsunterlagen oder im DPA
+  standardmäßig (GO-LIVE, „What to do now“); in Supabases Sicherheitsunterlagen oder im DPA
   bestätigen: zu prüfen.
 - **Passwörter:** nur als bcrypt-Hash (GoTrue); Mindestlänge 8 Zeichen (`config.toml`,
   `src/features/auth/validation.ts`).
 - **Auf dem Gerät:** Die Sitzung liegt im iOS-Schlüsselbund bzw. verschlüsselt mit dem
   Android-Keystore (`expo-secure-store`, `src/lib/secure-storage.ts`), nie in AsyncStorage. Auf
   iOS mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY`: nur auf diesem Gerät und nur entsperrt lesbar, nicht in
-  Backups für ein anderes iPhone (ein Test prüft das an jedem Aufruf). Auf Android ist sie von Auto
-  Backup und der Geräteübertragung ausgenommen (Config-Plugin von `expo-secure-store`). Das Plugin
-  läuft mit `faceIDPermission: false`, weil die App keine Biometrie nutzt (`app.json`).
+  Backups für ein anderes iPhone (ein Test prüft, dass jeder Aufruf diese Option mitgibt). Auf
+  Android ist sie von Auto Backup und der Geräteübertragung ausgenommen (Config-Plugin von
+  `expo-secure-store`). Das Plugin läuft mit `faceIDPermission: false`, weil die App keine
+  Biometrie nutzt (`app.json`).
 - **Bewusst nicht:** Ende-zu-Ende-Verschlüsselung der Briefe. Das ist offen gelegt
   (Datenschutzerklärung 3.4, Store-Texte).
 
@@ -506,7 +539,7 @@ fehlt, steht in 4.8.
   muss auf der alten und der neuen Adresse bestätigt werden (`double_confirm_changes`);
   `secure_password_change` ist an.
 - Verwaltungszugang (Supabase-Dashboard, SQL) hat nur der Betreiber. Der persönliche Access Token
-  für die Einrichtung wird danach widerrufen (GO-LIVE, „Setting up the hosted project").
+  für die Einrichtung wird danach widerrufen (GO-LIVE, „Setting up the hosted project“).
   Zwei-Faktor-Anmeldung für alle Verwaltungskonten: noch offen (Abschnitt 5.2).
 
 ### 4.4 Datensparsamkeit und datenschutzfreundliche Voreinstellungen (Art. 25)
@@ -532,20 +565,29 @@ fehlt, steht in 4.8.
   Anmeldedatensatz; per Kaskade folgen Profil, Fledermäuse, Freundschaften, Blockierungen und alle
   Briefe auf beiden Seiten, danach die Einträge des Kontos im Anmeldeprotokoll. Die Funktion sperrt
   vorher alle betroffenen Zeilen in fester Reihenfolge (`private.lock_courier_rows`), damit
-  gleichzeitige Löschungen und Zustellungen sich nicht blockieren; ein Trigger gibt einem Freund die
-  Fledermaus zurück, deren Brief noch flog.
+  gleichzeitige Löschungen aufeinander warten, statt sich gegenseitig festzufahren (Deadlock); ein
+  Trigger gibt einem Freund die Fledermaus zurück, deren Brief noch flog.
 - **Entfernen durch den Betreiber** (`private.remove_account`): löscht dasselbe und sperrt die
   Anmeldung für genau `private.ban_period()` (zwei Jahre).
-- **Täglicher Auftrag** `private.tidy_up()` (pg_cron-Job `tidy-up`, `43 4 * * *`): löscht
+- **Täglicher Auftrag** `private.tidy_up()` (pg_cron-Job `tidy-up`, `43 4 * * *`, UTC): löscht
   Einträge im Anmeldeprotokoll nach 30 Tagen; entfernt die Namen von der Registrierung aus
-  `auth.users` und `auth.identities`; löscht den Anmeldedatensatz eines entfernten Kontos, sobald
-  die Sperre abgelaufen ist; leert die vorherige Stadt nach einem abgeschlossenen Umzug; behält das
-  Laufprotokoll von pg_cron (`cron.job_run_details`) eine Woche. Jeder Schritt, der eine Tabelle
-  von Supabase berührt, wird ohne Fehler übersprungen, wenn ein Recht fehlt (Lücke L8).
+  `auth.users` und `auth.identities`; löscht Sitzungen, die 90 Tage nicht benutzt wurden, mit ihren
+  Refresh-Token; löscht den Anmeldedatensatz eines entfernten Kontos, sobald die Sperre abgelaufen
+  ist; leert die vorherige Stadt nach einem abgeschlossenen Umzug; behält das Laufprotokoll von
+  pg_cron (`cron.job_run_details`) eine Woche.
+- **Was bei fehlenden Rechten passiert:** Die Schritte an `auth.audit_log_entries`,
+  `auth.identities`, `auth.sessions` und `cron.job_run_details` werden ohne Fehler übersprungen,
+  wenn das Recht fehlt. Die beiden Schritte an `auth.users` (Namen entfernen, abgelaufene Sperren
+  löschen) sind nicht so abgesichert: Fehlt dort `UPDATE` oder `DELETE`, bricht der ganze Auftrag
+  ab, und weil er eine einzige Transaktion ist, wird auch das schon Gelöschte zurückgerollt.
+  Sichtbar ist das nur in `cron.job_run_details` (5.6, 5.7). Am lokalen Stack mit einer Rolle ohne
+  `UPDATE` auf `auth.users` geprüft, in einer zurückgerollten Transaktion. `docs/ARCHITECTURE.md`
+  beschreibt jeden Schritt als übersprungen; für diese zwei stimmt das nicht (Lücke L8).
 - **Meldungen:** Löschung nach 180 Tagen durch den stündlichen pg_cron-Job `forget-old-reports`;
   bei Kontolöschung `on delete set null`.
-- **GoTrue:** löscht Sitzungen nur nach `not_after`, das ohne Höchstdauer nie gesetzt ist (Lücke
-  L1); ersetzte Refresh-Token nur, wenn sein Aufräumen eingeschaltet ist (V1).
+- **GoTrue:** löscht Sitzungen selbst nur nach `not_after`, das ohne Höchstdauer nie gesetzt ist;
+  unbenutzte Sitzungen löscht deshalb `tidy_up` (V1). Ersetzte Refresh-Token löscht GoTrue nur, wenn
+  sein Aufräumen eingeschaltet ist (V1, Lücke L8).
 - **Gerät:** Die Sitzung wird beim Abmelden und nach der Kontolöschung entfernt, auch wenn der
   Server nicht antwortet.
 
@@ -555,13 +597,14 @@ fehlt, steht in 4.8.
   `unique (owner_id, slot)`), Sperren (`private.lock_pair` für Anfragen und Blockierungen; eine
   Sperre für das Zählen von Meldungen) und wiederholbarem Senden (`client_ref`).
 - Tests: Jest; Datenbanktests, die die echten Migrationen in PGlite abspielen; Nebenläufigkeitstests
-  gegen ein echtes Postgres in der CI. `npm run verify` läuft vor jedem Commit und in der CI.
+  gegen ein echtes Postgres in der CI. `npm run verify` läuft in der CI bei jedem Push; vor jedem
+  Commit soll es laut README laufen, ein Hook erzwingt das nicht.
 - Verfügbarkeit und Sicherungen: durch Supabase, nach Tarif (V9; zu prüfen).
 
 ### 4.7 Organisatorisch
 
 - Nur der Betreiber verwaltet den Dienst. Meldungen sieht er mindestens einmal am Tag durch (GO-LIVE,
-  „Handling a report", mit dem Ablauf je nach Schwere).
+  „Handling a report“, mit dem Ablauf je nach Schwere).
 - Angaben zum Betreiber, Zugangsdaten und Demo-Anmeldungen stehen nie im öffentlichen Repository;
   Demo-Konten sind erfunden.
 - Exporte für die Polizei werden nach der Übergabe gelöscht.
@@ -571,26 +614,28 @@ fehlt, steht in 4.8.
 Was der Code heute noch nicht leistet, mit dem jeweils naheliegenden Weg. Jede Behebung ändert
 dieses Verzeichnis, die Datenschutzerklärung und die Store-Formulare mit.
 
-| Nr. | Lücke                                                                                                                                                                    | Möglicher Weg                                                                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L1  | Sitzungen laufen nie ab; ein verlorenes Handy behält eine Sitzung mit IP-Adresse                                                                                         | Höchstdauer bzw. Inaktivitäts-Timeout unter `[auth.sessions]` in `config.toml`, sobald der Tarif das erlaubt (eine Einstellung bezahlter Tarife; zu prüfen) |
-| L2  | Briefe bleiben unbegrenzt, und niemand kann einen einzelnen löschen                                                                                                      | Ob eine Frist oder eine Löschfunktion nötig ist (Speicherbegrenzung, Art. 5 Abs. 1 lit. e): zu prüfen. Bis dahin steht es offen in der Datenschutzerklärung |
-| L3  | E-Mail-Bestätigung aus: fremde Adressen können registriert werden; ein Tippfehler sperrt dauerhaft aus; kein Adresswechsel in der App                                    | Eigenes SMTP, dann Bestätigung an (GO-LIVE), bevor eine zweite Person sich anmeldet                                                                         |
-| L4  | Offene Freundschaftsanfragen laufen nie ab                                                                                                                               | Frist erwägen                                                                                                                                               |
-| L5  | Keine Selbstauskunft und kein Export in der App                                                                                                                          | Abfrage in Abschnitt 5.3                                                                                                                                    |
-| L6  | Betreiber und Supabase können jeden Brief im Klartext lesen                                                                                                              | Die Zusage beschließen, nur gemeldete Briefe zu lesen; offen gelegt ist es schon                                                                            |
-| L7  | Während einer Sperre bleiben neben der E-Mail-Adresse auch Passwort-Hash und Sitzungen mit IP-Adresse und User-Agent zwei Jahre stehen                                   | Beim Entfernen auch die Sitzungen löschen (Abschnitt 5.6; vorher am lokalen Stack prüfen, ob GoTrue das verträgt)                                           |
-| L8  | Die Aufräumschritte im Anmeldeprotokoll werden still übersprungen, wenn auf dem gehosteten Projekt das Recht fehlt; ob GoTrue ersetzte Refresh-Token aufräumt, ist offen | Nach dem Start prüfen (V8; Abschnitt 5.2)                                                                                                                   |
-| L9  | Ordnung, keine Nutzerdaten im engeren Sinn: im Supabase Studio gespeicherte SQL-Schnipsel können Nutzer-IDs aus dem Runbook enthalten                                    | Schnipsel ohne IDs speichern, gelegentlich aufräumen                                                                                                        |
-| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung im Klartext in localStorage                                                                                        | Vor einer Web-Version lösen                                                                                                                                 |
+| Nr. | Lücke                                                                                                                                                                                                                                                                                                                                  | Möglicher Weg                                                                                                                                                                                                                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1  | Eine benutzte Sitzung läuft nie ab; eine unbenutzte bleibt mit IP-Adresse und User-Agent bis zu 91 Tage (ein verlorenes Handy also bis dahin)                                                                                                                                                                                          | Höchstdauer unter `[auth.sessions]` in `config.toml`, sobald der Tarif das erlaubt (eine Einstellung bezahlter Tarife; zu prüfen). Bis dahin: abmelden, oder den Betreiber bitten, die Sitzungen zu löschen                                                                                                                                                                             |
+| L2  | Briefe bleiben unbegrenzt, und niemand kann einen einzelnen löschen                                                                                                                                                                                                                                                                    | Ob eine Frist oder eine Löschfunktion nötig ist (Speicherbegrenzung, Art. 5 Abs. 1 lit. e): zu prüfen. Bis dahin steht es offen in der Datenschutzerklärung                                                                                                                                                                                                                             |
+| L3  | E-Mail-Bestätigung aus: fremde Adressen können registriert werden; ein Tippfehler sperrt dauerhaft aus; kein Adresswechsel in der App                                                                                                                                                                                                  | Eigenes SMTP, dann Bestätigung an (GO-LIVE), bevor eine zweite Person sich anmeldet                                                                                                                                                                                                                                                                                                     |
+| L4  | Offene Freundschaftsanfragen laufen nie ab                                                                                                                                                                                                                                                                                             | Frist erwägen                                                                                                                                                                                                                                                                                                                                                                           |
+| L5  | Keine Selbstauskunft und kein Export in der App                                                                                                                                                                                                                                                                                        | Abfrage in Abschnitt 5.3                                                                                                                                                                                                                                                                                                                                                                |
+| L6  | Betreiber und Supabase können jeden Brief im Klartext lesen                                                                                                                                                                                                                                                                            | Die Zusage beschließen, nur gemeldete Briefe zu lesen; offen gelegt ist es schon                                                                                                                                                                                                                                                                                                        |
+| L7  | Während einer Sperre bleiben neben der E-Mail-Adresse auch Passwort-Hash und Zeitpunkte zwei Jahre stehen, die Sitzungen mit IP-Adresse und User-Agent bis zu rund 91 Tage                                                                                                                                                             | Beim Entfernen auch die Sitzungen löschen (5.6), nachdem sie bei einer Drohung exportiert sind. Die Datenschutzerklärung (3.8) nennt das Stehenlassen gewollt, weil die Sitzungen nach einer Drohung das sind, was die Polizei bekommen kann; mit dem Export vorher (GO-LIVE) fällt dieser Grund weg. Entscheidung des Betreibers                                                       |
+| L8  | Fehlt auf dem gehosteten Projekt ein Recht, werden Aufräumschritte still übersprungen (Anmeldeprotokoll, Identitäten, Sitzungen) oder der ganze Auftrag bricht ab (`auth.users`, 4.5). Ob GoTrue ersetzte Refresh-Token aufräumt, ist offen; wenn nicht, wächst die Kette einer benutzten Sitzung um etwa eine Zeile je Stunde Nutzung | Rechte nach dem ersten `db push` prüfen, `UPDATE` und `DELETE` auf `auth.users` einzeln (5.2); `cron.job_run_details` monatlich ansehen (5.7). Für die Token: `GOTRUE_DB_CLEANUP_ENABLED` auf dem gehosteten Projekt erfragen, sonst `tidy_up` ersetzte Token nach einem Tag löschen lassen (Code-Änderung; vorher prüfen, dass GoTrues Erkennung wiederverwendeter Token das verträgt) |
+| L9  | Ordnung, keine Nutzerdaten im engeren Sinn: im Supabase Studio gespeicherte SQL-Schnipsel können Nutzer-IDs aus dem Runbook enthalten                                                                                                                                                                                                  | Schnipsel ohne IDs speichern, gelegentlich aufräumen                                                                                                                                                                                                                                                                                                                                    |
+| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung im Klartext in localStorage                                                                                                                                                                                                                                                      | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                                                             |
 
-Am 4. November 2026 behoben (Migration `20261104120000_privacy_housekeeping.sql`, `src/lib/secure-storage.ts`,
-`app.json`, GO-LIVE): Das Anmeldeprotokoll überdauerte die Kontolöschung und wurde nie gelöscht;
-Sperren liefen 100 Jahre und wurden nie gelöscht; die Namen von der Registrierung blieben für immer
-im Kontodatensatz und in jedem Token; die vorherige Stadt blieb bis zum nächsten Umzug; das
-Laufprotokoll von pg_cron wuchs ohne Ende; die iOS-Sitzung lag mit `WHEN_UNLOCKED` auch in Backups
-für andere Geräte; `expo-secure-store` deklarierte Face ID; GO-LIVE schlug eine Benachrichtigung
-über Meldungen vor, ohne zu sagen, dass sie inhaltsleer sein muss.
+Am 4. November 2026 behoben (Migration `20261104120000_privacy_housekeeping.sql`,
+`src/lib/secure-storage.ts`, `app.json`, GO-LIVE): Das Anmeldeprotokoll überdauerte die
+Kontolöschung und wurde nie gelöscht; Sperren liefen 100 Jahre und wurden nie gelöscht; die Namen
+von der Registrierung blieben für immer im Kontodatensatz und in jedem Token; Sitzungen liefen nie
+ab, auch unbenutzte nicht; die vorherige Stadt blieb bis zum nächsten Umzug; das Laufprotokoll von
+pg_cron wuchs ohne Ende; die iOS-Sitzung lag mit `WHEN_UNLOCKED` auch in Backups für andere Geräte;
+`expo-secure-store` deklarierte Face ID; GO-LIVE schlug eine Benachrichtigung über Meldungen vor,
+ohne zu sagen, dass sie inhaltsleer sein muss, und sein Ablauf bei einer Drohung passte nicht mehr
+zu `remove_account` (jetzt: mit `private.ban_period()` sperren, eine Woche später entfernen).
 
 ---
 
@@ -599,7 +644,7 @@ für andere Geräte; `expo-secure-store` deklarierte Face ID; GO-LIVE schlug ein
 ### 5.1 Verträge zur Auftragsverarbeitung (Art. 28)
 
 - [ ] **Supabase:** den Data Processing Addendum (DPA) anfordern und unterzeichnen. Nach Supabases
-      eigener Seite: im Dashboard der Organisation unter „Legal Documents" → „Request DPA";
+      eigener Seite: im Dashboard der Organisation unter „Legal Documents“ → „Request DPA“;
       Supabase schickt dann ein Dokument über PandaDoc zum Unterzeichnen (Weg zu prüfen, er hat sich
       schon geändert). Er enthält die Standardvertragsklauseln (Durchführungsbeschluss (EU)
       2021/914; welche Module: zu prüfen). Die unterzeichnete Fassung privat ablegen und hier das
@@ -633,22 +678,43 @@ für andere Geräte; `expo-secure-store` deklarierte Face ID; GO-LIVE schlug ein
       widerrufen.
 - [ ] Eigenes SMTP und E-Mail-Bestätigung an, bevor eine zweite Person sich anmeldet (L3).
 - [ ] Nach dem ersten `db push` auf das gehostete Projekt: `select jobname, schedule from cron.job`
-      zeigt `deliver-due-messages`, `forget-old-reports` und `tidy-up`; einen Tag später findet
-      `select count(*) from auth.audit_log_entries where created_at < now() - interval '31 days'`
-      nichts (V8, L8). Fehlt das Recht, die Datenschutzerklärung (3.9) anpassen, bis es gelöst ist.
+      zeigt `deliver-due-messages`, `forget-old-reports` und `tidy-up`, und die Rechteprüfung am
+      Ende dieses Abschnitts ergibt fünfmal `true` (V8, L8). Fehlt ein Recht, die
+      Datenschutzerklärung (3.1, 3.8, 3.9, 9) anpassen, bis es gelöst ist. Frühestens 31 Tage nach
+      dem Start zusätzlich die Abfrage aus V8.
 - [ ] Eine Frist für das Postfach festlegen (V11).
-- [ ] Entscheiden, ob die Zusage „Ich lese Briefe nur, wenn sie mir gemeldet werden" gilt (L6).
+- [ ] Entscheiden, ob die Zusage „Ich lese Briefe nur, wenn sie mir gemeldet werden“ gilt (L6).
 - [ ] Im gewählten Supabase-Tarif nachsehen: wie lange Protokolle aufbewahrt werden und wo, ob und
       wie lange es Sicherungen gibt. In V8, V9 und die Datenschutzerklärung (3.9, 9) eintragen.
 - [ ] Prüfen, ob eine Datenschutz-Folgenabschätzung (Art. 35) nötig ist: Minderjährige als
       schutzbedürftige Betroffene, dazu Freitext, der sensible Daten enthalten kann. Nach den
-      Leitlinien der europäischen Datenschutzbehörden sprechen zwei erfüllte Kriterien in der Regel
-      für eine Folgenabschätzung; das Ergebnis der Prüfung festhalten (zu prüfen).
+      Leitlinien der europäischen Datenschutzbehörden (WP 248) sprechen zwei erfüllte Kriterien in
+      der Regel für eine Folgenabschätzung; dazu die Liste der deutschen Aufsichtsbehörden nach
+      Art. 35 Abs. 4 ansehen. Das Ergebnis der Prüfung festhalten (zu prüfen). Ist eine
+      Folgenabschätzung nötig, ist nach § 38 Abs. 1 Satz 2 BDSG auch ein Datenschutzbeauftragter zu
+      benennen (Abschnitt 1).
 - [ ] Die Rechtsgrundlage für Nutzer unter 16 prüfen (Art. 6 Abs. 1 lit. b oder Einwilligung nach
       Art. 8; Verträge mit Minderjährigen).
 - [ ] Bei Google Play die Folgen der Altersgrenze 12 für die Families Policy entscheiden
       (`google-play.md`, Abschnitt 5). Ein dafür gespeichertes Altersmerkmal wäre eine neue
       Datenkategorie in V1.
+- [ ] Die Datenschutzerklärung zu Ende an die 90 Tage für unbenutzte Sitzungen anpassen (Commit
+      665924d): 3.9 und 9 sind angepasst, 3.8 sagt noch, die Sitzungen eines gesperrten Kontos
+      blieben mit dem Kontodatensatz zwei Jahre gespeichert (V7: rund 91 Tage nach der Sperre).
+
+Die Rechteprüfung, im SQL-Editor des gehosteten Projekts:
+
+```sql
+select has_table_privilege('auth.audit_log_entries', 'DELETE') as anmeldeprotokoll,
+       has_table_privilege('auth.sessions', 'DELETE') as sitzungen,
+       has_table_privilege('auth.identities', 'UPDATE') as identitaeten,
+       has_table_privilege('auth.users', 'UPDATE') as namen_entfernen,
+       has_table_privilege('auth.users', 'DELETE') as sperren_loeschen;
+```
+
+`UPDATE` und `DELETE` auf `auth.users` hier einzeln: `has_table_privilege` mit `'UPDATE, DELETE'`,
+wie in GO-LIVE („Setting up the hosted project“, Schritt 4), ist schon wahr, wenn nur eines der
+beiden Rechte da ist (am lokalen Stack geprüft).
 
 ### 5.3 Eine Auskunftsanfrage beantworten (Art. 15, auch Art. 20)
 
@@ -662,15 +728,17 @@ für andere Geräte; `expo-secure-store` deklarierte Face ID; GO-LIVE schlug ein
    dass sie es sind (Datenschutzerklärung 10).
 3. **Daten aus der Datenbank holen:** die Abfrage unten im SQL-Editor des Supabase-Dashboards
    ausführen. Sie liest nur. Das Ergebnis als JSON-Datei speichern: Das ist zugleich das „gängige,
-   maschinenlesbare Format" für Art. 20.
+   maschinenlesbare Format“ für Art. 20.
 4. **Was außerhalb der Datenbank liegt**, dazu nehmen: E-Mails mit der Person im Postfach; ob sie
    auf einer Testerliste steht (Play Console, TestFlight); ob es einen Export für die Polizei gibt,
    der sie betrifft; Server-Protokolle, falls noch vorhanden.
 5. **Die Rechte anderer schützen** (Art. 15 Abs. 4). Bei Meldungen über die Person nichts über die
    meldende Person herausgeben; die Abfrage lässt `reporter_id` und die Notiz der meldenden Person
    deshalb weg. Ob und wie weit die Notiz nach Abwägung doch herauszugeben ist (§ 29 Abs. 1 Satz 2
-   BDSG): zu prüfen. Briefe, die die Person bekommen hat, enthalten auch Daten des Absenders, sind
-   ihr aber ohnehin bekannt.
+   BDSG): zu prüfen. Ebenso lässt sie weg, wer die Person blockiert hat: Die blockierte Person
+   erfährt das in der App nie (V5), und die Auskunft soll es nicht nachholen (Abwägung nach Art. 15
+   Abs. 4: zu prüfen). Briefe, die die Person bekommen hat, enthalten auch Daten des Absenders,
+   sind ihr aber ohnehin bekannt.
 6. **Antworten:** die Kopie, dazu die Angaben nach Art. 15 Abs. 1 und 2 – Zwecke, Kategorien,
    Empfänger, Speicherdauer, die Rechte auf Berichtigung, Löschung, Einschränkung und Widerspruch,
    das Beschwerderecht, die Herkunft (von der Person selbst; bei Meldungen von anderen Nutzern),
@@ -679,13 +747,15 @@ für andere Geräte; `expo-secure-store` deklarierte Face ID; GO-LIVE schlug ein
 7. **Aufräumen und festhalten:** die Exportdatei nach dem Versand löschen; Datum von Eingang und
    Antwort notieren, ohne die Daten selbst aufzubewahren.
 
-Die Abfrage, am lokalen Stack geprüft (in einer schreibgeschützten Transaktion). Nur die
-E-Mail-Adresse in der dritten Zeile ersetzen:
+Die Abfrage, am 4. November 2026 am lokalen Stack geprüft (in einer schreibgeschützten Transaktion,
+für ein Konto mit Briefen, Sitzungen und Anmeldeprotokoll, eines ohne und eine unbekannte Adresse).
+Nur die E-Mail-Adresse in der dritten Zeile ersetzen. Das Anmeldeprotokoll findet sie über die
+Nutzer-ID und über die E-Mail-Adresse, damit auch Einträge ohne `actor_id` dabei sind:
 
 ```sql
 -- Auskunft nach Art. 15 DSGVO: alles, was die Datenbank zu einem Konto hält. Liest nur.
 with me as (
-  select id, id::text as id_text from auth.users where email = '<E-Mail-Adresse des Kontos>'
+  select id, id::text as id_text, email from auth.users where email = '<E-Mail-Adresse des Kontos>'
 )
 select jsonb_pretty(jsonb_build_object(
   'konto', (
@@ -693,7 +763,7 @@ select jsonb_pretty(jsonb_build_object(
       'id', u.id, 'email', u.email, 'angelegt', u.created_at, 'geaendert', u.updated_at,
       'letzte_anmeldung', u.last_sign_in_at, 'email_bestaetigt', u.email_confirmed_at,
       'passwort_reset_angefordert', u.recovery_sent_at, 'gesperrt_bis', u.banned_until,
-      'namen_bei_registrierung', u.raw_user_meta_data)
+      'anmelde_metadaten', u.raw_user_meta_data)
     from auth.users u join me on me.id = u.id),
   'anmeldeidentitaeten', (
     select jsonb_agg(jsonb_build_object(
@@ -702,7 +772,8 @@ select jsonb_pretty(jsonb_build_object(
     from auth.identities i join me on me.id = i.user_id),
   'sitzungen', (
     select jsonb_agg(jsonb_build_object(
-      'angelegt', s.created_at, 'erneuert', s.refreshed_at, 'ip', s.ip, 'user_agent', s.user_agent)
+      'angelegt', s.created_at, 'zuletzt_benutzt', s.updated_at, 'ip', s.ip,
+      'user_agent', s.user_agent)
       order by s.created_at)
     from auth.sessions s join me on me.id = s.user_id),
   'token_erneuerungen', (
@@ -712,7 +783,8 @@ select jsonb_pretty(jsonb_build_object(
     select jsonb_agg(jsonb_build_object(
       'zeit', a.created_at, 'ereignis', a.payload ->> 'action', 'ip', a.ip_address)
       order by a.created_at)
-    from auth.audit_log_entries a join me on me.id_text = a.payload ->> 'actor_id'),
+    from auth.audit_log_entries a
+    join me on me.id_text = a.payload ->> 'actor_id' or me.email = a.payload ->> 'actor_username'),
   'profil', (
     select jsonb_build_object(
       'benutzername', p.username, 'anzeigename', p.display_name,
@@ -769,9 +841,13 @@ select jsonb_pretty(jsonb_build_object(
 ```
 
 Ist das Konto schon gelöscht, findet die Abfrage nichts mehr. Was dann noch übrig sein kann: das
-Anmeldeprotokoll (`where payload ->> 'actor_username' = '<E-Mail-Adresse>'`) und Meldungen, die die
-Person gemacht hat oder die über sie sind. Diese tragen keine Nutzer-ID mehr, nur den Benutzernamen
-von damals – und Benutzernamen werden nach einer Löschung neu vergeben. Nur mit Vorsicht zuordnen.
+Anmeldeprotokoll (`where payload ->> 'actor_username' = '<E-Mail-Adresse>'`, bis zu 30 Tage) und
+Meldungen. Meldungen über die Person tragen keine Nutzer-ID mehr, nur Benutzername und Anzeigename
+von damals – und Benutzernamen werden nach einer Löschung neu vergeben; nur mit Vorsicht zuordnen.
+Meldungen, die die Person selbst gemacht hat, lassen sich gar nicht mehr zuordnen: Eine Meldung
+speichert über die meldende Person nur `reporter_id`, und die ist dann leer. Ist das Konto entfernt
+und noch gesperrt, findet die Abfrage den Kontodatensatz, die Identität, die Sitzungen und das
+Anmeldeprotokoll weiter, aber kein Profil mehr.
 
 ### 5.4 Eine Löschanfrage beantworten (Art. 17)
 
@@ -802,13 +878,19 @@ von damals – und Benutzernamen werden nach einer Löschung neu vergeben. Nur m
 Sonderfälle, die die Datenschutzerklärung zusagt: Hat ein Kind unter 16 ohne Erlaubnis ein Konto,
 wird es auf Bitte der Eltern gelöscht, nachdem geklärt ist, dass die Bitte von ihnen kommt
 (Datenschutzerklärung 10). Hat jemand eine fremde E-Mail-Adresse registriert, wird das Konto auf
-Bitte des Inhabers der Adresse gelöscht (3.10).
+Bitte des Inhabers der Adresse gelöscht (3.10). Erfährt der Betreiber, dass jemand jünger als 12
+ist, „entfernt“ er das Konto (Datenschutzerklärung 10). Mit `private.remove_account` bliebe dann die
+E-Mail-Adresse eines Kindes zwei Jahre gesperrt gespeichert; ein Löschen wie in Schritt 2, ohne
+Sperre, hält weniger fest. Welcher Weg gilt: Entscheidung des Betreibers, dann hier und in der
+Datenschutzerklärung festhalten.
 
 Die anderen Rechte: **Berichtigung** (Art. 16) – Anzeigename und Stadt ändert die Person selbst;
 Benutzername oder E-Mail-Adresse ändert der Betreiber im Dashboard (Weg zu prüfen). **Einschränkung**
 (Art. 18) und **Widerspruch** (Art. 21) gegen Verarbeitungen nach Art. 6 Abs. 1 lit. f – im
 Einzelfall abwägen, Ergebnis begründet mitteilen. Lehnt der Betreiber etwas ab, teilt er das
-innerhalb eines Monats mit Gründen und dem Hinweis auf das Beschwerderecht mit (Art. 12 Abs. 4).
+unverzüglich, spätestens innerhalb eines Monats mit, mit Gründen und dem Hinweis auf das
+Beschwerderecht bei einer Aufsichtsbehörde und auf einen gerichtlichen Rechtsbehelf
+(Art. 12 Abs. 4).
 
 ### 5.5 Eine Datenpanne (Art. 33 und 34)
 
@@ -872,7 +954,7 @@ selbst tut:
   ```
 
 - **Bei einer Drohung** soll die meldende Person erst Kopien machen können, bevor die Briefe
-  verschwinden (GO-LIVE, „A threat"; Datenschutzerklärung 3.8). `remove_account` sperrt und löscht
+  verschwinden (GO-LIVE, „A threat“; Datenschutzerklärung 3.8). `remove_account` sperrt und löscht
   in einem Schritt. Wer warten muss, sperrt zuerst nur und entfernt später:
 
   ```sql
@@ -881,18 +963,33 @@ selbst tut:
   select private.remove_account('<reported_id>');
   ```
 
-  Die zwei Jahre zählen dann ab dem zweiten Schritt; die Wartezeit kurz halten. Das Runbook in
-  GO-LIVE beschreibt diesen Fall noch nicht so (die Datenschutzerklärung merkt es an).
+  Die zwei Jahre zählen dann ab dem zweiten Schritt. GO-LIVE („Handling a report“, „A threat“)
+  beschreibt genau diesen Ablauf, mit einer Woche Wartezeit, der E-Mail an die meldende Person und
+  dem Export für die Polizei; die Datenschutzerklärung (3.7, 3.8) sagt dasselbe.
 
-- **Wahlweise beim Entfernen auch die Sitzungen löschen** (Lücke L7). Vorher am lokalen Stack
+  **Den zweiten Schritt nicht vergessen.** Bis dahin bleibt das Konto mit Profil und allen Briefen
+  bestehen, und `tidy_up` löscht nur gesperrte Konten _ohne_ Profil. Bliebe es dabei, wäre die
+  Anmeldung nach zwei Jahren wieder offen und das Konto mit allem Übrigen wieder da. Diese Abfrage
+  zeigt gesperrte Konten, die noch ein Profil haben; nach einer Woche muss jedes darin entfernt
+  sein:
+
+  ```sql
+  select u.id, u.banned_until from auth.users u
+  where u.banned_until > now()
+    and exists (select 1 from public.profiles p where p.id = u.id);
+  ```
+
+- **Wahlweise beim Entfernen auch die Sitzungen löschen** (Lücke L7), bei einer Drohung erst nach
+  dem Export. Sonst gehen sie mit `tidy_up` rund 91 Tage nach der Sperre. Vorher am lokalen Stack
   ausprobieren, dass die Sperre danach weiter greift (zu prüfen):
 
   ```sql
   delete from auth.sessions where user_id = '<reported_id>';
   ```
 
-- **Einmal im Monat** (Kalendererinnerung) nachsehen, dass der Auftrag läuft und keine abgelaufene
-  Sperre übrig ist. Die zweite Abfrage muss 0 ergeben:
+- **Einmal im Monat** (Kalendererinnerung) nachsehen, dass der Auftrag läuft (`succeeded`) und
+  keine abgelaufene Sperre übrig ist. Die zweite Abfrage muss 0 ergeben; dazu die Abfrage oben
+  nach gesperrten Konten mit Profil:
 
   ```sql
   select status, start_time from cron.job_run_details
@@ -912,9 +1009,10 @@ selbst tut:
 ### 5.7 Regelmäßig
 
 - **Täglich:** neue Meldungen ansehen (GO-LIVE).
-- **Monatlich:** nachsehen, dass `tidy-up` läuft und keine abgelaufene Sperre übrig ist (5.6);
-  Testerlisten aufräumen; das Postfach nach der festgelegten Frist aufräumen; prüfen, dass keine
-  Exporte (Auskunft, Polizei) mehr herumliegen.
+- **Monatlich:** nachsehen, dass `tidy-up` läuft (Status `succeeded` in `cron.job_run_details`),
+  dass keine abgelaufene Sperre übrig ist und kein gesperrtes Konto länger als eine Woche ein Profil
+  hat (5.6); Testerlisten aufräumen; das Postfach nach der festgelegten Frist aufräumen; prüfen, dass
+  keine Exporte (Auskunft, Polizei) mehr herumliegen.
 - **Jährlich:** dieses Verzeichnis, die TOM und die Datenschutzerklärung durchgehen; Supabases
   Unterauftragsverarbeiter und die Fristen des Tarifs prüfen; das Datum unten eintragen.
 - **Bei jeder Änderung**, die andere Daten erhebt oder sie anders verwendet – eine neue Spalte oder
@@ -930,21 +1028,26 @@ selbst tut:
 2. Die Rechtsgrundlage bei Nutzern unter 16 (Art. 6 Abs. 1 lit. b oder Art. 8; Verträge mit
    Minderjährigen).
 3. § 25 Abs. 2 Nr. 2 TDDDG für die Sitzung auf dem Gerät.
-4. Art. 9 für Briefe, die besondere Kategorien enthalten; Art. 10 für Meldungen über Straftaten.
+4. Art. 9 für Briefe, die besondere Kategorien enthalten; Art. 10 für Meldungen über Straftaten;
+   Art. 6 Abs. 4 bzw. § 24 Abs. 1 Nr. 1 BDSG für die freiwillige Weitergabe an die Polizei.
 5. Art. 17 Abs. 3 lit. e als Grundlage dafür, Meldungen über die Kontolöschung hinaus zu behalten.
 6. § 29 Abs. 1 Satz 2 BDSG für die Notiz der meldenden Person bei einer Auskunft.
-7. Ob eine Datenschutz-Folgenabschätzung (Art. 35) nötig ist.
+7. Ob eine Datenschutz-Folgenabschätzung (Art. 35) nötig ist, und damit nach § 38 Abs. 1 Satz 2
+   BDSG ein Datenschutzbeauftragter.
 8. Supabase: der Weg zum DPA, welche Module der Standardvertragsklauseln er enthält, die
    Unterauftragsverarbeiter (Cloudflare vor der API? Ort der Protokolle?), ob eine
    Transfer-Folgenabschätzung nötig ist oder das EU-US Data Privacy Framework greift; die
    Verschlüsselung gespeicherter Daten.
 9. Supabase-Tarif: Aufbewahrung der Protokolle (kostenlos vermutlich ein Tag), Sicherungen und ihre
    Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind.
-10. GoTrue und Postgres gehostet: ob die Rolle `postgres` Einträge in `auth.audit_log_entries`
-    löschen darf (sonst überspringen `tidy_up` und `delete_own_account` das still); ob `tidy-up` in
-    `cron.job` steht; ob `ip_address` im Anmeldeprotokoll gefüllt wird; dass Abmelden die Sitzungen
-    löscht; ob `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist; Bereinigung abgelaufener Einmal-Token; ob
-    die Sperre greift, wenn beim Entfernen auch die Sitzungen gelöscht werden.
+10. GoTrue und Postgres gehostet: ob die Rolle `postgres` Einträge in `auth.audit_log_entries` und
+    `auth.sessions` löschen, `auth.identities` ändern und `auth.users` ändern und löschen darf
+    (sonst überspringen `tidy_up` und `delete_own_account` das still oder `tidy_up` bricht ab, 4.5);
+    ob `tidy-up` in `cron.job` steht; ob `ip_address` im Anmeldeprotokoll gefüllt wird; dass
+    Abmelden die Sitzungen löscht; dass eine abgelehnte Erneuerung eines gesperrten Kontos
+    `updated_at` der Sitzung nicht setzt; ob `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist und, wenn
+    nicht, ob `tidy_up` ersetzte Refresh-Token selbst löschen kann; Bereinigung abgelaufener
+    Einmal-Token; ob die Sperre greift, wenn beim Entfernen auch die Sitzungen gelöscht werden.
 11. Microsoft: Rolle, Vertrag und Drittlandgrundlage für das Outlook.com-Postfach.
 12. Apple und Google: ihre Rolle bei Testerdaten; was App Store Connect bei Testern über einen
     öffentlichen Link zeigt; die Felder in Feedback und Absturzberichten; ob Feedback gelöscht
@@ -958,11 +1061,15 @@ selbst tut:
 17. Ob bei einer Löschung die Polizei nach Art. 19 zu informieren ist, wenn sie eine Meldung
     bekommen hat.
 18. Wie lange Nachweise über erledigte Betroffenenanfragen aufbewahrt werden.
+19. Ob die Auskunft offenlegen muss, wer die Person blockiert hat (Art. 15 Abs. 4; 5.3).
+20. Wie das Konto eines Kindes unter 12 entfernt wird: mit Sperre oder ohne (5.4).
+21. Expo Go in der Entwicklung: ob Expo dabei Daten erhält (Abschnitt 2).
 
 ---
 
 ## Änderungsverlauf
 
-| Datum            | Änderung                                     | Letzte Prüfung durch den Betreiber |
-| ---------------- | -------------------------------------------- | ---------------------------------- |
-| 4. November 2026 | Erste Fassung aus dem Datenbestand des Codes | –                                  |
+| Datum            | Änderung                                                                                                                                                                                                       | Letzte Prüfung durch den Betreiber |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 4. November 2026 | Erste Fassung aus dem Datenbestand des Codes                                                                                                                                                                   | –                                  |
+| 4. November 2026 | Gegen den Code bis Commit 665924d geprüft: 90 Tage für unbenutzte Sitzungen, Ablauf bei einer Drohung, Verhalten von `tidy_up` bei fehlenden Rechten, Auskunftsabfrage, Polizei als Empfänger von Anmeldedaten | –                                  |
