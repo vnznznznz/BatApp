@@ -203,8 +203,8 @@ export default function ReportScreen() {
       <Text variant="title">{letter ? `A letter from ${handle}` : handle}</Text>
       <Text variant="caption" tone="muted" style={[styles.line, styles.lead]}>
         {letter
-          ? `Your report goes to the person who runs Night Courier, with a copy of the letter. ${handle} is never told who reported them - but this letter had only one reader, so if it is acted on, they may guess.`
-          : `Your report goes to the person who runs Night Courier, with ${handle}'s names as they are now. ${handle} is never told who reported them.`}
+          ? `Your report goes to the person who runs Night Courier, with a copy of the letter. ${handle} is not told who reported them, unless the law requires it - but this letter had only one reader, so if it is acted on, they may guess.`
+          : `Your report goes to the person who runs Night Courier, with ${handle}'s names as they are now. ${handle} is not told who reported them, unless the law requires it.`}
       </Text>
 
       <View style={styles.section}>
@@ -264,7 +264,7 @@ export default function ReportScreen() {
         </Text>
         <Text variant="caption" tone="muted" style={styles.line}>
           Reports{letter ? ', and the copy of the letter,' : ''} are deleted {REPORT_RETENTION_DAYS}{' '}
-          days after they were made, unless one has been passed to the police.
+          days after they were made. If one is passed to the police, the police keep their own copy.
         </Text>
       </View>
     </Screen>

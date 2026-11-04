@@ -471,11 +471,10 @@ describe('ProfileScreen', () => {
     });
 
     /**
-     * Reports are the exception to a deletion, both ways: the people who run
-     * Night Courier may still have to act on one, about the courier or made by
-     * them. The courier is told what each keeps, and for how long, in the
-     * number the database deletes by - parity.db.test.mjs holds the two
-     * together.
+     * Reports outlive a deletion, both ways: the person who runs Night
+     * Courier may still have to act on one, about the courier or made by them.
+     * The courier is told what each keeps, and for how long, in the number the
+     * database deletes by - parity.db.test.mjs holds the two together.
      */
     it('says what reports keep once the account is gone, and when each is deleted', async () => {
       await renderScreen(<ProfileScreen />);
@@ -484,10 +483,27 @@ describe('ProfileScreen', () => {
 
       const [, message] = mockedAlert.mock.calls[0] ?? [];
       expect(message).toContain(
-        'Reports are the exception: a report about you keeps your names and any letter of ' +
-          'yours it is about, and a report you made keeps what you wrote in it.',
+        'Reports stay: a report about you keeps your names and any letter of yours it is about, ' +
+          'and a report you made keeps what you wrote in it.',
       );
       expect(message).toContain(`Each is deleted ${REPORT_RETENTION_DAYS} days after it was made.`);
+    });
+
+    /**
+     * Reports are not all that outlives the account: server logs and backups
+     * keep what they hold until they expire. The dialog says so, and where the
+     * rest is explained, rather than promise that nothing else is left.
+     */
+    it('says that some technical records stay until they are deleted, and points to the privacy policy', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      await fireEvent.press(button('Delete my account'));
+
+      const [, message] = mockedAlert.mock.calls[0] ?? [];
+      expect(message).toContain(
+        'Some technical records, such as server logs and any backups, also stay until they are ' +
+          'deleted automatically; the privacy policy explains them.',
+      );
     });
 
     it('keeps the account when the courier thinks better of it', async () => {

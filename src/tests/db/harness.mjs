@@ -41,6 +41,8 @@ export const AUTH_STUB = `
     email text unique,
     raw_user_meta_data jsonb not null default '{}'::jsonb,
     banned_until timestamptz,
+    -- GoTrue confirms every address at sign-up while confirmation is off.
+    email_confirmed_at timestamptz default now(),
     created_at timestamptz not null default now()
   );
 

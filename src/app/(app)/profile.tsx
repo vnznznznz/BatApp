@@ -73,10 +73,12 @@ export default function ProfileScreen() {
       title: 'Delete your account?',
       message:
         'Your profile, your bats, your friendships and every letter you have sent or received ' +
-        'are removed permanently, from your friends’ letters as well as yours. Reports are the ' +
-        'exception: a report about you keeps your names and any letter of yours it is about, ' +
-        'and a report you made keeps what you wrote in it. Each is deleted ' +
-        `${REPORT_RETENTION_DAYS} days after it was made. This cannot be undone.`,
+        'are removed permanently, from your friends’ letters as well as yours. Reports stay: ' +
+        'a report about you keeps your names and any letter of yours it is about, and a report ' +
+        'you made keeps what you wrote in it. Each is deleted ' +
+        `${REPORT_RETENTION_DAYS} days after it was made. Some technical records, such as ` +
+        'server logs and any backups, also stay until they are deleted automatically; the ' +
+        'privacy policy explains them. This cannot be undone.',
       confirmLabel: 'Delete',
       cancelLabel: 'Keep my account',
       destructive: true,

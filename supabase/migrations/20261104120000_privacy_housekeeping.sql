@@ -18,6 +18,9 @@
 --   * A session - with the IP address and device it was opened from - lasts
 --     until its owner signs out, even on a phone lost years ago. Supabase can
 --     limit that only on its paid plans.
+--   * Once email confirmation is on, a sign-up whose address is never
+--     confirmed keeps its profile - and someone else's email address - for
+--     ever.
 --   * The city a courier moved away from stays on their profile after the move
 --     has settled, with the time of the move.
 --   * pg_cron's log of its own runs grows without end.
@@ -64,7 +67,21 @@ as $$
   select interval '90 days'
 $$;
 
+-- How long a sign-up may wait for its email address to be confirmed. Once
+-- confirmation is on (docs/GO-LIVE.md, "Before a second person can sign up"),
+-- an unconfirmed sign-up can never sign in, but handle_new_user has already
+-- made its profile; a week is long after any confirmation link has expired.
+create or replace function private.unconfirmed_sign_up_lifetime()
+returns interval
+language sql
+immutable
+set search_path = ''
+as $$
+  select interval '7 days'
+$$;
+
 revoke all on function private.sign_in_record_retention() from public, anon, authenticated;
+revoke all on function private.unconfirmed_sign_up_lifetime() from public, anon, authenticated;
 revoke all on function private.ban_period() from public, anon, authenticated;
 revoke all on function private.idle_session_lifetime() from public, anon, authenticated;
 
@@ -142,6 +159,18 @@ begin
   exception
     when undefined_table or invalid_schema_name or insufficient_privilege then
       skipped := skipped || ('expired bans: ' || sqlerrm);
+  end;
+
+  -- A sign-up whose address was never confirmed, profile and all. (While
+  -- confirmation is off, GoTrue confirms every address at sign-up, and this
+  -- finds nothing.)
+  begin
+    delete from auth.users u
+    where u.email_confirmed_at is null
+      and u.created_at < now() - private.unconfirmed_sign_up_lifetime();
+  exception
+    when undefined_table or invalid_schema_name or undefined_column or insufficient_privilege then
+      skipped := skipped || ('unconfirmed sign-ups: ' || sqlerrm);
   end;
 
   -- The old city only matters while a move settles (see the flight migration).

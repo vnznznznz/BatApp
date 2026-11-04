@@ -41,6 +41,7 @@ const USERNAME_MAX_LENGTH = constant('USERNAME_MAX_LENGTH');
 const REPORT_NOTE_MAX_LENGTH = constant('REPORT_NOTE_MAX_LENGTH');
 const REPORTS_PER_DAY = constant('REPORTS_PER_DAY');
 const REPORT_RETENTION_DAYS = constant('REPORT_RETENTION_DAYS');
+const BAN_PERIOD_YEARS = constant('BAN_PERIOD_YEARS');
 
 const REPORT_REASONS = (() => {
   const match = CONFIG.match(/export const REPORT_REASONS = \[([^\]]*)\]/);
@@ -202,5 +203,14 @@ describe('the database agrees with src/constants/config.ts', () => {
     );
 
     assert.equal(Number(rows[0].days), REPORT_RETENTION_DAYS);
+  });
+
+  it('on BAN_PERIOD_YEARS', async () => {
+    const { rows } = await db.query(
+      `select private.ban_period() = make_interval(years => $1) as same`,
+      [BAN_PERIOD_YEARS],
+    );
+
+    assert.equal(rows[0].same, true);
   });
 });

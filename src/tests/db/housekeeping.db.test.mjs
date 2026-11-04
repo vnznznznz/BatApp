@@ -171,6 +171,28 @@ describe('the daily tidy-up', () => {
     assert.equal(await signInExists(ordinary), true);
   });
 
+  it('deletes a sign-up never confirmed within 7 days, profile and all, and nothing else', async () => {
+    const forgotten = await createCourier(db);
+    const waiting = await createCourier(db);
+    const confirmedLongAgo = await createCourier(db);
+    await db.query(
+      `update auth.users set email_confirmed_at = null, created_at = now() - interval '8 days'
+       where id = $1`,
+      [forgotten],
+    );
+    await db.query(`update auth.users set email_confirmed_at = null where id = $1`, [waiting]);
+    await db.query(`update auth.users set created_at = now() - interval '400 days' where id = $1`, [
+      confirmedLongAgo,
+    ]);
+
+    await tidyUp();
+
+    assert.equal(await signInExists(forgotten), false);
+    assert.equal(await profileExists(forgotten), false);
+    assert.equal(await signInExists(waiting), true, 'a sign-up still within its week stays');
+    assert.equal(await signInExists(confirmedLongAgo), true);
+  });
+
   it('forgets the city a courier moved away from once the move has settled', async () => {
     const settled = await createCourier(db, { city: ['Berlin', 'DE'] });
     const moving = await createCourier(db, { city: ['Berlin', 'DE'] });
@@ -251,7 +273,12 @@ describe('the daily tidy-up', () => {
       await db.exec(`reset role;`);
 
       const names = skipped.map((step) => step.slice(0, step.indexOf(':')));
-      assert.deepEqual(names.sort(), ['expired bans', 'pg_cron run log', 'sign-up names'].sort());
+      assert.deepEqual(names.sort(), [
+        'expired bans',
+        'pg_cron run log',
+        'sign-up names',
+        'unconfirmed sign-ups',
+      ]);
       assert.equal(await auditCount(anna), 0, 'the sign-in log was still tidied');
       assert.equal(await signInExists(anna), true, 'the banned sign-in could not be deleted');
     } finally {

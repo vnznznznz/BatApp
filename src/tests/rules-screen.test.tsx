@@ -3,7 +3,12 @@ import type { ReactElement } from 'react';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import RulesScreen from '@/app/rules';
-import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER, REPORT_RETENTION_DAYS } from '@/constants/config';
+import {
+  BAN_PERIOD_YEARS,
+  MINIMUM_AGE,
+  PARENTAL_PERMISSION_UNDER,
+  REPORT_RETENTION_DAYS,
+} from '@/constants/config';
 import { Colors } from '@/constants/theme';
 import { openLink } from '@/lib/links';
 
@@ -79,11 +84,13 @@ const NEVER_SEND = [
 const NO_TOLERANCE =
   'There is no tolerance for objectionable content or abusive behaviour. An account that breaks ' +
   'these rules may be removed, along with every letter it sent or received - at once, if it is ' +
-  'serious.';
+  'serious. After a threat, it is suspended at once and removed a week later, so that whoever ' +
+  'reported it can keep copies of their letters first. A removed account stays banned for ' +
+  `${BAN_PERIOD_YEARS} years from the removal, so that the same email address cannot simply sign up again.`;
 const REPORTING =
   'Report the letter - open it, and choose Report - or report the courier from their page in ' +
   'Friends, or from your blocked couriers. Reports go to the person who runs Night Courier, who ' +
-  'reads every one and acts on what breaks the rules. The person you report is never told who ' +
+  'reads every one and acts on what breaks the rules. The person you report is not told who ' +
   'reported them, unless the law requires it - but a letter has only one reader, so if one is ' +
   'acted on, its sender may guess.';
 const BLOCKING =
@@ -93,9 +100,9 @@ const BLOCKING =
   'longer friends. Letters you sent them stay with them.';
 const RETENTION =
   `A report, and the copy it keeps of what was reported, is deleted ${REPORT_RETENTION_DAYS} ` +
-  'days after it was made - unless it has been passed to the police. If an account is removed, ' +
-  'every letter between it and anyone else goes with it, so keep a copy of anything you may ' +
-  'need: a screenshot will do.';
+  'days after it was made. If it is passed to the police before then, the police keep their own ' +
+  'copy, under their own rules. If an account is removed, every letter between it and anyone ' +
+  'else goes with it, so keep a copy of anything you may need: a screenshot will do.';
 const GET_IN_TOUCH =
   'For a question, something to add to a report, or a request about your data, get in touch.';
 
@@ -166,6 +173,12 @@ describe('RulesScreen', () => {
       expect(textsIn(sectionOf('Never send'))).toEqual(['Never send', ...NEVER_SEND]);
     });
 
+    /**
+     * After a threat the account is only suspended for a week, so that whoever
+     * reported it can keep copies of the letters its removal takes with it; and
+     * the two-year ban runs from the removal (private.remove_account sets it
+     * then, for private.ban_period()).
+     */
     it('says there is no tolerance, and what becomes of an account that breaks the rules', async () => {
       await renderScreen(<RulesScreen />);
 
@@ -192,8 +205,10 @@ describe('RulesScreen', () => {
 
     /**
      * In the number the database deletes by: parity.db.test.mjs holds the two
-     * together. And because removing an account takes its letters from both
-     * sides, whoever reported it is told to keep a copy first.
+     * together. The database deletes every report then, with no exception; only
+     * a copy given to the police outlives it, and that copy is theirs. And
+     * because removing an account takes its letters from both sides, whoever
+     * reported it is told to keep a copy first.
      */
     it('says how long a report is kept, and to keep a copy of anything that may be needed', async () => {
       await renderScreen(<RulesScreen />);
@@ -314,7 +329,11 @@ describe('RulesScreen', () => {
     });
   });
   describe('who can join', () => {
-    it('says the minimum age, and that a younger courier needs a parent or guardian to agree', async () => {
+    /**
+     * Deleted, not removed: the two-year ban under No tolerance is for breaking
+     * the rules, and does not keep a child's email address.
+     */
+    it('says the minimum age, that a younger courier needs a parent or guardian to agree, and that an account below the age is deleted', async () => {
       await renderScreen(<RulesScreen />);
 
       expect(screen.getByRole('header', { name: 'Who can join' })).toBeOnTheScreen();
@@ -322,7 +341,8 @@ describe('RulesScreen', () => {
         screen.getByText(
           `You must be at least ${MINIMUM_AGE} to use Night Courier. If you are under ` +
             `${PARENTAL_PERMISSION_UNDER}, you need the permission of a parent or guardian, who ` +
-            'can read these rules and the privacy policy with you.',
+            'can read these rules and the privacy policy with you. An account found to belong ' +
+            `to someone younger than ${MINIMUM_AGE} is deleted.`,
         ),
       ).toBeOnTheScreen();
     });

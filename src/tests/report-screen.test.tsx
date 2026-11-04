@@ -102,11 +102,11 @@ const BLOCK_HINT =
 
 const ABOUT_A_LETTER =
   'Your report goes to the person who runs Night Courier, with a copy of the letter. @anna is ' +
-  'never told who reported them - but this letter had only one reader, so if it is acted on, ' +
-  'they may guess.';
+  'not told who reported them, unless the law requires it - but this letter had only one ' +
+  'reader, so if it is acted on, they may guess.';
 const ABOUT_A_COURIER =
   "Your report goes to the person who runs Night Courier, with @anna's names as they are now. " +
-  '@anna is never told who reported them.';
+  '@anna is not told who reported them, unless the law requires it.';
 const KEEP_A_COPY =
   'If their account is removed, every letter between you goes with it. Keep a copy of anything ' +
   'you may need first - a screenshot will do.';
@@ -300,9 +300,10 @@ async function inOneFrame(taps: () => Promise<void>) {
 describe('ReportScreen', () => {
   describe('reporting a letter', () => {
     /**
-     * Whoever is reported is never told who reported them - but a letter has
-     * one reader, so a report that is acted on points to them all the same.
-     * The screen says so, rather than promise more than holds.
+     * Whoever is reported is not told who reported them, unless the law
+     * requires it - but a letter has one reader, so a report that is acted on
+     * points to them all the same. The screen says so, rather than promise
+     * more than holds.
      */
     it('says it is a letter from the sender, that a copy of it goes with the report, and that the sender may guess who reported it', async () => {
       await reportingTheLetter();
@@ -315,15 +316,16 @@ describe('ReportScreen', () => {
     /**
      * The copy outlives the letter, and both accounts. The courier is told for
      * how long, in the number the database deletes by: parity.db.test.mjs holds
-     * the two together.
+     * the two together. The database deletes every report then, with no
+     * exception; only a copy given to the police outlives it, and is theirs.
      */
-    it('says how long the report and the copy of the letter are kept, and what keeps one longer', async () => {
+    it('says how long the report and the copy of the letter are kept, and that the police keep their own copy', async () => {
       await reportingTheLetter();
 
       expect(
         screen.getByText(
           `Reports, and the copy of the letter, are deleted ${REPORT_RETENTION_DAYS} days after ` +
-            'they were made, unless one has been passed to the police.',
+            'they were made. If one is passed to the police, the police keep their own copy.',
         ),
       ).toBeOnTheScreen();
     });
@@ -352,7 +354,7 @@ describe('ReportScreen', () => {
      * report keeps them as they were when it was made, so that it can still
      * be judged once they have changed - and the screen says which go with it.
      */
-    it('names the courier, says their names go with the report as they are now, and that they are never told who reported them', async () => {
+    it('names the courier, says their names go with the report as they are now, and that they are not told who reported them unless the law requires it', async () => {
       await reportingTheCourier();
 
       expect(screen.getByText('Report')).toBeOnTheScreen();
@@ -361,13 +363,13 @@ describe('ReportScreen', () => {
       expect(screen.queryByText(/A letter from|copy of the letter/)).toBeNull();
     });
 
-    it('says how long the report is kept, and what keeps one longer', async () => {
+    it('says how long the report is kept, and that the police keep their own copy', async () => {
       await reportingTheCourier();
 
       expect(
         screen.getByText(
-          `Reports are deleted ${REPORT_RETENTION_DAYS} days after they were made, unless one ` +
-            'has been passed to the police.',
+          `Reports are deleted ${REPORT_RETENTION_DAYS} days after they were made. If one is ` +
+            'passed to the police, the police keep their own copy.',
         ),
       ).toBeOnTheScreen();
     });

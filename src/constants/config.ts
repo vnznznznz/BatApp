@@ -92,6 +92,13 @@ export const REPORTS_PER_DAY = 20;
 export const REPORT_RETENTION_DAYS = 180;
 
 /**
+ * How long an account removed for breaking the rules stays banned, counted from
+ * the removal, so that the same email address cannot simply sign up again. The
+ * database's private.ban_period(); the parity test checks the two agree.
+ */
+export const BAN_PERIOD_YEARS = 2;
+
+/**
  * Who may use Night Courier: no one younger than MINIMUM_AGE, and anyone younger
  * than PARENTAL_PERMISSION_UNDER only with a parent's or guardian's permission -
  * the operator's decision, matching the age at which German law lets someone

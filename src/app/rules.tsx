@@ -5,7 +5,12 @@ import { StyleSheet, View } from 'react-native';
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
-import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER, REPORT_RETENTION_DAYS } from '@/constants/config';
+import {
+  BAN_PERIOD_YEARS,
+  MINIMUM_AGE,
+  PARENTAL_PERMISSION_UNDER,
+  REPORT_RETENTION_DAYS,
+} from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { CONTACT_URL, openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
@@ -52,7 +57,8 @@ export default function RulesScreen() {
         <Text variant="body" tone="secondary" style={styles.line}>
           You must be at least {MINIMUM_AGE} to use Night Courier. If you are under{' '}
           {PARENTAL_PERMISSION_UNDER}, you need the permission of a parent or guardian, who can read
-          these rules and the privacy policy with you.
+          these rules and the privacy policy with you. An account found to belong to someone younger
+          than {MINIMUM_AGE} is deleted.
         </Text>
       </Section>
 
@@ -71,7 +77,10 @@ export default function RulesScreen() {
         <Text variant="body" tone="secondary" style={styles.line}>
           There is no tolerance for objectionable content or abusive behaviour. An account that
           breaks these rules may be removed, along with every letter it sent or received - at once,
-          if it is serious.
+          if it is serious. After a threat, it is suspended at once and removed a week later, so
+          that whoever reported it can keep copies of their letters first. A removed account stays
+          banned for {BAN_PERIOD_YEARS} years from the removal, so that the same email address
+          cannot simply sign up again.
         </Text>
       </Section>
 
@@ -79,7 +88,7 @@ export default function RulesScreen() {
         <Text variant="body" tone="secondary" style={styles.line}>
           Report the letter - open it, and choose Report - or report the courier from their page in
           Friends, or from your blocked couriers. Reports go to the person who runs Night Courier,
-          who reads every one and acts on what breaks the rules. The person you report is never told
+          who reads every one and acts on what breaks the rules. The person you report is not told
           who reported them, unless the law requires it - but a letter has only one reader, so if
           one is acted on, its sender may guess.
         </Text>
@@ -91,9 +100,9 @@ export default function RulesScreen() {
         </Text>
         <Text variant="caption" tone="muted" style={styles.line}>
           A report, and the copy it keeps of what was reported, is deleted {REPORT_RETENTION_DAYS}{' '}
-          days after it was made - unless it has been passed to the police. If an account is
-          removed, every letter between it and anyone else goes with it, so keep a copy of anything
-          you may need: a screenshot will do.
+          days after it was made. If it is passed to the police before then, the police keep their
+          own copy, under their own rules. If an account is removed, every letter between it and
+          anyone else goes with it, so keep a copy of anything you may need: a screenshot will do.
         </Text>
       </Section>
 
