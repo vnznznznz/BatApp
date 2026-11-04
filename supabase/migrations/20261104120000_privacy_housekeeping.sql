@@ -72,37 +72,53 @@ revoke all on function private.idle_session_lifetime() from public, anon, authen
 /* The daily tidy-up                                                           */
 /* -------------------------------------------------------------------------- */
 
--- Each step stands alone. Supabase's own tables - the audit log, sessions,
--- identities, pg_cron's log - belong to the platform, and where a step cannot
--- reach one - plain Postgres in the tests,
--- or a platform that withholds the privilege - it is skipped rather than
--- stopping the others.
-create or replace function private.tidy_up()
-returns void
+-- Each step on one of Supabase's own tables - the audit log, sessions,
+-- identities, sign-ins, pg_cron's log - stands alone: where it cannot reach the
+-- table (a platform that withholds the privilege, or plain Postgres in the
+-- tests) it is skipped, and the others carry on. What was skipped is returned,
+-- so that running this by hand shows at once whether it can do everything the
+-- privacy policy says it does: an empty list means it can (docs/GO-LIVE.md,
+-- "Setting up the hosted project"). Any other error is a fault, and fails the
+-- whole run.
+--
+-- Returning a list is new: drop the first version, which returned nothing.
+drop function if exists private.tidy_up();
+
+create function private.tidy_up()
+returns text[]
 language plpgsql
 set search_path = ''
 as $$
+declare
+  skipped text[] := '{}';
 begin
   begin
     delete from auth.audit_log_entries a
     where a.created_at < now() - private.sign_in_record_retention();
   exception
-    when undefined_table or insufficient_privilege then null;
+    when undefined_table or invalid_schema_name or insufficient_privilege then
+      skipped := skipped || ('sign-in log: ' || sqlerrm);
   end;
 
   -- The profile is the record of who someone is; handle_new_user has read
   -- these by the time this runs. GoTrue keeps a second copy in the email
   -- identity, which travels nowhere but is kept all the same.
-  update auth.users u
-  set raw_user_meta_data = u.raw_user_meta_data - 'username' - 'display_name'
-  where u.raw_user_meta_data ?| array['username', 'display_name'];
+  begin
+    update auth.users u
+    set raw_user_meta_data = u.raw_user_meta_data - 'username' - 'display_name'
+    where u.raw_user_meta_data ?| array['username', 'display_name'];
+  exception
+    when undefined_table or invalid_schema_name or insufficient_privilege then
+      skipped := skipped || ('sign-up names: ' || sqlerrm);
+  end;
 
   begin
     update auth.identities i
     set identity_data = i.identity_data - 'username' - 'display_name'
     where i.identity_data ?| array['username', 'display_name'];
   exception
-    when undefined_table or insufficient_privilege then null;
+    when undefined_table or invalid_schema_name or insufficient_privilege then
+      skipped := skipped || ('sign-up names in identities: ' || sqlerrm);
   end;
 
   -- GoTrue stamps updated_at each time a session is renewed, so it is when the
@@ -112,15 +128,21 @@ begin
     delete from auth.sessions s
     where coalesce(s.updated_at, s.created_at) < now() - private.idle_session_lifetime();
   exception
-    when undefined_table or insufficient_privilege then null;
+    when undefined_table or invalid_schema_name or insufficient_privilege then
+      skipped := skipped || ('idle sessions: ' || sqlerrm);
   end;
 
   -- A removed account is a sign-in without a profile, kept banned. Once the
   -- ban has run out, it goes - and with it everything still hanging off it.
-  delete from auth.users u
-  where u.banned_until is not null
-    and u.banned_until < now()
-    and not exists (select 1 from public.profiles p where p.id = u.id);
+  begin
+    delete from auth.users u
+    where u.banned_until is not null
+      and u.banned_until < now()
+      and not exists (select 1 from public.profiles p where p.id = u.id);
+  exception
+    when undefined_table or invalid_schema_name or insufficient_privilege then
+      skipped := skipped || ('expired bans: ' || sqlerrm);
+  end;
 
   -- The old city only matters while a move settles (see the flight migration).
   update public.profiles p
@@ -132,8 +154,11 @@ begin
     delete from cron.job_run_details d
     where d.end_time < now() - interval '7 days';
   exception
-    when undefined_table or invalid_schema_name or insufficient_privilege then null;
+    when undefined_table or invalid_schema_name or insufficient_privilege then
+      skipped := skipped || ('pg_cron run log: ' || sqlerrm);
   end;
+
+  return skipped;
 end;
 $$;
 

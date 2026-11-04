@@ -251,18 +251,17 @@ environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and netw
 4. **Check it:** `select jobname, schedule from cron.job` shows `deliver-due-messages`,
    `forget-old-reports` and `tidy-up`; `select count(*) from public.cities` is 4,310; and
    `select time_multiplier from private.flight_settings` is 1. Then check that the tidy-up can do
-   what the privacy policy says it does - it skips, without an error, whatever it is not allowed to
-   touch:
+   everything the privacy policy says it does. Whatever it is not allowed to touch, it skips without
+   an error, and it returns what it skipped - so run it once by hand:
 
    ```sql
-   select has_table_privilege('auth.audit_log_entries', 'DELETE') as forgets_sign_ins,
-          has_table_privilege('auth.sessions', 'DELETE') as ends_idle_sessions,
-          has_table_privilege('auth.identities', 'UPDATE') as trims_identities,
-          has_table_privilege('auth.users', 'UPDATE, DELETE') as trims_and_deletes_sign_ins;
+   select private.tidy_up();
    ```
 
-   All four must be true. If one is not, the policy's sections on sessions, the sign-in log and
-   banned accounts are wrong until it is fixed: ask Supabase support, or change the policy.
+   It must return `{}`, an empty list. Anything else names the step and the reason, such as
+   `sign-in log: permission denied for table audit_log_entries`; until that is fixed, the policy's
+   sections on sessions, the sign-in log and banned accounts are wrong: ask Supabase support, or
+   change the policy. (Running it deletes nothing that the daily job would not.)
 
 5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
    `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret

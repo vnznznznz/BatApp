@@ -796,8 +796,13 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
 - **pg_cron's own log** is kept a week.
 
 One daily job, `private.tidy_up()`, does all of it at 04:43. Each step that touches a table
-Supabase owns is skipped, not fatal, where that table is out of reach, so one missing privilege
-cannot stop the rest; deleting an account cannot fail for it either. Verified against the local
+Supabase owns stands alone: where the platform withholds the privilege, that step is skipped and
+the others still run, so one missing grant cannot stop the rest, and deleting an account cannot
+fail for it either. Skipping silently would leave the privacy policy wrong without anyone knowing,
+so the job returns what it skipped, with the reason; the hosted setup runs it once by hand and
+expects `{}`. (A first version left the steps on `auth.users` unshielded, so one missing grant
+there rolled the whole run back - found in review, and tested now with a role that lacks it.) Any
+other error is a fault and fails the run. Verified against the local
 stack's real GoTrue: the records it writes, the copy in the identity, a banned account refused at
 sign-in, at token refresh and at sign-up, its sign-in deleted with its identities once the ban has
 run out, and a session left unused for 91 days ended while one in use renews as before.

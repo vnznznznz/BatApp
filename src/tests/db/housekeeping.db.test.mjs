@@ -29,6 +29,10 @@ beforeEach(async () => {
 
 const tidyUp = () => db.query(`select private.tidy_up()`);
 
+/** Runs the tidy-up and returns the steps it reports it could not do. */
+const skippedSteps = async () =>
+  (await db.query(`select private.tidy_up() as skipped`)).rows[0].skipped;
+
 /** An audit entry the way GoTrue writes one: the user only inside the payload. */
 const audit = (actorId, { daysAgo = 0, action = 'login' } = {}) =>
   db.query(
@@ -200,17 +204,60 @@ describe('the daily tidy-up', () => {
     assert.equal(await flightCity(moving), 'Berlin');
   });
 
-  it('carries on with the rest where the audit log and pg_cron are out of reach', async () => {
+  it('reports what it could not do: here only pg_cron, which the tests do not have', async () => {
+    const skipped = await skippedSteps();
+    assert.equal(skipped.length, 1, skipped.join('\n'));
+    assert.match(skipped[0], /^pg_cron run log: /);
+  });
+
+  it('carries on with the rest where the audit log is out of reach, and says so', async () => {
     const anna = await createCourier(db, { name: 'anna' });
 
     await withoutAuditTable(async () => {
-      await tidyUp();
+      const skipped = await skippedSteps();
+      assert.ok(
+        skipped.some((step) => step.startsWith('sign-in log: ')),
+        skipped.join('\n'),
+      );
       const { rows } = await db.query(
         `select raw_user_meta_data as meta from auth.users where id = $1`,
         [anna],
       );
       assert.deepEqual(rows[0].meta, {});
     });
+  });
+
+  it('carries on where it may not touch the sign-ins themselves, and says so', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    await audit(anna, { daysAgo: 31 });
+    await db.query(`update auth.users set banned_until = now() - interval '1 day' where id = $1`, [
+      anna,
+    ]);
+    await db.query(`delete from public.profiles where id = $1`, [anna]);
+
+    // A role that may do everything the job needs except touch auth.users.
+    await db.exec(`
+      begin;
+      create role tidier nologin;
+      grant usage on schema private, auth, public to tidier;
+      grant execute on all functions in schema private to tidier;
+      grant select, delete on auth.audit_log_entries, auth.sessions to tidier;
+      grant select, update on auth.identities, public.profiles to tidier;
+      set role tidier;
+    `);
+    try {
+      const { rows } = await db.query(`select private.tidy_up() as skipped`);
+      const skipped = rows[0].skipped;
+      await db.exec(`reset role;`);
+
+      const names = skipped.map((step) => step.slice(0, step.indexOf(':')));
+      assert.deepEqual(names.sort(), ['expired bans', 'pg_cron run log', 'sign-up names'].sort());
+      assert.equal(await auditCount(anna), 0, 'the sign-in log was still tidied');
+      assert.equal(await signInExists(anna), true, 'the banned sign-in could not be deleted');
+    } finally {
+      // Also undoes the role switch, and works even if the run failed part-way.
+      await db.exec(`rollback;`);
+    }
   });
 
   it('cannot be run through the API', async () => {
