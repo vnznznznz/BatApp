@@ -8,14 +8,14 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    Supabase-Tarif, die gewählten Dienste oder eine Entscheidung des Betreibers geprüft werden muss.
 3. Die englische Fassung (privacy-policy.en.md) bei jeder Änderung mitziehen.
 4. Diese Fassung beschreibt den Code einschließlich der Migration
-   supabase/migrations/20261104120000_privacy_housekeeping.sql (Commit 67562f9: täglicher
-   Aufräum-Auftrag "tidy-up", Sitzungen nach 90 Tagen ohne Benutzung, Anmeldeprotokoll 30 Tage und
-   Löschen mit dem Konto, Namen von der
-   Registrierung, alte Stadt, private.remove_account mit zwei Jahren Sperre). Ändert sich daran
-   etwas, die Abschnitte 3.1, 3.2, 3.8, 3.9, 5, 9 und 11 und "Kurz gesagt" anpassen. Auf dem
-   gehosteten Projekt prüfen, dass "tidy-up" in cron.job steht und auth.audit_log_entries wirklich
-   löschen darf: Fehlt das Recht, überspringt die Migration diesen Schritt ohne Fehler, und die
-   Angaben zum Anmeldeprotokoll stimmen nicht.
+   supabase/migrations/20261104120000_privacy_housekeeping.sql: täglicher Aufräum-Auftrag
+   "tidy-up", Sitzungen nach 90 Tagen ohne Benutzung, Anmeldeprotokoll 30 Tage und Löschen mit dem
+   Konto, Namen von der Registrierung, alte Stadt, private.remove_account mit zwei Jahren Sperre.
+   Ändert sich daran etwas, die Abschnitte 3.1, 3.2, 3.8, 3.9, 5, 9 und 11 und "Kurz gesagt"
+   anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" {} ergeben
+   (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt die Liste jeden
+   Schritt, den der Auftrag mangels Recht überspringt, und was diese Erklärung dazu sagt, stimmt
+   nicht.
 5. Abschnitt 5 (iPhone) beschreibt den Schlüsselbund mit WHEN_UNLOCKED_THIS_DEVICE_ONLY
    (KEYCHAIN_OPTIONS in src/lib/secure-storage.ts, Commit 3a343b0). Wird das zurückgenommen, den
    alten Satz wieder einsetzen: "Einträge im Schlüsselbund können in verschlüsselten Backups
@@ -259,16 +259,18 @@ und entferne es eine Woche später, damit die Person, die sie gemeldet hat, vorh
 
 Damit sich dieselbe Person nicht gleich mit derselben E-Mail-Adresse neu anmeldet, sperre ich dabei
 die Anmeldung des Kontos. Dann bleibt der Kontodatensatz bei Supabase stehen: die E-Mail-Adresse,
-der Hashwert des Passworts und die Zeitpunkte aus Abschnitt 3.1, dazu die Sitzungen (Abschnitt
-3.9). Das alles bleibt **zwei Jahre** gespeichert; danach löscht ein täglicher Auftrag es. Die
-Einträge des Kontos im Anmeldeprotokoll werden nach 30 Tagen gelöscht (Abschnitt 3.9).
+der Hashwert des Passworts und die Zeitpunkte aus Abschnitt 3.1. Er bleibt **zwei Jahre**
+gespeichert; danach löscht ein täglicher Auftrag ihn. Die Sitzungen des Kontos enden schon nach 90
+Tagen, weil ein gesperrtes Konto sie nicht mehr benutzen kann, und seine Einträge im
+Anmeldeprotokoll werden nach 30 Tagen gelöscht (Abschnitt 3.9).
 
 <!-- PRÜFEN: Dieser Abschnitt folgt private.remove_account und dem Runbook (docs/GO-LIVE.md,
 "Handling a report"): Sperre für private.ban_period() = zwei Jahre, danach löscht "tidy-up" die
 Anmeldung samt Identitäten; bei einer Drohung erst sperren, eine Woche später entfernen. "Zwei Jahre"
-stimmt nur, solange niemand von Hand länger sperrt. Dass der Kontodatensatz mit Passwort-Hash und
-Sitzungen stehen bleibt, ist gewollt: Ohne ihn ließe sich die Sperre umgehen, und die Sitzungen sind
-bei einer Drohung, was die Polizei bekommen kann (Abschnitt 3.7). -->
+stimmt nur, solange niemand von Hand länger sperrt. Dass der Kontodatensatz mit Passwort-Hash
+stehen bleibt, ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 90
+Tagen ohne Benutzung wie alle anderen (tidy_up); was die Polizei davon bekommen soll, exportiert das
+Runbook in der Woche zwischen Sperre und Entfernen. -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – das berechtigte Interesse, alle anderen vor
 jemandem zu schützen, der wegen Regelverstößen entfernt wurde.
@@ -313,9 +315,10 @@ oder Betriebssystems (den sogenannten User-Agent).
   dem gehosteten Projekt an, kann der Satz lauten: "Ersetzte Token löscht Supabase nach 24 Stunden."
 - Anmeldeprotokoll: Die 30 Tage und das Löschen mit dem Konto kommen aus der Migration
   20261104120000_privacy_housekeeping.sql (tidy_up, delete_own_account), am 4. November 2026 gegen
-  das echte GoTrue des lokalen Stacks geprüft. Beide überspringen den Schritt ohne Fehler, wenn die
-  Rolle postgres auf dem gehosteten Projekt kein DELETE-Recht auf auth.audit_log_entries hat: Die
-  Prüfung dafür steht in docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4 (lokal: vorhanden).
+  das echte GoTrue des lokalen Stacks geprüft. Fehlt der Rolle postgres auf dem gehosteten Projekt
+  das Recht, überspringen beide den Schritt ohne Fehler; tidy_up nennt ihn dann in seiner Rückgabe.
+  Die Prüfung: "select private.tidy_up();" muss {} ergeben (docs/GO-LIVE.md, "Setting up the hosted
+  project", Schritt 4; lokal: {}).
   delete_own_account erkennt die Einträge an payload->>'actor_id'; Einträge ohne actor_id, die
   trotzdem die E-Mail-Adresse enthalten, gehen erst nach 30 Tagen. ip_address ist lokal leer, darum
   "gegebenenfalls IP-Adresse".
@@ -487,7 +490,8 @@ Ich verkaufe keine Daten und gebe sie nicht für Werbung weiter. Empfänger sind
 - **Andere Nutzer** sehen, was in Abschnitt 4 steht.
 
 Keine Daten von dir erhalten: Expo, ein Dienst, mit dem ich die App baue, und GeoNames, von dem die
-Liste der Städte stammt – sie ist fest in die App eingebaut.
+Liste der Städte stammt – sie liegt in der Datenbank von Night Courier, und GeoNames wird nie
+gefragt.
 
 <!-- PRÜFEN:
 - Supabase: Liste der Unterauftragsverarbeiter aufrufen (vermutlich https://supabase.com/legal/subprocessors)

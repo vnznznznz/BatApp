@@ -8,13 +8,13 @@ Notes for the operator - remove before publishing, like every comment in this fi
    services chosen, or an operator decision before publishing.
 3. This is a translation of privacy-policy.de.md, which is binding. Change both together.
 4. This version describes the code including the migration
-   supabase/migrations/20261104120000_privacy_housekeeping.sql (commit 67562f9: the daily "tidy-up"
-   job, sessions ended after 90 days unused, the sign-in log kept 30 days and deleted with the
-   account, the names from sign-up, the old
-   city, private.remove_account with a two-year ban). If that changes, update sections 3.1, 3.2,
-   3.8, 3.9, 5, 9 and 11 and "In short". On the hosted project, check that "tidy-up" is in cron.job
-   and is really allowed to delete from auth.audit_log_entries: without the privilege the migration
-   skips that step without an error, and what the policy says about the sign-in log is wrong.
+   supabase/migrations/20261104120000_privacy_housekeeping.sql: the daily "tidy-up" job, sessions
+   ended after 90 days unused, the sign-in log kept 30 days and deleted with the account, the names
+   from sign-up, the old city, private.remove_account with a two-year ban. If that changes, update
+   sections 3.1, 3.2, 3.8, 3.9, 5, 9 and 11 and "In short". On the hosted project,
+   "select private.tidy_up();" must return {} (docs/GO-LIVE.md, "Setting up the hosted project",
+   step 4). Otherwise the list names every step the job skips for want of a privilege, and what
+   this policy says about it is wrong.
 5. Section 5 (iPhone) describes the keychain with WHEN_UNLOCKED_THIS_DEVICE_ONLY (KEYCHAIN_OPTIONS
    in src/lib/secure-storage.ts, commit 3a343b0). If that is reverted, put the old sentence back:
    "Keychain entries can be included in encrypted backups and moved to a new iPhone."
@@ -237,16 +237,17 @@ person who reported it can keep copies first (section 3.7).
 
 So that the same person cannot simply sign up again with the same email address, I ban the
 account's sign-in when I do this. The account record then stays at Supabase: the email address, the
-password hash and the times from section 3.1, plus the sessions (section 3.9). All of that is kept
-for **two years**; then a daily job deletes it. The account's entries in the sign-in log are
-deleted after 30 days (section 3.9).
+password hash and the times from section 3.1. It is kept for **two years**; then a daily job
+deletes it. The account's sessions end after 90 days already, because a banned account can no
+longer use them, and its entries in the sign-in log are deleted after 30 days (section 3.9).
 
 <!-- TO CHECK: this section follows private.remove_account and the runbook (docs/GO-LIVE.md,
 "Handling a report"): a ban for private.ban_period() = two years, after which "tidy-up" deletes the
 sign-in and its identities; for a threat, ban first and remove a week later. "Two years" holds only
-as long as nobody bans for longer by hand. Keeping the account record with its password hash and
-sessions is deliberate: without it the ban could be got round, and after a threat the sessions are
-what the police can have (section 3.7). -->
+as long as nobody bans for longer by hand. Keeping the account record with its password hash is
+deliberate: without it the ban could be got round. The sessions end after 90 days unused, like any
+others (tidy_up); what the police are to have of them, the runbook exports in the week between the
+ban and the removal. -->
 
 **Legal basis:** Art. 6(1)(f) GDPR – the legitimate interest in protecting everyone else from
 someone who was removed for breaking the rules.
@@ -288,9 +289,10 @@ system (the so-called user agent).
   the hosted project, the sentence can read: "Supabase deletes replaced tokens after 24 hours."
 - Sign-in log: the 30 days and the deletion with the account come from the migration
   20261104120000_privacy_housekeeping.sql (tidy_up, delete_own_account), checked against the local
-  stack's real GoTrue on 4 November 2026. Both skip the step without an error if the postgres role
-  has no DELETE privilege on auth.audit_log_entries on the hosted project: the check for that is in
-  docs/GO-LIVE.md, "Setting up the hosted project", step 4 (locally: granted). delete_own_account finds the entries
+  stack's real GoTrue on 4 November 2026. If the postgres role lacks the privilege on the hosted
+  project, both skip the step without an error; tidy_up then names it in what it returns. The
+  check: "select private.tidy_up();" must return {} (docs/GO-LIVE.md, "Setting up the hosted
+  project", step 4; locally: {}). delete_own_account finds the entries
   by payload->>'actor_id'; entries without an actor_id that still hold the email address go only
   after 30 days. ip_address is empty locally, hence "where recorded".
 - Server logs: look up the retention of the chosen Supabase plan and write it in (e.g. "after one
@@ -448,7 +450,7 @@ I do not sell data and do not pass it on for advertising. The only recipients ar
 - **Other users** see what section 4 describes.
 
 Receiving no data about you: Expo, a service I use to build the app, and GeoNames, where the list of
-cities comes from – it is built into the app.
+cities comes from – the list is in Night Courier's database, and GeoNames is never asked.
 
 <!-- TO CHECK:
 - Supabase: open the list of sub-processors (probably https://supabase.com/legal/subprocessors) and
