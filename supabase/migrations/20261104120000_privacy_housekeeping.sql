@@ -15,6 +15,9 @@
 --   * A removed account kept banned, so that the same email cannot simply sign
 --     up again, was banned for a hundred years and kept for ever. The operator's
 --     decision is two years.
+--   * A session - with the IP address and device it was opened from - lasts
+--     until its owner signs out, even on a phone lost years ago. Supabase can
+--     limit that only on its paid plans.
 --   * The city a courier moved away from stays on their profile after the move
 --     has settled, with the time of the move.
 --   * pg_cron's log of its own runs grows without end.
@@ -49,15 +52,29 @@ as $$
   select interval '2 years'
 $$;
 
+-- How long a session may go unused before it ends. The app renews its
+-- sign-in about hourly while it is open, so this is three months of not
+-- opening it; then its owner signs in again.
+create or replace function private.idle_session_lifetime()
+returns interval
+language sql
+immutable
+set search_path = ''
+as $$
+  select interval '90 days'
+$$;
+
 revoke all on function private.sign_in_record_retention() from public, anon, authenticated;
 revoke all on function private.ban_period() from public, anon, authenticated;
+revoke all on function private.idle_session_lifetime() from public, anon, authenticated;
 
 /* -------------------------------------------------------------------------- */
 /* The daily tidy-up                                                           */
 /* -------------------------------------------------------------------------- */
 
--- Each step stands alone. The audit log and pg_cron's tables belong to
--- Supabase, and where a step cannot reach one - plain Postgres in the tests,
+-- Each step stands alone. Supabase's own tables - the audit log, sessions,
+-- identities, pg_cron's log - belong to the platform, and where a step cannot
+-- reach one - plain Postgres in the tests,
 -- or a platform that withholds the privilege - it is skipped rather than
 -- stopping the others.
 create or replace function private.tidy_up()
@@ -84,6 +101,16 @@ begin
     update auth.identities i
     set identity_data = i.identity_data - 'username' - 'display_name'
     where i.identity_data ?| array['username', 'display_name'];
+  exception
+    when undefined_table or insufficient_privilege then null;
+  end;
+
+  -- GoTrue stamps updated_at each time a session is renewed, so it is when the
+  -- session was last used. Deleting a session takes its refresh tokens with
+  -- it; the app is then refused its next renewal and asks to sign in.
+  begin
+    delete from auth.sessions s
+    where coalesce(s.updated_at, s.created_at) < now() - private.idle_session_lifetime();
   exception
     when undefined_table or insufficient_privilege then null;
   end;

@@ -44,6 +44,16 @@ export const AUTH_STUB = `
     created_at timestamptz not null default now()
   );
 
+  -- A signed-in device. GoTrue renews updated_at with every token refresh.
+  create table auth.sessions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users (id) on delete cascade,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    ip inet,
+    user_agent text
+  );
+
   -- A sign-in method: GoTrue copies the sign-up details into identity_data.
   create table auth.identities (
     id uuid primary key default gen_random_uuid(),

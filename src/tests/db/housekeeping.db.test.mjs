@@ -77,6 +77,28 @@ describe('the daily tidy-up', () => {
     );
   });
 
+  it('ends sessions nobody has used for 90 days, and keeps the ones in use', async () => {
+    const anna = await createCourier(db);
+    const session = (createdDaysAgo, usedDaysAgo) =>
+      db.query(
+        `insert into auth.sessions (user_id, created_at, updated_at, ip, user_agent)
+         values ($1, now() - make_interval(days => $2), now() - make_interval(days => $3),
+                 '203.0.113.7', 'Night Courier')
+         returning id`,
+        [anna, createdDaysAgo, usedDaysAgo],
+      );
+    const forgotten = (await session(400, 91)).rows[0].id;
+    const oldButInUse = (await session(400, 1)).rows[0].id;
+    const recent = (await session(2, 2)).rows[0].id;
+
+    await tidyUp();
+
+    const { rows } = await db.query(`select id from auth.sessions where user_id = $1`, [anna]);
+    const left = rows.map((row) => row.id).sort();
+    assert.deepEqual(left, [oldButInUse, recent].sort());
+    assert.ok(!left.includes(forgotten));
+  });
+
   it('removes the sign-up form from the sign-in, and leaves the profile and anything else', async () => {
     const anna = await createCourier(db, { name: 'anna' });
     await db.query(

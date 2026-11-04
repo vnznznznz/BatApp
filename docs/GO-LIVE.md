@@ -256,12 +256,13 @@ environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and netw
 
    ```sql
    select has_table_privilege('auth.audit_log_entries', 'DELETE') as forgets_sign_ins,
+          has_table_privilege('auth.sessions', 'DELETE') as ends_idle_sessions,
           has_table_privilege('auth.identities', 'UPDATE') as trims_identities,
           has_table_privilege('auth.users', 'UPDATE, DELETE') as trims_and_deletes_sign_ins;
    ```
 
-   All three must be true. If one is not, the policy's sections on the sign-in log and banned
-   accounts are wrong until it is fixed: ask Supabase support, or change the policy.
+   All four must be true. If one is not, the policy's sections on sessions, the sign-in log and
+   banned accounts are wrong until it is fixed: ask Supabase support, or change the policy.
 
 5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
    `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret

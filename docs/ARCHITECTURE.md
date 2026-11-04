@@ -785,6 +785,12 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
   deletes everything it holds and bans its sign-in for exactly `private.ban_period()` - two years,
   the operator's decision - so that the same email cannot simply sign up again. The ban used to be
   a hundred years, set by hand, and kept for ever. When it runs out, the sign-in is deleted.
+- **Sessions.** A session, with the IP address and device it was opened from, lasted until its
+  owner signed out - on a phone lost years ago, for ever. Supabase limits that only on its paid
+  plans, so the tidy-up ends a session nobody has used for 90 days
+  (`private.idle_session_lifetime()`). GoTrue stamps `updated_at` at every renewal, about hourly
+  while the app is open, so that is when it was last used; deleting it takes its refresh tokens,
+  the app is refused its next renewal, and its owner signs in again.
 - **Moves.** The city a courier moved away from stays on their profile only while the move
   settles, then goes.
 - **pg_cron's own log** is kept a week.
@@ -793,8 +799,8 @@ One daily job, `private.tidy_up()`, does all of it at 04:43. Each step that touc
 Supabase owns is skipped, not fatal, where that table is out of reach, so one missing privilege
 cannot stop the rest; deleting an account cannot fail for it either. Verified against the local
 stack's real GoTrue: the records it writes, the copy in the identity, a banned account refused at
-sign-in, at token refresh and at sign-up, and its sign-in deleted with its identities once the
-ban has run out.
+sign-in, at token refresh and at sign-up, its sign-in deleted with its identities once the ban has
+run out, and a session left unused for 91 days ended while one in use renews as before.
 
 The iOS build also no longer asks for Face ID: expo-secure-store declares that permission by
 default, and the app never uses biometrics, so the store's privacy questions would have had to
@@ -807,7 +813,6 @@ What it cannot do from SQL, and the privacy policy therefore says plainly:
 - Letters are kept until one of the two people deletes their account; there is no per-letter
   deletion.
 - Supabase's own request logs and backups, which follow the plan's retention, not ours.
-- Sessions do not expire on their own; time-boxing them is a paid-plan setting.
 
 ## Deferred to later phases
 
