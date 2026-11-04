@@ -150,7 +150,10 @@ is no push and no email — so **look at least once a day**: Apple expects "time
 reports, and a reviewer may file one to see what happens. If a day can be missed (holidays,
 illness), set up an alert: a Database Webhook on inserts into `public.reports` (Dashboard →
 Database → Webhooks) calling an Edge Function that emails you through the SMTP provider below. The
-destination address goes in the function's secrets, never in this repository.
+destination address goes in the function's secrets, never in this repository. Keep the email
+content-free - "a new report is waiting", nothing more: the webhook hands the function the whole
+row, letter text and note included, and an email with those would put them in a mailbox that keeps
+them as long as you do, beyond the 180 days the privacy policy promises.
 
 **Where:** Supabase dashboard → Table Editor → schema `public` → `reports`. The open ones, oldest
 first, in the SQL editor:
