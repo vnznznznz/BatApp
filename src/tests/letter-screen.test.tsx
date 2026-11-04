@@ -6,6 +6,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import LetterScreen from '@/app/(app)/letters/[id]';
 import { readMessage, type Correspondent, type Letter } from '@/features/messages/messages';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
+import { describeProgress, flightProgress } from '@/lib/flight';
 import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
@@ -306,6 +307,37 @@ describe('LetterScreen', () => {
      * the arrival time the server set when the letter left; the phone's clock
      * only moves it along.
      */
+    /**
+     * A letter in the air is drawn on its way: an arc between the two cities,
+     * with the bat as far along as the clock says - and, to a screen reader, the
+     * same in words.
+     */
+    it('draws a letter in the air on its way, as far along as the clock says', async () => {
+      const letter = sentLetter();
+      mockedReadMessage.mockResolvedValue(letter);
+      await renderScreen(<LetterScreen />);
+      await screen.findByText('Ben Okafor');
+
+      const progress = flightProgress(letter.sentAt, letter.deliverAt, NOW);
+      expect(
+        screen.getByRole('image', { name: describeProgress(progress, 'Berlin', 'Vienna') }),
+      ).toBeOnTheScreen();
+    });
+
+    it('draws no flight for a letter that has landed', async () => {
+      mockedReadMessage.mockResolvedValue(
+        sentLetter({
+          deliverAt: new Date(NOW - HOUR),
+          sentAt: new Date(NOW - 4 * HOUR),
+          delivered: true,
+        }),
+      );
+      await renderScreen(<LetterScreen />);
+      await screen.findByText('Ben Okafor');
+
+      expect(screen.queryByRole('image', { name: /of the way from|arriving in/ })).toBeNull();
+    });
+
     it('counts down to the arrival time the server set', async () => {
       mockedReadMessage.mockResolvedValue(sentLetter());
       await renderScreen(<LetterScreen />);

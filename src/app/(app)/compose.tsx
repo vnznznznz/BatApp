@@ -2,9 +2,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { BatMark } from '@/components/bat-mark';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
+import { FlightPath } from '@/components/flight-path';
+import { FlyingBat } from '@/components/flying-bat';
 import { ListRow } from '@/components/list-row';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
@@ -28,6 +29,7 @@ import {
 import { useProfile } from '@/features/profile/use-profile';
 import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
 import { announce } from '@/lib/announce';
+import { flightProgress } from '@/lib/flight';
 import {
   formatDistance,
   formatDuration,
@@ -64,6 +66,9 @@ export default function ComposeScreen() {
     dispatch: Dispatch;
     name: string;
     city: string | null;
+    /** Where it left from, and when, for drawing the flight. */
+    from: string | null;
+    sentAt: Date;
   } | null>(null);
   // The button disables itself while loading, but a second tap can land in the
   // same frame as the first. A letter costs a bat; this makes sure it is one.
@@ -107,6 +112,9 @@ export default function ComposeScreen() {
         dispatch,
         name: friendName(friendship.friend),
         city: friendship.friend.city?.name ?? null,
+        // While a move settles, letters still leave from the old city.
+        from: (profile?.move?.from ?? profile?.city)?.name ?? null,
+        sentAt: new Date(),
       });
       announce(
         `Your bat is on its way to ${friendName(friendship.friend)}. ` +
@@ -125,12 +133,12 @@ export default function ComposeScreen() {
   }
 
   if (dispatched) {
-    const { dispatch, name, city } = dispatched;
+    const { dispatch, name, city, from, sentAt } = dispatched;
     const remaining = dispatch.deliverAt.getTime() - now;
     const where = city ? ` in ${city}` : '';
     return (
       <Screen center scroll edges={['bottom']} style={styles.screen}>
-        <BatMark size={120} tint={Colors.batFlying} />
+        <FlyingBat size={120} tint={Colors.batFlying} />
         <Text variant="title" center style={styles.spaced}>
           Your bat is on its way
         </Text>
@@ -142,6 +150,15 @@ export default function ComposeScreen() {
         <Text variant="caption" tone="muted" center style={styles.distance}>
           {formatDistance(dispatch.distanceKm)} as the bat flies.
         </Text>
+        {from && city ? (
+          <View style={styles.path}>
+            <FlightPath
+              from={from}
+              to={city}
+              progress={flightProgress(sentAt, dispatch.deliverAt, now)}
+            />
+          </View>
+        ) : null}
         <View style={styles.actions}>
           <Button label="Back to the roost" onPress={() => router.dismissTo('/home')} />
         </View>
@@ -315,6 +332,7 @@ const styles = StyleSheet.create({
   form: { gap: Spacing.sm, marginTop: Spacing.lg },
   counter: { alignSelf: 'flex-end' },
   distance: { marginTop: Spacing.sm },
+  path: { alignSelf: 'stretch', marginTop: Spacing.lg },
   note: { lineHeight: 19 },
   actions: { alignSelf: 'stretch', gap: Spacing.sm, marginTop: Spacing.xl },
 });

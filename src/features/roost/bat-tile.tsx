@@ -1,9 +1,11 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BatMark } from '@/components/bat-mark';
+import { FlyingBat } from '@/components/flying-bat';
 import { Text } from '@/components/text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import type { Bat } from '@/features/roost/roost';
+import { flightProgress } from '@/lib/flight';
 import { formatDuration } from '@/lib/format';
 
 export type BatTileProps = {
@@ -24,6 +26,7 @@ export function BatTile({ bat, now, onPress }: BatTileProps) {
   const flying = bat.status === 'flying';
   const flight = bat.flight;
   const remaining = flight ? flight.deliverAt.getTime() - now : 0;
+  const progress = flight ? flightProgress(flight.sentAt, flight.deliverAt, now) : 0;
 
   const label = flying
     ? flight
@@ -45,12 +48,16 @@ export function BatTile({ bat, now, onPress }: BatTileProps) {
         pressed && styles.pressed,
       ]}
     >
-      <BatMark
-        size={52}
-        tint={flying ? Colors.batFlying : Colors.batAvailable}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
-      />
+      {flying ? (
+        <FlyingBat size={52} tint={Colors.batFlying} />
+      ) : (
+        <BatMark
+          size={52}
+          tint={Colors.batAvailable}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+      )}
       <Text variant="label" tone={flying ? 'flying' : 'available'} center>
         {flying ? 'In flight' : 'Home'}
       </Text>
@@ -63,6 +70,17 @@ export function BatTile({ bat, now, onPress }: BatTileProps) {
             <Text variant="mono" center numberOfLines={1} adjustsFontSizeToFit>
               {formatDuration(remaining)}
             </Text>
+            {/* How far it has come; the countdown above says the same in words. */}
+            <View
+              style={styles.track}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <View
+                testID="flight-progress"
+                style={[styles.fill, { width: `${progress * 100}%` }]}
+              />
+            </View>
           </>
         ) : (
           <Text variant="caption" tone="muted" center>
@@ -98,5 +116,19 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
     minHeight: 40,
+  },
+  track: {
+    alignSelf: 'stretch',
+    height: 3,
+    marginTop: Spacing.xs,
+    marginHorizontal: Spacing.sm,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: Colors.batFlying,
   },
 });

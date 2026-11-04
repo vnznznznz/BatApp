@@ -4,12 +4,14 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
+import { FlightPath } from '@/components/flight-path';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import { describeCity } from '@/features/cities/search';
 import { correspondentName, readMessage, type Letter } from '@/features/messages/messages';
 import { blockCourier } from '@/features/safety/safety';
+import { flightProgress } from '@/lib/flight';
 import { announce } from '@/lib/announce';
 import { confirmAction } from '@/lib/confirm';
 import { formatDistance, formatDuration, formatTimestamp } from '@/lib/format';
@@ -139,6 +141,18 @@ export default function LetterScreen() {
         </Text>
       </Card>
 
+      {/* Only the sender ever sees a letter in the air: the recipient learns of
+          it when it lands. */}
+      {!data.delivered ? (
+        <View style={styles.path}>
+          <FlightPath
+            from={data.origin.name}
+            to={data.destination.name}
+            progress={flightProgress(data.sentAt, data.deliverAt, now)}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.meta}>
         {describeJourney(data, now).map((line) => (
           <Text key={line} variant="caption" tone="secondary" style={styles.line}>
@@ -220,6 +234,7 @@ const styles = StyleSheet.create({
   screen: { paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   card: { marginTop: Spacing.lg },
   meta: { marginTop: Spacing.lg, gap: Spacing.xs },
+  path: { marginTop: Spacing.lg },
   line: { lineHeight: 19 },
   actions: { alignSelf: 'stretch', marginTop: Spacing.xl },
   safety: {

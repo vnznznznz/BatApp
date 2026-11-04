@@ -466,6 +466,18 @@ describe('ComposeScreen', () => {
       expect(screen.queryByLabelText('Your letter')).toBeNull();
     });
 
+    /** The bat takes off from the courier's city for the friend's, as the flight is drawn. */
+    it('draws the flight that has just begun, from home to the friend', async () => {
+      dispatchToAnna();
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(
+        await screen.findByRole('image', { name: 'Bat 0% of the way from Berlin to Munich' }),
+      ).toBeOnTheScreen();
+    });
+
     it('counts down to the landing', async () => {
       await openLetterTo('user-anna');
       await writeAndSend('See you at the lake.');
