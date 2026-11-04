@@ -282,3 +282,28 @@ the web build in Chromium against a local Supabase stack, end to end - report a 
 sender, go back without seeing it again, a blocked courier's request refused as if unknown and their
 renamed display name withheld, report from the blocked list, unblock, the house rules and the
 contact links - with no errors but the one refusal the test provokes on purpose.
+
+## The paperwork, and keeping less (done; the operator's part remains)
+
+Written on 4 November 2026, for a minimum age of 12 (under 16 with a parent's or guardian's
+permission), in [`docs/store/`](store/):
+
+- **The privacy policy**, in German (binding) and English, from an inventory of every piece of
+  personal data the service holds, read from the database rather than from these notes.
+- **App Store Connect**: listing texts, the App Privacy answers, the age-rating questionnaire,
+  export compliance, the review notes, and what TestFlight needs.
+- **Google Play Console**: listing, Data safety, the content rating, the target audience - which,
+  with 12-year-olds, brings in the Families Policy - and internal testing.
+- **The GDPR records** the operator keeps (Art. 30), with the processors and how to answer a request
+  for someone's data.
+
+None of them holds the operator's name, address or email: they use placeholders, filled in only
+on the hosted copy. Each says, in comments marked PRÜFEN or TO CHECK, what still needs a decision
+or a look at the hosted project.
+
+The inventory found data kept for no reason, or for ever, and that is fixed in the database: sign-in
+records (with email and IP address) kept 30 days and deleted with the account, the sign-up form's
+names removed from Supabase Auth once the profile exists, a removed account banned for two years
+and then deleted, a session unused for 90 days ended, the old city forgotten once a move has
+settled - one daily job - and the iOS session kept on the device only. Decisions under "Keeping less, for less long" in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
