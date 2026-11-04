@@ -191,9 +191,27 @@ been deleted, and its username is free: it may belong to someone else by now.
   says exactly this, so do not ban for longer by hand. (Authentication → Users → Delete user also
   works, but frees the email at once.)
 
-- **A threat** — ban first, as above, and write to the reporter before deleting anything: removing
-  the account takes every letter between them with it, and the report keeps only the one reported.
-  Give them time to keep copies.
+- **A threat** — stop the account at once, but delete nothing yet: removing it takes every letter
+  between the two of them with it, and the report keeps only the one reported.
+
+  ```sql
+  update auth.users set banned_until = now() + private.ban_period() where id = '<reported_id>';
+  ```
+
+  They can no longer sign in, and their app stops working within the hour, when its sign-in would
+  be renewed. Then write to the reporter, from the address on their account, that the account will
+  be removed in a week and why they may want copies (screenshots) of their letters first. If the
+  police are to have the report, export it now, together with the account's sign-in records - the
+  privacy policy says these may go with it:
+
+  ```sql
+  select created_at, payload ->> 'action' as action, ip_address
+  from auth.audit_log_entries where payload ->> 'actor_id' = '<reported_id>' order by created_at;
+  select created_at, refreshed_at, ip, user_agent from auth.sessions where user_id = '<reported_id>';
+  ```
+
+  When the week is up, `select private.remove_account('<reported_id>');` as above. Delete your own
+  exported copy once the police have theirs.
 
 Then record the outcome, so the report leaves the queue:
 
@@ -230,9 +248,21 @@ environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and netw
    Management API instead (`POST /v1/projects/<ref>/database/query`) and record each version in
    `supabase_migrations.schema_migrations`, so that a later `db push` skips them. The seed file is
    for the local stack only — never run it here.
-4. **Check it:** `select jobname, schedule from cron.job` shows `deliver-due-messages` and
-   `forget-old-reports`; `select count(*) from public.cities` is 4,310; and
-   `select time_multiplier from private.flight_settings` is 1.
+4. **Check it:** `select jobname, schedule from cron.job` shows `deliver-due-messages`,
+   `forget-old-reports` and `tidy-up`; `select count(*) from public.cities` is 4,310; and
+   `select time_multiplier from private.flight_settings` is 1. Then check that the tidy-up can do
+   what the privacy policy says it does - it skips, without an error, whatever it is not allowed to
+   touch:
+
+   ```sql
+   select has_table_privilege('auth.audit_log_entries', 'DELETE') as forgets_sign_ins,
+          has_table_privilege('auth.identities', 'UPDATE') as trims_identities,
+          has_table_privilege('auth.users', 'UPDATE, DELETE') as trims_and_deletes_sign_ins;
+   ```
+
+   All three must be true. If one is not, the policy's sections on the sign-in log and banned
+   accounts are wrong until it is fixed: ask Supabase support, or change the policy.
+
 5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
    `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
    key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git. Add
