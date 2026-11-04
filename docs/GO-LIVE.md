@@ -175,18 +175,18 @@ been deleted, and its username is free: it may belong to someone else by now.
 - **Nothing breaks the rules** — mark it resolved.
 - **Somewhere in between** — the reporter has usually blocked them already (the report screen does
   that by default). A warning has to go by email, from the address on their account, saying why.
-- **Serious, or repeated** — remove the account. Ban it first, so the same email cannot simply sign
-  up again, then delete what it holds:
+- **Serious, or repeated** — remove the account:
 
   ```sql
-  update auth.users set banned_until = now() + interval '100 years' where id = '<reported_id>';
-  delete from public.profiles where id = '<reported_id>';
+  select private.remove_account('<reported_id>');
   ```
 
-  Deleting the profile deletes their bats, friendships, blocks and every letter they sent or
-  received, on both sides; the reports about them stay, without their id. The banned sign-in
-  stays behind to stop a re-registration with the same address — the privacy policy has to say
-  so, and for how long. (Authentication → Users → Delete user also works, but frees the email.)
+  That deletes their profile, and with it their bats, friendships, blocks and every letter they
+  sent or received, on both sides; the reports about them stay, without their id. Their sign-in
+  stays behind, banned for two years (`private.ban_period()`), so that the same email cannot
+  simply sign up again, and the daily tidy-up deletes it when the ban runs out. The privacy policy
+  says exactly this, so do not ban for longer by hand. (Authentication → Users → Delete user also
+  works, but frees the email at once.)
 
 - **A threat** — ban first, as above, and write to the reporter before deleting anything: removing
   the account takes every letter between them with it, and the report keeps only the one reported.
@@ -423,8 +423,8 @@ transits it, so a content-free push keeps message text out of a US processor.
   letter having one reader); that it is deleted 180 days after it was made, unless passed to the
   police, who are therefore a possible recipient; and that it outlives account deletion, both ways —
   without the ids of the people involved, but with the reported username, display name and letter
-  text, and with the note the reporter wrote. If removed accounts are kept banned (see "Handling a
-  report"), it must say that too, and for how long.
+  text, and with the note the reporter wrote. Removed accounts are kept banned for two years and
+  then deleted (see "Handling a report"); it must say that too.
 - **The privacy policy must name Switzerland as the hosting location.** The Supabase project is
   in Zurich (`eu-central-2`), which is outside the EU. The transfer is lawful under the
   Commission's January 2024 adequacy decision for Switzerland, but Art. 13 requires telling users

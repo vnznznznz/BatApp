@@ -755,8 +755,9 @@ Review asks of apps with user content.
 - A block does not survive the blocked courier deleting their account and signing up again: the
   block goes with the old account, and the username is free again at once. Sign-up is open, so a
   new username was always possible anyway; what the operator can do is keep a removed account's
-  sign-in banned, so that the same email cannot return (GO-LIVE, "Handling a report"). Retiring
-  usernames for a while after deletion would close the rest, at the cost of more data kept.
+  sign-in banned for two years, so that the same email cannot return (GO-LIVE, "Handling a
+  report"). Retiring usernames for a while after deletion would close the rest, at the cost of more
+  data kept.
 
 ### A row's text may open it, beside its actions
 
@@ -764,6 +765,47 @@ Friends' rows have actions (Write, Remove, Accept, Decline), and a row with acti
 be pressable: VoiceOver treats a pressable row as a single element and cannot reach a button inside
 it. To make a courier's page reachable from their name, `ListRow` now makes only the text a button,
 beside the actions rather than around them, at any text size.
+
+## Keeping less, for less long
+
+Writing the privacy policy (`docs/store/`) meant listing every piece of personal data the service
+holds, read from the database rather than from these notes. That turned up data kept for no reason,
+or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sql` deals with it:
+
+- **Sign-in records.** GoTrue writes an entry to `auth.audit_log_entries` for every sign-up,
+  sign-in, sign-out and token refresh, with the email and IP address, and never removes one - not
+  even with the account, since the entries name the user only inside a JSON payload, with no
+  foreign key. Now they are kept 30 days (`private.sign_in_record_retention()`), long enough to
+  look into a break-in, and deleting an account takes its own at once.
+- **Sign-up details.** The username and display name typed at sign-up stay in
+  `auth.users.raw_user_meta_data`, and travel in every access token, long after the profile has
+  changed; GoTrue keeps another copy in the email identity. The profile is the record of who
+  someone is, so both copies are removed once the profile has been made.
+- **Removed accounts.** The operator removes an account with `private.remove_account`, which
+  deletes everything it holds and bans its sign-in for exactly `private.ban_period()` - two years,
+  the operator's decision - so that the same email cannot simply sign up again. The ban used to be
+  a hundred years, set by hand, and kept for ever. When it runs out, the sign-in is deleted.
+- **Moves.** The city a courier moved away from stays on their profile only while the move
+  settles, then goes.
+- **pg_cron's own log** is kept a week.
+
+One daily job, `private.tidy_up()`, does all of it at 04:43. Each step that touches a table
+Supabase owns is skipped, not fatal, where that table is out of reach, so one missing privilege
+cannot stop the rest; deleting an account cannot fail for it either. Verified against the local
+stack's real GoTrue: the records it writes, the copy in the identity, a banned account refused at
+sign-in, at token refresh and at sign-up, and its sign-in deleted with its identities once the
+ban has run out.
+
+The iOS build also no longer asks for Face ID: expo-secure-store declares that permission by
+default, and the app never uses biometrics, so the store's privacy questions would have had to
+explain an access it never makes.
+
+What it cannot do from SQL, and the privacy policy therefore says plainly:
+
+- Letters are kept until one of the two people deletes their account; there is no per-letter
+  deletion.
+- Supabase's own request logs and backups, which follow the plan's retention, not ours.
+- Sessions do not expire on their own; time-boxing them is a paid-plan setting.
 
 ## Deferred to later phases
 

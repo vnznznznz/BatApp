@@ -40,7 +40,26 @@ export const AUTH_STUB = `
     id uuid primary key default gen_random_uuid(),
     email text unique,
     raw_user_meta_data jsonb not null default '{}'::jsonb,
+    banned_until timestamptz,
     created_at timestamptz not null default now()
+  );
+
+  -- A sign-in method: GoTrue copies the sign-up details into identity_data.
+  create table auth.identities (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users (id) on delete cascade,
+    provider text not null default 'email',
+    identity_data jsonb not null default '{}'::jsonb
+  );
+
+  -- GoTrue's log of sign-ins and the like: no foreign key to the user, who is
+  -- named only inside the payload.
+  create table auth.audit_log_entries (
+    instance_id uuid,
+    id uuid primary key default gen_random_uuid(),
+    payload json,
+    created_at timestamptz default now(),
+    ip_address varchar(64) not null default ''
   );
 
   -- Supabase resolves the current user from the request's JWT claims. Mirroring
