@@ -12,6 +12,8 @@ export type FlightPathProps = {
   to: string;
   /** 0 to 1, from `flightProgress`. */
   progress: number;
+  /** False while the screen is not in front: the bat holds still. */
+  active?: boolean;
 };
 
 /** Dots along the arc: enough to read as a path at any phone width. */
@@ -31,7 +33,7 @@ const GROUND = HEIGHT - 18;
  * reader it is one image, described in words - how far along, from where to
  * where.
  */
-export function FlightPath({ from, to, progress }: FlightPathProps) {
+export function FlightPath({ from, to, progress, active = true }: FlightPathProps) {
   const [width, setWidth] = useState(0);
   const at = Math.min(1, Math.max(0, progress));
 
@@ -69,7 +71,7 @@ export function FlightPath({ from, to, progress }: FlightPathProps) {
               testID="flight-path-bat"
               style={[styles.bat, { left: bat.x - BAT / 2, top: bat.y - BAT / 2 }]}
             >
-              <FlyingBat size={BAT} tint={Colors.batFlying} flying={at < 1} />
+              <FlyingBat size={BAT} tint={Colors.batFlying} flying={active && at < 1} />
             </View>
           </>
         ) : null}

@@ -20,6 +20,7 @@ import { formatDuration } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
+import { useScreenFocused } from '@/lib/use-screen-focused';
 
 /**
  * The roost: the courier's three bats, and the way to everything else.
@@ -39,6 +40,8 @@ export default function HomeScreen() {
   const roost = useRemote(fetchRoost);
   const badges = useRemote(fetchBadges);
   const now = useNow(1000);
+  // The roost stays mounted under every other screen; its bats rest meanwhile.
+  const focused = useScreenFocused();
 
   const { reload: reloadRoost, refresh: refreshRoost } = roost;
   const { reload: reloadBadges } = badges;
@@ -146,6 +149,7 @@ export default function HomeScreen() {
                 key={bat.id}
                 bat={bat}
                 now={now}
+                active={focused}
                 onPress={
                   bat.flight
                     ? () =>

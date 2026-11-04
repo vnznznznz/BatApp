@@ -41,6 +41,7 @@ import { randomUuid } from '@/lib/uuid';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
+import { useScreenFocused } from '@/lib/use-screen-focused';
 
 /**
  * Writing a letter: choosing a friend, writing, and sending it by bat.
@@ -56,6 +57,7 @@ export default function ComposeScreen() {
   const friendships = useRemote(fetchFriendships);
   const roost = useRemote(fetchRoost);
   const now = useNow(1000);
+  const focused = useScreenFocused();
 
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +124,8 @@ export default function ComposeScreen() {
       );
       setText('');
       attempt.current = null;
+      // The bat that left, with the server's own time of leaving.
+      void roost.reload();
     } catch (caught) {
       setError(messageOf(caught));
       // A refusal for want of a bat means the roost on screen was stale.
@@ -133,12 +137,19 @@ export default function ComposeScreen() {
   }
 
   if (dispatched) {
-    const { dispatch, name, city, from, sentAt } = dispatched;
+    const { dispatch, name, city, from } = dispatched;
+    // When the letter left by the server's clock, from the roost fetched again
+    // after sending; until then, when the answer came. A retried send is
+    // answered with a letter that left earlier, and the drawing should agree
+    // with the roost's. (Found in review.)
+    const sentAt =
+      roost.data?.find((bat) => bat.flight?.messageId === dispatch.id)?.flight?.sentAt ??
+      dispatched.sentAt;
     const remaining = dispatch.deliverAt.getTime() - now;
     const where = city ? ` in ${city}` : '';
     return (
       <Screen center scroll edges={['bottom']} style={styles.screen}>
-        <FlyingBat size={120} tint={Colors.batFlying} />
+        <FlyingBat size={120} tint={Colors.batFlying} flying={focused} />
         <Text variant="title" center style={styles.spaced}>
           Your bat is on its way
         </Text>
@@ -156,6 +167,7 @@ export default function ComposeScreen() {
               from={from}
               to={city}
               progress={flightProgress(sentAt, dispatch.deliverAt, now)}
+              active={focused}
             />
           </View>
         ) : null}

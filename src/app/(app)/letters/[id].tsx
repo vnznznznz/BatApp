@@ -19,6 +19,7 @@ import { messageOf } from '@/lib/rpc-error';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
+import { useScreenFocused } from '@/lib/use-screen-focused';
 
 /**
  * One letter, whole.
@@ -34,6 +35,7 @@ export default function LetterScreen() {
   const load = useCallback(() => readMessage(id), [id]);
   const letter = useRemote(load);
   const now = useNow(1000);
+  const focused = useScreenFocused();
   const { reload } = letter;
   const [blocking, setBlocking] = useState(false);
   const [blockError, setBlockError] = useState<string | null>(null);
@@ -149,6 +151,7 @@ export default function LetterScreen() {
             from={data.origin.name}
             to={data.destination.name}
             progress={flightProgress(data.sentAt, data.deliverAt, now)}
+            active={focused}
           />
         </View>
       ) : null}

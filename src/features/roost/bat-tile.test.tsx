@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Animated, StyleSheet } from 'react-native';
 
 import { BatTile } from '@/features/roost/bat-tile';
 import type { Bat } from '@/features/roost/roost';
+import { useReducedMotion } from '@/lib/use-reduced-motion';
 
 const MINUTE = 60_000;
 const NOW = new Date('2026-11-04T20:00:00Z').getTime();
@@ -62,5 +63,23 @@ describe('BatTile', () => {
     expect(
       screen.getByRole('button', { name: 'Bat 1, flying to Anna Weber, lands in 1h 30m' }),
     ).toBeOnTheScreen();
+  });
+
+  /**
+   * The roost stays mounted under every other screen. Its bats went on beating
+   * their wings there, where nobody could see them. (Found in review.)
+   */
+  it('lets a flying bat rest while the roost is not the screen in front', async () => {
+    jest.mocked(useReducedMotion).mockReturnValue(false);
+    const loop = jest.spyOn(Animated, 'loop');
+
+    const { rerender } = await render(<BatTile bat={flying} now={NOW} active={false} />);
+    expect(loop).not.toHaveBeenCalled();
+
+    await rerender(<BatTile bat={flying} now={NOW} active />);
+    expect(loop).toHaveBeenCalled();
+
+    loop.mockRestore();
+    jest.mocked(useReducedMotion).mockReturnValue(true);
   });
 });

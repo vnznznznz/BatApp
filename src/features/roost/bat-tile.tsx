@@ -13,6 +13,8 @@ export type BatTileProps = {
   /** The current time, from the screen's ticking clock. */
   now: number;
   onPress?: () => void;
+  /** False while the roost is not the screen in front: the bat holds still. */
+  active?: boolean;
 };
 
 /**
@@ -22,7 +24,7 @@ export type BatTileProps = {
  * letter left. At zero it reads "any moment now" until the roost is fetched
  * again, which lands the letter and brings the bat home.
  */
-export function BatTile({ bat, now, onPress }: BatTileProps) {
+export function BatTile({ bat, now, onPress, active = true }: BatTileProps) {
   const flying = bat.status === 'flying';
   const flight = bat.flight;
   const remaining = flight ? flight.deliverAt.getTime() - now : 0;
@@ -49,7 +51,7 @@ export function BatTile({ bat, now, onPress }: BatTileProps) {
       ]}
     >
       {flying ? (
-        <FlyingBat size={52} tint={Colors.batFlying} />
+        <FlyingBat size={52} tint={Colors.batFlying} flying={active} />
       ) : (
         <BatMark
           size={52}
@@ -73,6 +75,7 @@ export function BatTile({ bat, now, onPress }: BatTileProps) {
             {/* How far it has come; the countdown above says the same in words. */}
             <View
               style={styles.track}
+              aria-hidden
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
             >

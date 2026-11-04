@@ -42,8 +42,9 @@ const mockedAnnounce = jest.mocked(announce);
 
 const AGE_SWITCH = `I am ${MINIMUM_AGE} or older`;
 const AGE_RULE =
-  `Night Courier is for people aged ${MINIMUM_AGE} and over - under ` +
-  `${PARENTAL_PERMISSION_UNDER}, with a parent's or guardian's permission.`;
+  `Turn on "I am ${MINIMUM_AGE} or older" to continue. Night Courier is for people aged ` +
+  `${MINIMUM_AGE} and over - under ${PARENTAL_PERMISSION_UNDER}, with a parent's or ` +
+  `guardian's permission.`;
 
 const PRIVACY_POLICY = 'https://example.com/night-courier/privacy';
 
@@ -124,6 +125,23 @@ describe('SignUpScreen', () => {
       expect(mockSignUp).not.toHaveBeenCalled();
       expect(screen.getByText(AGE_RULE)).toBeOnTheScreen();
       expect(mockedAnnounce).toHaveBeenCalledWith(AGE_RULE);
+    });
+
+    /**
+     * The fields say their own errors aloud. The age reminder used to be said
+     * only once they were all right, so a screen reader user learnt of it on a
+     * second try. (Found in review.)
+     */
+    it('says the age reminder aloud even when a field is wrong too, and as the switch hint', async () => {
+      await renderScreen(<SignUpScreen />);
+      await fillForm({ oldEnough: false });
+      await fireEvent.changeText(screen.getByLabelText('Email'), 'not-an-email');
+
+      await fireEvent.press(button('Create account'));
+
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(mockedAnnounce).toHaveBeenCalledWith(AGE_RULE);
+      expect(ageSwitch()).toHaveProp('accessibilityHint', AGE_RULE);
     });
 
     it('lets go of the reminder once the switch is turned on, and then creates the account', async () => {

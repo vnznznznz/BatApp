@@ -58,7 +58,6 @@ export async function searchCities(query: string, limit = 20): Promise<City[]> {
   }));
 }
 
-/** "Rösrath, DE" — enough to disambiguate two towns sharing a name. */
 /**
  * The city data is GeoNames' (scripts/build-cities.mjs), under CC BY 4.0, which
  * asks for three things wherever it is shown: credit, a link to the licence, and
@@ -69,6 +68,7 @@ export const CITY_DATA_CREDIT =
   'City names and places adapted from GeoNames (geonames.org), licensed under ' +
   'CC BY 4.0 (creativecommons.org/licenses/by/4.0).';
 
+/** "Rösrath, DE" — enough to disambiguate two towns sharing a name. */
 export function describeCity(city: Pick<City, 'name' | 'countryCode'>): string {
   return `${city.name}, ${city.countryCode}`;
 }

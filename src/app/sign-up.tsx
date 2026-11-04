@@ -46,14 +46,13 @@ export default function SignUpScreen() {
     setErrors(next);
     setFormError(null);
     // Asked, not checked: nobody's age is known or stored. But the rule is
-    // said where it applies, and agreeing to it is a deliberate act.
+    // said where it applies, and agreeing to it is a deliberate act. Said aloud
+    // whatever else is wrong - the fields say their own errors - so a screen
+    // reader user does not learn of it only on a second try. (Found in review.)
     const tooYoung = oldEnough ? null : AGE_RULE;
     setAgeError(tooYoung);
-    if (Object.values(next).some(Boolean)) return;
-    if (tooYoung) {
-      announce(tooYoung);
-      return;
-    }
+    if (tooYoung) announce(tooYoung);
+    if (Object.values(next).some(Boolean) || tooYoung) return;
 
     setBusy(true);
     try {
@@ -152,12 +151,8 @@ export default function SignUpScreen() {
               setOldEnough(value);
               setAgeError(null);
             }}
+            error={ageError}
           />
-          {ageError ? (
-            <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
-              {ageError}
-            </Text>
-          ) : null}
 
           {/* The terms come before the button that agrees to them. */}
           <Text variant="caption" tone="secondary" style={styles.rules}>
@@ -187,8 +182,9 @@ export default function SignUpScreen() {
 }
 
 const AGE_RULE =
-  `Night Courier is for people aged ${MINIMUM_AGE} and over - under ` +
-  `${PARENTAL_PERMISSION_UNDER}, with a parent's or guardian's permission.`;
+  `Turn on "I am ${MINIMUM_AGE} or older" to continue. Night Courier is for people aged ` +
+  `${MINIMUM_AGE} and over - under ${PARENTAL_PERMISSION_UNDER}, with a parent's or ` +
+  `guardian's permission.`;
 
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },

@@ -7,7 +7,10 @@ import { useReducedMotion } from '@/lib/use-reduced-motion';
 export type FlyingBatProps = {
   size: number;
   tint?: string;
-  /** False for a bat at home: it rests, and nothing moves. */
+  /**
+   * False for a bat at home, and for one on a screen that is not in front: it
+   * rests, and nothing moves.
+   */
   flying?: boolean;
 };
 
@@ -61,6 +64,8 @@ export function FlyingBat({ size, tint, flying = true }: FlyingBatProps) {
   return (
     <Animated.View
       testID="flying-bat"
+      // aria-hidden for the web build, where React Native Web ignores the other two.
+      aria-hidden
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{

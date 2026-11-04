@@ -10,6 +10,8 @@ export type ToggleRowProps = {
   value: boolean;
   onValueChange: (value: boolean) => void;
   disabled?: boolean;
+  /** What is wrong, shown under the row and read as the switch's hint. */
+  error?: string | null;
 };
 
 /**
@@ -18,28 +20,35 @@ export type ToggleRowProps = {
  * The platform's own switch, labelled with the row's words, so a screen reader
  * announces it as a switch with its state - the label beside it is for eyes.
  */
-export function ToggleRow({ label, hint, value, onValueChange, disabled }: ToggleRowProps) {
+export function ToggleRow({ label, hint, value, onValueChange, disabled, error }: ToggleRowProps) {
   return (
-    <View style={styles.row}>
-      <View style={styles.text}>
-        <Text variant="body">{label}</Text>
-        {hint ? (
-          <Text variant="caption" tone="muted" style={styles.hint}>
-            {hint}
-          </Text>
-        ) : null}
+    <View style={styles.wrap}>
+      <View style={styles.row}>
+        <View style={styles.text}>
+          <Text variant="body">{label}</Text>
+          {hint ? (
+            <Text variant="caption" tone="muted" style={styles.hint}>
+              {hint}
+            </Text>
+          ) : null}
+        </View>
+        <Switch
+          {...ON_WEB}
+          value={value}
+          onValueChange={onValueChange}
+          disabled={disabled}
+          accessibilityLabel={label}
+          accessibilityHint={error ?? hint}
+          trackColor={{ false: Colors.borderStrong, true: Colors.batAvailable }}
+          thumbColor={Colors.text}
+          ios_backgroundColor={Colors.borderStrong}
+        />
       </View>
-      <Switch
-        {...ON_WEB}
-        value={value}
-        onValueChange={onValueChange}
-        disabled={disabled}
-        accessibilityLabel={label}
-        accessibilityHint={hint}
-        trackColor={{ false: Colors.borderStrong, true: Colors.batAvailable }}
-        thumbColor={Colors.text}
-        ios_backgroundColor={Colors.borderStrong}
-      />
+      {error ? (
+        <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -52,6 +61,9 @@ export function ToggleRow({ label, hint, value, onValueChange, disabled }: Toggl
 const ON_WEB: object = Platform.OS === 'web' ? { activeThumbColor: Colors.text } : {};
 
 const styles = StyleSheet.create({
+  wrap: {
+    gap: Spacing.xs,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
