@@ -6,7 +6,8 @@ import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
-import { BATS_PER_USER } from '@/constants/config';
+import { ToggleRow } from '@/components/toggle-row';
+import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import {
@@ -15,6 +16,7 @@ import {
   validatePassword,
   validateUsername,
 } from '@/features/auth/validation';
+import { announce } from '@/lib/announce';
 import { openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
 type Errors = Partial<Record<'email' | 'password' | 'username' | 'displayName', string | null>>;
@@ -27,6 +29,8 @@ export default function SignUpScreen() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [oldEnough, setOldEnough] = useState(false);
+  const [ageError, setAgeError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -41,7 +45,15 @@ export default function SignUpScreen() {
     };
     setErrors(next);
     setFormError(null);
+    // Asked, not checked: nobody's age is known or stored. But the rule is
+    // said where it applies, and agreeing to it is a deliberate act.
+    const tooYoung = oldEnough ? null : AGE_RULE;
+    setAgeError(tooYoung);
     if (Object.values(next).some(Boolean)) return;
+    if (tooYoung) {
+      announce(tooYoung);
+      return;
+    }
 
     setBusy(true);
     try {
@@ -132,6 +144,21 @@ export default function SignUpScreen() {
             </Text>
           ) : null}
 
+          <ToggleRow
+            label={`I am ${MINIMUM_AGE} or older`}
+            hint={`If you are under ${PARENTAL_PERMISSION_UNDER}, a parent or guardian has said yes.`}
+            value={oldEnough}
+            onValueChange={(value) => {
+              setOldEnough(value);
+              setAgeError(null);
+            }}
+          />
+          {ageError ? (
+            <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
+              {ageError}
+            </Text>
+          ) : null}
+
           {/* The terms come before the button that agrees to them. */}
           <Text variant="caption" tone="secondary" style={styles.rules}>
             By creating an account, you agree to the house rules - the terms of using Night Courier.
@@ -158,6 +185,10 @@ export default function SignUpScreen() {
     </Screen>
   );
 }
+
+const AGE_RULE =
+  `Night Courier is for people aged ${MINIMUM_AGE} and over - under ` +
+  `${PARENTAL_PERMISSION_UNDER}, with a parent's or guardian's permission.`;
 
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },

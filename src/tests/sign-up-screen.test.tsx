@@ -3,6 +3,8 @@ import type { ReactElement } from 'react';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
+import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
+import { announce } from '@/lib/announce';
 import { openLink } from '@/lib/links';
 
 const mockSignUp = jest.fn();
@@ -35,6 +37,14 @@ jest.mock('@/lib/links', () => ({
 
 const mockedOpenLink = jest.mocked(openLink);
 
+jest.mock('@/lib/announce', () => ({ announce: jest.fn() }));
+const mockedAnnounce = jest.mocked(announce);
+
+const AGE_SWITCH = `I am ${MINIMUM_AGE} or older`;
+const AGE_RULE =
+  `Night Courier is for people aged ${MINIMUM_AGE} and over - under ` +
+  `${PARENTAL_PERMISSION_UNDER}, with a parent's or guardian's permission.`;
+
 const PRIVACY_POLICY = 'https://example.com/night-courier/privacy';
 
 /** What creating an account agrees to, as the form says it. */
@@ -52,12 +62,15 @@ const metrics: Metrics = {
 const renderScreen = (ui: ReactElement) =>
   render(<SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>);
 
-async function fillForm() {
+async function fillForm({ oldEnough = true }: { oldEnough?: boolean } = {}) {
   await fireEvent.changeText(screen.getByLabelText('Your name'), 'Anna Weber');
   await fireEvent.changeText(screen.getByLabelText('Username'), 'AnnaWeber');
   await fireEvent.changeText(screen.getByLabelText('Email'), 'anna@example.com');
   await fireEvent.changeText(screen.getByLabelText('Password'), 'a-good-password');
+  if (oldEnough) await fireEvent(ageSwitch(), 'valueChange', true);
 }
+
+const ageSwitch = () => screen.getByRole('switch', { name: AGE_SWITCH });
 
 const button = (name: string) => screen.getByRole('button', { name });
 
@@ -80,9 +93,53 @@ beforeEach(() => {
   mockReplace.mockReset();
   mockLinks.privacyPolicy = null;
   mockedOpenLink.mockReset().mockResolvedValue(undefined);
+  mockedAnnounce.mockReset();
 });
 
 describe('SignUpScreen', () => {
+  describe('who can join', () => {
+    /**
+     * Nobody's age is known or stored, so it cannot be checked - but the rule is
+     * said where it applies, and saying yes to it is a deliberate act rather than
+     * something the courier can miss.
+     */
+    it('asks whether the courier is old enough, saying what is needed under the age of consent', async () => {
+      await renderScreen(<SignUpScreen />);
+
+      expect(ageSwitch()).toBeOnTheScreen();
+      expect(ageSwitch()).not.toBeChecked();
+      expect(
+        screen.getByText(
+          `If you are under ${PARENTAL_PERMISSION_UNDER}, a parent or guardian has said yes.`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    it('creates no account until the courier says they are old enough, and says why aloud', async () => {
+      await renderScreen(<SignUpScreen />);
+
+      await fillForm({ oldEnough: false });
+      await fireEvent.press(button('Create account'));
+
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByText(AGE_RULE)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(AGE_RULE);
+    });
+
+    it('lets go of the reminder once the switch is turned on, and then creates the account', async () => {
+      mockSignUp.mockResolvedValue({ needsEmailConfirmation: false });
+      await renderScreen(<SignUpScreen />);
+      await fillForm({ oldEnough: false });
+      await fireEvent.press(button('Create account'));
+
+      await fireEvent(ageSwitch(), 'valueChange', true);
+
+      expect(screen.queryByText(AGE_RULE)).toBeNull();
+      await fireEvent.press(button('Create account'));
+      expect(mockSignUp).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('does not submit an empty form, and says why', async () => {
     await renderScreen(<SignUpScreen />);
 

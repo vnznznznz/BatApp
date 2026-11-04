@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import RulesScreen from '@/app/rules';
-import { REPORT_RETENTION_DAYS } from '@/constants/config';
+import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER, REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Colors } from '@/constants/theme';
 import { openLink } from '@/lib/links';
 
@@ -311,6 +311,20 @@ describe('RulesScreen', () => {
         headerStyle: { backgroundColor: Colors.background },
         headerTintColor: Colors.text,
       });
+    });
+  });
+  describe('who can join', () => {
+    it('says the minimum age, and that a younger courier needs a parent or guardian to agree', async () => {
+      await renderScreen(<RulesScreen />);
+
+      expect(screen.getByRole('header', { name: 'Who can join' })).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          `You must be at least ${MINIMUM_AGE} to use Night Courier. If you are under ` +
+            `${PARENTAL_PERMISSION_UNDER}, you need the permission of a parent or guardian, who ` +
+            'can read these rules and the privacy policy with you.',
+        ),
+      ).toBeOnTheScreen();
     });
   });
 });

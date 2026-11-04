@@ -11,7 +11,7 @@ import { REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { validateDisplayName } from '@/features/auth/validation';
-import { describeCity } from '@/features/cities/search';
+import { CITY_DATA_CREDIT, describeCity } from '@/features/cities/search';
 import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
 import { confirmAction, notify } from '@/lib/confirm';
@@ -215,6 +215,10 @@ export default function ProfileScreen() {
           onPress={confirmDelete}
         />
       </View>
+
+      <Text variant="caption" tone="muted" style={[styles.credit, styles.hint]}>
+        {CITY_DATA_CREDIT}
+      </Text>
     </Screen>
   );
 }
@@ -230,4 +234,5 @@ const styles = StyleSheet.create({
   form: { gap: Spacing.sm, marginTop: Spacing.xl },
   spaced: { marginTop: Spacing.sm },
   hint: { lineHeight: 19 },
+  credit: { marginTop: Spacing.xl },
 });

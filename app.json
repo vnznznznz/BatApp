@@ -10,7 +10,10 @@
     "backgroundColor": "#060912",
     "ios": {
       "bundleIdentifier": "com.nightcourier.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.nightcourier.app",

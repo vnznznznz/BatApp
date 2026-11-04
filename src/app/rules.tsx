@@ -5,7 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
-import { REPORT_RETENTION_DAYS } from '@/constants/config';
+import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER, REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { CONTACT_URL, openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
@@ -47,6 +47,14 @@ export default function RulesScreen() {
         Night Courier is for letters between friends. Nobody can write to you until you accept their
         friend request, and there is no search and no public profile.
       </Text>
+
+      <Section title="Who can join">
+        <Text variant="body" tone="secondary" style={styles.line}>
+          You must be at least {MINIMUM_AGE} to use Night Courier. If you are under{' '}
+          {PARENTAL_PERMISSION_UNDER}, you need the permission of a parent or guardian, who can read
+          these rules and the privacy policy with you.
+        </Text>
+      </Section>
 
       <Section title="Never send">
         <Rule>Harassment, bullying, or anything meant to frighten or shame someone.</Rule>

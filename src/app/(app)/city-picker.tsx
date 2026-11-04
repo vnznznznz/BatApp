@@ -6,7 +6,12 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { MIN_QUERY_LENGTH, searchCities, type City } from '@/features/cities/search';
+import {
+  type City,
+  CITY_DATA_CREDIT,
+  MIN_QUERY_LENGTH,
+  searchCities,
+} from '@/features/cities/search';
 import { useProfile } from '@/features/profile/use-profile';
 
 export default function CityPickerScreen() {
@@ -118,6 +123,11 @@ export default function CityPickerScreen() {
             <ActivityIndicator color={Colors.textMuted} style={styles.empty} />
           )
         }
+        ListFooterComponent={
+          <Text variant="caption" tone="muted" style={styles.credit}>
+            {CITY_DATA_CREDIT}
+          </Text>
+        }
         renderItem={({ item }) => (
           <Pressable
             accessibilityRole="button"
@@ -141,6 +151,7 @@ export default function CityPickerScreen() {
 
 const styles = StyleSheet.create({
   screen: { paddingTop: Spacing.sm },
+  credit: { marginTop: Spacing.lg, marginBottom: Spacing.xl, lineHeight: 19 },
   subtitle: { marginTop: Spacing.xs, lineHeight: 19 },
   search: { marginTop: Spacing.lg, marginBottom: Spacing.md },
   row: {

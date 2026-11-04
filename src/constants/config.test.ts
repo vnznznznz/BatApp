@@ -6,6 +6,8 @@ import {
   MINIMUM_FLIGHT_MINUTES,
   MONETISATION_ENABLED,
   PRODUCTION_TIME_MULTIPLIER,
+  MINIMUM_AGE,
+  PARENTAL_PERMISSION_UNDER,
   RELOCATION_HOURS,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
@@ -71,5 +73,12 @@ describe('username rules', () => {
     expect(USERNAME_PATTERN.test('NightCourier')).toBe(false);
     expect(USERNAME_PATTERN.test('night courier')).toBe(false);
     expect(USERNAME_PATTERN.test('night.courier')).toBe(false);
+  });
+});
+
+describe('who can join', () => {
+  it('lets in no one younger than the age that needs a parent’s permission, and that only with it', () => {
+    expect(MINIMUM_AGE).toBeGreaterThan(0);
+    expect(PARENTAL_PERMISSION_UNDER).toBeGreaterThan(MINIMUM_AGE);
   });
 });
