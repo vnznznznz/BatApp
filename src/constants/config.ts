@@ -101,9 +101,11 @@ export const BAN_PERIOD_YEARS = 2;
 /**
  * Who may use Night Courier: no one younger than MINIMUM_AGE, and anyone younger
  * than PARENTAL_PERMISSION_UNDER only with a parent's or guardian's permission -
- * the operator's decision, matching the age at which German law lets someone
- * agree to an online service on their own (Art. 8 GDPR). Stated in the house
- * rules and confirmed at sign-up; nobody's age is ever stored.
+ * the operator's decision. 13 is Apple's lowest age rating above 12 and keeps
+ * the app outside Google Play's Families Policy, which is for under-13s; 16 is
+ * the highest age any EU country sets for agreeing to an online service on
+ * one's own (Art. 8 GDPR). Stated in the house rules and confirmed at sign-up;
+ * nobody's age is ever stored.
  */
-export const MINIMUM_AGE = 12;
+export const MINIMUM_AGE = 13;
 export const PARENTAL_PERMISSION_UNDER = 16;
