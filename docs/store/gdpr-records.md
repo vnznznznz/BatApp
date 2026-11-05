@@ -1,19 +1,30 @@
 # Verzeichnis von Verarbeitungstätigkeiten – Night Courier
 
-Das Verzeichnis nach Art. 30 Abs. 1 DSGVO, das der Betreiber als Verantwortlicher für sich selbst
-führt. Dazu die technischen und organisatorischen Maßnahmen (TOM), die der Code tatsächlich umsetzt
-(Art. 32), die bekannten Lücken, und eine Checkliste dessen, was der Betreiber selbst erledigen
-muss.
+Das Verzeichnis, das der Betreiber als Verantwortlicher für sich selbst führt: nach dem Schweizer
+Datenschutzgesetz das Verzeichnis der Bearbeitungstätigkeiten (Art. 12 DSG), zugleich das
+Verzeichnis nach Art. 30 Abs. 1 DSGVO. Dazu die technischen und organisatorischen Maßnahmen (TOM),
+die der Code tatsächlich umsetzt (Art. 8 DSG, Art. 32 DSGVO), die bekannten Lücken, und eine
+Checkliste dessen, was der Betreiber selbst erledigen muss.
 
-**Stand:** 4. November 2026, erste Fassung. **Grundlage:** der Datenbestand, wie ihn der Code
-ergibt – die Migrationen unter `supabase/migrations`, die App unter `src/`, `supabase/config.toml` –
-geprüft am lokalen Stack (Postgres 17, GoTrue v2.197.0). Die Kontolöschung wurde dort in einer
-Transaktion getestet, die anschließend zurückgerollt wurde. Eingeschlossen ist die Migration
-`20261104120000_privacy_housekeeping.sql` (täglicher Auftrag `tidy-up`, der jeden Schritt an einer
-Tabelle von Supabase für sich absichert und die übersprungenen zurückgibt; `private.remove_account`;
-Ende unbenutzter Sitzungen nach 90 Tagen), die Schlüsselbund-Einstellung aus
-`src/lib/secure-storage.ts`, die gesperrten Android-Berechtigungen in `app.json` und das Runbook in
-`docs/GO-LIVE.md` (Commits 67562f9, 3a343b0, 611813b, 665924d, acd4efe und 191bc50).
+**Welches Recht.** Der Betreiber lebt in der Schweiz und betreibt Night Courier als Privatperson,
+nicht als Unternehmen (festgehalten am 5. November 2026; die erste Fassung war geschrieben, als
+lebte er in Deutschland). Für ihn gilt das revidierte DSG, in Kraft seit dem 1. September 2023. Die
+DSGVO gilt zusätzlich für die Daten von Menschen in der EU und im EWR, weil die App ihnen angeboten
+wird (Art. 3 Abs. 2 lit. a DSGVO). Die Rechtsgrundlagen unten sind deshalb die der DSGVO (Art. 6);
+wo das DSG anders ist, steht es kurz dabei. Artikel ohne Gesetz sind solche der DSGVO. Hinweise auf
+das deutsche BDSG stehen nur noch als „zu prüfen“: Sie waren für einen Betreiber in Deutschland
+geschrieben, und ob das BDSG für einen Verantwortlichen in der Schweiz überhaupt gilt (§ 1 Abs. 4
+BDSG), ist eine Frage für rechtlichen Rat (6.21).
+
+**Stand:** 5. November 2026 (erste Fassung vom 4. November 2026). **Grundlage:** der Datenbestand,
+wie ihn der Code ergibt – die Migrationen unter `supabase/migrations`, die App unter `src/`,
+`supabase/config.toml` – geprüft am lokalen Stack (Postgres 17, GoTrue v2.197.0). Die Kontolöschung
+wurde dort in einer Transaktion getestet, die anschließend zurückgerollt wurde. Eingeschlossen ist
+die Migration `20261104120000_privacy_housekeeping.sql` (täglicher Auftrag `tidy-up`, der jeden
+Schritt an einer Tabelle von Supabase für sich absichert und die übersprungenen zurückgibt;
+`private.remove_account`; Ende unbenutzter Sitzungen nach 90 Tagen), die Schlüsselbund-Einstellung
+aus `src/lib/secure-storage.ts`, die gesperrten Android-Berechtigungen in `app.json` und das Runbook
+in `docs/GO-LIVE.md` (Commits 67562f9, 3a343b0, 611813b, 665924d, acd4efe und 191bc50).
 
 **Persönliche Daten stehen nicht in dieser Datei.** Dieses Repository ist öffentlich. Wo das
 Verzeichnis Angaben zum Betreiber braucht, steht ein Platzhalter: `{{OPERATOR_NAME}}`,
@@ -32,71 +43,102 @@ Abschnitt 6). Alle vier müssen dieselben Daten beschreiben.
 
 ### Muss es dieses Verzeichnis geben?
 
-Art. 30 Abs. 5 DSGVO nimmt Unternehmen und Einrichtungen mit weniger als 250 Beschäftigten aus –
-aber nicht, wenn die Verarbeitung ein Risiko für die Rechte und Freiheiten der Betroffenen birgt,
-**nicht nur gelegentlich** erfolgt oder besondere Kategorien nach Art. 9 Abs. 1 bzw. Daten nach
-Art. 10 einschließt. Night Courier verarbeitet laufend, also nicht nur gelegentlich; nach dem
-Wortlaut greift die Ausnahme deshalb nicht. Ob eine Privatperson überhaupt „Einrichtung“ im Sinne
-von Abs. 5 ist: zu prüfen. Unabhängig davon ist das Verzeichnis der einfachste Weg, die
-Rechenschaftspflicht (Art. 5 Abs. 2) zu erfüllen, und die Grundlage für jede Auskunft und jede
-Meldung einer Datenpanne.
+**Nach dem DSG:** Art. 12 DSG verlangt das Verzeichnis. Art. 12 Abs. 5 DSG mit Art. 24 der
+Datenschutzverordnung (DSV) befreit Unternehmen mit weniger als 250 Beschäftigten und natürliche
+Personen davon, es sei denn, es werden umfangreich besonders schützenswerte Personendaten
+bearbeitet oder es findet ein Profiling mit hohem Risiko statt (Wortlaut zu prüfen). Night Courier
+fragt nach keinen besonders schützenswerten Daten, Briefe können aber welche enthalten; ob das
+„umfangreich“ ist: zu prüfen. Das Verzeichnis trotzdem zu führen, ist gute Praxis, und es erfüllt
+zugleich Art. 30 DSGVO.
+
+**Nach der DSGVO**, für die Daten von Menschen in der EU: Art. 30 Abs. 5 DSGVO nimmt Unternehmen
+und Einrichtungen mit weniger als 250 Beschäftigten aus – aber nicht, wenn die Verarbeitung ein
+Risiko für die Rechte und Freiheiten der Betroffenen birgt, **nicht nur gelegentlich** erfolgt oder
+besondere Kategorien nach Art. 9 Abs. 1 bzw. Daten nach Art. 10 einschließt. Night Courier
+verarbeitet laufend, also nicht nur gelegentlich; nach dem Wortlaut greift die Ausnahme deshalb
+nicht. Ob eine Privatperson überhaupt „Einrichtung“ im Sinne von Abs. 5 ist: zu prüfen.
+
+Unabhängig davon ist das Verzeichnis der einfachste Weg, die Rechenschaftspflicht (Art. 5 Abs. 2)
+zu erfüllen, und die Grundlage für jede Auskunft und jede Meldung einer Datenpanne.
 
 ---
 
-## 1. Verantwortlicher (Art. 30 Abs. 1 lit. a)
+## 1. Verantwortlicher (Art. 12 Abs. 2 DSG, Art. 30 Abs. 1 lit. a)
 
-| Angabe                              | Eintrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Verantwortlicher                    | `{{OPERATOR_NAME}}`, Privatperson. Keine Firma, keine Einnahmen                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Anschrift                           | `{{OPERATOR_ADDRESS}}`. Öffentlich nur in der gehosteten Datenschutzerklärung, Abschnitt 1; die Kontaktseite nennt den Betreiber und verweist für die Anschrift dorthin                                                                                                                                                                                                                                                                                                                          |
-| E-Mail                              | `{{CONTACT_EMAIL}}` (auch hinter „Contact“ in der App)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Kontaktseite                        | `{{SUPPORT_URL}}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Datenschutzerklärung                | `{{PRIVACY_POLICY_URL}}`, Stand `{{EFFECTIVE_DATE}}`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Gemeinsam Verantwortliche (Art. 26) | Keine                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Vertreter in der Union (Art. 27)    | Entfällt: der Verantwortliche wohnt in Deutschland                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Datenschutzbeauftragter             | Keiner benannt. Nach Art. 37 Abs. 1 DSGVO nicht erforderlich (keine umfangreiche Verarbeitung als Kerntätigkeit), und § 38 Abs. 1 Satz 1 BDSG verlangt einen erst, wenn in der Regel mindestens 20 Personen ständig mit der automatisierten Verarbeitung beschäftigt sind. **Aber:** Nach § 38 Abs. 1 Satz 2 BDSG ist unabhängig davon einer zu benennen, wenn eine Verarbeitung einer Datenschutz-Folgenabschätzung nach Art. 35 unterliegt. Hängt also am Ergebnis von 5.2 (Folgenabschätzung) |
-| Zuständige Aufsichtsbehörde         | Die Datenschutzaufsicht des Bundeslands, in dem der Betreiber wohnt. Name, Anschrift und den Meldeweg für Datenpannen (meist ein Online-Formular) im privaten Exemplar eintragen                                                                                                                                                                                                                                                                                                                 |
+| Angabe                              | Eintrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verantwortlicher                    | `{{OPERATOR_NAME}}`, Privatperson mit Wohnsitz in der Schweiz. Keine Firma, keine Einnahmen                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Anwendbares Recht                   | Für den Betreiber das DSG (revidiert, in Kraft seit 1. September 2023). Für die Daten von Menschen in der EU und im EWR zusätzlich die DSGVO, weil die App ihnen angeboten wird (Art. 3 Abs. 2 lit. a DSGVO)                                                                                                                                                                                                                                                                                      |
+| Anschrift                           | `{{OPERATOR_ADDRESS}}`. Öffentlich nur in der gehosteten Datenschutzerklärung, Abschnitt 1; die Kontaktseite nennt den Betreiber und verweist für die Anschrift dorthin. Ausgefüllt steht sie nur im Repository der Webseiten (V13), nie in diesem                                                                                                                                                                                                                                                |
+| E-Mail                              | `{{CONTACT_EMAIL}}` (auch hinter „Contact“ in der App)                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Kontaktseite                        | `{{SUPPORT_URL}}`, geplant `https://vnznznznz.github.io/night-courier/` (V13)                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Datenschutzerklärung                | `{{PRIVACY_POLICY_URL}}`, geplant `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (verbindlich; die englische Fassung daneben), Stand `{{EFFECTIVE_DATE}}`                                                                                                                                                                                                                                                                                                                     |
+| Gemeinsam Verantwortliche (Art. 26) | Keine                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Vertreter in der Union (Art. 27)    | **Zu prüfen.** Der Betreiber hat keine Niederlassung in der EU. Wer dann Menschen in der EU etwas anbietet, muss grundsätzlich schriftlich einen Vertreter in der EU benennen. Die Ausnahme in Art. 27 Abs. 2 lit. a (nur gelegentliche Verarbeitung, ohne umfangreiche Verarbeitung besonderer Kategorien, voraussichtlich ohne Risiko) passt für einen laufenden Briefdienst vermutlich nicht. Rechtlichen Rat einholen (6.22). Bis dahin ist keiner benannt                                    |
+| Datenschutzbeauftragter             | Keiner benannt. Nach dem DSG ist ein Datenschutzberater für private Verantwortliche freiwillig (Art. 10 DSG). Nach Art. 37 Abs. 1 DSGVO nicht erforderlich (keine umfangreiche Verarbeitung als Kerntätigkeit). Hier stand früher § 38 BDSG (ein Datenschutzbeauftragter ab 20 Personen, oder immer, wenn eine Datenschutz-Folgenabschätzung nötig ist), geschrieben für einen Betreiber in Deutschland; ob das BDSG für einen Verantwortlichen in der Schweiz überhaupt gilt: zu prüfen (6.21)   |
+| Zuständige Aufsichtsbehörde         | Für den Betreiber: der Eidgenössische Datenschutz- und Öffentlichkeitsbeauftragte (EDÖB), Feldeggweg 1, 3003 Bern, www.edoeb.admin.ch. Den Meldeweg für Datenpannen dort nachsehen und im privaten Exemplar eintragen (zu prüfen). Menschen in der EU und im EWR können sich außerdem bei der Behörde beschweren, wo sie wohnen (Art. 77 DSGVO). Welche Behörde in der EU eine Meldung nach Art. 33 bekommt, solange es keine Niederlassung und keinen Vertreter in der EU gibt: zu prüfen (6.22) |
 
 ---
 
-## 2. Empfänger und Drittländer im Überblick (Art. 30 Abs. 1 lit. d und e)
+## 2. Empfänger und Länder im Überblick (Art. 12 Abs. 2 DSG, Art. 30 Abs. 1 lit. d und e)
 
-| Empfänger                                                             | Rolle                                                    | Was er bekommt                                                                                               | Wo                                                         | Grundlage für das Drittland                                                                                                                                                 | Stand                                            |
-| --------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Supabase Inc. (USA)                                                   | Auftragsverarbeiter (Art. 28)                            | Alles in der Datenbank, Anmeldung (GoTrue), API-Gateway, Protokolle, Sicherungen, heute auch den Mailversand | Projekt in `eu-central-2` (Zürich) auf Amazon Web Services | Schweiz: Angemessenheitsbeschluss (Entscheidung 2000/518/EG, fortgeltend nach Art. 45 Abs. 9). Zugriff aus den USA: Standardvertragsklauseln im DPA (Art. 46 Abs. 2 lit. c) | DPA **noch nicht abgeschlossen** (Abschnitt 5.1) |
-| Unterauftragsverarbeiter von Supabase                                 | Unterauftragsverarbeiter                                 | Je nach Dienst                                                                                               | Zu prüfen                                                  | Zu prüfen: ob vor der API ein Dienst wie Cloudflare liegt und wo die Protokolle gespeichert werden                                                                          | Liste auf supabase.com lesen (Abschnitt 5.1)     |
-| E-Mail-Versanddienst (Resend, Postmark oder Amazon SES)               | Auftragsverarbeiter                                      | Empfängeradresse, Einmal-Link, Versandprotokoll                                                              | Zu prüfen                                                  | Zu prüfen                                                                                                                                                                   | **Noch nicht gewählt**                           |
-| Microsoft (Outlook.com-Postfach `{{CONTACT_EMAIL}}`)                  | Zu prüfen: Verbraucherdienst, vermutlich kein AV-Vertrag | Was Nutzer, Eltern und andere dem Betreiber schreiben, und was er ihnen schreibt                             | Zu prüfen (auch USA)                                       | Zu prüfen (etwa das EU-US Data Privacy Framework, Durchführungsbeschluss (EU) 2023/1795, falls Microsoft dafür zertifiziert ist)                                            | In Gebrauch                                      |
-| Apple (App Store Connect, TestFlight, Beta App Review)                | Zu prüfen: eigener Verantwortlicher                      | Apple-Konten der Tester, Installations-, Sitzungs- und Absturzdaten, Feedback, die Anmeldung des Demo-Kontos | Zu prüfen (auch USA)                                       | Nach Apples eigenen Bestimmungen                                                                                                                                            | Ab der ersten TestFlight-Version                 |
-| Google (Play Console, interner Test)                                  | Zu prüfen: eigener Verantwortlicher                      | Testerliste mit E-Mail-Adressen der Google-Konten, Android-vitals                                            | Zu prüfen (auch USA)                                       | Nach Googles eigenen Bestimmungen                                                                                                                                           | Ab dem ersten internen Test                      |
-| Anbieter der Webseiten `{{PRIVACY_POLICY_URL}}` und `{{SUPPORT_URL}}` | Zu prüfen: Auftragsverarbeiter                           | IP-Adresse und User-Agent der Besucher in seinen Protokollen                                                 | Zu prüfen                                                  | Zu prüfen                                                                                                                                                                   | **Noch nicht gewählt**                           |
-| Polizei, Staatsanwaltschaft, Gerichte                                 | Empfänger im Einzelfall                                  | Eine exportierte Meldung; nach einer Drohung dazu Sitzungen und Anmeldeprotokoll des gemeldeten Kontos (V6)  | Deutschland                                                | –                                                                                                                                                                           | Nur bei Bedarf                                   |
-| Andere Nutzer                                                         | Empfänger im Rahmen der App-Funktionen (Art. 4 Nr. 9)    | Was V2 bis V5 beschreiben: Namen, Stadt, Briefe                                                              | –                                                          | –                                                                                                                                                                           | –                                                |
+Die Datenbank liegt in der Schweiz, im Land des Betreibers. Sie dort zu speichern, ist für ihn
+keine Bekanntgabe ins Ausland. Ins Ausland gehen Daten dort, wo ein Empfänger in den USA sitzt oder
+von dort zugreift. Nach dem DSG ist das zulässig, wenn der Bundesrat dem Staat ein angemessenes
+Datenschutzniveau bescheinigt hat (Art. 16 Abs. 1 DSG) – für die USA gilt das seit dem 15. September
+2024 für Unternehmen, die nach dem Swiss-US Data Privacy Framework zertifiziert sind –, sonst mit
+Garantien wie Standardvertragsklauseln (Art. 16 Abs. 2 DSG) oder in den Ausnahmen von Art. 17 DSG.
+Für die Daten von Menschen in der EU ist die Schweiz ein Drittland mit Angemessenheitsbeschluss der
+EU-Kommission (Entscheidung 2000/518/EG, fortgeltend nach Art. 45 Abs. 9 DSGVO; bei der Überprüfung
+im Januar 2024 bestätigt). Ob die einzelnen US-Unternehmen zertifiziert sind: zu prüfen (5.1).
+
+| Empfänger                                                                                            | Rolle                                                                | Was er bekommt                                                                                               | Wo                                                                                                            | Grundlage für das Ausland                                                                                                                                                                                                                                                                                                                                                   | Stand                                                                    |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Supabase Inc. (USA)                                                                                  | Auftragsbearbeiter (Art. 9 DSG), Auftragsverarbeiter (Art. 28 DSGVO) | Alles in der Datenbank, Anmeldung (GoTrue), API-Gateway, Protokolle, Sicherungen, heute auch den Mailversand | Projekt in `eu-central-2` (Zürich, Schweiz) auf Amazon Web Services; Zugriff von Supabase aus den USA möglich | Schweiz: für den Betreiber keine Bekanntgabe ins Ausland; für Menschen in der EU der Angemessenheitsbeschluss (siehe oben). Zugriff aus den USA: nach DSG das Swiss-US Data Privacy Framework, falls Supabase zertifiziert ist (zu prüfen), sonst die Standardvertragsklauseln im DPA (Art. 16 Abs. 2 DSG); nach DSGVO die Standardvertragsklauseln (Art. 46 Abs. 2 lit. c) | DPA **noch nicht abgeschlossen** (Abschnitt 5.1)                         |
+| Unterauftragsverarbeiter von Supabase                                                                | Unterauftragsverarbeiter                                             | Je nach Dienst                                                                                               | Zu prüfen                                                                                                     | Zu prüfen: ob vor der API ein Dienst wie Cloudflare liegt und wo die Protokolle gespeichert werden                                                                                                                                                                                                                                                                          | Liste auf supabase.com lesen (Abschnitt 5.1)                             |
+| E-Mail-Versanddienst (Resend, Postmark oder Amazon SES)                                              | Auftragsverarbeiter                                                  | Empfängeradresse, Einmal-Link, Versandprotokoll                                                              | Zu prüfen                                                                                                     | Zu prüfen                                                                                                                                                                                                                                                                                                                                                                   | **Noch nicht gewählt**                                                   |
+| Microsoft (Outlook.com-Postfach `{{CONTACT_EMAIL}}`)                                                 | Zu prüfen: Verbraucherdienst, vermutlich kein AV-Vertrag             | Was Nutzer, Eltern und andere dem Betreiber schreiben, und was er ihnen schreibt                             | Zu prüfen (auch USA)                                                                                          | Zu prüfen: nach DSG das Swiss-US Data Privacy Framework, für Menschen in der EU das EU-US Data Privacy Framework (Durchführungsbeschluss (EU) 2023/1795), falls Microsoft dafür zertifiziert ist                                                                                                                                                                            | In Gebrauch                                                              |
+| Apple (App Store Connect, TestFlight, Beta App Review)                                               | Zu prüfen: eigener Verantwortlicher                                  | Apple-Konten der Tester, Installations-, Sitzungs- und Absturzdaten, Feedback, die Anmeldung des Demo-Kontos | Zu prüfen (auch USA)                                                                                          | Nach Apples eigenen Bestimmungen                                                                                                                                                                                                                                                                                                                                            | Ab der ersten TestFlight-Version                                         |
+| Google (Play Console, interner Test)                                                                 | Zu prüfen: eigener Verantwortlicher                                  | Testerliste mit E-Mail-Adressen der Google-Konten, Android-vitals                                            | Zu prüfen (auch USA)                                                                                          | Nach Googles eigenen Bestimmungen                                                                                                                                                                                                                                                                                                                                           | Ab dem ersten internen Test                                              |
+| GitHub, Inc. (USA), GitHub Pages: die Webseiten `{{PRIVACY_POLICY_URL}}` und `{{SUPPORT_URL}}` (V13) | Zu prüfen: eigener Verantwortlicher oder Auftragsbearbeiter          | IP-Adresse und User-Agent der Besucher; GitHub protokolliert die IP-Adressen für Sicherheit und Betrieb      | USA (zu prüfen, wo ausgeliefert und protokolliert wird)                                                       | Zu prüfen: das Swiss-US bzw. EU-US Data Privacy Framework, falls GitHub zertifiziert ist; sonst klären, was trägt (5.1)                                                                                                                                                                                                                                                     | Geplant; das Repository `vnznznznz.github.io` legt der Betreiber noch an |
+| Polizei, Staatsanwaltschaft, Gerichte                                                                | Empfänger im Einzelfall                                              | Eine exportierte Meldung; nach einer Drohung dazu Sitzungen und Anmeldeprotokoll des gemeldeten Kontos (V6)  | Schweiz; zu prüfen, ob es die Polizei im Land der bedrohten Person sein muss                                  | Geht eine Meldung an eine Polizei außerhalb der Schweiz, ist das eine Bekanntgabe ins Ausland (Art. 16 und 17 DSG): zu prüfen                                                                                                                                                                                                                                               | Nur bei Bedarf                                                           |
+| Andere Nutzer                                                                                        | Empfänger im Rahmen der App-Funktionen (Art. 4 Nr. 9)                | Was V2 bis V5 beschreiben: Namen, Stadt, Briefe                                                              | –                                                                                                             | –                                                                                                                                                                                                                                                                                                                                                                           | –                                                                        |
 
 Keine Nutzerdaten erhalten: **Expo** (EAS Build bekommt zur Build-Zeit nur den Quellcode und die
 `EXPO_PUBLIC_*`-Werte; zur Laufzeit gibt es keinen Kontakt, kein expo-updates, kein Push; ob Expo
 Go in der Entwicklung etwas erhält: zu prüfen), **GeoNames** (die Städteliste wurde einmal in eine
 Migration übernommen und liegt in der Datenbank; zur Laufzeit wird GeoNames nie gefragt) und
-**GitHub** (das öffentliche Repository und die CI enthalten nur erfundene Testdaten).
+**GitHub als Ort dieses Repositorys und der CI** (beide enthalten nur erfundene Testdaten). Als
+Anbieter der Webseiten steht GitHub oben in der Tabelle.
 
 ---
 
-## 3. Die Verarbeitungstätigkeiten (Art. 30 Abs. 1 lit. b bis g)
+## 3. Die Verarbeitungstätigkeiten (Art. 12 Abs. 2 DSG, Art. 30 Abs. 1 lit. b bis g)
 
 Für alle Einträge gilt, sofern nicht anders angegeben:
 
-- **Betroffene Nutzer** sind registrierte Personen ab 12 Jahren, darunter Minderjährige: nach den
-  Hausregeln von 12 bis 15 mit der Erlaubnis der Eltern oder anderer Erziehungsberechtigter, ab 16
-  ohne sie. Das Alter wird weder geprüft noch gespeichert; es können also auch Jüngere darunter
-  sein, deren Konto der Betreiber löscht, ohne Sperre, sobald er davon erfährt
-  (Datenschutzerklärung 10; 5.4).
-- **Speicherort** ist das Supabase-Projekt in Zürich. **Drittland:** Schweiz (Angemessenheit) und
-  möglicher Zugriff von Supabase aus den USA (Standardvertragsklauseln), wie in Abschnitt 2.
+- **Betroffene Nutzer** sind registrierte Personen ab 13 Jahren, darunter Minderjährige: nach den
+  Hausregeln von 13 bis 15 mit der Erlaubnis der Eltern oder anderer Erziehungsberechtigter, ab 16
+  ohne sie (`MINIMUM_AGE` und `PARENTAL_PERMISSION_UNDER` in `src/constants/config.ts`, entschieden
+  am 5. November 2026; vorher 12). Die 16 ist die höchste Grenze, die ein EU-Land nach Art. 8 DSGVO
+  dafür setzt, dass man einem Online-Dienst selbst zustimmen kann (unter anderem Deutschland); das
+  Schweizer Recht kennt keine feste Grenze, dort kommt es auf die Urteilsfähigkeit an. Das Alter
+  wird weder geprüft noch gespeichert; es können also auch Jüngere darunter sein, deren Konto der
+  Betreiber löscht, ohne Sperre, sobald er davon erfährt (Datenschutzerklärung 10; 5.4). Niemand
+  unter 13 wird zugelassen, in den USA wie anderswo.
+- **Speicherort** ist das Supabase-Projekt in Zürich, also im Land des Betreibers: nach dem DSG
+  keine Bekanntgabe ins Ausland; für die Daten von Menschen in der EU ein Drittland mit
+  Angemessenheitsbeschluss. **Ausland:** möglicher Zugriff von Supabase aus den USA (Swiss-US Data
+  Privacy Framework oder Standardvertragsklauseln), wie in Abschnitt 2.
 - **Rechtsgrundlagen** sind nicht Teil von Art. 30, stehen hier aber, damit Verzeichnis und
-  Datenschutzerklärung (Abschnitt 6 dort) nicht auseinanderlaufen. Ob bei Nutzern unter 16 Art. 6
-  Abs. 1 lit. b DSGVO trägt oder eine Einwilligung nach Art. 8 nötig ist, und was das Recht der
-  Verträge mit Minderjährigen dazu sagt: zu prüfen. Weder dieses Verzeichnis noch die
-  Datenschutzerklärung ziehen daraus einen Schluss.
+  Datenschutzerklärung (Abschnitt 6 dort) nicht auseinanderlaufen. Es sind die der DSGVO. Das DSG
+  verlangt nicht für jede Bearbeitung eine Rechtsgrundlage, sondern dass seine Grundsätze
+  eingehalten werden (Art. 6 DSG); eine Rechtfertigung (Art. 31 DSG) braucht es erst, wo eine
+  Bearbeitung die Persönlichkeit verletzt (Art. 30 DSG). Ob das so stehen bleiben kann: zu prüfen,
+  wie in der Datenschutzerklärung (Abschnitt 1 dort). Ob bei Nutzern unter 16 Art. 6 Abs. 1 lit. b
+  DSGVO trägt oder eine Einwilligung nach Art. 8 nötig ist, und was das Recht der Verträge mit
+  Minderjährigen dazu sagt (in der Schweiz die Urteilsfähigkeit, Art. 16 und 19 ZGB): zu prüfen.
+  Weder dieses Verzeichnis noch die Datenschutzerklärung ziehen daraus einen Schluss.
 - **TOM:** Abschnitt 4.
 
 ### V1 Nutzerkonto, Anmeldung und Sitzungen
@@ -104,7 +146,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 - **Zweck:** ein Konto anlegen, anmelden, angemeldet bleiben, das Passwort zurücksetzen, das Konto
   löschen.
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO. Dass die App die Sitzung auf dem Gerät speichert,
-  ist für den gewünschten Dienst unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG; zu prüfen).
+  ist für den gewünschten Dienst unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG; geschrieben für
+  einen Betreiber in Deutschland – ob das TDDDG oder eine entsprechende Regel für einen Anbieter in
+  der Schweiz gilt: zu prüfen).
 - **Betroffene:** Nutzer. Außerdem Personen, deren E-Mail-Adresse jemand anderes ohne ihr Wissen
   registriert hat: Die E-Mail-Bestätigung ist zurzeit aus (`supabase/config.toml`).
 - **Daten:**
@@ -137,7 +181,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Erneuerung nach dem Aufräumen auch die Namen von der Registrierung; Refresh-Token; Nutzerobjekt)
     im iOS-Schlüsselbund bzw. verschlüsselt mit dem Android-Keystore, über `expo-secure-store`, in
     Stücken von höchstens 1600 Zeichen.
-  - **Nicht** erhoben: das Alter. Der Schalter „I am 12 or older“ bleibt im Formular und wird nie
+  - **Nicht** erhoben: das Alter. Der Schalter „I am 13 or older“ bleibt im Formular und wird nie
     gesendet.
 - **Empfänger:** Supabase. Keine Funktion gibt einem anderen Nutzer die E-Mail-Adresse heraus.
 - **Löschfristen:**
@@ -277,16 +321,18 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 - **Zweck:** Missbrauch bearbeiten: Meldungen lesen, Verwarnungen per E-Mail schicken, Konten
   entfernen (V7), Beweise aufbewahren, die ein Opfer brauchen könnte, und in schweren Fällen eine
   Meldung an die Polizei geben. Auch Apples Guideline 1.2.
-- **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – berechtigtes Interesse, Missbrauch zu
-  verhindern und zu bearbeiten, die Nutzer und besonders die Minderjährigen unter ihnen zu schützen
-  und Beweise zu sichern. Art. 6 Abs. 1 lit. c, wenn ein Gesetz zur Herausgabe verpflichtet. Für die
-  freiwillige Weitergabe an die Polizei, die die Daten zu einem anderen Zweck verwendet als dem, zu
-  dem sie erhoben wurden: ob neben lit. f die Vereinbarkeitsprüfung nach Art. 6 Abs. 4 oder § 24
-  Abs. 1 Nr. 1 BDSG heranzuziehen ist, zu prüfen (die Datenschutzerklärung nennt die Weitergabe
-  schon als Zweck, 3.7). Dass eine Meldung die Löschung eines Kontos bis zu 180 Tage überdauert,
-  stützt sich auf Art. 17 Abs. 3 lit. e (Geltendmachung, Ausübung oder Verteidigung von
-  Rechtsansprüchen) und das berechtigte Interesse (`docs/ARCHITECTURE.md`, „A report keeps a
-  copy“); zu prüfen.
+- **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – berechtigtes Interesse, Missbrauch zu verhindern
+  und zu bearbeiten, die Nutzer und besonders die Minderjährigen unter ihnen zu schützen und Beweise
+  zu sichern. Art. 6 Abs. 1 lit. c, wenn ein Gesetz zur Herausgabe verpflichtet. Für die freiwillige
+  Weitergabe an die Polizei, die die Daten zu einem anderen Zweck verwendet als dem, zu dem sie
+  erhoben wurden: ob neben lit. f die Vereinbarkeitsprüfung nach Art. 6 Abs. 4 DSGVO heranzuziehen
+  ist, und nach dem DSG, ob die Weitergabe mit dem erkennbaren Zweck vereinbar ist (Art. 6 Abs. 3
+  DSG) oder ein überwiegendes Interesse sie rechtfertigt (Art. 31 DSG): zu prüfen (die
+  Datenschutzerklärung nennt die Weitergabe schon als Zweck, 3.7). Hier stand früher § 24 Abs. 1 Nr.
+  1 BDSG, geschrieben für einen Betreiber in Deutschland (6.21). Dass eine Meldung die Löschung
+  eines Kontos bis zu 180 Tage überdauert, stützt sich auf Art. 17 Abs. 3 lit. e (Geltendmachung,
+  Ausübung oder Verteidigung von Rechtsansprüchen) und das berechtigte Interesse
+  (`docs/ARCHITECTURE.md`, „A report keeps a copy“); zu prüfen.
 - **Betroffene:** die meldende und die gemeldete Person; Dritte, die im gemeldeten Brief vorkommen.
 - **Daten:**
   - `public.reports`: `reporter_id`, `reported_id`, `message_id`, `reason` (aus einer festen Liste),
@@ -333,7 +379,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Person zu schützen.
 - **Betroffene:** Nutzer, deren Konto wegen Verstößen gegen die Hausregeln entfernt wurde. Ein
   Konto, das aus einem anderen Grund gelöscht wird – von der Person selbst, auf Bitte der Eltern,
-  wegen einer fremden E-Mail-Adresse oder weil jemand jünger als 12 ist –, hinterlässt keine Sperre
+  wegen einer fremden E-Mail-Adresse oder weil jemand jünger als 13 ist –, hinterlässt keine Sperre
   (5.4; Datenschutzerklärung 3.8).
 - **Wie:** Der Betreiber entfernt ein Konto mit `select private.remove_account('<reported_id>')`
   (GO-LIVE, „Handling a report“). Die Funktion sperrt die Anmeldung für genau
@@ -431,9 +477,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 ### V11 Kontakt, Support und Anfragen von Betroffenen
 
 - **Zweck:** Fragen beantworten, Ergänzungen zu Meldungen entgegennehmen, Anfragen nach Art. 15 bis
-  21 DSGVO bearbeiten, Anfragen von Eltern, Verwarnungen nach einer Meldung, die Nachricht an die
-  meldende Person nach einer Drohung (V6), Hinweise auf wichtige Änderungen der
-  Datenschutzerklärung (dort Abschnitt 15).
+  21 DSGVO und Art. 25, 28 und 32 DSG bearbeiten, Anfragen von Eltern, Verwarnungen nach einer
+  Meldung, die Nachricht an die meldende Person nach einer Drohung (V6), Hinweise auf wichtige
+  Änderungen der Datenschutzerklärung (dort Abschnitt 15).
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO, wenn es um das Konto geht; lit. c bei Anfragen zu
   Betroffenenrechten; sonst lit. f.
 - **Betroffene:** Nutzer, Eltern und andere Erziehungsberechtigte, sonstige Absender.
@@ -442,7 +488,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 - **Speicherort:** das Postfach `{{CONTACT_EMAIL}}` bei Microsoft (Outlook.com), und der
   Postfachanbieter des Absenders.
 - **Empfänger:** Microsoft.
-- **Drittland:** zu prüfen (Microsoft verarbeitet auch in den USA).
+- **Ausland:** zu prüfen (Microsoft verarbeitet auch in den USA; Swiss-US bzw. EU-US Data Privacy
+  Framework, falls Microsoft zertifiziert ist; Abschnitt 2).
 - **Löschfristen:** **noch nicht festgelegt.** Vorschlag: sechs Monate, nachdem das Anliegen erledigt
   ist. Ein kurzer Nachweis über erledigte Betroffenenanfragen (Datum von Eingang und Antwort, ohne
   die herausgegebenen Daten) kann länger bleiben; wie lange: zu prüfen. Entscheidung des Betreibers,
@@ -467,7 +514,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   - Die Demo-Konten sind erfunden und laufen über Adressen des Betreibers.
 - **Speicherort:** App Store Connect (Apple), Play Console (Google).
 - **Empfänger:** Apple, Google (Rolle: zu prüfen).
-- **Drittland:** nach den Bestimmungen von Apple und Google.
+- **Ausland:** nach den Bestimmungen von Apple und Google (auch USA; Abschnitt 2).
 - **Löschfristen:** Eine Adresse kommt von der Testerliste, wenn die Person nicht mehr testet
   (Datenschutzerklärung 3.12). TestFlight-Versionen laufen nach 90 Tagen ab. Feedback-Screenshots
   mit Briefen nach der Auswertung löschen, soweit App Store Connect das erlaubt (zu prüfen). Fristen
@@ -476,18 +523,35 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 ### V13 Webseiten für Datenschutzerklärung und Kontakt
 
 - **Zweck:** die Datenschutzerklärung, die Kontaktseite und die Anleitung zum Löschen des Kontos
-  öffentlich bereitstellen (verlangt von Apple, Google und Art. 13 DSGVO).
-- **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO (sicherer Betrieb der Seite) bzw. lit. c (Pflicht
-  zur Information).
+  öffentlich bereitstellen (verlangt von Apple, Google, Art. 19 DSG und Art. 13 DSGVO).
+- **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – ohne IP-Adresse lässt sich eine Webseite nicht
+  ausliefern (wie Datenschutzerklärung 6 und 7). Dass es die Seiten gibt, verlangen Art. 19 DSG und
+  Art. 13 DSGVO; ob für die Protokolle zusätzlich lit. c trägt: zu prüfen (Art. 6 Abs. 3 DSGVO
+  erfasst nur Pflichten aus dem Recht der EU oder eines Mitgliedstaats).
 - **Betroffene:** Besucher der Seiten.
-- **Daten:** IP-Adresse, User-Agent, Zeitpunkt, aufgerufene Seite, in den Protokollen des Hosters.
-- **Empfänger:** der Hoster, **noch nicht gewählt.** Ob er Auftragsverarbeiter ist und einen Vertrag
-  braucht, was er protokolliert und wie lange, und ob er Cookies setzt: zu prüfen. Am besten eine
-  Seite ohne Cookies, ohne eingebundene Schriften oder Skripte von Dritten.
+- **Wo:** GitHub Pages, als Nutzer-Site: ein öffentliches Repository `vnznznznz.github.io`, das der
+  Betreiber noch anlegt, erreichbar unter `https://vnznznznz.github.io/`. Night Courier liegt im
+  Ordner `night-courier/`: `index.html` (aus `support-page.md`, `{{SUPPORT_URL}}`),
+  `privacy-policy.de.html` (verbindlich, `{{PRIVACY_POLICY_URL}}`) und `privacy-policy.en.html`.
+  Die ausgefüllten Seiten mit Name und Anschrift liegen nur dort, nie in diesem Repository. Auch das
+  Repository der Webseiten ist öffentlich, und git behält jede frühere Fassung: Eine einmal dort
+  eingetragene Anschrift bleibt in der Geschichte lesbar.
+- **Daten:** IP-Adresse, die GitHub für Sicherheit und Betrieb protokolliert; User-Agent,
+  Zeitpunkt und aufgerufene Seite, soweit GitHub sie festhält (genaue Felder: zu prüfen). Die Seiten
+  selbst setzen keine Cookies und laden nichts von anderen Websites; beim Bauen prüfen, dass es so
+  bleibt (keine Web-Schriften, Skripte, Analyse oder Einbettungen von fremden Adressen, auch kein
+  Theme, das so etwas nachlädt).
+- **Empfänger:** GitHub, Inc. (USA). Ob GitHub für GitHub Pages eigener Verantwortlicher oder
+  Auftragsbearbeiter ist und es dafür einen Vertrag gibt, wie lange GitHub die IP-Adressen
+  aufbewahrt und ob GitHub nach dem Swiss-US bzw. EU-US Data Privacy Framework zertifiziert ist: zu
+  prüfen (5.1).
+- **Ausland:** USA (Abschnitt 2).
+- **Löschfristen:** nach GitHubs eigenen Bestimmungen (zu prüfen). Die Kontolöschung in der App
+  erreicht diese Protokolle nicht.
 
 ---
 
-## 4. Technische und organisatorische Maßnahmen (Art. 30 Abs. 1 lit. g, Art. 32)
+## 4. Technische und organisatorische Maßnahmen (Art. 8 DSG; Art. 30 Abs. 1 lit. g, Art. 32 DSGVO)
 
 Nur, was der Code und die Konfiguration tatsächlich umsetzen, mit der Stelle, an der es steht. Was
 fehlt, steht in 4.8.
@@ -665,39 +729,53 @@ nutzt (4.4).
 
 ## 5. Checkliste: was der Betreiber selbst tun muss
 
-### 5.1 Verträge zur Auftragsverarbeitung (Art. 28)
+### 5.1 Verträge zur Auftragsverarbeitung (Art. 9 DSG, Art. 28 DSGVO)
 
 - [ ] **Supabase:** den Data Processing Addendum (DPA) anfordern und unterzeichnen. Nach Supabases
-      eigener Seite: im Dashboard der Organisation unter „Legal Documents“ → „Request DPA“;
-      Supabase schickt dann ein Dokument über PandaDoc zum Unterzeichnen (Weg zu prüfen, er hat sich
-      schon geändert). Er enthält die Standardvertragsklauseln (Durchführungsbeschluss (EU)
-      2021/914; welche Module: zu prüfen). Die unterzeichnete Fassung privat ablegen und hier das
-      Datum eintragen: \_\_\_\_\_\_\_\_. Vorher die Datenschutzerklärung nicht veröffentlichen:
-      Ihre Abschnitte 7 und 8 sagen, dass es den DPA mit den Standardvertragsklauseln gibt
-      (PRÜFEN-Hinweise dort).
+      eigener Seite: im Dashboard der Organisation unter „Legal Documents“ → „Request DPA“; Supabase
+      schickt dann ein Dokument über PandaDoc zum Unterzeichnen (Weg zu prüfen, er hat sich schon
+      geändert). Er enthält die Standardvertragsklauseln (Durchführungsbeschluss (EU) 2021/914;
+      welche Module: zu prüfen; ob er die Anpassungen für die Schweiz enthält, mit denen der EDÖB
+      die Klauseln anerkannt hat, Art. 16 Abs. 2 lit. d DSG: zu prüfen). Die unterzeichnete Fassung
+      privat ablegen und hier das Datum eintragen: \_\_\_\_\_\_\_\_. Vorher die Datenschutzerklärung
+      nicht veröffentlichen: Ihre Abschnitte 7 und 8 sagen, dass es den DPA mit den
+      Standardvertragsklauseln gibt (PRÜFEN-Hinweise dort).
 - [ ] Supabases Liste der Unterauftragsverarbeiter lesen; prüfen, ob vor der API ein Dienst wie
       Cloudflare liegt und wo Protokolle gespeichert werden; Abschnitt 2 und die
       Datenschutzerklärung (7, 8) ergänzen. Ob man sich für Änderungen der Liste benachrichtigen
       lassen kann: zu prüfen.
 - [ ] Ob für den Zugriff aus den USA neben den Standardvertragsklauseln eine
-      Transfer-Folgenabschätzung nötig ist, oder ob Supabase unter dem EU-US Data Privacy Framework
-      zertifiziert ist: zu prüfen.
+      Transfer-Folgenabschätzung nötig ist, oder ob Supabase unter dem Swiss-US Data Privacy
+      Framework (für das DSG; vom Bundesrat als angemessen anerkannt, in Kraft seit 15.
+      September 2024) und dem EU-US Data Privacy Framework (für Menschen in der EU) zertifiziert
+      ist: zu prüfen. Dasselbe für Microsoft, GitHub, Apple und Google auf
+      dataprivacyframework.gov nachsehen und in Abschnitt 2 und der Datenschutzerklärung (8)
+      eintragen.
 - [ ] **E-Mail-Versanddienst**, sobald gewählt (Resend, Postmark oder Amazon SES): dessen DPA
       abschließen, Sitz und Unterauftragsverarbeiter prüfen, dann Abschnitt 2, V10 und die
       Datenschutzerklärung (7) ergänzen.
-- [ ] **Hoster der Webseiten**, sobald gewählt: Vertrag zur Auftragsverarbeitung, falls er einer
-      ist; keine Cookies und keine Inhalte von Dritten.
+- [ ] **GitHub (Webseiten, V13):** prüfen, ob GitHub für GitHub Pages als Auftragsbearbeiter
+      handelt und einen Vertrag dafür anbietet (für ein privates Gratiskonto vermutlich nicht: zu
+      prüfen) oder als eigener Verantwortlicher; wie lange es die IP-Adressen aufbewahrt; ob es
+      zertifiziert ist (oben). Ist es weder zertifiziert noch durch einen Vertrag gebunden,
+      rechtlich klären, ob eine Ausnahme nach Art. 17 DSG trägt oder ein anderer Hoster nötig ist.
+      Keine Cookies und keine Inhalte von Dritten auf den Seiten.
 - [ ] **Microsoft:** Für ein Outlook.com-Verbraucherpostfach gibt es nach hiesiger Kenntnis keinen
-      Vertrag zur Auftragsverarbeitung (zu prüfen). Entweder festhalten, warum das vertretbar ist,
-      oder für Night Courier ein Postfach bei einem Anbieter nutzen, der einen solchen Vertrag
-      anbietet.
+      Vertrag zur Auftragsverarbeitung (zu prüfen; nach DSG ebenso, Art. 9 DSG). Entweder
+      festhalten, warum das vertretbar ist, oder für Night Courier ein Postfach bei einem Anbieter
+      nutzen, der einen solchen Vertrag anbietet.
 - [ ] **Apple und Google:** Es gelten ihre Entwicklervereinbarungen. Ob sie für die Testerdaten
       eigene Verantwortliche sind: zu prüfen.
 
 ### 5.2 Vor dem Start
 
-- [ ] Die Datenschutzerklärung mit ausgefüllten Platzhaltern unter `{{PRIVACY_POLICY_URL}}`
-      veröffentlichen; ihre PRÜFEN-Hinweise vorher abarbeiten.
+- [ ] Das Repository `vnznznznz.github.io` anlegen und die Datenschutzerklärung mit ausgefüllten
+      Platzhaltern unter `{{PRIVACY_POLICY_URL}}` veröffentlichen, die Kontaktseite unter
+      `{{SUPPORT_URL}}` (V13); ihre PRÜFEN-Hinweise vorher abarbeiten.
+- [ ] Klären, ob ein Vertreter in der EU nach Art. 27 DSGVO nötig ist (Abschnitt 1; rechtlicher
+      Rat). Wenn ja, benennen und in der Datenschutzerklärung (1) nennen.
+- [ ] Den Meldeweg des EDÖB für Datenpannen nachsehen und im privaten Exemplar eintragen
+      (Abschnitt 1, 5.5).
 - [ ] Ein ausgefülltes Exemplar dieses Verzeichnisses privat ablegen, mit Datum.
 - [ ] Zwei-Faktor-Anmeldung für Supabase, Apple, Google und das Microsoft-Konto des Postfachs;
       Datenbankpasswort und Demo-Zugänge nur im Passwortmanager; Access Tokens nach der Einrichtung
@@ -716,25 +794,34 @@ nutzt (4.4).
 - [ ] Entscheiden, ob die Zusage „Ich lese Briefe nur, wenn sie mir gemeldet werden“ gilt (L6).
 - [ ] Im gewählten Supabase-Tarif nachsehen: wie lange Protokolle aufbewahrt werden und wo, ob und
       wie lange es Sicherungen gibt. In V8, V9 und die Datenschutzerklärung (3.9, 9) eintragen.
-- [ ] Prüfen, ob eine Datenschutz-Folgenabschätzung (Art. 35) nötig ist: Minderjährige als
-      schutzbedürftige Betroffene, dazu Freitext, der sensible Daten enthalten kann. Nach den
-      Leitlinien der europäischen Datenschutzbehörden (WP 248) sprechen zwei erfüllte Kriterien in
-      der Regel für eine Folgenabschätzung; dazu die Liste der deutschen Aufsichtsbehörden nach
-      Art. 35 Abs. 4 ansehen. Das Ergebnis der Prüfung festhalten (zu prüfen). Ist eine
-      Folgenabschätzung nötig, ist nach § 38 Abs. 1 Satz 2 BDSG auch ein Datenschutzbeauftragter zu
-      benennen (Abschnitt 1).
+- [ ] Prüfen, ob eine Datenschutz-Folgenabschätzung nötig ist – nach dem DSG bei voraussichtlich
+      hohem Risiko (Art. 22 DSG), nach der DSGVO nach Art. 35: Minderjährige als schutzbedürftige
+      Betroffene, dazu Freitext, der sensible Daten enthalten kann. Nach den Leitlinien der
+      europäischen Datenschutzbehörden (WP 248) sprechen zwei erfüllte Kriterien in der Regel für
+      eine Folgenabschätzung. Was der EDÖB dazu veröffentlicht, und welche Liste nach Art. 35 Abs.
+      4 DSGVO für einen Verantwortlichen ohne Niederlassung in der EU maßgeblich ist: zu prüfen.
+      Das Ergebnis der Prüfung festhalten. Bleibt nach einer Folgenabschätzung trotz der Maßnahmen
+      ein hohes Risiko, verlangt das DSG vorher die Stellungnahme des EDÖB (Art. 23 DSG). Hier
+      stand früher, dass dann nach § 38 Abs. 1 Satz 2 BDSG auch ein Datenschutzbeauftragter zu
+      benennen ist; das war für einen Betreiber in Deutschland geschrieben (Abschnitt 1, 6.21).
 - [ ] Die Rechtsgrundlage für Nutzer unter 16 prüfen (Art. 6 Abs. 1 lit. b oder Einwilligung nach
-      Art. 8; Verträge mit Minderjährigen).
-- [ ] Bei Google Play die Folgen der Altersgrenze 12 für die Families Policy entscheiden
-      (`google-play.md`, Abschnitt 5). Ein dafür gespeichertes Altersmerkmal wäre eine neue
+      Art. 8; Verträge mit Minderjährigen; in der Schweiz die Urteilsfähigkeit).
+- [x] Bei Google Play die Folgen der Altersgrenze für die Families Policy entscheiden
+      (`google-play.md`, Abschnitt 5). Entschieden am 5. November 2026: Die Altersgrenze ist 13,
+      die Zielgruppe 13–15, 16–17 und 18 und älter, ohne eine Gruppe unter 13. Damit gilt die
+      Families Policy nicht (zu prüfen: es sei denn, Google hält den Eintrag für kinderansprechend).
+      Es gibt keine Altersabfrage und kein gespeichertes Altersmerkmal; V1 bleibt ohne Alter.
+      Würde Google die Families Policy doch anwenden, wäre ein solches Merkmal eine neue
       Datenkategorie in V1.
 
-### 5.3 Eine Auskunftsanfrage beantworten (Art. 15, auch Art. 20)
+### 5.3 Eine Auskunftsanfrage beantworten (Art. 25 und 28 DSG, Art. 15 und 20 DSGVO)
 
-1. **Eingang notieren.** Die Frist ist ein Monat ab Eingang (Art. 12 Abs. 3). Sie lässt sich um zwei
-   weitere Monate verlängern, wenn das wegen der Komplexität oder der Zahl der Anträge nötig ist;
-   das muss der Person innerhalb des ersten Monats mit Gründen mitgeteilt werden. Die Auskunft ist
-   kostenlos (Art. 12 Abs. 5).
+1. **Eingang notieren.** Nach dem DSG ist die Auskunft kostenlos und in der Regel innerhalb von 30
+   Tagen zu erteilen (Art. 25 DSG); ob und wie sich die Frist verlängern lässt: zu prüfen. Nach der
+   DSGVO ist die Frist ein Monat ab Eingang (Art. 12 Abs. 3). Sie lässt sich um zwei weitere Monate
+   verlängern, wenn das wegen der Komplexität oder der Zahl der Anträge nötig ist; das muss der
+   Person innerhalb des ersten Monats mit Gründen mitgeteilt werden. Die Auskunft ist kostenlos
+   (Art. 12 Abs. 5). Wer innerhalb von 30 Tagen antwortet, hält beides ein.
 2. **Identität klären.** Kommt die Anfrage von der E-Mail-Adresse des Kontos, genügt das in der
    Regel. Sonst um Bestätigung von dieser Adresse bitten (Art. 12 Abs. 6); eine Ausweiskopie nur,
    wenn es wirklich nicht anders geht. Fragen Eltern für ihr Kind, so nachfragen, dass klar ist,
@@ -747,16 +834,20 @@ nutzt (4.4).
    der sie betrifft; Server-Protokolle, falls noch vorhanden.
 5. **Die Rechte anderer schützen** (Art. 15 Abs. 4). Bei Meldungen über die Person nichts über die
    meldende Person herausgeben; die Abfrage lässt `reporter_id` und die Notiz der meldenden Person
-   deshalb weg. Ob und wie weit die Notiz nach Abwägung doch herauszugeben ist (§ 29 Abs. 1 Satz 2
-   BDSG): zu prüfen. Ebenso lässt sie weg, wer die Person blockiert hat: Die blockierte Person
+   deshalb weg. Ob und wie weit die Notiz nach Abwägung doch herauszugeben ist: zu prüfen. Nach dem
+   DSG kann die Auskunft eingeschränkt werden, soweit überwiegende Interessen Dritter es verlangen
+   (Art. 26 DSG). Hier stand früher § 29 Abs. 1 Satz 2 BDSG, geschrieben für einen Betreiber in
+   Deutschland (6.21). Ebenso lässt sie weg, wer die Person blockiert hat: Die blockierte Person
    erfährt das in der App nie (V5), und die Auskunft soll es nicht nachholen (Abwägung nach Art. 15
    Abs. 4: zu prüfen). Briefe, die die Person bekommen hat, enthalten auch Daten des Absenders,
    sind ihr aber ohnehin bekannt.
 6. **Antworten:** die Kopie, dazu die Angaben nach Art. 15 Abs. 1 und 2 – Zwecke, Kategorien,
    Empfänger, Speicherdauer, die Rechte auf Berichtigung, Löschung, Einschränkung und Widerspruch,
    das Beschwerderecht, die Herkunft (von der Person selbst; bei Meldungen von anderen Nutzern),
-   keine automatisierten Entscheidungen, und die Drittländer mit ihren Garantien. Dafür genügt
-   meist ein Verweis auf die passenden Abschnitte der Datenschutzerklärung.
+   keine automatisierten Entscheidungen, und die Länder, in die Daten gehen (Schweiz, USA), mit
+   ihren Garantien (Abschnitt 2). Das DSG verlangt im Wesentlichen dasselbe (Art. 25 Abs. 2 DSG; ob
+   etwas fehlt: zu prüfen). Dafür genügt meist ein Verweis auf die passenden Abschnitte
+   der Datenschutzerklärung.
 7. **Aufräumen und festhalten:** die Exportdatei nach dem Versand löschen; Datum von Eingang und
    Antwort notieren, ohne die Daten selbst aufzubewahren.
 
@@ -766,7 +857,8 @@ Nur die E-Mail-Adresse in der dritten Zeile ersetzen. Das Anmeldeprotokoll finde
 Nutzer-ID und über die E-Mail-Adresse, damit auch Einträge ohne `actor_id` dabei sind:
 
 ```sql
--- Auskunft nach Art. 15 DSGVO: alles, was die Datenbank zu einem Konto hält. Liest nur.
+-- Auskunft nach Art. 25 DSG und Art. 15 DSGVO: alles, was die Datenbank zu einem Konto hält.
+-- Liest nur.
 with me as (
   select id, id::text as id_text, email from auth.users where email = '<E-Mail-Adresse des Kontos>'
 )
@@ -862,7 +954,7 @@ speichert über die meldende Person nur `reporter_id`, und die ist dann leer. Is
 und noch gesperrt, findet die Abfrage den Kontodatensatz, die Identität, die Sitzungen und das
 Anmeldeprotokoll weiter, aber kein Profil mehr.
 
-### 5.4 Eine Löschanfrage beantworten (Art. 17)
+### 5.4 Eine Löschanfrage beantworten (Art. 32 Abs. 2 DSG, Art. 17 DSGVO)
 
 1. Meist kann die Person selbst löschen: Your profile → Delete my account. Kommt die Bitte per
    E-Mail: Eingang notieren, Identität wie in 5.3 klären; Frist wie dort.
@@ -893,29 +985,33 @@ Sonderfälle, die die Datenschutzerklärung zusagt, jeweils mit den Schritten 2 
 Sperre**: Hat ein Kind unter 16 ohne Erlaubnis ein Konto, wird es auf Bitte der Eltern gelöscht,
 nachdem geklärt ist, dass die Bitte von ihnen kommt (Datenschutzerklärung 10). Hat jemand eine
 fremde E-Mail-Adresse registriert, wird das Konto auf Bitte des Inhabers der Adresse gelöscht
-(3.10). Erfährt der Betreiber, dass jemand jünger als 12 ist, löscht er das Konto
+(3.10). Erfährt der Betreiber, dass jemand jünger als 13 ist, löscht er das Konto
 (Datenschutzerklärung 10): Dashboard → Authentication → Users → Delete user, oder die Person löscht
 es selbst. Nicht mit `private.remove_account`: Dessen Sperre gilt nur für Konten, die wegen
 Regelverstößen entfernt werden (V7, Datenschutzerklärung 3.8), und hielte die E-Mail-Adresse eines
 Kindes zwei Jahre gespeichert.
 
-Die anderen Rechte: **Berichtigung** (Art. 16) – Anzeigename und Stadt ändert die Person selbst;
-Benutzername oder E-Mail-Adresse ändert der Betreiber im Dashboard (Weg zu prüfen). **Einschränkung**
-(Art. 18) und **Widerspruch** (Art. 21) gegen Verarbeitungen nach Art. 6 Abs. 1 lit. f – im
-Einzelfall abwägen, Ergebnis begründet mitteilen. Lehnt der Betreiber etwas ab, teilt er das
-unverzüglich, spätestens innerhalb eines Monats mit, mit Gründen und dem Hinweis auf das
-Beschwerderecht bei einer Aufsichtsbehörde und auf einen gerichtlichen Rechtsbehelf
-(Art. 12 Abs. 4).
+Die anderen Rechte: **Berichtigung** (Art. 32 Abs. 1 DSG, Art. 16 DSGVO) – Anzeigename und Stadt
+ändert die Person selbst; Benutzername oder E-Mail-Adresse ändert der Betreiber im Dashboard (Weg zu
+prüfen). **Einschränkung** (Art. 18) und **Widerspruch** (Art. 21) gegen Verarbeitungen nach Art. 6
+Abs. 1 lit. f – im Einzelfall abwägen, Ergebnis begründet mitteilen; nach dem DSG entsprechend die
+Ansprüche aus Art. 32 Abs. 2 DSG (eine Bearbeitung unterlassen, keine Weitergabe an Dritte,
+löschen). Lehnt der Betreiber etwas ab, teilt er das unverzüglich, spätestens innerhalb eines Monats
+mit, mit Gründen und dem Hinweis auf das Beschwerderecht bei einer Aufsichtsbehörde – dem EDÖB, bei
+Menschen in der EU auch der Behörde dort – und auf einen gerichtlichen Rechtsbehelf (Art. 12 Abs.
+4).
 
-### 5.5 Eine Datenpanne (Art. 33 und 34)
+### 5.5 Eine Datenpanne (Art. 24 DSG, Art. 33 und 34 DSGVO)
 
 Eine Datenpanne ist eine Verletzung der Sicherheit, die zur Vernichtung, zum Verlust, zur
 Veränderung, zur unbefugten Offenlegung von oder zum unbefugten Zugang zu personenbezogenen Daten
-führt (Art. 4 Nr. 12). Bei Night Courier zum Beispiel:
+führt (Art. 4 Nr. 12; im DSG „Verletzung der Datensicherheit“, Art. 5 lit. h DSG). Bei Night
+Courier zum Beispiel:
 
 - ein Service-Role- oder Secret-Schlüssel oder das Datenbankpasswort ist nach außen gelangt;
 - ein Verwaltungskonto (Supabase, Microsoft, Apple, Google) wurde übernommen;
-- ein Vorfall bei Supabase (Supabase muss ihn unverzüglich melden, Art. 33 Abs. 2);
+- ein Vorfall bei Supabase (Supabase muss ihn unverzüglich melden, Art. 33 Abs. 2 DSGVO; nach dem
+  DSG ebenso, Art. 24 Abs. 3 DSG);
 - ein verlorener oder gestohlener Rechner mit Exporten (Auskunft, Polizei);
 - eine E-Mail mit Daten an die falsche Person, oder eine Rundmail mit offenen Empfängern;
 - Daten, die versehentlich ins öffentliche Repository gelangt sind (zum Beispiel Screenshots);
@@ -928,27 +1024,41 @@ Schritte:
    ausliefern; Sitzungen beenden; Konten mit neuem Passwort und Zwei-Faktor-Anmeldung sichern;
    gegebenenfalls Registrierung abschalten (`enable_signup`); eine fehlerhafte Funktion
    zurücknehmen.
-2. **Zeitpunkt notieren, an dem die Panne bekannt wurde.** Von da an laufen 72 Stunden.
+2. **Zeitpunkt notieren, an dem die Panne bekannt wurde.** Von da an laufen die 72 Stunden der
+   DSGVO; das DSG verlangt die Meldung „so rasch als möglich“.
 3. **Bewerten:** welche Daten, wie viele Personen und Datensätze, sind Minderjährige betroffen,
-   waren Brieftexte dabei (sie können Sensibles enthalten), welche Folgen drohen.
+   waren Menschen in der EU betroffen, waren Brieftexte dabei (sie können Sensibles enthalten),
+   welche Folgen drohen. Die Schwellen sind verschieden: Das DSG verlangt die Meldung erst bei
+   voraussichtlich **hohem** Risiko, die DSGVO schon, wenn ein Risiko nicht unwahrscheinlich ist.
    - Voraussichtlich **kein Risiko** für die Betroffenen: nicht melden, aber dokumentieren
      (Schritt 6).
-   - **Risiko:** der Aufsichtsbehörde melden (Schritt 4).
-   - **Hohes Risiko:** zusätzlich die Betroffenen benachrichtigen (Schritt 5).
-4. **Meldung an die Aufsichtsbehörde** (Art. 33): unverzüglich und möglichst binnen 72 Stunden
-   nach Bekanntwerden, über den Meldeweg der Landesbehörde (Abschnitt 1). Inhalt (Art. 33 Abs. 3):
-   die Art der Verletzung, soweit möglich mit Kategorien und ungefährer Zahl der Betroffenen und
-   Datensätze; Name und Kontakt (hier: der Betreiber selbst); die wahrscheinlichen Folgen; die
-   ergriffenen oder vorgeschlagenen Maßnahmen. Was noch nicht feststeht, darf nachgereicht werden
-   (Abs. 4). Wird es später als 72 Stunden, die Gründe für die Verzögerung angeben.
-5. **Benachrichtigung der Betroffenen** (Art. 34) bei hohem Risiko: unverzüglich, in klarer und
+   - **Risiko**, aber kein hohes: Sind Menschen in der EU betroffen, der zuständigen
+     Aufsichtsbehörde in der EU melden (Schritt 4); sonst nicht melden, aber dokumentieren.
+   - **Hohes Risiko:** dem EDÖB melden (Schritt 4), bei Menschen in der EU auch der Behörde dort,
+     und die Betroffenen benachrichtigen (Schritt 5).
+4. **Meldung an die Aufsichtsbehörde:**
+   - **An den EDÖB** (Art. 24 DSG), wenn die Panne voraussichtlich zu einem hohen Risiko für die
+     Betroffenen führt: so rasch wie möglich, über seinen Meldeweg (Abschnitt 1). Mindestens die
+     Art der Verletzung, ihre Folgen und die ergriffenen oder vorgesehenen Maßnahmen (Art. 24 Abs.
+     2 DSG).
+   - **In der EU** (Art. 33 DSGVO), wenn Menschen in der EU betroffen sind: unverzüglich und
+     möglichst binnen 72 Stunden nach Bekanntwerden. Welche Behörde das ist, solange es keine
+     Niederlassung und keinen Vertreter in der EU gibt: zu prüfen (Abschnitt 1, 6.22). Inhalt (Art.
+     33 Abs. 3): die Art der Verletzung, soweit möglich mit Kategorien und ungefährer Zahl der
+     Betroffenen und Datensätze; Name und Kontakt (hier: der Betreiber selbst); die
+     wahrscheinlichen Folgen; die ergriffenen oder vorgeschlagenen Maßnahmen. Was noch nicht
+     feststeht, darf nachgereicht werden (Abs. 4). Wird es später als 72 Stunden, die Gründe für
+     die Verzögerung angeben.
+5. **Benachrichtigung der Betroffenen** (Art. 34 DSGVO; nach dem DSG, wenn es zu ihrem Schutz nötig
+   ist oder der EDÖB es verlangt, Art. 24 Abs. 4 DSG) bei hohem Risiko: unverzüglich, in klarer und
    einfacher Sprache, mit mindestens den Angaben nach Art. 33 Abs. 3 lit. b bis d und dem, was die
    Person selbst tun kann (etwa ihr Passwort ändern, wenn sie es anderswo auch benutzt). Weg: E-Mail
    an die Adressen in `auth.users`; ohne eigenes SMTP aus dem eigenen Postfach, und dann nur einzeln
-   oder in Blindkopie, nie mit offenen Empfängern. Die App selbst hat keinen Weg, alle zu
-   erreichen. Ausnahmen in Art. 34 Abs. 3 – etwa eine öffentliche Bekanntmachung statt Einzel-
-   nachrichten, wenn diese unverhältnismäßig aufwendig wären.
-6. **Dokumentieren, jede Panne, auch die nicht gemeldeten** (Art. 33 Abs. 5): Was ist passiert, wann
+   oder in Blindkopie, nie mit offenen Empfängern. Die App selbst hat keinen Weg, alle zu erreichen.
+   Ausnahmen in Art. 34 Abs. 3 – etwa eine öffentliche Bekanntmachung statt Einzelnachrichten,
+   wenn diese unverhältnismäßig aufwendig wären.
+6. **Dokumentieren, jede Panne, auch die nicht gemeldeten** (Art. 33 Abs. 5 DSGVO; nach dem DSG
+   ebenso, Einzelheiten und Aufbewahrungsdauer in der DSV: zu prüfen): Was ist passiert, wann
    bekannt, welche Daten und wie viele Personen, Bewertung des Risikos mit Begründung, gemeldet ja
    oder nein (Datum), Betroffene benachrichtigt ja oder nein (Datum), Maßnahmen.
 7. **Nacharbeiten:** die Ursache beheben und dieses Verzeichnis, die TOM und die Datenschutzerklärung
@@ -1045,20 +1155,30 @@ Betreiber noch selbst tut:
 
 ## 6. Zu prüfen (gesammelt)
 
-1. Ob Art. 30 Abs. 5 eine Privatperson überhaupt erfasst (das Verzeichnis wird so oder so geführt).
+1. Ob die Ausnahme vom Verzeichnis nach Art. 12 Abs. 5 DSG und Art. 24 DSV greift (sie nennt
+   natürliche Personen; sie entfällt bei umfangreicher Bearbeitung besonders schützenswerter
+   Personendaten oder einem Profiling mit hohem Risiko); ob Art. 30 Abs. 5 DSGVO eine Privatperson
+   überhaupt erfasst (das Verzeichnis wird so oder so geführt).
 2. Die Rechtsgrundlage bei Nutzern unter 16 (Art. 6 Abs. 1 lit. b oder Art. 8; Verträge mit
-   Minderjährigen).
-3. § 25 Abs. 2 Nr. 2 TDDDG für die Sitzung auf dem Gerät.
-4. Art. 9 für Briefe, die besondere Kategorien enthalten; Art. 10 für Meldungen über Straftaten;
-   Art. 6 Abs. 4 bzw. § 24 Abs. 1 Nr. 1 BDSG für die freiwillige Weitergabe an die Polizei.
+   Minderjährigen; in der Schweiz die Urteilsfähigkeit, Art. 16 und 19 ZGB). Ob der Satz zum DSG
+   in Abschnitt 3 (Grundsätze statt Rechtsgrundlage, Art. 6, 30 und 31 DSG) so stehen bleiben kann.
+3. § 25 Abs. 2 Nr. 2 TDDDG für die Sitzung auf dem Gerät: für einen Betreiber in Deutschland
+   geschrieben; ob es oder eine entsprechende Schweizer Regel für einen Anbieter in der Schweiz
+   gilt.
+4. Art. 9 für Briefe, die besondere Kategorien enthalten (im DSG „besonders schützenswerte
+   Personendaten“); Art. 10 für Meldungen über Straftaten; Art. 6 Abs. 4 DSGVO bzw. Art. 6 Abs. 3
+   und Art. 31 DSG für die freiwillige Weitergabe an die Polizei (früher § 24 Abs. 1 Nr. 1 BDSG,
+   6.21).
 5. Art. 17 Abs. 3 lit. e als Grundlage dafür, Meldungen über die Kontolöschung hinaus zu behalten.
-6. § 29 Abs. 1 Satz 2 BDSG für die Notiz der meldenden Person bei einer Auskunft.
-7. Ob eine Datenschutz-Folgenabschätzung (Art. 35) nötig ist, und damit nach § 38 Abs. 1 Satz 2
-   BDSG ein Datenschutzbeauftragter.
-8. Supabase: der Weg zum DPA, welche Module der Standardvertragsklauseln er enthält, die
-   Unterauftragsverarbeiter (Cloudflare vor der API? Ort der Protokolle?), ob eine
-   Transfer-Folgenabschätzung nötig ist oder das EU-US Data Privacy Framework greift; die
-   Verschlüsselung gespeicherter Daten.
+6. Die Notiz der meldenden Person bei einer Auskunft: Abwägung nach Art. 15 Abs. 4 DSGVO und Art.
+   26 DSG (früher § 29 Abs. 1 Satz 2 BDSG, 6.21).
+7. Ob eine Datenschutz-Folgenabschätzung nötig ist (Art. 22 DSG, Art. 35 DSGVO), und welche Liste
+   nach Art. 35 Abs. 4 DSGVO dafür maßgeblich ist (früher: nach § 38 Abs. 1 Satz 2 BDSG dann auch
+   ein Datenschutzbeauftragter, 6.21).
+8. Supabase: der Weg zum DPA, welche Module der Standardvertragsklauseln er enthält und ob er die
+   Anpassungen für die Schweiz enthält, die Unterauftragsverarbeiter (Cloudflare vor der API? Ort
+   der Protokolle?), ob eine Transfer-Folgenabschätzung nötig ist oder das Swiss-US bzw. EU-US
+   Data Privacy Framework greift; die Verschlüsselung gespeicherter Daten.
 9. Supabase-Tarif: Aufbewahrung der Protokolle (kostenlos vermutlich ein Tag), Sicherungen und ihre
    Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind.
 10. GoTrue und Postgres gehostet: ob `select private.tidy_up();` `{}` ergibt, die Rolle `postgres`
@@ -1070,12 +1190,15 @@ Betreiber noch selbst tut:
     `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist und, wenn nicht, ob `tidy_up` ersetzte Refresh-Token
     selbst löschen kann; Bereinigung abgelaufener Einmal-Token; ob die Sperre greift, wenn beim
     Entfernen auch die Sitzungen gelöscht werden.
-11. Microsoft: Rolle, Vertrag und Drittlandgrundlage für das Outlook.com-Postfach.
+11. Microsoft: Rolle, Vertrag und Grundlage für die USA (Swiss-US bzw. EU-US Data Privacy
+    Framework?) für das Outlook.com-Postfach.
 12. Apple und Google: ihre Rolle bei Testerdaten; was App Store Connect bei Testern über einen
     öffentlichen Link zeigt; die Felder in Feedback und Absturzberichten; ob Feedback gelöscht
     werden kann; Pre-Launch-Berichte im internen Test; ihre Aufbewahrungsfristen.
-13. Der E-Mail-Versanddienst und der Hoster der Webseiten, sobald gewählt: Sitz, Vertrag,
-    Protokolle, Fristen.
+13. Der E-Mail-Versanddienst, sobald gewählt: Sitz, Vertrag, Protokolle, Fristen. GitHub Pages
+    (V13): Rolle (eigener Verantwortlicher oder Auftragsbearbeiter), Vertrag, welche Felder und wie
+    lange GitHub protokolliert, Zertifizierung nach dem Swiss-US bzw. EU-US Data Privacy
+    Framework, und dass die gebauten Seiten keine Cookies setzen und nichts nachladen.
 14. iOS: ob Schlüsselbund-Einträge die Deinstallation überleben; dass die gebaute Info.plist
     keinen Face-ID-Hinweis mehr enthält.
 15. Wie nach dem Zurückspielen einer Sicherung erkannt wird, welche Konten erneut zu löschen sind.
@@ -1085,13 +1208,26 @@ Betreiber noch selbst tut:
 18. Wie lange Nachweise über erledigte Betroffenenanfragen aufbewahrt werden.
 19. Ob die Auskunft offenlegen muss, wer die Person blockiert hat (Art. 15 Abs. 4; 5.3).
 20. Expo Go in der Entwicklung: ob Expo dabei Daten erhält (Abschnitt 2).
+21. Das BDSG: Die Hinweise auf § 24, § 29 und § 38 BDSG waren für einen Betreiber in Deutschland
+    geschrieben. Ob das BDSG für einen Verantwortlichen in der Schweiz überhaupt gilt (§ 1 Abs. 4
+    BDSG), ist eine Frage für rechtlichen Rat; bis dahin stützt sich dieses Verzeichnis nicht
+    darauf.
+22. Vertreter in der EU (Art. 27 DSGVO): ob die Ausnahme für gelegentliche Verarbeitung passt
+    (vermutlich nicht); und welche Aufsichtsbehörde in der EU eine Meldung nach Art. 33 bekommt,
+    solange es keine Niederlassung und keinen Vertreter in der EU gibt.
+23. Die Polizei als Empfänger: welche – die in der Schweiz oder die im Land der bedrohten Person –,
+    und bei einer Polizei außerhalb der Schweiz die Grundlage für die Bekanntgabe ins Ausland (Art.
+    16 und 17 DSG).
+24. Die Auskunftsfrist nach dem DSG: ob und wie sich die 30 Tage verlängern lassen (5.3); was die
+    DSV zur Dokumentation von Datenpannen verlangt (5.5).
 
 ---
 
 ## Änderungsverlauf
 
-| Datum            | Änderung                                                                                                                                                                                                                                                                                                               | Letzte Prüfung durch den Betreiber |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 4. November 2026 | Erste Fassung aus dem Datenbestand des Codes                                                                                                                                                                                                                                                                           | –                                  |
-| 4. November 2026 | Gegen den Code bis Commit 665924d geprüft: 90 Tage für unbenutzte Sitzungen, Ablauf bei einer Drohung, Verhalten von `tidy_up` bei fehlenden Rechten, Auskunftsabfrage, Polizei als Empfänger von Anmeldedaten                                                                                                         | –                                  |
-| 4. November 2026 | Gegen den Code bis Commit 31cf850 geprüft: jeder Schritt von `tidy_up` abgesichert, Prüfung mit `select private.tidy_up();` statt der Rechteabfrage; Android-Berechtigungen; Konto eines Kindes unter 12 ohne Sperre löschen; zwei Jahre Sperre ab dem Entfernen; Anschrift öffentlich nur in der Datenschutzerklärung | –                                  |
+| Datum            | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Letzte Prüfung durch den Betreiber |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| 4. November 2026 | Erste Fassung aus dem Datenbestand des Codes                                                                                                                                                                                                                                                                                                                                                                                                                                         | –                                  |
+| 4. November 2026 | Gegen den Code bis Commit 665924d geprüft: 90 Tage für unbenutzte Sitzungen, Ablauf bei einer Drohung, Verhalten von `tidy_up` bei fehlenden Rechten, Auskunftsabfrage, Polizei als Empfänger von Anmeldedaten                                                                                                                                                                                                                                                                       | –                                  |
+| 4. November 2026 | Gegen den Code bis Commit 31cf850 geprüft: jeder Schritt von `tidy_up` abgesichert, Prüfung mit `select private.tidy_up();` statt der Rechteabfrage; Android-Berechtigungen; Konto eines Kindes unter 12 ohne Sperre löschen; zwei Jahre Sperre ab dem Entfernen; Anschrift öffentlich nur in der Datenschutzerklärung                                                                                                                                                               | –                                  |
+| 5. November 2026 | Entscheidungen des Betreibers: Er lebt in der Schweiz, als Privatperson – DSG zuerst (Verzeichnis nach Art. 12 DSG, EDÖB als Aufsicht, Datenpannen nach Art. 24 DSG, Rechte nach Art. 25, 28 und 32 DSG, die Länder Schweiz und USA mit ihren Garantien), die DSGVO für Menschen in der EU; Vertreter nach Art. 27 zu prüfen; die BDSG-Hinweise nur noch als „zu prüfen“. Altersgrenze 13 statt 12, Families Policy damit entschieden. Webseiten bei GitHub Pages (V13, Abschnitt 2) | –                                  |

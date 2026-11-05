@@ -37,29 +37,30 @@ runs in Expo Go.
 
 ### B. Accounts and services — yours, and two have lead times
 
-| Item                              | Cost      | Status          | Blocks                                           |
-| --------------------------------- | --------- | --------------- | ------------------------------------------------ |
-| Supabase project in Zurich        | free tier | **not created** | everything — see "Setting up the hosted project" |
-| Custom SMTP (Resend/Postmark/SES) | free tier | not started     | any second user; password reset                  |
-| Apple Developer Program           | €99/year  | not started     | Phases 15–17: any install beyond Expo Go         |
-| Expo account for EAS builds       | free tier | not started     | Phases 15–16                                     |
-| Google Play Console               | $25 once  | not started     | Android only; skip if iOS-only                   |
+| Item                                    | Cost                                              | Status          | Blocks                                                               |
+| --------------------------------------- | ------------------------------------------------- | --------------- | -------------------------------------------------------------------- |
+| Supabase project in Zurich              | free tier                                         | **not created** | everything — see "Setting up the hosted project"                     |
+| Custom SMTP (Resend/Postmark/SES)       | free tier                                         | not started     | any second user; password reset                                      |
+| Apple Developer Program                 | 99 USD/year (CHF 99 in Switzerland, **to check**) | not started     | Phases 15–17: any install beyond Expo Go                             |
+| Expo account for EAS builds             | free tier                                         | not started     | Phases 15–16                                                         |
+| Google Play Console                     | 25 USD once                                       | not started     | Android only; skip if iOS-only                                       |
+| GitHub Pages site `vnznznznz.github.io` | free                                              | **not created** | the privacy policy and Support URLs - see "Where the web pages live" |
 
 **Apple enrolment is the longest pole.** Individual identity verification takes days to weeks, and
 it gates every build that is not Expo Go — TestFlight included. It is also the only unavoidable
 cost on the iOS side; nothing in the app itself costs money.
 
-### C. Compliance artifacts — drafted in `docs/store/`; personal details and hosting still open
+### C. Compliance artifacts — drafted in `docs/store/`; personal details still open, hosting planned
 
-| Item                              | Required by                    | Notes                                                                                                                                                                                                                                                                                                              |
-| --------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Privacy policy at a public URL    | Apple 5.1.1(i), GDPR Art. 13   | **Drafted**: `docs/store/privacy-policy.de.md` (binding) and `.en.md`. Needs the operator's name and address filled in, outside this repository, and a public URL                                                                                                                                                  |
-| Support URL                       | Apple 1.2                      | **Drafted**: `docs/store/support-page.md`, to be hosted as a public https page; it names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the hosted policy, if Apple wants the address on the Support URL itself |
-| Contact postal address            | Apple 1.2, GDPR Art. 13        | Decided. Published only in the hosted privacy policy, section 1 (the support page points there); in App Store Connect where a form asks; never in this repository                                                                                                                                                  |
-| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                   |
-| App Privacy "nutrition label"     | App Store Connect              | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                          |
-| Age rating questionnaire          | App Store Connect              | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                      |
-| Trader status declaration         | EU DSA                         | **Not applicable** on a TestFlight-only path                                                                                                                                                                                                                                                                       |
+| Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Drafted**: `docs/store/privacy-policy.de.md` (binding) and `.en.md`. Needs the operator's name and address filled in, outside this repository. Planned at `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version alongside (see "Where the web pages live")                                                                                          |
+| Support URL                       | Apple 1.2                                  | **Drafted**: `docs/store/support-page.md`, to be published as `index.html` of the GitHub Pages folder, `https://vnznznznz.github.io/night-courier/`; it names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the hosted policy, if Apple wants the address on the Support URL itself |
+| Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                                        |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                                        |
+| App Privacy "nutrition label"     | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                                                                                               |
+| Age rating questionnaire          | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                                                                                           |
+| Trader status declaration         | EU DSA                                     | **Not applicable** on a TestFlight-only path. Any App Store distribution in the EU needs it, wherever the operator lives. A private, non-commercial operator would normally declare non-trader (**to check**); as a trader, Apple would show the postal address, phone number and email on the store page. See `docs/store/app-store.md`, section 7                                     |
 
 Account deletion is already built and tested, which is the one item on Apple's list that is code
 rather than paperwork.
@@ -94,7 +95,7 @@ Both recorded where the work is, not only here:
 4. Custom SMTP, then email confirmation on, then finish password reset.
 5. ~~Phase 10 push.~~ Dropped.
 6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
-7. Privacy policy and the rest of group C.
+7. Privacy policy and the rest of group C, published on the GitHub Pages site.
 8. `eas.json`, first build, TestFlight, invite the circle.
 
 ---
@@ -102,6 +103,15 @@ Both recorded where the work is, not only here:
 ## The two findings that change the plan
 
 ### 1. The GDPR household exemption does not cover you
+
+_Written when the operator was assumed to live in Germany. The operator lives in Switzerland, as a
+private individual (recorded 5 November 2026), so the Swiss Federal Act on Data Protection (FADP,
+in German DSG; the revised Act, in force since 1 September 2023) applies to the operator, and the
+GDPR applies to the data of people in the EU and the EEA, because the app is offered to them (Art.
+3(2)(a) GDPR). The reasoning below still holds for them. The FADP has its own exclusion for data a
+natural person processes exclusively for personal use (Art. 2(2)(a) FADP); whether it could cover a
+server that carries other people's letters is **to check**, though the same reasoning makes it
+unlikely._
 
 It is tempting to assume that a private app for friends falls under Art. 2(2)(c) DSGVO —
 processing "by a natural person in the course of a purely personal or household activity".
@@ -114,13 +124,18 @@ C-212/13, _Lindqvist_ C-101/01).
 
 Practical consequence: a privacy policy, a real hard-delete, data minimisation and hosting in a
 jurisdiction with an adequate level of protection are obligations, not polish. (The project is in
-Zurich, which qualifies via Switzerland's adequacy decision — see `ARCHITECTURE.md`.) Most of this is already in the build plan; it now has a reason
-attached.
+Zurich: in the operator's own country, and for people in the EU covered by the EU's adequacy
+decision for Switzerland — see `ARCHITECTURE.md`.) Most of this is already in the build plan; it
+now has a reason attached.
 
-**Good news, separately:** there is **no Impressum obligation**. § 5 DDG (successor to § 5 TMG
-since 14 May 2024) applies to _geschäftsmäßige_ digital services. A free, invite-only app with
-no ads, no donations and no affiliate links is outside it. Profit intent is not the test —
-sustained commercial offering is — but a family app is not that.
+**Impressum, separately (written for an operator in Germany):** under German law there would be **no Impressum obligation**. § 5 DDG (successor
+to § 5 TMG since 14 May 2024) applies to _geschäftsmäßige_ digital services. A free, invite-only app
+with no ads, no donations and no affiliate links is outside it. Profit intent is not the test —
+sustained commercial offering is — but a family app is not that. **To check:** this was written for
+an operator in Germany. Whether German law reaches an operator in Switzerland at all, and whether a
+comparable Swiss rule applies (Art. 3(1)(s) of the Unfair Competition Act, UWG, concerns offering
+goods, works or services in e-commerce), is a question for advice. The privacy policy names the
+operator and the postal address anyway.
 
 ### 2. A chat app is a user-generated-content app, and Apple Guideline 1.2 applies
 
@@ -270,8 +285,8 @@ environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and netw
 5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
    `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
    key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git. Add
-   `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` once the operator has an address
-   and a hosted policy for them (see "Before first submission").
+   `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` once the pages are up on the
+   GitHub Pages site (see "Where the web pages live", under "Before first submission").
 6. **Try it:** sign up two accounts, choose cities, become friends, send a letter, watch it land;
    report it and check the row in `public.reports`; then delete both test accounts.
 
@@ -284,7 +299,7 @@ Do not use the same approach on both stores. The economics and the failure modes
 |                    | iOS                                                                | Android                                  |
 | ------------------ | ------------------------------------------------------------------ | ---------------------------------------- |
 | **Path**           | TestFlight, external tester group, public link                     | Play Console, **internal testing** track |
-| **Cost**           | €99 / year, forever                                                | $25 once                                 |
+| **Cost**           | 99 USD / year, forever (CHF 99 in Switzerland, **to check**)       | 25 USD once                              |
 | **Testers**        | up to 10,000, invited by link — no Apple developer accounts needed | up to 100, by email address              |
 | **Review**         | Beta App Review on the first build of each _version_               | none                                     |
 | **Public listing** | none                                                               | none                                     |
@@ -330,8 +345,8 @@ Mitigations, both worth doing on day one:
   to launch until you re-sign and manually reinstall on all 50 devices, each of whose UDIDs you
   collected in advance.
 - **Handing relatives an APK** — Android developer verification begins enforcement 30 Sept 2026
-  in Brazil, Indonesia, Singapore and Thailand, with global rollout including Germany planned
-  from 2027. This path has a shelf life.
+  in Brazil, Indonesia, Singapore and Thailand, with a global rollout planned from 2027. This path
+  has a shelf life.
 
 ### Two multi-year traps to diarise
 
@@ -339,7 +354,7 @@ Mitigations, both worth doing on day one:
   a year ago and never submitted an app for review. Verify your contact email and phone in Play
   Console and sign in at least every 180 days. This is the only way the Android side breaks
   silently years from now.
-- **Apple membership lapse.** If the €99 renewal fails, TestFlight builds stop working.
+- **Apple membership lapse.** If the yearly renewal fails, TestFlight builds stop working.
 
 ---
 
@@ -373,16 +388,16 @@ So:
 
 - If your friend is enrolled as an **Organization**, he can add you as a Developer or App Manager
   and everything works.
-- If he is enrolled as an **Individual** — far more likely for someone paying €99 personally — he
-  can give you App Store Connect access to manage TestFlight and metadata, but **he** has to
+- If he is enrolled as an **Individual** — far more likely for someone paying the fee personally —
+  he can give you App Store Connect access to manage TestFlight and metadata, but **he** has to
   create the signing credentials and run the builds. The app is published under his name and he
   carries the responsibility for it.
 - Signing in with his Apple ID yourself is account sharing, breaches the developer agreement, and
   risks his account. Not worth it.
 
 Either way, the app would belong to his team, not yours, and moving an app between teams later is
-possible but tedious. If Night Courier is going to outlive the experiment, your own €99 enrolment
-is the cleaner foundation.
+possible but tedious. If Night Courier is going to outlive the experiment, your own enrolment (99
+USD a year) is the cleaner foundation.
 
 ---
 
@@ -390,16 +405,19 @@ is the cleaner foundation.
 
 ### This week — these gate later phases
 
-1. **Enrol in the Apple Developer Program** (€99/yr). Individual enrolment identity verification
+1. **Enrol in the Apple Developer Program** (99 USD a year; Apple charges CHF 99 in Switzerland,
+   **to check**). Individual enrolment identity verification
    can take days to weeks. This gates Phases 15–16 — every build that is not Expo Go. It is the
    longest pole; start it first.
-2. **Create the Google Play Console account** ($25 one-time).
+2. **Create the Google Play Console account** (25 USD, once).
 3. **Create the Supabase project in `eu-central-2` (Zurich)** — the operator's choice; see
    `ARCHITECTURE.md`. This is the Phase 2 blocker and a **one-way door**: the region is immutable
    after creation. Encryption at rest (AES-256) and
    in transit is on by default. Note that Supabase Inc. is a US corporation, so region choice
-   gives data _residency_, not sovereignty — transfers rest on SCCs in their DPA, which is
-   appropriate for a hobby project but worth knowing. The DPA has to be requested and signed
+   gives data _residency_, not sovereignty — access from the US rests, under the FADP, on the
+   Swiss-US Data Privacy Framework if Supabase is certified (**to check**), otherwise on the SCCs in
+   their DPA, and for people in the EU on those SCCs. That is appropriate for a hobby project but
+   worth knowing. The DPA has to be requested and signed
    (`docs/store/gdpr-records.md`, 5.1) before the privacy policy is published, since its sections 7
    and 8 say it exists.
 
@@ -454,14 +472,26 @@ transits it, so a content-free push keeps message text out of a US processor.
   > profile and no way to write to a stranger. Blocking is private to the user; Report, which also
   > blocks by default, reaches the operator, who removes offending accounts.
 
-- ~~**Decide the minimum age.**~~ Decided on 4 November 2026: **12**, and under 16 only with a parent's
-  or guardian's permission - 16 being the age at which German law lets someone agree to an online
-  service on their own (Art. 8 GDPR). The house rules say so and sign-up asks for it; nobody's age is
-  checked or stored. Including 12-year-olds brings Google Play's Families Policy into play, and on
-  the App Store the computed rating (expected 4+) has to be overridden to 13+, Apple's lowest tier
-  at or above 12, so the store shows one year more than the house rules: see
-  `docs/store/app-store.md`, "Age rating". The house rules forbid any sexual content involving or
-  sent to anyone under 18.
+- ~~**Decide the minimum age.**~~ Decided on 5 November 2026: **13** (it was 12, decided the day
+  before), and under 16 only with a parent's or guardian's permission (`MINIMUM_AGE` and
+  `PARENTAL_PERMISSION_UNDER` in `src/constants/config.ts`). 16 is the highest age any EU country
+  sets under Art. 8 GDPR for agreeing to an online service on one's own (Germany among them); Swiss
+  law sets no fixed age, and what counts there is the capacity of judgement (_Urteilsfähigkeit_).
+  The house rules ("Who can join", `src/app/rules.tsx`) read the constants, and sign-up asks for
+  "I am 13 or older"; nobody's age is checked or stored. No one under 13 is admitted, in the US or
+  anywhere else, and an account found to belong to someone under 13 is deleted, without a ban.
+  What follows from it:
+  - **Google Play:** the target audience is 13–15, 16–17 and 18 and over, with no group under 13,
+    so Google's Families Policy does not apply (**to check**: unless Google judges the listing to
+    appeal to children). Its social-feature rules for child users are therefore not built, nor the
+    age question and stored age flag they would have needed: see `docs/store/google-play.md`,
+    section 5.
+  - **App Store:** the computed rating is still expected to be 4+, and is overridden to 13+, which
+    is now exactly the minimum age, so the store and the house rules show the same number: see
+    `docs/store/app-store.md`, "Age rating".
+
+  The house rules forbid any sexual content involving or sent to anyone under 18.
+
 - **The privacy policy must cover reports**: that a report goes to the operator with a copy of
   what was reported; that the reported person is not told who reported them (but may guess, a
   letter having one reader); that it is deleted 180 days after it was made, whether or not it was
@@ -470,14 +500,22 @@ transits it, so a content-free push keeps message text out of a US processor.
   involved, but with the reported username, display name and letter text, and with the note the
   reporter wrote. Removed accounts are kept banned for two years from the removal and then deleted
   (see "Handling a report"); it must say that too.
-- **The privacy policy must name Switzerland as the hosting location.** The Supabase project is
-  in Zurich (`eu-central-2`), which is outside the EU. The transfer is lawful under the
+- **The privacy policy must name the countries.** The Supabase project is in Zurich
+  (`eu-central-2`), in the operator's own country, so storing the data there is not a disclosure
+  abroad under the FADP. For people in the EU, Switzerland is outside the EU but covered by the
   Commission's adequacy decision for Switzerland (Decision 2000/518/EC, kept in force by Art. 45(9)
-  GDPR; the Commission's January 2024 review found the protection still adequate), but Art. 13
-  requires telling users where their data actually goes — "hosted in the EU" would be untrue.
+  GDPR; the Commission's January 2024 review found the protection still adequate). Data does go to
+  the USA: Supabase Inc. (support and sub-processors), Microsoft for the mailbox, GitHub for the web
+  pages, and Apple and Google for testers. Under the FADP that rests on the Swiss-US Data Privacy
+  Framework (recognised as adequate by the Federal Council, in effect since 15 September 2024) for
+  certified companies, and otherwise on contractual safeguards; whether each company is certified is
+  **to check** (`docs/store/gdpr-records.md`, 5.1). Art. 19 FADP asks for the countries and
+  safeguards of any disclosure abroad, and GDPR Art. 13 for where data goes — "hosted in the EU"
+  would be untrue.
 
 - **A support URL and a reachable contact address.** You cannot stay fully anonymous: Guideline
-  1.2 requires published contact information and GDPR Art. 13 requires the controller's identity.
+  1.2 requires published contact information, and Art. 19 FADP and GDPR Art. 13 require the
+  controller's identity.
 
   The contact email is decided. Like the postal address it stays out of this repository: it goes
   into `EXPO_PUBLIC_CONTACT_URL` as a `mailto:` link, in `.env` and in the EAS environment, and into
@@ -487,12 +525,35 @@ transits it, so a content-free push keeps message text out of a US processor.
   this repository, and must not be.** This repository is public; anything committed here is
   scraped, mirrored, and permanent in git history even after deletion. The address belongs in
   App Store Connect's contact fields where a form asks for it, and in section 1 of the privacy
-  policy hosted at its own URL — both entered directly, at Phase 16, and neither of them in version
-  control. The policy is the only public page that carries it: the support page names the operator
-  and points to the policy for the postal address.
+  policy hosted at its own URL — both entered directly, at Phase 16, and neither of them in this
+  repository (the filled-in policy is committed only to the site repository, below). The policy is
+  the only public page that carries it: the support page names the operator and points to the
+  policy for the postal address.
 
   The same applies to the privacy policy: host it somewhere you control and link to it, rather
-  than committing a document containing a home address to a public repo.
+  than committing a document containing a home address to this repo.
+
+  **Where the web pages live.** Decided on 5 November 2026: GitHub Pages, as a user site. The
+  operator creates a public repository named `vnznznznz.github.io`, served at
+  `https://vnznznznz.github.io/`, and Night Courier's pages go in its folder `night-courier/`:
+
+  | File                     | From                              | Address                                                          |
+  | ------------------------ | --------------------------------- | ---------------------------------------------------------------- |
+  | `index.html`             | `docs/store/support-page.md`      | `https://vnznznznz.github.io/night-courier/` (`{{SUPPORT_URL}}`) |
+  | `privacy-policy.de.html` | `docs/store/privacy-policy.de.md` | `{{PRIVACY_POLICY_URL}}`, the binding version                    |
+  | `privacy-policy.en.html` | `docs/store/privacy-policy.en.md` | alongside, linked from the German page and back                  |
+
+  The Markdown sources here keep their placeholders; they are filled in when the pages are built,
+  and the filled-in pages, with the operator's name and postal address, live only in the site
+  repository, never in this one. That repository is public too, and git keeps every earlier version
+  of a page, so an address once committed there stays readable in its history even after it
+  changes. GitHub, Inc. (USA) hosts the pages and logs visitors' IP addresses for security and
+  operation; the pages themselves set no cookies and load nothing from other sites - keep it so
+  when building them (no web fonts, analytics, embeds or a theme that loads them). How long GitHub
+  keeps those logs, whether it is certified under the Data Privacy Framework, and that "Enforce
+  HTTPS" is on in the site repository's Pages settings are **to check**. In the app,
+  `EXPO_PUBLIC_PRIVACY_POLICY_URL` and `EXPO_PUBLIC_CONTACT_URL` stay settings of `.env` and the EAS
+  environment, never committed.
 
 - **Complete the age-rating questionnaire.** Apple's system was overhauled in 2025 and the new
   questionnaire has been mandatory since 31 January 2026; incomplete apps are blocked from new

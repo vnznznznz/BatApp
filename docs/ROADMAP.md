@@ -229,7 +229,8 @@ Recorded rather than guessed at:
 - ~~**Push notifications.**~~ Dropped by the operator on 2 November 2026; see Phase 10 above.
 - ~~**Contact address for store listings.**~~ Decided: a personal postal address will be used.
   It is deliberately **not** recorded in this repository, which is public — it goes straight into
-  App Store Connect and the hosted privacy policy at Phase 16. See [`GO-LIVE.md`](GO-LIVE.md).
+  App Store Connect and the hosted privacy policy at Phase 16, whose filled-in copy lives only in
+  the GitHub Pages site repository. See [`GO-LIVE.md`](GO-LIVE.md).
 
 ## Phase 12 — Bat flight animation (done)
 
@@ -286,21 +287,26 @@ contact links - with no errors but the one refusal the test provokes on purpose.
 
 ## The paperwork, and keeping less (done; the operator's part remains)
 
-Written on 4 November 2026, for a minimum age of 12 (under 16 with a parent's or guardian's
-permission), in [`docs/store/`](store/):
+Written on 4 November 2026 for a minimum age of 12, and brought up to date on 5 November 2026 with
+the operator's decisions of that day: a minimum age of 13 (under 16 still with a parent's or
+guardian's permission), an operator who lives in Switzerland as a private individual - so the Swiss
+FADP applies to the operator, and the GDPR to the data of people in the EU - and the web pages on
+GitHub Pages. All in [`docs/store/`](store/):
 
 - **The privacy policy**, in German (binding) and English, from an inventory of every piece of
   personal data the service holds, read from the database rather than from these notes.
 - **App Store Connect**: listing texts, the App Privacy answers, the age-rating questionnaire,
   export compliance, the review notes, and what TestFlight needs.
-- **Google Play Console**: listing, Data safety, the content rating, the target audience - which,
-  with 12-year-olds, brings in the Families Policy - and internal testing.
-- **The GDPR records** the operator keeps (Art. 30), with the processors and how to answer a request
-  for someone's data.
+- **Google Play Console**: listing, Data safety, the content rating, the target audience - 13 and
+  over since the minimum age went to 13, so Google's Families Policy no longer applies (**to
+  check**: unless Google judges the listing to appeal to children) - and internal testing.
+- **The records of processing** the operator keeps (Art. 12 FADP, Art. 30 GDPR), with the
+  processors, the countries data goes to, and how to answer a request for someone's data.
 
-None of them holds the operator's name, address or email: they use placeholders, filled in only
-on the hosted copy. Each says, in comments marked PRÜFEN or TO CHECK, what still needs a decision
-or a look at the hosted project.
+None of them holds the operator's name, address or email: they use placeholders, filled in only on
+the hosted copy, which lives in the GitHub Pages site repository (`vnznznznz.github.io`, folder
+`night-courier/`), never in this one. Each says, in comments marked PRÜFEN or TO CHECK, what still
+needs a decision or a look at the hosted project.
 
 The inventory found data kept for no reason, or for ever, and that is fixed in the database: sign-in
 records (with email and IP address) kept 30 days and deleted with the account, the sign-up form's

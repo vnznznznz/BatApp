@@ -2,10 +2,12 @@
 
 Everything Night Courier needs in Google Play Console, ready to copy: creating the app, the store
 listing in English and German, App access, Ads, the content rating questionnaire, Target audience
-and content (and with it Google's Families Policy), the Data safety form, and a note on the US
-children's privacy law (COPPA).
+and content (and why Google's Families Policy does not apply), the Data safety form, and a note on
+the US children's privacy law (COPPA).
 
-Written on 4 November 2026. Google's help pages could not be opened from the session this was
+Written on 4 November 2026, and brought up to date on 5 November 2026 with the operator's decisions
+of that day: a minimum age of 13, an operator who lives in Switzerland as a private individual, and
+web pages on GitHub Pages. Google's help pages could not be opened from the session this was
 written in, only search summaries of them, so the names of fields and some of the rules below come
 from those summaries and from earlier knowledge of Play Console. Google renames fields and changes
 forms often. Anything marked **to check** has to be confirmed on screen, or in Google's current help,
@@ -13,16 +15,31 @@ before it is relied on.
 
 **Personal data stays out of this file.** This repository is public. Where a field needs the
 operator's details, this file names a placeholder, and the real value is typed straight into Play
-Console (or into the hosted privacy policy), never written here:
+Console (or into the filled-in web pages, which live only in the site repository described below),
+never written here:
 
-| Placeholder              | Means                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                 |
-| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there |
-| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                            |
-| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button                               |
-| `{{SUPPORT_URL}}`        | A public https page with the contact route and the deletion steps; no postal address                 |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                             |
+| Placeholder              | Means                                                                                                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                                                                                                                                                              |
+| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there                                                                                                                                              |
+| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                                                                                                                                                                         |
+| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Planned: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html` |
+| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route and the deletion steps; no postal address. Planned: `https://vnznznznz.github.io/night-courier/`                                                                 |
+| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                          |
+
+The planned addresses are named here and in the checklist for reference only. Where a text below
+is pasted into Play Console or onto a page, it keeps the placeholder, and the address replaces it
+as it is typed in.
+
+**Where the web pages live.** The privacy policy and the support page are published with GitHub
+Pages, in the operator's user site: a public repository named `vnznznznz.github.io`, still to be
+created, with Night Courier's pages in its folder `night-courier/` (`index.html` from
+`support-page.md`, `privacy-policy.de.html` and `privacy-policy.en.html`). The filled-in pages,
+with the operator's name and postal address, exist only in that repository, never in this one.
+GitHub, Inc. (USA) hosts them and logs visitors' IP addresses; the pages set no cookies and load
+nothing from other sites. `app-store.md`, "Where the web pages live", has the details and what is
+**to check** about GitHub. In the app, `EXPO_PUBLIC_PRIVACY_POLICY_URL` and
+`EXPO_PUBLIC_CONTACT_URL` stay settings of the EAS environment and are not committed (section 8).
 
 Values that are not personal data but must not be committed either, such as the demo account's
 sign-in, are written as `<like this>`. They live in the operator's password manager and in Play
@@ -41,18 +58,18 @@ GO-LIVE's plan for Android is the **internal testing** track: up to 100 testers,
 address of their Google account, no public listing. What that path needs, and what only a wider
 track would:
 
-| Item                                             | Internal testing                                                                                               | Closed, open or production                                                                           |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Developer account ($25 once, identity verified)  | Needed                                                                                                         | Needed                                                                                               |
-| The app itself (section 1)                       | Needed                                                                                                         | Needed                                                                                               |
-| Store listing texts and graphics (section 2)     | **To check**: testers reach a store page from the opt-in link, so fill it in anyway                            | Needed                                                                                               |
-| Privacy policy URL (section 3)                   | Needed: Google asks for it before Target audience can be completed                                             | Needed                                                                                               |
-| App access, Ads, content rating, Target audience | **To check** whether an internal release is blocked without them. Fill them in truthfully anyway               | Needed                                                                                               |
-| Data safety form (section 6)                     | **Exempt**: Google's help says apps active only on internal testing tracks do not need to complete it          | Needed                                                                                               |
-| Account deletion web link                        | Asked inside the Data safety form, so not asked while the app is exempt                                        | Needed, even though deletion is in the app                                                           |
-| Families Policy (section 5)                      | Applies to the app as declared. Whether anyone at Google checks an internal release against it: **to check**   | Applies, and is reviewed                                                                             |
-| Review before testers get a build                | **To check**: Google describes internal tests as possibly not subject to the usual policy and security reviews | Yes                                                                                                  |
-| Closed test with at least 12 testers for 14 days | Not needed                                                                                                     | Needed before production access, for personal accounts created after 13 November 2023 (**to check**) |
+| Item                                               | Internal testing                                                                                                               | Closed, open or production                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Developer account (25 USD once, identity verified) | Needed                                                                                                                         | Needed                                                                                               |
+| The app itself (section 1)                         | Needed                                                                                                                         | Needed                                                                                               |
+| Store listing texts and graphics (section 2)       | **To check**: testers reach a store page from the opt-in link, so fill it in anyway                                            | Needed                                                                                               |
+| Privacy policy URL (section 3)                     | Needed: Google asks for it before Target audience can be completed                                                             | Needed                                                                                               |
+| App access, Ads, content rating, Target audience   | **To check** whether an internal release is blocked without them. Fill them in truthfully anyway                               | Needed                                                                                               |
+| Data safety form (section 6)                       | **Exempt**: Google's help says apps active only on internal testing tracks do not need to complete it                          | Needed                                                                                               |
+| Account deletion web link                          | Asked inside the Data safety form, so not asked while the app is exempt                                                        | Needed, even though deletion is in the app                                                           |
+| Families Policy (section 5)                        | Does not apply, since no age group under 13 is declared, unless Google judges the listing to appeal to children (**to check**) | The same, and the declaration is reviewed                                                            |
+| Review before testers get a build                  | **To check**: Google describes internal tests as possibly not subject to the usual policy and security reviews                 | Yes                                                                                                  |
+| Closed test with at least 12 testers for 14 days   | Not needed                                                                                                                     | Needed before production access, for personal accounts created after 13 November 2023 (**to check**) |
 
 Internal-testing builds do not expire the way TestFlight builds do (GO-LIVE, "Recommended
 distribution").
@@ -78,6 +95,14 @@ A personal developer account is identity-verified with the operator's legal name
 Google Play then shows publicly about a personal account, beyond the developer name, is **to check**
 in Play Console's account settings. The hosted privacy policy carries the address anyway (section
 1); it is the only one of the operator's pages that does.
+
+**EU trader status.** App Store Connect asks for a declaration under the EU Digital Services Act
+before an app is distributed in the EU (`app-store.md`, section 7). Whether Play Console asks for
+the same, from when, and whether also for an app only on internal testing, is **to check**. If it
+does: a private individual running a non-commercial app would normally declare **non-trader**
+(**to check**, with advice if in doubt: whether someone is a trader is a question of EU law, not
+Google's). If the answer had to be **trader**, Google would show contact details on the store
+listing in the EU; which ones (address, phone, email) is **to check**.
 
 ---
 
@@ -143,7 +168,7 @@ Your data
 • Letters are stored on the server so they can be delivered, and stay there until you or your friend deletes their account. They are not end-to-end encrypted. The privacy policy says who can see what, and everything else that is kept and for how long.
 
 Who it is for
-Night Courier is a private, non-commercial project for a small circle of friends. You must be at least 12, and if you are under 16 you need a parent's or guardian's permission.
+Night Courier is a private, non-commercial project for a small circle of friends. You must be at least 13, and if you are under 16 you need a parent's or guardian's permission.
 
 City data: GeoNames (geonames.org), CC BY 4.0.
 ```
@@ -178,7 +203,7 @@ Deine Daten
 • Briefe werden auf dem Server gespeichert, damit sie zugestellt werden können, und bleiben dort, bis du oder die andere Person das Konto löscht. Sie sind nicht Ende-zu-Ende-verschlüsselt. Die Datenschutzerklärung sagt, wer was sehen kann und was sonst wie lange gespeichert wird.
 
 Für wen
-Night Courier ist ein privates, nicht-kommerzielles Projekt für einen kleinen Freundeskreis. Du musst mindestens 12 Jahre alt sein. Wenn du unter 16 bist, brauchst du die Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App selbst ist auf Englisch.
+Night Courier ist ein privates, nicht-kommerzielles Projekt für einen kleinen Freundeskreis. Du musst mindestens 13 Jahre alt sein. Wenn du unter 16 bist, brauchst du die Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App selbst ist auf Englisch.
 
 Städtedaten: GeoNames (geonames.org), CC BY 4.0.
 ```
@@ -187,8 +212,8 @@ Every claim in these texts is something the app does today. Before each new trac
 against the build again, and especially "no analytics or tracking", "not end-to-end encrypted" and
 the 180 days. "Not told who reported them, unless the law requires it" is the house rules' own
 wording (`src/app/rules.tsx`), and the same as on the App Store. Do not shorten it to "reports
-never reach the person you report": if that person asks for their data (Art. 15 GDPR), they get
-what a report says about them, without the reporter (`gdpr-records.md`, 5.3).
+never reach the person you report": if that person asks for their data (Art. 15 GDPR, Art. 25
+DSG), they get what a report says about them, without the reporter (`gdpr-records.md`, 5.3).
 
 ### Graphics
 
@@ -224,12 +249,13 @@ access and Ads answered before Target audience and content.
 
 ### Privacy policy
 
-`{{PRIVACY_POLICY_URL}}`: the hosted page built from `privacy-policy.de.md` (binding) and
-`privacy-policy.en.md`, with the placeholders filled in on the hosted copy only. Google's
-requirements for the page, as far as they are known here: a public URL that is not geofenced and
-not a PDF, labelled as a privacy policy, naming the app or the developer as the store listing does,
-with a contact point and how data is kept and deleted (**to check** the current list). The drafts
-cover all of that. The app links to the same page from sign-up, the house rules and the profile.
+`{{PRIVACY_POLICY_URL}}`: the German page on GitHub Pages, `privacy-policy.de.html` (binding),
+built from `privacy-policy.de.md`, with the English version from `privacy-policy.en.md` alongside.
+The placeholders are filled in only in the site repository. Google's requirements for the page, as
+far as they are known here: a public URL that is not geofenced and not a PDF, labelled as a privacy
+policy, naming the app or the developer as the store listing does, with a contact point and how
+data is kept and deleted (**to check** the current list). The drafts cover all of that. The app
+links to the same page from sign-up, the house rules and the profile.
 
 ### App access
 
@@ -257,7 +283,7 @@ Report and block: Letters → a letter from Demo Friend → Report this letter, 
 
 Account deletion: Your profile → Delete my account. Please try it with a new account (Create an account, on the welcome screen), so that the demo account stays usable. A new account is confirmed through a link sent to its email address; then sign in with it.
 
-Age: Night Courier is for people aged 12 and over; under 16, only with a parent's or guardian's permission.
+Age: Night Courier is for people aged 13 and over; under 16, only with a parent's or guardian's permission. Sign-up asks for this, and the house rules say it. The target audience is declared as 13 and over to match.
 
 Known limitation of this test version: a password-reset email can be requested, but setting the new password inside the app is not finished yet.
 ```
@@ -364,9 +390,10 @@ Everyone). The USK, since the 2021 reform of the German Youth Protection Act, al
 use such as contact with others, and may add a notice such as "Chats" or a higher age. All **to
 check**: record what the certificate actually says here.
 
-The content rating describes content; it is not the minimum age. The house rules' minimum of 12
-stays as it is. Google Play has no equivalent of Apple's "Override to Higher Age Rating" (**to
-check**); a rating can only be appealed through the link in IARC's certificate email.
+The content rating describes content; it is not the minimum age. The house rules' minimum of 13
+is declared separately, as the target audience (section 5). Google Play has no equivalent of
+Apple's "Override to Higher Age Rating" (**to check**); a rating can only be appealed through the
+link in IARC's certificate email.
 
 ---
 
@@ -374,95 +401,74 @@ check**); a rating can only be appealed through the link in IARC's certificate e
 
 ### The answers
 
-- **Target age groups:** tick **9–12, 13–15, 16–17 and 18 and over**. Not 5 and under, not 6–8.
-- Why 9–12: the house rules admit 12-year-olds, and Play's age groups have no bracket that starts
-  at 12 (Play Console has offered 5 and under, 6–8, 9–12, 13–15, 16–17, 18 and over; **to check**
-  on screen). Leaving 9–12 out would declare an audience that the app's own terms contradict, and
-  Google treats misrepresenting the target audience as a policy violation.
-- Because an age group under 13 is ticked, **the app falls under Google's Families Policy**, as an
-  app for a mixed audience of children and older users.
-- "Could your store listing unintentionally appeal to children?" is asked only when no group under
-  13 is ticked (**to check**). Either way, Google says imagery that looks aimed at children can
-  change its view of the audience; a cartoon bat is that kind of imagery.
+- **Target age groups:** tick **13–15, 16–17 and 18 and over**. Nothing under 13: not 5 and under,
+  not 6–8, not 9–12.
+- Why: the house rules admit no one under 13, and anyone under 16 only with a parent's or
+  guardian's permission (`MINIMUM_AGE` and `PARENTAL_PERMISSION_UNDER` in
+  `src/constants/config.ts`; sign-up asks for "I am 13 or older"). Play Console has offered the
+  groups 5 and under, 6–8, 9–12, 13–15, 16–17, 18 and over (**to check** on screen), so 13–15
+  starts exactly at the minimum age, and the declaration says what the app's own terms say. Google
+  treats misrepresenting the target audience as a policy violation.
+- With no age group under 13 ticked, **Google's Families Policy does not apply** to the app as
+  declared. It could come back only if Google judged the store listing to appeal to children
+  anyway (**to check**: how Google decides that, and what it then asks for).
+- **"Could your store listing unintentionally appeal to children?"** Play Console asks this when no
+  group under 13 is ticked (**to check**). Answer it truthfully. The texts in section 2 speak to
+  friends writing letters and say the app is for 13 and over. The icon, though, is a cartoon bat
+  under a moon, and Google says imagery that looks aimed at children can change its view of the
+  audience: draw the feature graphic and choose the screenshots with that in mind. The answer
+  given, and anything Google said about it: **not recorded yet**; write it here.
 - Teacher Approved or any other programme for children, if offered: do not opt in.
-- Ads: none, so the rules for ads to children (Families Self-Certified Ads SDKs, a neutral age screen
-  before ads) do not apply.
+- Ads: none, so Google's rules for ads to children (Families Self-Certified Ads SDKs, a neutral age
+  screen before ads) would not arise even if the Families Policy did apply.
 
-### What the Families Policy requires, and where Night Courier stands
+### The decision of 5 November 2026
 
-Summarised from Google's Families pages; the full policy text takes precedence and is **to check**
-before acting on this table.
+Until 5 November 2026 the minimum age was 12. Play's age groups have no bracket that starts at 12,
+so the declaration had to include 9–12, and with an age group under 13 ticked the app fell under
+the Families Policy, as an app for a mixed audience of children and older users. Of the policy's
+requirements, three could not be met without building something new: the rules for social
+features, which apply to child users (under 13). They ask for an in-app reminder to be safe online
+before child users exchange free-form information, an adult action before they exchange personal
+information, and a way for adults to manage the social features. The options were to build those
+three pieces, to raise the minimum age to 13, or to stay on internal testing with 12.
 
-| Requirement                                                                                                                                                    | Night Courier today                                                                                                                                                                                                                                                          | Needed                                |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| Accurate target audience and Play Console answers                                                                                                              | Yes, with 9–12 ticked                                                                                                                                                                                                                                                        | Nothing                               |
-| Content appropriate for children                                                                                                                               | The app's own content, yes. Letters are written by users; the house rules forbid sexual content involving or sent to minors, and report and block exist                                                                                                                      | Nothing                               |
-| A privacy policy that discloses what is collected from children                                                                                                | `privacy-policy.de.md`, section 10, and the rest of the policy                                                                                                                                                                                                               | Publish it                            |
-| No device identifiers (advertising ID, IMEI, MAC, SSID and similar) collected from children or users of unknown age                                            | None collected                                                                                                                                                                                                                                                               | Check the merged manifest (section 3) |
-| Ads only through Families Self-Certified Ads SDKs                                                                                                              | No ads                                                                                                                                                                                                                                                                       | Nothing                               |
-| No location permission in apps that target only children                                                                                                       | No location permission at all; the app does not target only children                                                                                                                                                                                                         | Nothing                               |
-| Compliance with the laws on children's data, which Google names as including COPPA and the GDPR                                                                | GDPR: this folder. COPPA: section 7                                                                                                                                                                                                                                          | Section 7                             |
-| **Social features (1):** an in-app reminder to be safe online and aware of the real-world risk, before child users exchange freeform media or information      | **Missing**                                                                                                                                                                                                                                                                  | **Build**                             |
-| **Social features (2):** an adult action before child users exchange personal information                                                                      | **Missing.** The sign-up toggle ("I am 12 or older"; under 16, a parent has said yes) is the user's own statement, not an adult's action. Google describes adult action as a way to establish that the user is not a child, without encouraging children to give a false age | **Build**                             |
-| **Social features (3):** a way for adults to manage social features for child users, such as turning them off or limiting them                                 | **Missing.** A parent can only delete the account together with the child, or write to the operator                                                                                                                                                                          | **Build**                             |
-| Apps whose main purpose is chatting with strangers, or chatting anonymously, must not target children (anonymous chat apps: from 26 August 2026, **to check**) | Not this app: letters travel only between accepted friends who asked by exact username, and every letter names its sender                                                                                                                                                    | Nothing                               |
-| A content rating suitable for children                                                                                                                         | Expected (section 4). The exact rule is **to check**                                                                                                                                                                                                                         | Record the rating                     |
+**Decision: the minimum age is 13** (the operator, 5 November 2026; `src/constants/config.ts`, the
+house rules and sign-up follow it). So:
 
-Two things in the policy text decide how much of the three social-feature rows applies, and both
-are **to check** in the full text:
+- The target audience is 13–15, 16–17 and 18 and over, and the Families Policy does not apply
+  (above).
+- The three social-feature pieces are not built, and none is planned. Nor are the age question
+  and the stored age flag they would have needed: sign-up still only asks for the "13 or older"
+  confirmation, and stores nothing (privacy policy, section 3.13).
+- Both stores now show the same age: Apple's rating is overridden to 13+, which is exactly the
+  minimum age (`app-store.md`, "Age rating").
 
-- As remembered here, Google tells a **social app** (one whose main focus is sharing free-form
-  content or communicating with many people) from an app with **social features** (an added
-  function). For a social app it asks for the reminder and the adult action; the adult controls
-  are listed for social features. Night Courier's main purpose is letters, so it is probably a
-  social app; then the adult controls may not be required, and the adult action still is.
-  One-to-one letters between friends are not "many people", but they are free-form content. Treat
-  all three as required until the text says otherwise.
-- Google's "child" is under 13 in the target age groups. Whether the policy anywhere uses a
-  country's own age of consent instead (in Germany 16, the age Art. 8 GDPR is set at) is not known
-  here.
+If Google ever judged the listing to appeal to children, the Families Policy would apply after all,
+and with it the three social-feature rules, which the app does not meet. The first answer would
+then be to change the listing, not the app. Building the pieces would need a neutral age question
+at sign-up, an age flag stored with the account, and adult steps and settings for flagged
+accounts: new personal data about children, and a change to the privacy policy and
+`gdpr-records.md` with it.
 
-### The conflict this creates
+One question stays open, **to check** in the full policy text: whether Google's "child" anywhere
+means a country's own age rather than under 13. The age of 16 is the highest any EU country sets
+under Art. 8 GDPR for agreeing to an online service on one's own (Germany among them), and it is
+why the house rules ask for a parent's or guardian's permission under 16. Swiss law sets no fixed
+age; what counts there is the capacity of judgement (Urteilsfähigkeit).
 
-The three social-feature rules are about **child users**, meaning under 13. The app does not know
-who they are: sign-up asks only for the "12 or older" confirmation, and stores nothing (privacy
-policy section 3.13). The reminder can be shown to everyone without knowing anyone's age. The adult
-action and the adult controls cannot: they need at least a neutral age question at sign-up that
-tells under-13s from older users, a flag stored with the account, and an adult step and adult
-settings for flagged accounts. That is new personal data about children, and a product change.
+### On internal testing
 
-Options, all the operator's decision, none made here:
-
-1. **Keep 12 and build the three pieces** before any track beyond internal testing, and ideally
-   before any tester under 13 is invited on Android. Update the privacy policy and
-   `gdpr-records.md` for the new age flag.
-2. **Raise the minimum age to 13.** Then only 13–15 and older are ticked and the Families Policy no
-   longer applies (unless Google judges the listing to appeal to children). It would also match the
-   13+ that Apple's age rating has to show anyway (`app-store.md`, "Age rating"). It means changing
-   the house rules, sign-up, `src/constants/config.ts` and the privacy policy, and it reverses the
-   operator's decision of 4 November 2026 that the minimum age is 12.
-3. **Stay on internal testing with 12**, knowing what that does and does not mean (below).
-
-### What it means for an app only on internal testing
-
-- The Families Policy is part of the Developer Program Policies, which apply to every app on Google
-  Play, whatever its track. Google's help names an exemption for internal testing from the Data
-  safety form, and none from the Families Policy (**to check**). Internal testing does not make the
-  policy go away.
-- What internal testing changes is the checking. A release reaches testers within minutes and may
-  not go through the usual policy review (**to check**), so Google may not notice the missing pieces
-  before testers install. That is not compliance: enforcement can still come later, against the app
-  or the developer account, and at the latest when the app moves to closed testing.
-- Whether Play Console lets an internal release roll out before Target audience and content rating
-  are complete is **to check**. Fill them in truthfully anyway; a false declaration is a violation
-  of its own.
-- Until the pieces exist, the operator can keep the real risk low by inviting no Android tester
-  under 13. The declaration still has to include 9–12, because the house rules allow 12-year-olds.
-- A 12-year-old in Germany usually has a Google account supervised through Family Link, because
-  Google's own minimum age for an unsupervised account there is higher (**to check**: 16); a parent
-  then approves app installs. Whether a supervised account can join an internal test at all, and
-  whether Google would count that approval as adult action, are both **to check**. Do not rely on
-  it.
+- The Developer Program Policies apply to every app on Google Play, whatever its track, and the
+  target audience declaration with them. Internal testing may change how much Google checks before
+  testers install (**to check**), not what has to be true: declare 13 and over there too.
+- Invite no Android tester under 13, and anyone under 16 only with a parent's or guardian's
+  permission, as the house rules say.
+- A tester aged 13 to 15 may have a Google account supervised through Family Link, where Google's
+  own minimum age for an unsupervised account in their country is higher (**to check** for
+  Switzerland and Germany); a parent then approves app installs. Whether a supervised account can
+  join an internal test at all is **to check**. Do not rely on that approval as the parent's
+  permission the house rules ask for.
 
 ---
 
@@ -489,14 +495,14 @@ The rules these answers follow, from Google's help as summarised (**to check** t
 
 ### The questions before the data types
 
-| Question                                                                                  | Answer                                                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Does your app collect or share any of the required user data types?                       | **Yes**                                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Is all of the user data collected by your app encrypted in transit?                       | **Yes**                                                               | The app talks only to the Supabase project, over HTTPS. `src/lib/env.ts` refuses any URL that is not https, except local and private-network addresses, which a build for testers never has. The two links open in other apps.                                                                                                                                                                                                                                        |
-| Which methods of account creation does your app support?                                  | Username and password (**to check** the option's name)                | Sign-up and sign-in are email address and password. No third-party sign-in, no anonymous accounts.                                                                                                                                                                                                                                                                                                                                                                    |
-| Delete account URL                                                                        | `{{SUPPORT_URL}}`, with the text in "The account deletion page" below | Google wants a web link even when deletion is in the app, so that someone who has uninstalled it can still ask.                                                                                                                                                                                                                                                                                                                                                       |
-| Can users ask for some or all of their data to be deleted without deleting their account? | **Yes**, if the support page says so (the text below does)            | By writing to `{{CONTACT_EMAIL}}`. The GDPR gives the right anyway (Art. 17, with its exceptions), and the deletion page below says how. What can go without the account, by the operator in SQL: for example sign-in log entries or sessions. Single letters are not deleted on request (privacy policy 3.4), and the deletion page says so; the email address, username and display name cannot go while the account exists. Answer No if the page does not say it. |
-| Independent security review (optional)                                                    | No                                                                    | None has been done.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Question                                                                                  | Answer                                                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does your app collect or share any of the required user data types?                       | **Yes**                                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Is all of the user data collected by your app encrypted in transit?                       | **Yes**                                                               | The app talks only to the Supabase project, over HTTPS. `src/lib/env.ts` refuses any URL that is not https, except local and private-network addresses, which a build for testers never has. The two links open in other apps.                                                                                                                                                                                                                                                                                                                        |
+| Which methods of account creation does your app support?                                  | Username and password (**to check** the option's name)                | Sign-up and sign-in are email address and password. No third-party sign-in, no anonymous accounts.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Delete account URL                                                                        | `{{SUPPORT_URL}}`, with the text in "The account deletion page" below | Google wants a web link even when deletion is in the app, so that someone who has uninstalled it can still ask.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Can users ask for some or all of their data to be deleted without deleting their account? | **Yes**, if the support page says so (the text below does)            | By writing to `{{CONTACT_EMAIL}}`. The law gives the right anyway (the GDPR for people in the EU, Art. 17, with its exceptions; the Swiss DSG, which binds the operator, Art. 32), and the deletion page below says how. What can go without the account, by the operator in SQL: for example sign-in log entries or sessions. Single letters are not deleted on request (privacy policy 3.4), and the deletion page says so; the email address, username and display name cannot go while the account exists. Answer No if the page does not say it. |
+| Independent security review (optional)                                                    | No                                                                    | None has been done.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### Every data type, answered
 
@@ -562,6 +568,10 @@ marketing.
   the operator writes from a consumer mailbox counts as sharing with Microsoft is **to check**. The
   privacy policy names Microsoft (section 7) either way. Mail a user writes through Contact is sent
   by their own mail app, not by Night Courier.
+- **GitHub** hosts the web pages (the privacy policy and the support page). It receives the IP
+  address of anyone who opens them in a browser, as any web host does; that is not data the app
+  collects or passes on (**to check** that Google sees it the same way). The privacy policy names
+  GitHub as the host of the web pages.
 - No advertising, analytics or data broker receives anything.
 
 ### What the public section should then show
@@ -575,17 +585,18 @@ marketing.
 - **Security practices:** data is encrypted in transit; you can request that data be deleted.
 
 Answer again before shipping any build that changes what is collected: crash reporting, analytics,
-push notifications, avatars, a web version, an age flag for the Families Policy (section 5), or a
-mail provider that keeps more.
+push notifications, avatars, a web version, an age flag (section 5, only if the Families Policy
+ever applied after all), or a mail provider that keeps more.
 
 ### The account deletion page
 
 The Delete account URL points here. Google's requirements for the page, as far as they are known
 here: it names the app and the developer as the store listing does, shows the steps prominently,
 and says what is deleted, what is kept and for how long (**to check** the current list). The page
-at `{{SUPPORT_URL}}` is drafted in `support-page.md`, whose "Deleting your account" section must say
-the same as the text below, with the placeholders filled in on the hosted copy only; keep both in
-step with the privacy policy's section 9.
+at `{{SUPPORT_URL}}` (planned: `https://vnznznznz.github.io/night-courier/`, the site repository's
+`night-courier/index.html`) is drafted in `support-page.md`, whose "Deleting your account" section
+must say the same as the text below, with the placeholders filled in only in the site repository;
+keep both in step with the privacy policy's section 9.
 
 English:
 
@@ -608,8 +619,8 @@ Your account and sign-in, your profile (username, display name and city), your b
 
 What is kept, and for how long
 • Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made. If I passed a report to the police, they keep their copy under their own rules.
-• The sign-in log at the hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, yours go at once.
-• Server logs and any backups at the hosting provider, until they are deleted or overwritten automatically. The privacy policy says how long.
+• The sign-in log at Supabase, the app's hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, yours go at once.
+• Server logs and any backups at Supabase, until they are deleted or overwritten automatically. The privacy policy says how long.
 • Emails between you and me, as long as I need them for what you asked.
 • If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years from the removal so that it cannot simply sign up again, and is then deleted automatically.
 • If you test the Android version: your Google account's email address on my tester list in Google Play Console, until you tell me you have stopped testing. Asking me to delete your account counts. What Google itself keeps follows Google's own terms.
@@ -641,8 +652,8 @@ Dein Konto und deine Anmeldung, dein Profil (Benutzername, Anzeigename und Stadt
 
 Was bleibt, und wie lange
 • Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben, bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
-• Das Anmeldeprotokoll beim Hosting-Anbieter (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
-• Server-Protokolle und etwaige Sicherungskopien beim Hosting-Anbieter, bis sie automatisch gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
+• Das Anmeldeprotokoll bei Supabase, dem Hosting-Anbieter der App (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
+• Server-Protokolle und etwaige Sicherungskopien bei Supabase, bis sie automatisch gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
 • E-Mails zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 • Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
 • Wenn du die Android-Version testest: die E-Mail-Adresse deines Google-Kontos auf meiner Testerliste in der Google Play Console, bis du mir schreibst, dass du nicht mehr testest. Die Bitte, dein Konto zu löschen, zählt dazu. Was Google selbst speichert, regeln Googles eigene Bestimmungen.
@@ -676,63 +687,77 @@ A short note, not legal advice.
   letters would all count as personal information (**to check** the exact definitions).
 - **Why it probably does not reach Night Courier.** The FTC applies COPPA to operators outside the
   US whose service is directed to children in the US or who knowingly collect from children in the
-  US (**to check**). Night Courier is neither: it is not listed in any store, it is invite-only, and
-  it is not offered in the US. COPPA's definition of an operator also refers to commercial purposes;
-  whether a non-commercial private individual is one at all is **to check**.
+  US (**to check**). Night Courier is neither: it is not listed in any store, it is invite-only, it
+  is not offered in the US, and since 5 November 2026 it admits no one under 13, in any country.
+  COPPA's definition of an operator also refers to commercial purposes; whether a non-commercial
+  private individual is one at all is **to check**.
 - **Why it still matters.**
   - Google's Families Policy names COPPA among the laws an app that targets children must comply
-    with (section 5). Whether Google applies that to an app not available in the US is **to check**.
+    with. With the target audience declared as 13 and over, that policy does not apply (section 5).
   - On internal testing the operator invites every tester by email, so knows who they are. Whether
     Play's country availability applies to internal tests at all is **to check**.
   - TestFlight's public link works for anyone who has it, and can be passed on. Whether App Store
-    Connect can limit TestFlight to some countries is **to check**. A 12-year-old in the US who gets
-    the link would be a user under 13 in the US.
-- **What to do.** Invite no one under 13 who lives in the US, and do not post the TestFlight link
-  where that could happen. If the operator learns that an account belongs to a child under 13 in the
-  US, delete it: COPPA would require a parent's verifiable consent, which the app has no way to
-  collect. Delete it without a ban, as for anyone found to be under 12 (Authentication → Users →
-  Delete user, not `private.remove_account`): the two-year ban is only for accounts removed for
-  breaking the rules (privacy policy 3.8). Build nothing for COPPA unless the app is ever offered
-  in the US.
+    Connect can limit TestFlight to some countries is **to check**. Someone under 13 in the US who
+    gets the link and confirms the age anyway would be a user under 13 in the US.
+- **What to do.** Invite no one under 13, in the US or anywhere: the house rules admit no one
+  younger. Do not post the TestFlight link where it could reach children. If the operator learns
+  that an account belongs to someone under 13, wherever they live, delete it without a ban
+  (Authentication → Users → Delete user, not `private.remove_account`): the two-year ban is only
+  for accounts removed for breaking the rules (privacy policy 3.8). For a child in the US, COPPA
+  would also require a parent's verifiable consent, which the app has no way to collect. Build
+  nothing for COPPA unless the app is ever offered in the US.
 
 ---
 
 ## 8. Checklist before the first internal test
 
-- [ ] Play Console developer account (personal) created and identity-verified. Verify its contact
-      email and phone, and sign in at least every 180 days (GO-LIVE, "Two multi-year traps").
+- [ ] Play Console developer account (personal, 25 USD once) created and identity-verified.
+      Verify its contact email and phone, and sign in at least every 180 days (GO-LIVE, "Two
+      multi-year traps").
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project").
 - [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE, "Before a
       second person can sign up"). Then change section 3.10 of both privacy policies as their TO
       CHECK and PRÜFEN comments say.
-- [ ] Supabase DPA, with the standard contractual clauses, signed before the privacy policy is
-      published (`gdpr-records.md` 5.1): until then, its sections 7 and 8 are untrue.
-- [ ] Privacy policy published at `{{PRIVACY_POLICY_URL}}`, with the placeholders filled in on the
-      hosted copy only, and the hosting location named as Switzerland. It is the only page with the
-      postal address.
-- [ ] Support page live at `{{SUPPORT_URL}}` (`support-page.md`), with the account deletion text
-      (section 6), and without the postal address: it points to the privacy policy for that.
+- [ ] Supabase DPA signed before the privacy policy is published (`gdpr-records.md` 5.1), with
+      the safeguard for the USA that the privacy policy's section 8 names: until then, its sections
+      7 and 8 are untrue.
+- [ ] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}` (planned:
+      `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
+      alongside), with the placeholders filled in only in the site repository `vnznznznz.github.io`,
+      never in this one, and the database's location named as Switzerland. It is the only page with
+      the postal address.
+- [ ] Support page live at `{{SUPPORT_URL}}` (planned: `https://vnznznznz.github.io/night-courier/`,
+      from `support-page.md`), with the account deletion text (section 6), and without the postal
+      address: it points to the privacy policy for that.
+- [ ] The EU trader declaration, if Play Console asks for one (section 1): non-trader expected,
+      **to check**.
 - [ ] App created (section 1), store listing in English and German, icon, feature graphic and
       screenshots (section 2).
 - [ ] App content answered: privacy policy, App access, Ads, Advertising ID, the other declarations
       (section 3), content rating (section 4), Target audience (section 5).
-- [ ] The Families Policy decision taken (section 5): build the three social-feature pieces, raise
-      the minimum age, or stay internal with no Android tester under 13. Write down which, here.
+- [x] The Families Policy decision taken (section 5): the minimum age was raised to 13 on
+      5 November 2026, so the target audience is 13–15, 16–17 and 18 and over, and the Families
+      Policy does not apply.
+- [ ] In Target audience, the answer to "Could your store listing unintentionally appeal to
+      children?" (if asked) given truthfully, and recorded in section 5.
 - [ ] Data safety filled in if Play Console allows it (section 6). Required before any other track,
       and so is the decision on sharing with the police ("Why nothing is shared").
 - [ ] Pre-launch reports off if they run on internal testing, and the credentials option in App
       access unticked (section 3).
 - [ ] First Android App Bundle built with EAS. `eas.json` does not exist yet (GO-LIVE, D). The EAS
       environment has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted
-      project, `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL`.
+      project, `EXPO_PUBLIC_CONTACT_URL` (a `mailto:` link or the support page) and
+      `EXPO_PUBLIC_PRIVACY_POLICY_URL` (the planned address at the top): settings of the EAS
+      environment, never committed.
 - [x] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
       `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID). Done in
       commit 191bc50, guarded by `src/tests/app-config.test.ts`.
 - [ ] On the first build, the merged manifest checked in App bundle explorer: `INTERNET` only, no
       `AD_ID`.
 - [ ] Internal testing: a tester list (at most 100 Google account email addresses), kept only in
-      Play Console, and the opt-in link sent to those people. Take testers off the list when they
-      stop (privacy policy, section 3.12).
+      Play Console, and the opt-in link sent to those people. No one under 13, and anyone under 16
+      only with a parent's or guardian's permission. Take testers off the list when they stop
+      (privacy policy, section 3.12).
 - [ ] The Play demo account ready (section 3), in case Google reviews.
 
 ---
@@ -757,23 +782,23 @@ Collected from above, so none is lost:
 10. The IARC category names, the exact questions, and whether a self-chosen city counts as "shares
     location". The ratings the certificate gives, especially the USK's. That a rating cannot be
     overridden upwards.
-11. Play's age groups as shown on screen, and whether "appeals to children" is asked.
-12. The full text of the Families Policy, especially the three social-feature rules, whether
-    Night Courier is a "social app" or an app with "social features" (and so whether the adult
-    controls apply), what counts as adult action, whether "child" ever means a country's own age
-    of consent rather than under 13, the date for anonymous chat apps, and the content-rating rule
-    for apps that target children.
-13. Whether any part of the Families Policy is relaxed for internal testing (none is known).
-14. Google's minimum age for an unsupervised account in Germany, and whether Family Link-supervised
-    accounts can join internal tests.
+11. Play's age groups as shown on screen, whether "appeals to children" is asked, and what follows
+    from a Yes.
+12. Whether the Families Policy can still reach an app whose target audience is 13 and over: how
+    Google decides that a listing appeals to children, and what it then asks for; and whether
+    "child" ever means a country's own age rather than under 13.
+13. Whether Play Console asks for an EU Digital Services Act trader declaration, also for an app
+    only on internal testing, and which contact details it would show for a trader.
+14. Google's minimum age for an unsupervised account in Switzerland and in Germany, and whether
+    Family Link-supervised accounts can join internal tests.
 15. The Data safety definitions: ephemeral processing and whether it shows in the public section,
     the sharing exceptions, how free text, passwords and IP addresses are treated, Android vitals,
     whether a voluntary referral to the police (with the account's sign-in records) counts as
-    sharing, and whether the operator's mail through a Microsoft consumer mailbox does. The police
+    sharing, whether the operator's mail through a Microsoft consumer mailbox does, and that GitHub
+    Pages' visitor logs are outside the form. The police
     question has to be decided before any track beyond internal testing (section 6, "Why nothing
     is shared"): either the exception is confirmed, or the six types are declared Shared for Fraud
     prevention, security, and compliance. Decision: not taken yet.
 16. The option name for "username and password" account creation.
 17. COPPA: the definitions, its reach to foreign operators, the commercial-purposes question,
-    whether Google applies its COPPA requirement outside the US, country limits for Play internal
-    tests and for TestFlight.
+    country limits for Play internal tests and for TestFlight.

@@ -132,6 +132,9 @@ the empty case is handled.
 
 ### Region: Frankfurt (`eu-central-1`), not Zurich
 
+_Superseded below. Written when the operator was assumed to live in Germany, which is where the
+distances and the third-country reasoning in it come from._
+
 Supabase's two EU-central regions are Frankfurt and Zurich. Frankfurt is inside the EU; Zurich is
 Switzerland, which is not.
 
@@ -149,22 +152,38 @@ is still empty.
 #### Reversed: the project is in Zurich (`eu-central-2`)
 
 The operator chose Zurich after reading the above. Recording what that actually means, so the
-choice is documented rather than merely made:
+choice is documented rather than merely made. Since 5 November 2026 it is recorded that the
+operator lives in Switzerland, as a private individual, so the Swiss Federal Act on Data
+Protection (FADP) applies to the operator, and the GDPR applies to the data of people in the EU and
+the EEA, because the app is offered to them (Art. 3(2)(a) GDPR):
 
-- **The transfer is lawful.** Switzerland is a third country under GDPR, but the Commission's
-  adequacy decision for Switzerland (Decision 2000/518/EC, kept in force by Art. 45(9) GDPR; the
-  Commission's January 2024 review found the protection still adequate) covers it, so no standard
-  contractual clauses or transfer impact assessment are needed for the hosting location itself.
+- **For the operator, the data stays at home.** Switzerland is the operator's own country, so
+  storing the database there is not a disclosure abroad under the FADP.
+- **For people in the EU, the adequacy decision covers it.** Switzerland is a third country under
+  the GDPR, but the Commission's adequacy decision for Switzerland (Decision 2000/518/EC, kept in
+  force by Art. 45(9) GDPR; the Commission's January 2024 review found the protection still
+  adequate) covers it, so no standard contractual clauses or transfer impact assessment are needed
+  for the hosting location itself. This is no longer about an operator in the EU sending data to
+  Switzerland: the controller is in Switzerland too.
 - **Swiss data protection is not a downgrade.** The revised FADP is close in substance to the
   GDPR, and Switzerland's reputation on privacy is a legitimate reason to prefer it.
-- **The residual risk is the one named above** — the arrangement rests on an adequacy decision,
-  and adequacy decisions have been invalidated before. If that ever happened, the remedy would be
-  migrating the project to an EU region, which means recreating it and moving the data.
-- **Latency is a non-issue here.** ~300 km of extra distance is single-digit milliseconds, and
-  this is an application whose entire premise is that messages take hours.
+- **The residual risk has changed shape.** For people in the EU the arrangement still leans on an
+  adequacy decision, and adequacy decisions have been invalidated before. But moving the project
+  to an EU region would no longer settle it, since the operator, who runs the database, is in
+  Switzerland as well; what would then be needed for people in the EU is **to check**.
+- **The USA is where data goes abroad.** Supabase Inc. is a US company and may reach the data from
+  there (support, sub-processors); so do Microsoft for the contact mailbox and GitHub for the web
+  pages. Under the FADP that rests on the Swiss-US Data Privacy Framework (recognised by the
+  Federal Council, in effect since 15 September 2024) for certified companies, otherwise on
+  contractual safeguards such as the SCCs in Supabase's DPA; whether each company is certified is
+  **to check** (`docs/store/gdpr-records.md`, 5.1).
+- **Latency is a non-issue here.** A few hundred kilometres of extra distance is single-digit
+  milliseconds, and this is an application whose entire premise is that messages take hours.
 
-**One concrete consequence:** the privacy policy must name Switzerland as the hosting location.
-GDPR Art. 13 requires telling users where their data goes, and "in the EU" would be wrong.
+**One concrete consequence:** the privacy policy must name the countries: Switzerland, where the
+database is, and the USA (Supabase Inc., Microsoft for the mailbox, GitHub for the web pages; Apple
+and Google for testers). Art. 19 FADP asks for the countries and safeguards of any disclosure
+abroad, GDPR Art. 13 for where data goes, and "in the EU" would be wrong.
 
 ### Email confirmation: off during development, on before anyone else joins
 

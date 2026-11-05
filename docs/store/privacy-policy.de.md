@@ -3,7 +3,7 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
 
 1. Platzhalter ersetzen: {{OPERATOR_NAME}}, {{OPERATOR_ADDRESS}}, {{CONTACT_EMAIL}},
    {{EFFECTIVE_DATE}}, {{PRIVACY_POLICY_URL}}, {{SUPPORT_URL}}. Die ausgefüllte Fassung gehört
-   NICHT in dieses öffentliche Repository, sondern nur auf die gehostete Seite.
+   NICHT in dieses öffentliche Repository, sondern nur in das Repository der Webseiten (Hinweis 8).
 2. Jeder Kommentar "PRÜFEN" markiert eine Angabe, die vor dem Veröffentlichen gegen den gehosteten
    Supabase-Tarif, die gewählten Dienste oder eine Entscheidung des Betreibers geprüft werden muss.
 3. Die englische Fassung (privacy-policy.en.md) bei jeder Änderung mitziehen.
@@ -20,6 +20,33 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    (KEYCHAIN_OPTIONS in src/lib/secure-storage.ts, Commit 3a343b0). Wird das zurückgenommen, den
    alten Satz wieder einsetzen: "Einträge im Schlüsselbund können in verschlüsselten Backups
    enthalten sein und auf ein neues iPhone mitgenommen werden."
+6. Der Betreiber lebt in der Schweiz und betreibt Night Courier als Privatperson (Entscheidung vom
+   5. November 2026). Frühere Fassungen waren geschrieben, als lebte er in Deutschland. Für ihn gilt
+   das revidierte DSG (in Kraft seit 1. September 2023); die DSGVO gilt zusätzlich für die Daten von
+   Menschen in der EU und im EWR, weil die App ihnen angeboten wird (Art. 3 Abs. 2 lit. a DSGVO).
+   Die Rechtsgrundlagen bleiben die der DSGVO (Art. 6); wo das DSG anders ist, sagen es die
+   Abschnitte 1, 6, 8, 11 und 13 kurz. Aufsicht für den Betreiber: der EDÖB (Abschnitt 11).
+   Hinweise auf das BDSG stehen nur noch als PRÜFEN-Kommentare: Ob das BDSG für einen
+   Verantwortlichen in der Schweiz überhaupt gilt (§ 1 Abs. 4 BDSG), ist eine Frage für
+   rechtlichen Rat. In der veröffentlichten Erklärung nur "in der Schweiz" schreiben, nie Ort,
+   Postleitzahl oder Straße außerhalb von {{OPERATOR_ADDRESS}}.
+7. Altersgrenze 13, unter 16 nur mit Erlaubnis der Eltern oder anderer Erziehungsberechtigter:
+   MINIMUM_AGE = 13 und PARENTAL_PERMISSION_UNDER = 16 in src/constants/config.ts; der Schalter bei
+   der Registrierung heißt "I am 13 or older", die Hausregeln (src/app/rules.tsx) lesen die
+   Konstanten. Ändert sich eine der Zahlen, "Kurz gesagt" und die Abschnitte 3.13 und 10 anpassen.
+8. Die Webseiten liegen bei GitHub Pages, als Nutzer-Site: ein öffentliches Repository
+   vnznznznz.github.io (vom Betreiber noch anzulegen), erreichbar unter
+   https://vnznznznz.github.io/. Night Courier liegt im Ordner night-courier/: index.html (aus
+   support-page.md), privacy-policy.de.html (diese Fassung, verbindlich) und
+   privacy-policy.en.html. Also
+   {{SUPPORT_URL}} = https://vnznznznz.github.io/night-courier/ und {{PRIVACY_POLICY_URL}} =
+   https://vnznznznz.github.io/night-courier/privacy-policy.de.html. In diesem Repository bleiben
+   die Platzhalter stehen; ausgefüllt werden sie erst beim Bauen der Seiten. Die ausgefüllten
+   Seiten mit Name und Anschrift gibt es nur im Repository der Webseiten. Auch das ist öffentlich,
+   und git behält jede frühere Fassung: Eine einmal dort eingetragene Anschrift bleibt in der
+   Geschichte lesbar. In der App bleiben EXPO_PUBLIC_PRIVACY_POLICY_URL und EXPO_PUBLIC_CONTACT_URL
+   Einstellungen der Umgebung und werden nicht eingecheckt. Abschnitt 7 beschreibt GitHub als
+   Anbieter der Webseiten.
 -->
 
 # Datenschutzerklärung für Night Courier
@@ -31,7 +58,9 @@ Diese Datenschutzerklärung gibt es auch auf Englisch. Verbindlich ist diese deu
 ## Kurz gesagt
 
 - Night Courier ist eine private App für Briefe unter Freunden. Ich betreibe sie allein, als
-  Privatperson – ohne Firma und ohne damit Geld zu verdienen.
+  Privatperson in der Schweiz – ohne Firma und ohne damit Geld zu verdienen.
+- Für mich gilt deshalb das Schweizer Datenschutzgesetz (DSG). Wenn du in der EU oder im EWR
+  wohnst, gilt für deine Daten außerdem die DSGVO (Abschnitt 1).
 - Es gibt keine Werbung, kein Tracking, keine Analyse-Tools, keine Push-Nachrichten und nichts zu
   kaufen. Ich verkaufe keine Daten.
 - Ich speichere nur, was die App zum Funktionieren braucht: deine E-Mail-Adresse, dein Passwort (nur
@@ -39,14 +68,15 @@ Diese Datenschutzerklärung gibt es auch auf Englisch. Verbindlich ist diese deu
   Freundschaften, deine Briefe, wen du blockierst und was du meldest. Dazu kommen technische Daten
   wie deine IP-Adresse, die bei der Anmeldung und in Protokollen anfallen.
 - Die Datenbank liegt bei Supabase, einem Dienst aus den USA, auf Servern in Zürich in der Schweiz
-  (Abschnitte 7 und 8).
+  (Abschnitte 7 und 8). Diese Erklärung und die Kontaktseite liegen bei GitHub, ebenfalls einem
+  Dienst aus den USA.
 - Briefe sind nicht Ende-zu-Ende-verschlüsselt. Technisch könnten ich und Supabase sie lesen. Ich
   lese Briefe nur, wenn sie mir gemeldet werden oder ich anders einen technischen Fehler nicht
   beheben kann.
 - Du kannst dein Konto jederzeit in der App löschen. Dann sind auch alle Briefe weg, die du
   geschickt oder bekommen hast, auch bei den Freunden, mit denen du geschrieben hast. Einiges bleibt
   danach noch eine Weile, vor allem Meldungen: bis zu 180 Tage (Abschnitt 11).
-- Night Courier ist ab 12 Jahren. Wer unter 16 ist, braucht die Erlaubnis der Eltern oder anderer
+- Night Courier ist ab 13 Jahren. Wer unter 16 ist, braucht die Erlaubnis der Eltern oder anderer
   Erziehungsberechtigter.
 - Du hast Rechte, zum Beispiel auf Auskunft und Löschung. Schreib mir einfach: {{CONTACT_EMAIL}}.
 
@@ -55,16 +85,42 @@ werden" (hier und in Abschnitt 3.4) ist noch nicht ausdrücklich beschlossen. Be
 
 ## 1. Wer ist für deine Daten verantwortlich?
 
-Verantwortlich im Sinne der Datenschutz-Grundverordnung (DSGVO) ist:
+Verantwortlich im Sinne des Schweizer Bundesgesetzes über den Datenschutz (DSG) und der
+Datenschutz-Grundverordnung der EU (DSGVO) ist:
 
 - **Name:** {{OPERATOR_NAME}}
 - **Anschrift:** {{OPERATOR_ADDRESS}}
 - **E-Mail:** {{CONTACT_EMAIL}}
 - **Kontakt und Hilfe:** {{SUPPORT_URL}}
 
-Ich betreibe Night Courier als Privatperson, nicht als Unternehmen. Einen Datenschutzbeauftragten
-habe ich nicht benannt – mit allen Fragen zum Datenschutz kannst du dich direkt an mich wenden. Wenn
-hier „ich“ steht, bin ich gemeint; „du“ bist du, wenn du Night Courier nutzt.
+Ich betreibe Night Courier als Privatperson, nicht als Unternehmen, und lebe in der Schweiz. Einen
+Datenschutzbeauftragten habe ich nicht benannt – mit allen Fragen zum Datenschutz kannst du dich
+direkt an mich wenden. Wenn hier „ich“ steht, bin ich gemeint; „du“ bist du, wenn du Night Courier
+nutzt.
+
+**Welches Recht gilt.** Weil ich in der Schweiz lebe, gilt für mich das DSG in der revidierten
+Fassung, die seit dem 1. September 2023 in Kraft ist. Night Courier wird auch Menschen in der EU und
+im EWR angeboten; für ihre Daten gilt deshalb zusätzlich die DSGVO (Art. 3 Abs. 2 lit. a DSGVO). Die
+Rechtsgrundlagen, die ich in dieser Erklärung nenne, sind die der DSGVO. Das DSG verlangt nicht für
+jede Bearbeitung eine solche Grundlage, sondern dass ich mich an seine Grundsätze halte (Art. 6 DSG)
+– zum Beispiel Daten nur für die hier genannten Zwecke und nur so weit wie nötig zu verarbeiten.
+
+<!-- PRÜFEN (rechtlich):
+- Vertreter in der EU (Art. 27 DSGVO): Wer ohne Niederlassung in der EU Menschen in der EU etwas
+  anbietet, muss grundsätzlich schriftlich einen Vertreter in der EU benennen. Die Ausnahme in Art.
+  27 Abs. 2 lit. a DSGVO (nur gelegentliche Verarbeitung, ohne umfangreiche Verarbeitung besonderer
+  Kategorien, voraussichtlich ohne Risiko) passt für einen laufenden Briefdienst vermutlich nicht.
+  Rechtlichen Rat einholen. Ist ein Vertreter nötig, ihn hier mit Name und Anschrift nennen (eigener
+  Platzhalter, nicht in diesem Repository ausfüllen); er ist dann auch Ansprechpartner für die
+  Aufsichtsbehörden in der EU (Abschnitte 11 und 13). Bis dahin nennt diese Erklärung keinen.
+- Ob der Satz zum DSG (keine Rechtsgrundlage für jede Bearbeitung, Grundsätze nach Art. 6 DSG; eine
+  Rechtfertigung nach Art. 31 DSG erst bei einer Persönlichkeitsverletzung, Art. 30 DSG) so stehen
+  bleiben kann. -->
+
+<!-- PRÜFEN: Informationspflicht nach Art. 19 DSG - Identität und Kontaktdaten (hier), Zwecke
+(Abschnitt 3), Empfänger oder Kategorien von Empfängern (Abschnitt 7) und bei einer Bekanntgabe ins
+Ausland die Staaten und die Garantien (Abschnitt 8, Art. 16 und 17 DSG). Bei jeder Änderung prüfen,
+dass alle vier noch genannt sind. -->
 
 ## 2. Worum es geht
 
@@ -237,9 +293,14 @@ zurücknehmen, indem er sein Konto löscht. Gebe ich eine Meldung an die Polizei
 Polizei ihre Kopie nach ihren eigenen Regeln auf, auch über die 180 Tage hinaus; meine eigene
 exportierte Kopie lösche ich nach der Übergabe.
 
-<!-- PRÜFEN (rechtlich): ob für die freiwillige Weitergabe an die Polizei - der Meldung und der
-Anmeldedaten des gemeldeten Kontos - neben Art. 6 Abs. 1 lit. f DSGVO § 24 BDSG eine Rolle spielt
-(Zweckänderung). Die Weitergabe ist hier schon als Zweck genannt. Nicht zitiert. Der E-Mail-Alarm
+<!-- PRÜFEN (rechtlich): was neben Art. 6 Abs. 1 lit. f DSGVO für die freiwillige Weitergabe an
+die Polizei - der Meldung und der Anmeldedaten des gemeldeten Kontos - gilt. Nach dem DSG: ob sie
+mit dem erkennbaren Zweck vereinbar ist (Art. 6 Abs. 3 DSG; die Weitergabe ist hier schon als Zweck
+genannt) oder ein überwiegendes Interesse sie rechtfertigt (Art. 31 DSG). Hier stand früher § 24
+BDSG (Zweckänderung), geschrieben für einen Betreiber in Deutschland; ob das BDSG für einen
+Verantwortlichen in der Schweiz überhaupt gilt (§ 1 Abs. 4 BDSG), ist eine Frage für rechtlichen
+Rat. Nichts davon ist zitiert. Ebenso: welche Polizei - die in der Schweiz oder die im Land der
+bedrohten Person. Der E-Mail-Alarm
 für neue Meldungen, den GO-LIVE vorschlägt, ist dort ausdrücklich inhaltsfrei; bleibt er das, gehört
 er nicht hierher. -->
 
@@ -378,7 +439,13 @@ Anliegen brauche, und lösche sie danach.
 nachdem dein Anliegen erledigt ist"; dieselbe Frist in Abschnitt 9 eintragen. Hinweis: Ein privates
 Outlook.com-Postfach läuft unter Microsofts Verbraucherbedingungen; Microsoft ist dort kein
 Auftragsverarbeiter, und einen Vertrag nach Art. 28 DSGVO gibt es dafür nicht. Ob das für die
-Bearbeitung von Meldungen und Datenschutzanfragen genügt: PRÜFEN. -->
+Bearbeitung von Meldungen und Datenschutzanfragen genügt: PRÜFEN; ebenso nach dem DSG
+(Auftragsbearbeitung, Art. 9 DSG). -->
+
+<!-- PRÜFEN (rechtlich): "gesetzlich verpflichtet zu antworten" stützt sich bei Menschen in der EU
+auf die DSGVO selbst, sonst auf das DSG (Art. 25 DSG). Art. 6 Abs. 1 lit. c DSGVO verlangt eine
+Pflicht nach EU-Recht oder dem Recht eines EU-Mitgliedstaats (Art. 6 Abs. 3 DSGVO); siehe den
+Kommentar in Abschnitt 6. -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO, wenn es um dein Konto geht; Art. 6 Abs. 1 lit. c
 DSGVO, wenn du deine Datenschutzrechte ausübst, weil ich dann gesetzlich verpflichtet bin zu
@@ -413,7 +480,7 @@ Abs. 1 lit. f DSGVO – mein berechtigtes Interesse, Abstürze zu finden und zu 
 
 ### 3.13 Was ich nicht erhebe
 
-- **Dein Alter.** Bei der Registrierung bestätigst du nur, dass du mindestens 12 bist und, falls du
+- **Dein Alter.** Bei der Registrierung bestätigst du nur, dass du mindestens 13 bist und, falls du
   unter 16 bist, die Erlaubnis deiner Eltern oder anderer Erziehungsberechtigter hast. Gespeichert
   wird das nicht.
 - **Den Standort deines Geräts, das Adressbuch deines Handys, Fotos, Kamera oder Mikrofon.** Auf
@@ -481,28 +548,38 @@ Hinweis 5 oben. -->
 
 ## 6. Rechtsgrundlagen im Überblick
 
+Das sind die Rechtsgrundlagen nach der DSGVO. Das DSG verlangt keine solche Grundlage für jede
+Bearbeitung (Abschnitt 1).
+
 - **Art. 6 Abs. 1 lit. b DSGVO (Vertrag):** alles, was nötig ist, um dir die App bereitzustellen –
   Konto, Profil, Stadt, Freundschaften, Briefe, Fledermäuse, Blockieren, Anmeldung und die E-Mails
   zu deinem Konto.
 - **Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen):** Sicherheit (Sitzungen und Protokolle),
   der Umgang mit Missbrauch (Meldungen, Verwarnungen, Entfernen von Konten), das Aufbewahren von
   Meldungen für 180 Tage, das Sperren entfernter Konten für zwei Jahre ab dem Entfernen, die
-  freiwillige Weitergabe einer Meldung an die Polizei, und Absturzberichte. Die Interessen dahinter:
+  freiwillige Weitergabe einer Meldung an die Polizei, Absturzberichte und der Aufruf der Webseiten
+  bei GitHub Pages (Abschnitt 7). Die Interessen dahinter:
   eine sichere App, Schutz der Menschen, die sie nutzen – besonders der Kinder und Jugendlichen –,
   und Beweise für Opfer.
 - **Art. 6 Abs. 1 lit. c DSGVO (rechtliche Pflicht):** wenn ein Gesetz mich verpflichtet, Daten
   herauszugeben, etwa an Polizei, Staatsanwaltschaft oder Gericht, und wenn ich deine Anfragen zu
   deinen Datenschutzrechten beantworte.
 
+<!-- PRÜFEN (rechtlich): Art. 6 Abs. 1 lit. c DSGVO trägt nur Pflichten nach EU-Recht oder dem
+Recht eines EU-Mitgliedstaats (Art. 6 Abs. 3 DSGVO). Eine Pflicht nach Schweizer Recht, etwa die
+Anordnung einer Schweizer Behörde oder eines Schweizer Gerichts, ist das nicht; ob dafür dann Art. 6
+Abs. 1 lit. f DSGVO gilt, rechtlich klären und den Punkt gegebenenfalls umformulieren. -->
+
 ## 7. Wer deine Daten bekommt
 
 Ich verkaufe keine Daten und gebe sie nicht für Werbung weiter. Empfänger sind nur:
 
 - **Supabase Inc. (USA).** Supabase betreibt für mich die Datenbank, die Anmeldung, den Server und
-  die Protokolle, als Auftragsverarbeiter nach Art. 28 DSGVO auf Grundlage eines Vertrags zur
-  Auftragsverarbeitung. Mein Projekt läuft in der Supabase-Region Zürich (Schweiz) auf Servern von
-  Amazon Web Services. Supabase setzt weitere Unterauftragsverarbeiter ein und veröffentlicht eine
-  Liste davon auf supabase.com. Datenschutzerklärung: https://supabase.com/privacy
+  die Protokolle, als Auftragsverarbeiter nach Art. 9 DSG und Art. 28 DSGVO auf Grundlage eines
+  Vertrags zur Auftragsverarbeitung. Mein Projekt läuft in der Supabase-Region Zürich (Schweiz) auf
+  Servern von Amazon Web Services. Supabase setzt weitere Unterauftragsverarbeiter ein und
+  veröffentlicht eine Liste davon auf supabase.com. Datenschutzerklärung:
+  https://supabase.com/privacy
 - **E-Mail-Versand.** Die E-Mails zu deinem Konto (Abschnitt 3.10) verschickt Supabase oder ein
   E-Mail-Versanddienst, der als mein Auftragsverarbeiter handelt. Er erhält deine E-Mail-Adresse und
   den Link in der E-Mail und führt ein Versandprotokoll.
@@ -512,9 +589,13 @@ Ich verkaufe keine Daten und gebe sie nicht für Werbung weiter. Empfänger sind
 - **Apple und Google.** Sie verteilen die Testversionen (Abschnitt 3.12) nach ihren eigenen
   Datenschutzbestimmungen: https://www.apple.com/de/legal/privacy/ und
   https://policies.google.com/privacy
-- **Der Anbieter der Webseiten** {{PRIVACY_POLICY_URL}} und {{SUPPORT_URL}}. Wenn du sie aufrufst,
-  erhält er wie jeder Webserver deine IP-Adresse und deinen User-Agent (Rechtsgrundlage: Art. 6
-  Abs. 1 lit. f DSGVO – ohne diese Daten lässt sich eine Webseite nicht ausliefern).
+- **GitHub, Inc. (USA).** Die Webseiten {{PRIVACY_POLICY_URL}} und {{SUPPORT_URL}} liegen bei
+  GitHub Pages. Wenn du sie aufrufst, erhält GitHub wie jeder Webserver deine IP-Adresse und deinen
+  User-Agent und speichert deine IP-Adresse in Protokollen, für die Sicherheit und den Betrieb des
+  Dienstes (Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO – ohne diese Daten lässt sich eine Webseite
+  nicht ausliefern). Die Seiten selbst setzen keine Cookies und laden nichts von anderen Websites.
+  Wie lange GitHub seine Protokolle aufbewahrt, regeln seine eigenen Datenschutzbestimmungen:
+  https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
 - **Polizei und Behörden** – nur wenn ich eine Meldung mit den Anmeldedaten des gemeldeten Kontos
   weitergebe (Abschnitt 3.7) oder ein Gesetz mich zur Herausgabe verpflichtet.
 - **Andere Nutzer** sehen, was in Abschnitt 4 steht.
@@ -536,28 +617,56 @@ gefragt.
   seines Versandprotokolls in Abschnitt 9 eintragen.
 - Microsoft: ob für ein privates Outlook.com-Postfach Microsofts Verbraucher-Datenschutzerklärung
   die richtige ist.
-- Webseiten: den Anbieter der gehosteten Seite nennen und prüfen, was er protokolliert, wie lange,
-  und ob er Cookies setzt. -->
+- GitHub Pages: wie lange GitHub die IP-Adressen der Besucher aufbewahrt (wenn es eine feste Frist
+  nennt, oben eintragen); ob GitHub dabei als eigener Verantwortlicher handelt oder als
+  Auftragsverarbeiter (für ein privates Gratiskonto gibt es keinen Auftragsverarbeitungsvertrag);
+  den Link auf GitHubs Datenschutzerklärung aufrufen und prüfen (am 5. November 2026 nicht
+  erreichbar gewesen, aus der Erinnerung eingesetzt). Beim Bauen der Seiten prüfen, dass sie
+  wirklich keine Cookies setzen und nichts von anderen Websites laden: keine Web-Schriften,
+  Skripte, Bilder, Analyse oder Einbettungen von fremden Adressen, auch kein Jekyll-Theme, das so
+  etwas nachlädt. Ob GitHub nach dem Data Privacy Framework zertifiziert ist: Abschnitt 8. -->
 
-## 8. Daten außerhalb der EU
+## 8. In welchen Ländern deine Daten verarbeitet werden
 
-- **Schweiz.** Die Datenbank liegt in Zürich. Die Schweiz gehört nicht zur EU, aber die
-  EU-Kommission hat festgestellt, dass dort ein angemessenes Datenschutzniveau besteht: Entscheidung
-  2000/518/EG, die nach Art. 45 Abs. 9 DSGVO weiter gilt. Bei ihrer Überprüfung im Januar 2024 hat
-  die Kommission festgestellt, dass das Schutzniveau in der Schweiz weiterhin angemessen ist.
+- **Schweiz.** Die Datenbank liegt in Zürich (Supabase-Region eu-central-2), also in dem Land, in
+  dem ich lebe. Sie dort zu speichern, ist für mich keine Bekanntgabe ins Ausland. Für Menschen in
+  der EU und im EWR: Die Schweiz gehört nicht zur EU, aber die EU-Kommission hat festgestellt, dass
+  dort ein angemessenes Datenschutzniveau besteht: Entscheidung 2000/518/EG, die nach Art. 45 Abs. 9
+  DSGVO weiter gilt. Bei ihrer Überprüfung im Januar 2024 hat die Kommission festgestellt, dass das
+  Schutzniveau in der Schweiz weiterhin angemessen ist.
 - **USA.** Supabase Inc. ist ein US-Unternehmen. Greifen Mitarbeiter oder Systeme von Supabase aus
-  den USA auf Daten zu, zum Beispiel für Wartung oder Support, ist das durch die
-  Standardvertragsklauseln der EU-Kommission im Vertrag zur Auftragsverarbeitung abgesichert (Art.
-  46 Abs. 2 lit. c DSGVO). Eine Kopie der Standardvertragsklauseln kannst du bei mir anfordern.
-- **Apple, Google und Microsoft** können Daten auch in den USA und anderen Ländern verarbeiten. Wie
-  sie das absichern, steht in ihren eigenen Datenschutzbestimmungen.
+  den USA auf Daten zu, zum Beispiel für Wartung oder Support, oder verarbeitet ein
+  Unterauftragsverarbeiter von Supabase dort Daten, gehen Daten in die USA. Ebenso bei Microsoft
+  (mein Postfach, Abschnitt 3.11) und GitHub (die Webseiten, Abschnitt 7), beides US-Unternehmen.
+  Nach dem DSG ist das so abgesichert: Für Unternehmen, die nach dem Swiss-US Data Privacy Framework
+  zertifiziert sind, hat der Bundesrat ein angemessenes Datenschutzniveau anerkannt; das gilt seit
+  dem 15. September 2024 (Art. 16 Abs. 1 DSG). Bei Supabase gelten sonst die
+  Standardvertragsklauseln im Vertrag zur Auftragsverarbeitung (Art. 16 Abs. 2 DSG). Für Menschen in
+  der EU und im EWR sichern diese Standardvertragsklauseln der EU-Kommission den Zugriff von
+  Supabase aus den USA ab (Art. 46 Abs. 2 lit. c DSGVO); für Microsoft und GitHub gilt, soweit sie
+  nach dem EU-US Data Privacy Framework zertifiziert sind, der Angemessenheitsbeschluss der
+  EU-Kommission vom 10. Juli 2023 (Durchführungsbeschluss (EU) 2023/1795, Art. 45 DSGVO). Eine Kopie
+  der Standardvertragsklauseln kannst du bei mir anfordern.
+- **Apple, Google, Microsoft und GitHub** können Daten auch in den USA und anderen Ländern
+  verarbeiten. Wie sie das absichern, steht in ihren eigenen Datenschutzbestimmungen.
 
 <!-- PRÜFEN:
 - Erst veröffentlichen, wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet
   ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot einer Kopie der
-  Klauseln nicht.
+  Klauseln nicht. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
+  Standardvertragsklauseln der EU anerkannt hat (Art. 16 Abs. 2 lit. d DSG).
+- Für Supabase Inc., Microsoft, GitHub, Inc., Apple und Google auf dataprivacyframework.gov
+  nachsehen, ob sie für den Swiss-US Data Privacy Framework (und für die EU den EU-US Data Privacy
+  Framework) zertifiziert sind, und das Ergebnis hier eintragen: zertifiziert, oder welche
+  vertragliche Garantie stattdessen gilt. Für Microsoft (privates Outlook.com-Postfach) und GitHub
+  (Gratiskonto) gibt es keinen Vertrag, den ich selbst abgeschlossen habe; sind sie nicht
+  zertifiziert, rechtlich klären, ob eine Ausnahme nach Art. 17 DSG trägt oder ein anderer Dienst
+  nötig ist.
 - Verarbeitet ein Unterauftragsverarbeiter von Supabase (z. B. für Protokolle oder vor der API)
-  Daten in einem anderen Drittland als den USA, hier nennen, mit der Absicherung. -->
+  Daten in einem anderen Land als der Schweiz und den USA, hier nennen, mit der Absicherung.
+- Gebe ich eine Meldung an eine Polizei außerhalb der Schweiz (Abschnitt 3.7), ist das eine
+  Bekanntgabe ins Ausland: das Land hier nennen, mit der Grundlage nach Art. 17 DSG (gdpr-records.md,
+  Abschnitt 2 und 6.23). -->
 
 ## 9. Wie lange ich Daten speichere
 
@@ -586,8 +695,11 @@ die Dauer in die Tabelle schreiben (oder die Zeile streichen, wenn es keine gibt
 
 ## 10. Kinder und Jugendliche – und ihre Eltern
 
-- Night Courier ist ab **12 Jahren**. Wer **unter 16** ist, braucht die Erlaubnis der Eltern oder
-  anderer Erziehungsberechtigter. So steht es in den Hausregeln.
+- Night Courier ist ab **13 Jahren**. Wer **unter 16** ist, braucht die Erlaubnis der Eltern oder
+  anderer Erziehungsberechtigter. So steht es in den Hausregeln. Die 16 habe ich gewählt, weil das
+  die höchste Altersgrenze ist, die ein EU-Land nach Art. 8 DSGVO dafür festlegt, dass man einem
+  Online-Dienst selbst zustimmen kann. Das Schweizer Recht kennt keine feste Grenze; dort kommt es
+  darauf an, ob jemand urteilsfähig ist.
 - Ich prüfe und speichere das Alter nicht. Bei der Registrierung bestätigt man es nur.
 - Die App ist so gebaut, dass Fremde niemandem schreiben können: Briefe gibt es nur zwischen
   Menschen, die sich gegenseitig als Freunde angenommen haben. Wer den genauen Benutzernamen kennt,
@@ -601,17 +713,22 @@ die Dauer in die Tabelle schreiben (oder die Zeile streichen, wenn es keine gibt
   Fragen haben, etwas melden möchten oder ihr Kind ohne ihre Erlaubnis ein Konto angelegt hat. Ist
   ein Kind unter 16 ohne Erlaubnis angemeldet, lösche ich das Konto auf Bitte der Eltern. Vorher
   frage ich gegebenenfalls nach, um sicherzugehen, dass die Bitte wirklich von den Eltern kommt.
-  Erfahre ich, dass jemand jünger als 12 ist, lösche ich das Konto – ohne die E-Mail-Adresse zu
+  Erfahre ich, dass jemand jünger als 13 ist, lösche ich das Konto – ohne die E-Mail-Adresse zu
   sperren (Abschnitt 3.8 gilt nur für Konten, die wegen Regelverstößen entfernt werden).
 - Gut zu wissen: Wird ein Konto gelöscht, sind alle Briefe weg. Wer einen Brief aufbewahren möchte,
   zum Beispiel als Beweis, macht vorher einen Screenshot.
 
 <!-- PRÜFEN: ob die Erlaubnis der Eltern unter 16 rechtlich eine Einwilligung nach Art. 8 DSGVO sein
 muss oder ob Art. 6 Abs. 1 lit. b DSGVO trägt (und was die Regeln über Verträge mit Minderjährigen
-dazu sagen). Diese Erklärung zieht daraus bewusst keinen Schluss. Die Zusage, ein Konto auf Bitte
-der Eltern zu löschen, ist eine Entscheidung des Betreibers: bestätigen. Das Konto von jemandem
-unter 12 wird ohne Sperre gelöscht (Authentication → Users → Delete user oder das Löschen durch die
-Person selbst), nicht mit private.remove_account; die Schritte stehen in gdpr-records.md 5.4. -->
+dazu sagen, in der Schweiz Art. 19 ZGB zu urteilsfähigen Minderjährigen). Diese Erklärung zieht
+daraus bewusst keinen Schluss. Die 16 ist kein Alter, das ein bestimmtes Land für diesen Betreiber
+festlegt, sondern die höchste Grenze nach Art. 8 DSGVO (unter anderem in Deutschland); das DSG nennt
+kein Alter, es kommt auf die Urteilsfähigkeit an (Art. 16 ZGB). Die Zusage, ein Konto auf Bitte der
+Eltern zu löschen, ist eine Entscheidung des Betreibers: bestätigen. Niemand unter 13 wird
+zugelassen, in den USA wie anderswo (COPPA betrifft Kinder unter 13; ob die Regel samt Löschen
+genügt, rechtlich prüfen). Das Konto von jemandem unter 13 wird ohne Sperre gelöscht
+(Authentication → Users → Delete user oder das Löschen durch die Person selbst), nicht mit
+private.remove_account; die Schritte stehen in gdpr-records.md 5.4. -->
 
 ## 11. Deine Rechte
 
@@ -633,11 +750,20 @@ Du hast nach der DSGVO diese Rechte:
 - **Datenübertragbarkeit (Art. 20):** Du kannst die Daten, die du mir gegeben hast, in einem
   gängigen, maschinenlesbaren Format bekommen. Eine Export-Funktion in der App gibt es nicht;
   schreib mir.
-- **Beschwerde (Art. 77):** Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren,
-  besonders in dem EU-Land, in dem du wohnst oder arbeitest oder in dem der Verstoß passiert ist. In
-  Deutschland ist das die Datenschutzbehörde deines Bundeslands. Für mich zuständig ist die
-  Datenschutzbehörde des Bundeslands, in dem ich wohne (Anschrift in Abschnitt 1). Am liebsten ist
-  mir aber, du schreibst mir zuerst.
+
+**Nach dem Schweizer DSG** hast du ähnliche Rechte: Auskunft (Art. 25 DSG – kostenlos und in der
+Regel innerhalb von 30 Tagen), Herausgabe oder Übertragung deiner Daten (Art. 28 DSG) und
+Berichtigung (Art. 32 Abs. 1 DSG). Außerdem kannst du verlangen, notfalls vor Gericht, dass eine
+bestimmte Bearbeitung unterbleibt, dass ich deine Daten nicht an Dritte weitergebe oder dass ich sie
+lösche (Art. 32 Abs. 2 DSG).
+
+**Beschwerde.** Für mich zuständig ist der Eidgenössische Datenschutz- und
+Öffentlichkeitsbeauftragte (EDÖB), Feldeggweg 1, 3003 Bern, Schweiz, www.edoeb.admin.ch. An ihn
+kannst du dich wenden, wenn du meinst, dass ich gegen das DSG verstoße. Wohnst du in der EU oder im
+EWR, kannst du dich außerdem bei einer Datenschutz-Aufsichtsbehörde beschweren (Art. 77 DSGVO),
+besonders in dem Land, in dem du wohnst oder arbeitest oder in dem der Verstoß passiert ist. In
+Deutschland ist das die Datenschutzbehörde deines Bundeslands. Am liebsten ist mir aber, du
+schreibst mir zuerst.
 
 > **Widerspruchsrecht (Art. 21):** Soweit ich Daten auf Grundlage berechtigter Interessen verarbeite
 > (Art. 6 Abs. 1 lit. f DSGVO), kannst du dem jederzeit aus Gründen widersprechen, die sich aus
@@ -648,7 +774,7 @@ Du hast nach der DSGVO diese Rechte:
 
 **So geht's:** Schreib an {{CONTACT_EMAIL}}, am besten von der E-Mail-Adresse, mit der du bei Night
 Courier angemeldet bist – damit ich sicher bin, dass die Anfrage von dir kommt. Sonst frage ich
-nach. Ich antworte innerhalb eines Monats. Das kostet nichts.
+nach. Ich antworte innerhalb von 30 Tagen. Das kostet nichts.
 
 ## 12. Keine automatisierten Entscheidungen
 
@@ -673,8 +799,16 @@ selbst, als Mensch.
 
 Du kannst mithelfen: Nutze ein Passwort, das du nirgends sonst verwendest, und melde dich auf
 Geräten ab, die auch andere benutzen. Sollte trotzdem einmal etwas schiefgehen und Daten in falsche
-Hände geraten, informiere ich die Aufsichtsbehörde und, wenn nötig, dich, so wie es Art. 33 und 34
-DSGVO verlangen.
+Hände geraten, melde ich das so rasch wie möglich dem EDÖB, wenn es voraussichtlich zu einem hohen
+Risiko für die Betroffenen führt (Art. 24 DSG), und, soweit es um Menschen in der EU und im EWR
+geht, der zuständigen Aufsichtsbehörde, so wie es Art. 33 DSGVO verlangt. Wenn nötig, informiere
+ich auch dich (Art. 24 Abs. 4 DSG, Art. 34 DSGVO).
+
+<!-- PRÜFEN (rechtlich): welche Aufsichtsbehörde in der EU für eine Meldung nach Art. 33 DSGVO
+zuständig ist, wenn der Verantwortliche keine Niederlassung in der EU hat - hängt auch davon ab, ob
+ein Vertreter nach Art. 27 DSGVO benannt wird (Kommentar in Abschnitt 1). Die Schwellen sind
+verschieden: Art. 24 DSG verlangt die Meldung bei voraussichtlich hohem Risiko, Art. 33 DSGVO
+schon, wenn ein Risiko nicht unwahrscheinlich ist. -->
 
 ## 14. Musst du Daten angeben?
 

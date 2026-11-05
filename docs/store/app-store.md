@@ -4,21 +4,44 @@ Everything Night Courier needs in App Store Connect, ready to copy: the app reco
 the App Privacy label, export compliance, store texts in English and German, TestFlight, and Beta
 App Review.
 
-Researched on 4 November 2026 against Apple's App Store Connect help pages. Apple renames fields and
-changes forms; anything marked **to check** has to be confirmed on screen before it is relied on.
+Researched on 4 November 2026 against Apple's App Store Connect help pages, and brought up to date
+on 5 November 2026 with the operator's decisions of that day: a minimum age of 13, an operator who
+lives in Switzerland as a private individual, and web pages on GitHub Pages. Apple renames fields
+and changes forms; anything marked **to check** has to be confirmed on screen before it is relied
+on.
 
 **Personal data stays out of this file.** This repository is public. Where a field needs the
 operator's details, this file names a placeholder, and the real value is typed straight into App
-Store Connect (or into the hosted privacy policy), never written here:
+Store Connect (or into the filled-in web pages, which live only in the site repository described
+below), never written here:
 
-| Placeholder              | Means                                                                                                                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{{OPERATOR_NAME}}`      | The operator's name                                                                                                                                                             |
-| `{{OPERATOR_ADDRESS}}`   | The operator's postal address. Published only in the hosted privacy policy, section 1; the support page points there for it. In App Store Connect only where a form asks for it |
-| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                                                                                                       |
-| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button                                                                                                          |
-| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route                                                                                                |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                        |
+| Placeholder              | Means                                                                                                                                                                                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{{OPERATOR_NAME}}`      | The operator's name                                                                                                                                                                                                                                                    |
+| `{{OPERATOR_ADDRESS}}`   | The operator's postal address. Published only in the hosted privacy policy, section 1; the support page points there for it. In App Store Connect only where a form asks for it, and on the App Store page only if the EU trader declaration were "trader" (section 7) |
+| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                                                                                                                                                                                              |
+| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Planned: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html`                      |
+| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route. Planned: `https://vnznznznz.github.io/night-courier/`                                                                                                                                |
+| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                                               |
+
+The planned addresses are named here, in section 2 and in the checklists for reference only. Where a
+text below is pasted into App Store Connect, it keeps the placeholder, and the address replaces it
+as it is typed in.
+
+**Where the web pages live.** The privacy policy and the support page are published with GitHub
+Pages, as a user site: a public repository named `vnznznznz.github.io`, which the operator still has
+to create, served at `https://vnznznznz.github.io/`. Night Courier's pages go in its folder
+`night-courier/`: `index.html` (from `support-page.md`), `privacy-policy.de.html` (binding) and
+`privacy-policy.en.html`. The Markdown sources in this repository keep their placeholders; the
+filled-in pages, with the operator's name and postal address, exist only in the site repository,
+never in this one. That repository is public as well, and git keeps every earlier version of a page
+in its history, so an address once committed there stays readable even after it is changed.
+GitHub, Inc. (USA) hosts the pages and logs visitors' IP addresses for security and operation. The
+pages themselves set no cookies and load nothing from other sites; keep it so when building them
+(no web fonts, analytics or embeds from elsewhere). How long GitHub keeps its logs, and whether
+GitHub is certified under the Data Privacy Framework, is **to check**; the privacy policy covers
+both. In the app, `EXPO_PUBLIC_PRIVACY_POLICY_URL` and `EXPO_PUBLIC_CONTACT_URL` stay settings of
+the EAS environment and are not committed (section 7).
 
 Values that are not personal data but must not be committed either, such as the demo account's
 sign-in, are written as `<like this>`. They live in the operator's password manager and in App Store
@@ -94,17 +117,24 @@ this repository's own vector source, and the app uses the system fonts.
 | Support URL (per version) | `{{SUPPORT_URL}}`: a web page, not a `mailto:` link                      |
 | Marketing URL             | Leave empty                                                              |
 
+The planned values are in the placeholder table at the top: the support page at
+`https://vnznznznz.github.io/night-courier/`, the German privacy policy beside it. The in-app button
+has one address, the German page, so the German page should lead to the English one and back.
+Whether the Privacy Policy URL can differ per localisation, so that the English listing could point
+to `privacy-policy.en.html`, is **to check**.
+
 Apple's field reference says the Support URL "must lead to actual contact information (legal
 address, email address, telephone number), as may be required by local law". Make it an https
-page, as the app's own web links must be. `{{SUPPORT_URL}}` is the support page
-(`support-page.md`). It names `{{OPERATOR_NAME}}` and `{{CONTACT_EMAIL}}`, and for the postal
-address it points to the privacy policy, section 1, so that the address is published on one page
-only. Whether Apple accepts a link to the address instead of the address itself is **to check**;
-if it does not, use `{{PRIVACY_POLICY_URL}}` as the Support URL, which names all three and still
-keeps the address on one page. Whether a telephone number has to be published too is **to check**.
-The phone number under Beta App Review Information is for Apple only, which is a different thing.
-The Support URL is shown on the App Store listing, so the page must not carry anything the operator
-would not want published.
+page, as the app's own web links must be. GitHub Pages serves `github.io` addresses over https;
+that "Enforce HTTPS" is on in the site repository's Pages settings is **to check** once the site
+exists. `{{SUPPORT_URL}}` is the support page (`support-page.md`). It names `{{OPERATOR_NAME}}`
+and `{{CONTACT_EMAIL}}`, and for the postal address it points to the privacy policy, section 1, so
+that the address is published on one page only. Whether Apple accepts a link to the address
+instead of the address itself is **to check**; if it does not, use `{{PRIVACY_POLICY_URL}}` as the
+Support URL, which names all three and still keeps the address on one page. Whether a telephone
+number has to be published too is **to check**. The phone number under Beta App Review Information
+is for Apple only, which is a different thing. The Support URL is shown on the App Store listing, so
+the page must not carry anything the operator would not want published.
 
 ### Licence agreement
 
@@ -125,11 +155,11 @@ report that come with it. The bats and the night sky are decoration.
 | Item                                     | Answer | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Parental Controls                        | No     | There are no tools for a parent to monitor, limit or restrict anything in the app. Parents give permission outside the app.                                                                                                                                                                                                                                                                                                                                                               |
-| Age Assurance                            | No     | Apple means a mechanism that confirms age, such as the Declared Age Range API, age estimation or an ID check. Sign-up only asks the person to confirm "I am 12 or older" (and, under 16, that a parent or guardian has said yes), and stores nothing. No is also the cautious answer: it claims nothing the app does not do.                                                                                                                                                              |
+| Age Assurance                            | No     | Apple means a mechanism that confirms age, such as the Declared Age Range API, age estimation or an ID check. Sign-up only asks the person to confirm "I am 13 or older" (and, under 16, that a parent or guardian has said yes), and stores nothing. No is also the cautious answer: it claims nothing the app does not do.                                                                                                                                                              |
 | Unrestricted Web Access                  | No     | No in-app browser. The two links (Contact, Privacy policy) open fixed addresses in the mail app or the system browser.                                                                                                                                                                                                                                                                                                                                                                    |
 | User-Generated Content                   | No     | Apple defines it as "broad distribution of content created by users as part of the app's intended experience". A letter goes to one accepted friend and is published nowhere. Guideline 1.2 still applies, and report, block and the house rules exist for it. **To check** with the reviewer's view: answering Yes would not change the rating either, since Apple's tables put both at 4+ globally, and in Brazil messaging already gives A12, above the A6 for user-generated content. |
 | Social Media                             | No     | Apple means a social feed that visibly spreads content to many users. There is no feed, no likes, no shares and no discovery. Outside a friendship, a person sees no more than the name and username on a friend request.                                                                                                                                                                                                                                                                 |
-| Social Media Disabled for Users Under 13 | No     | There is no social media to disable.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Social Media Disabled for Users Under 13 | No     | There is no social media to disable, and the house rules admit no one under 13 anyway.                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Messaging and Chat                       | Yes    | Letters are direct, one-to-one messages between friends.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Advertising                              | No     | No advertising of any kind (`MONETISATION_ENABLED = false`).                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
@@ -153,18 +183,19 @@ Earlier than Version 26"); what 13+ becomes there is **to check**.
 Then, under Age Categories and Override, choose **Override to Higher Age Rating → 13+**. Apple's
 rule: "If your app has a EULA with minimum age requirements that exceed the rating that Apple
 calculated, you must override to a rating that adheres to the requirements." The house rules are
-the app's terms and set a minimum age of 12. Apple's tiers (OS version 26 and later) are 4+, 9+,
-13+, 16+ and 18+, with no 12+; 9+ would promise the app to 9-year-olds, and 13+ is the lowest tier that respects the minimum.
+the app's terms and set a minimum age of 13 (`MINIMUM_AGE` in `src/constants/config.ts`, decided on
+5 November 2026; it was 12). Apple's tiers (OS version 26 and later) are 4+, 9+, 13+, 16+ and 18+,
+so 13+ is exactly the minimum age: the store and the house rules now say the same number.
 
-What that means: the App Store shows 13+, one year above the house rules. Where a parent has limited
-a child's iPhone in Screen Time to apps rated below 13+, an App Store app rated 13+ cannot be
+What that means: the App Store shows 13+, the age the house rules set. Where a parent has limited a
+child's iPhone in Screen Time to apps rated below 13+, an App Store app rated 13+ cannot be
 installed until the parent changes that limit. Whether TestFlight installs follow the same limit is
-**to check**. A 12-year-old with permission can still use the app. The rating does not stop a 13-
-to 15-year-old who has no permission: for them, the confirmation at sign-up is the only check. If
-the operator would rather the two numbers matched exactly, the alternative is raising the house
-rules' minimum to 13. That is the operator's decision, and it is not made here.
+**to check**. The rating does not stop a 13- to 15-year-old who has no permission: for them, the
+confirmation at sign-up is the only check. Nor does it stop someone under 13 on a device without
+such a limit who confirms the age anyway; an account found to belong to someone under 13 is deleted,
+without a ban (privacy policy, section 10).
 
-- Made for Kids: no (the Kids category does not fit an app for 12 and over with messaging).
+- Made for Kids: no (the Kids category does not fit an app for 13 and over with messaging).
 - Age Suitability URL (optional): leave empty, or `{{PRIVACY_POLICY_URL}}` if the hosted policy
   states the age rule.
 - **To check:** whether the rating has to be set before a build can go to Beta App Review, and
@@ -248,6 +279,11 @@ never shows Apple's tracking prompt (App Tracking Transparency).
 
 The username is declared once, under User ID, and the display name under Name. Google's Data safety
 form (`google-play.md`) sorts them the same way; keep the two forms in step.
+
+Not declared: what GitHub logs when someone opens the support page or the privacy policy (GitHub
+Pages, see the top of this file). The app opens those addresses in the system browser, so nothing
+passes through the app, and the privacy policy covers the visit as a web page. **To check** that
+Apple reads it the same way.
 
 For each **Yes**, App Store Connect asks three questions, and the answers are the same every time:
 
@@ -336,7 +372,7 @@ YOUR DATA
 • Letters are stored on the server so they can be delivered, and stay there until you or your friend deletes their account. They are not end-to-end encrypted. The privacy policy says who can see what, and everything else that is kept and for how long.
 
 WHO IT IS FOR
-Night Courier is a private, non-commercial project for a small circle of friends. You must be at least 12, and if you are under 16 you need a parent's or guardian's permission.
+Night Courier is a private, non-commercial project for a small circle of friends. You must be at least 13, and if you are under 16 you need a parent's or guardian's permission.
 
 City data: GeoNames (geonames.org), CC BY 4.0.
 ```
@@ -371,7 +407,7 @@ DEINE DATEN
 • Briefe werden auf dem Server gespeichert, damit sie zugestellt werden können, und bleiben dort, bis du oder die andere Person das Konto löscht. Sie sind nicht Ende-zu-Ende-verschlüsselt. Die Datenschutzerklärung sagt, wer was sehen kann und was sonst wie lange gespeichert wird.
 
 FÜR WEN
-Night Courier ist ein privates, nicht-kommerzielles Projekt für einen kleinen Freundeskreis. Du musst mindestens 12 Jahre alt sein. Wenn du unter 16 bist, brauchst du die Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App selbst ist auf Englisch.
+Night Courier ist ein privates, nicht-kommerzielles Projekt für einen kleinen Freundeskreis. Du musst mindestens 13 Jahre alt sein. Wenn du unter 16 bist, brauchst du die Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App selbst ist auf Englisch.
 
 Städtedaten: GeoNames (geonames.org), CC BY 4.0.
 ```
@@ -429,7 +465,7 @@ Night Courier is a slow way to write to friends. You keep three bats. Each carri
 
 There is nothing to buy, and there are no ads, no analytics, no push notifications, no read receipts and no public profiles. Letters travel only between friends: one asks by username, the other says yes. You can block anyone, report a letter or a person, and delete your account in your profile.
 
-Night Courier is for people aged 12 and over; under 16, only with a parent's or guardian's permission. The app is in English.
+Night Courier is for people aged 13 and over; under 16, only with a parent's or guardian's permission. The app is in English.
 
 This is a test version. Each build stops working 90 days after it was uploaded, so install the newest one when TestFlight offers it. Feedback you send through TestFlight, screenshots included, goes through Apple to the person who runs Night Courier. TestFlight also shows them when you installed each build, your sessions and any crashes. What else they see about you depends on how you were invited.
 ```
@@ -441,7 +477,7 @@ Night Courier ist eine langsame Art, Freunden zu schreiben. Du hast drei Flederm
 
 Es gibt nichts zu kaufen, keine Werbung, keine Analyse, keine Push-Benachrichtigungen, keine Lesebestätigungen und keine öffentlichen Profile. Briefe gehen nur zwischen Freunden: Eine Person fragt über den Benutzernamen, die andere sagt Ja. Du kannst jeden blockieren, einen Brief oder eine Person melden und dein Konto im Profil löschen.
 
-Night Courier ist für Menschen ab 12 Jahren; unter 16 nur mit Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App ist auf Englisch.
+Night Courier ist für Menschen ab 13 Jahren; unter 16 nur mit Erlaubnis eines Elternteils oder einer erziehungsberechtigten Person. Die App ist auf Englisch.
 
 Dies ist eine Testversion. Jeder Build läuft 90 Tage nach dem Hochladen ab. Installiere also den neuesten, wenn TestFlight ihn anbietet. Feedback, das du über TestFlight schickst, auch Screenshots, geht über Apple an die Person, die Night Courier betreibt. TestFlight zeigt ihr außerdem, wann du jeden Build installiert hast, deine Sitzungen und Abstürze. Was sie sonst über dich sieht, hängt davon ab, wie du eingeladen wurdest.
 ```
@@ -530,7 +566,7 @@ ACCOUNT DELETION
 Your profile → Delete my account, then confirm. It deletes the account at once, together with every letter it sent or received. To try it, please create a new account (Create an account, on the welcome screen), so that the demo account stays usable for the next review. A new account is confirmed through a link sent to its email address; then sign in with it.
 
 AGE
-Night Courier is for people aged 12 and over; under 16, only with a parent's or guardian's permission. Sign-up asks for this, and the house rules say it. Because there is no 12+ tier, the age rating is overridden to 13+.
+Night Courier is for people aged 13 and over; under 16, only with a parent's or guardian's permission. Sign-up asks for this, and the house rules say it. The age rating is overridden to 13+ to match.
 
 KNOWN LIMITATION OF THIS BETA
 A password-reset email can be requested, but setting the new password inside the app is not finished yet.
@@ -586,8 +622,9 @@ it again from step 1, because Apple wants a demo account that does not expire.
 ### Before external TestFlight testing
 
 - [ ] Apple Developer Program membership (Individual) active, and its agreement accepted in App
-      Store Connect. A free app needs no Paid Apps agreement and no banking or tax forms (**to
-      check** on the Agreements page).
+      Store Connect. It costs 99 USD a year; in Switzerland Apple charges CHF 99 (**to check** on
+      the enrolment page), and every TestFlight build stops working if it lapses. A free app needs
+      no Paid Apps agreement and no banking or tax forms (**to check** on the Agreements page).
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project"), step 4
       included: `cron.job` lists `deliver-due-messages`, `forget-old-reports` and `tidy-up`, and
       `select private.tidy_up();` returns `{}`. Anything else names a step the job skips for want of
@@ -601,22 +638,33 @@ it again from step 1, because Apple wants a demo account that does not expire.
       **to check**: the app does not sign in from a link (`detectSessionInUrl` is off in
       `src/lib/supabase.ts`). Then change section 3.10 of both privacy policies as their TO CHECK
       and PRÜFEN comments say.
-- [ ] Privacy policy published at `{{PRIVACY_POLICY_URL}}`, with `{{OPERATOR_NAME}}`,
-      `{{OPERATOR_ADDRESS}}`, `{{CONTACT_EMAIL}}` and `{{EFFECTIVE_DATE}}` filled in on the hosted
-      copy only. It is the only public page with the postal address. It names where the data is: the
-      database in Zurich, Switzerland, with Supabase (a US company) as processor. Check Supabase's
-      sub-processor list before writing "hosted in Switzerland" without that qualification.
-- [ ] Supabase DPA signed, with the standard contractual clauses (`gdpr-records.md`, 5.1), before
-      the privacy policy is published: its sections 7 and 8 say the agreement exists.
-- [ ] Support page (`support-page.md`) live at `{{SUPPORT_URL}}`, with its placeholders filled in on
-      the hosted copy only. It points to the privacy policy for the postal address and does not
-      repeat it (section 2). If Apple wants the address on the Support URL itself, use
-      `{{PRIVACY_POLICY_URL}}` there instead.
+- [ ] Site repository `vnznznznz.github.io` created (public) and GitHub Pages switched on for it,
+      serving `https://vnznznznz.github.io/` over https (see the top of this file).
+- [ ] Privacy policy published at `{{PRIVACY_POLICY_URL}}` (planned:
+      `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, with
+      `privacy-policy.en.html` beside it), with `{{OPERATOR_NAME}}`, `{{OPERATOR_ADDRESS}}`,
+      `{{CONTACT_EMAIL}}` and `{{EFFECTIVE_DATE}}` filled in only in the site repository's copy,
+      never in this repository. It is the only public page with the postal address. It names where
+      the data is: the database in Zurich, Switzerland, with Supabase (a US company) as processor,
+      and the USA for Supabase Inc., Microsoft (the mailbox), GitHub (the web pages), and Apple and
+      Google (for testers). Check Supabase's sub-processor list before writing "hosted in
+      Switzerland" without that qualification.
+- [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the privacy policy is published: its
+      sections 7 and 8 say the agreement exists. **To check:** whether Supabase Inc. is certified
+      under the Swiss-US Data Privacy Framework, or else which contractual safeguards (such as the
+      standard contractual clauses) the DPA gives, and whether it covers disclosures under the Swiss
+      DSG as well as the GDPR.
+- [ ] Support page (`support-page.md`) live at `{{SUPPORT_URL}}` (planned:
+      `https://vnznznznz.github.io/night-courier/`, the site's `night-courier/index.html`), with its
+      placeholders filled in only in the site repository's copy. It points to the privacy policy
+      for the postal address and does not repeat it (section 2). If Apple wants the address on the
+      Support URL itself, use `{{PRIVACY_POLICY_URL}}` there instead.
 - [ ] The EAS environment for the build has `EXPO_PUBLIC_SUPABASE_URL` and
       `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted project, `EXPO_PUBLIC_CONTACT_URL`
       (`mailto:{{CONTACT_EMAIL}}` or `{{SUPPORT_URL}}`) and `EXPO_PUBLIC_PRIVACY_POLICY_URL`
-      (`{{PRIVACY_POLICY_URL}}`). On a device, Contact shows in the profile and the house rules,
-      and Privacy policy shows there and on the sign-up form.
+      (`{{PRIVACY_POLICY_URL}}`). These stay settings of the EAS environment and are never
+      committed. On a device, Contact shows in the profile and the house rules, and Privacy policy
+      shows there and on the sign-up form. Tap each once to see that it opens the right page.
 - [ ] App record created (section 1). App Information filled in (section 2), including the age
       rating and the 13+ override.
 - [ ] App Privacy answered and published (section 3). Whether TestFlight needs it is **to check**;
@@ -633,8 +681,9 @@ it again from step 1, because Apple wants a demo account that does not expire.
       notes promise, not only while a review runs.
 - [ ] Not needed: Sign in with Apple (Guideline 4.8 applies only to apps with third-party sign-in;
       Night Courier has its own email sign-in only), and the EU trader declaration (not applicable
-      on a TestFlight-only path, GO-LIVE). Account deletion (5.1.1(v)) and report and block (1.2)
-      are built.
+      on a TestFlight-only path, GO-LIVE). If App Store Connect asks for the declaration before
+      external testing anyway (**to check**), answer as described under "Only for a full App Store
+      release". Account deletion (5.1.1(v)) and report and block (1.2) are built.
 - [ ] A calendar reminder for the 90-day build expiry (GO-LIVE).
 
 ### Only for a full App Store release
@@ -660,8 +709,16 @@ unlisted App Store app"). If that changes:
 - [ ] App Review Information: the same contact, demo account and notes as for Beta App Review,
       written for a full App Review.
 - [ ] Full App Review against all guidelines, not Beta App Review.
-- [ ] EU Digital Services Act trader status: declare as a non-trader for distribution in the EU (see
-      GO-LIVE, "Why TestFlight rather than an unlisted App Store app"). **To check** at the time.
+- [ ] EU Digital Services Act trader status, declared in App Store Connect: distributing on the App
+      Store in the EU needs it. That depends on distributing in the EU, not on where the operator
+      lives: living in Switzerland, outside the EU, does not remove the question. A private
+      individual with no ads, no purchases and no income from the app would normally
+      declare **non-trader**, which publishes no contact details (GO-LIVE, "Why TestFlight rather
+      than an unlisted App Store app"). **To check** at the time, against Apple's questions then and
+      with advice if in doubt: whether someone is a trader is a question of EU law, not Apple's. If
+      the answer had to be **trader**, Apple shows the operator's postal address, phone number and
+      email on the App Store page in the EU: the address would be public beyond the privacy policy,
+      and a phone number public at all. Decide before choosing the EU countries under Availability.
 - [ ] Accessibility Nutrition Labels: Apple added these in 2025. Whether they are required yet is
       **to check**.
 - [ ] What's New, from the first update on.
@@ -674,9 +731,9 @@ Collected from above, so none is lost:
 
 1. That the name "Night Courier" is free on the App Store.
 2. The age rating App Store Connect computes (expected: 4+ globally, A12 for Brazil, no Korean
-   regional rating outside Games and Entertainment), and that the override to 13+ is accepted.
-   What 13+ shows as on devices with an OS earlier than version 26. Whether a reviewer would rather
-   see User-Generated Content answered Yes.
+   regional rating outside Games and Entertainment), and that the override to 13+, the house
+   rules' minimum age, is accepted. What 13+ shows as on devices with an OS earlier than
+   version 26. Whether a reviewer would rather see User-Generated Content answered Yes.
 3. Whether the age rating and App Privacy have to be done before Beta App Review, and whether
    TestFlight shows or enforces the rating, Screen Time limits included.
 4. Declaring Coarse Location for a city chosen from a list, which is the cautious reading of
@@ -685,12 +742,14 @@ Collected from above, so none is lost:
    and the wording of the encryption questions if it asks anyway.
 6. Upload warnings about the privacy manifest, and that the built Info.plist really has no Face ID
    usage string.
-7. That a free app needs no Paid Apps agreement or banking and tax forms.
+7. That a free app needs no Paid Apps agreement or banking and tax forms, and what the membership
+   costs in Switzerland (CHF 99 a year expected).
 8. Whether the Support URL page must also publish a telephone number, and whether a link from it
    to the postal address in the privacy policy is enough (section 2).
 9. Which screenshot sizes App Store Connect insists on, and whether Accessibility Nutrition Labels
    are required, if a full release ever happens.
-10. The trader declaration at the time of any App Store release.
+10. The trader declaration at the time of any App Store release (non-trader expected), and whether
+    App Store Connect asks for it before external TestFlight testing.
 11. That a password stored only as a bcrypt hash needs no entry under Other Data Types.
 12. That `select private.tidy_up();` returns `{}` on the hosted project (GO-LIVE, "Setting up the
     hosted project", step 4), which the 30 days and the 90 days in section 3 rest on, and how long
@@ -699,3 +758,9 @@ Collected from above, so none is lost:
     "Groups and the public link"). Privacy policy 3.12 waits for the same answer.
 14. What the app shows when a confirmation link opens it, once email confirmation is on (section
     7).
+15. The web pages on GitHub Pages (top of this file, section 2): that "Enforce HTTPS" is on, how
+    long GitHub keeps its visitor logs and whether GitHub is certified under the Data Privacy
+    Framework, whether the Privacy Policy URL can differ per localisation, and that Apple agrees the
+    pages' logs need no entry in App Privacy.
+16. Whether Supabase Inc. is certified under the Swiss-US Data Privacy Framework, and whether its
+    DPA covers disclosures under the Swiss DSG as well as the GDPR (section 7).

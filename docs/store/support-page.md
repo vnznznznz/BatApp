@@ -4,15 +4,26 @@ Notes for the operator - remove before publishing, like every comment in this fi
 1. This is the page behind {{SUPPORT_URL}}. App Store Connect uses it as the Support URL, and Google
    Play as the Website and the Delete account URL (google-play.md, "The account deletion page").
    One page does all three, in English and German.
-2. Replace the placeholders on the hosted copy only: {{OPERATOR_NAME}}, {{CONTACT_EMAIL}},
-   {{PRIVACY_POLICY_URL}}. The filled-in page does NOT go into this public repository. The postal
-   address ({{OPERATOR_ADDRESS}}) is deliberately not on this page: it appears only in the hosted
-   privacy policy, section 1, and this page points there.
-3. "Deleting your account" must say the same as the deletion text in google-play.md, "The account
+2. Where it lives: GitHub Pages, in the operator's user site, the public repository
+   vnznznznz.github.io (still to be created), as night-courier/index.html. So {{SUPPORT_URL}} is
+   https://vnznznznz.github.io/night-courier/, and {{PRIVACY_POLICY_URL}} is
+   https://vnznznznz.github.io/night-courier/privacy-policy.de.html, with privacy-policy.en.html
+   beside it. Replace the placeholders only in that repository: {{OPERATOR_NAME}},
+   {{CONTACT_EMAIL}}, {{PRIVACY_POLICY_URL}}. The filled-in page does NOT go into this public
+   repository. The postal address ({{OPERATOR_ADDRESS}}) is deliberately not on this page: it
+   appears only in the hosted privacy policy, section 1, and this page points there. The site
+   repository is public too, and git keeps every earlier version of a page, so nothing goes onto
+   this page that should not stay published.
+3. Build it as a plain page: no cookies, and nothing loaded from other sites (no web fonts,
+   scripts, analytics or embeds), so that the sentence under "Privacy" stays true. GitHub, Inc.
+   (USA) logs visitors' IP addresses for security and operation; how long it keeps them, and
+   whether GitHub is certified under the Data Privacy Framework, is TO CHECK, and the privacy
+   policy covers both.
+4. "Deleting your account" must say the same as the deletion text in google-play.md, "The account
    deletion page" (Google checks this page against it). "What is kept, and for how long" follows
    the privacy policy, sections 3.4, 3.7 to 3.9, 9 and 11, and the migration
    supabase/migrations/20261104120000_privacy_housekeeping.sql. Change them together.
-4. Forgotten password: the app sends the reset email, but cannot yet finish the reset (GO-LIVE,
+5. Forgotten password: the app sends the reset email, but cannot yet finish the reset (GO-LIVE,
    "Password reset cannot be completed in-app"), and no email leaves the hosted project before a
    custom SMTP provider is set up. Until both are done, this page sends people to the contact
    address. Once they are, replace that paragraph with: "On the sign-in screen, tap I forgot my
@@ -40,7 +51,8 @@ I read every email and answer as soon as I can.
   reader, so if I act on one, its sender may guess. Reporting also blocks them, unless you switch
   that off.
 - **Someone threatens you or anyone else**, or you think a crime is involved: report it in the app,
-  and contact the police. In an emergency, call 112 (in Germany and across the EU).
+  and contact the police. In an emergency, call the police on 117 in Switzerland or 110 in Germany,
+  or 112 anywhere in Europe, Switzerland included.
 - **The app does not work as it should:** write to me, and say what you did and what happened.
 
 ## Forgotten password
@@ -66,10 +78,10 @@ bats, your friendships and friend requests, your blocks, and every letter you ha
 - **Reports.** A report about you keeps your names as they were and any letter of yours it is
   about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was
   made. If I passed a report to the police, they keep their copy under their own rules.
-- **The sign-in log** at the hosting provider (sign-up and sign-in events, with your email
-  address). A daily job deletes every entry once it is 30 days old; when you delete your account in
-  the app, yours go at once.
-- **Server logs and any backups** at the hosting provider, until they are deleted or overwritten
+- **The sign-in log** at Supabase, the app's hosting provider (sign-up and sign-in events, with
+  your email address). A daily job deletes every entry once it is 30 days old; when you delete your
+  account in the app, yours go at once.
+- **Server logs and any backups** at Supabase, until they are deleted or overwritten
   automatically. The privacy policy says how long.
 - **Emails** between you and me, as long as I need them for what you asked.
 - If I removed an account for breaking the house rules, its sign-in, email address included, stays
@@ -86,14 +98,17 @@ other person's is deleted.
 
 ## Who can use Night Courier
 
-You must be at least 12. If you are under 16, you need the permission of a parent or guardian.
+You must be at least 13. If you are under 16, you need the permission of a parent or guardian. If
+I learn that an account belongs to someone under 13, I delete it; the email address is not banned.
 Parents: if your child is under 16 and uses Night Courier without your permission, write to me.
 Once I am sure the request comes from you, I delete the account.
 
 ## Privacy
 
 The privacy policy says what Night Courier stores, why, and for how long: {{PRIVACY_POLICY_URL}}.
-There are no ads, no tracking and nothing to buy.
+There are no ads, no tracking and nothing to buy. This page is published with GitHub Pages: GitHub,
+Inc. (USA) receives your IP address when you open it and logs it for security and operation. The
+page itself sets no cookies and loads nothing from other sites.
 
 ---
 
@@ -117,7 +132,8 @@ Ich lese jede E-Mail und antworte, so bald ich kann.
   unternehme, kann sich der Absender das denken. Beim Melden wird die Person auch blockiert, außer
   du schaltest das aus.
 - **Jemand bedroht dich oder andere**, oder du glaubst, dass es um eine Straftat geht: Melde es in
-  der App und wende dich an die Polizei. Im Notfall: 110 (Polizei) oder 112.
+  der App und wende dich an die Polizei. Im Notfall: Polizei 117 in der Schweiz, 110 in
+  Deutschland, oder 112 überall in Europa, auch in der Schweiz.
 - **Die App funktioniert nicht richtig:** Schreib mir, was du gemacht hast und was passiert ist.
 
 ## Passwort vergessen
@@ -146,11 +162,11 @@ bei dir.
   von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung
   wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben,
   bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
-- **Das Anmeldeprotokoll** beim Hosting-Anbieter (Registrierung und Anmeldungen, mit deiner
-  E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du
-  dein Konto in der App, sind deine sofort weg.
-- **Server-Protokolle und etwaige Sicherungskopien** beim Hosting-Anbieter, bis sie automatisch
-  gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
+- **Das Anmeldeprotokoll** bei Supabase, dem Hosting-Anbieter der App (Registrierung und
+  Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er
+  30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
+- **Server-Protokolle und etwaige Sicherungskopien** bei Supabase, bis sie automatisch gelöscht
+  oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
 - **E-Mails** zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 - Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt
   E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und
@@ -167,11 +183,16 @@ dein Konto oder das der anderen Person gelöscht wird.
 
 ## Wer Night Courier nutzen kann
 
-Du musst mindestens 12 Jahre alt sein. Wer unter 16 ist, braucht die Erlaubnis der Eltern oder
-anderer Erziehungsberechtigter. Eltern: Nutzt euer Kind unter 16 Night Courier ohne eure Erlaubnis,
-schreibt mir. Sobald ich sicher bin, dass die Bitte von euch kommt, lösche ich das Konto.
+Du musst mindestens 13 Jahre alt sein. Wer unter 16 ist, braucht die Erlaubnis der Eltern oder
+anderer Erziehungsberechtigter. Erfahre ich, dass ein Konto jemandem unter 13 gehört, lösche ich
+es; die E-Mail-Adresse wird dabei nicht gesperrt. Eltern: Nutzt euer Kind unter 16 Night Courier
+ohne eure Erlaubnis, schreibt mir. Sobald ich sicher bin, dass die Bitte von euch kommt, lösche ich
+das Konto.
 
 ## Datenschutz
 
 Was Night Courier speichert, wozu und wie lange, steht in der Datenschutzerklärung:
-{{PRIVACY_POLICY_URL}}. Es gibt keine Werbung, kein Tracking und nichts zu kaufen.
+{{PRIVACY_POLICY_URL}}. Es gibt keine Werbung, kein Tracking und nichts zu kaufen. Diese Seite
+liegt bei GitHub Pages: GitHub, Inc. (USA) erhält beim Aufruf deine IP-Adresse und protokolliert
+sie für Sicherheit und Betrieb. Die Seite selbst setzt keine Cookies und lädt nichts von anderen
+Websites.

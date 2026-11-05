@@ -3,7 +3,7 @@ Notes for the operator - remove before publishing, like every comment in this fi
 
 1. Replace the placeholders: {{OPERATOR_NAME}}, {{OPERATOR_ADDRESS}}, {{CONTACT_EMAIL}},
    {{EFFECTIVE_DATE}}, {{PRIVACY_POLICY_URL}}, {{SUPPORT_URL}}. The filled-in version does NOT go
-   into this public repository, only onto the hosted page.
+   into this public repository, only into the repository of the web pages (note 8).
 2. Every "TO CHECK" comment marks a statement to check against the hosted Supabase plan, the
    services chosen, or an operator decision before publishing.
 3. This is a translation of privacy-policy.de.md, which is binding. Change both together.
@@ -18,6 +18,32 @@ Notes for the operator - remove before publishing, like every comment in this fi
 5. Section 5 (iPhone) describes the keychain with WHEN_UNLOCKED_THIS_DEVICE_ONLY (KEYCHAIN_OPTIONS
    in src/lib/secure-storage.ts, commit 3a343b0). If that is reverted, put the old sentence back:
    "Keychain entries can be included in encrypted backups and moved to a new iPhone."
+6. The operator lives in Switzerland and runs Night Courier as a private individual (decided on 5
+   November 2026). Earlier versions were written as if the operator lived in Germany. The revised
+   Swiss Federal Act on Data Protection (FADP, in German DSG; in force since 1 September 2023)
+   applies to the operator; the GDPR also applies to the data of people in the EU and EEA,
+   because the app is offered to them (Art. 3(2)(a) GDPR). The legal bases stay those of the GDPR
+   (Art. 6); where the FADP differs, sections 1, 6, 8, 11 and 13 say so briefly. Supervisory
+   authority for the operator: the FDPIC (section 11). References to the German BDSG remain only
+   as TO CHECK comments: whether the BDSG applies at all to a controller in Switzerland (§ 1(4)
+   BDSG) is a question for legal advice. In the published policy write only "in Switzerland", never
+   a town, postcode or street outside {{OPERATOR_ADDRESS}}.
+7. Minimum age 13, under 16 only with a parent's or guardian's permission: MINIMUM_AGE = 13 and
+   PARENTAL_PERMISSION_UNDER = 16 in src/constants/config.ts; the sign-up switch reads "I am 13 or
+   older", and the house rules (src/app/rules.tsx) read the constants. If either number changes,
+   update "In short" and sections 3.13 and 10.
+8. The web pages are on GitHub Pages, as a user site: a public repository vnznznznz.github.io (still
+   to be created by the operator), served at https://vnznznznz.github.io/. Night Courier is in its
+   folder night-courier/: index.html (from support-page.md), privacy-policy.de.html (binding) and
+   privacy-policy.en.html (this version). So {{SUPPORT_URL}} =
+   https://vnznznznz.github.io/night-courier/ and {{PRIVACY_POLICY_URL}} =
+   https://vnznznznz.github.io/night-courier/privacy-policy.de.html.
+   The placeholders stay in this repository; they are filled in only when the pages are built. The
+   filled-in pages, with the name and address, exist only in the repository of the web pages. That
+   one is public too, and git keeps every earlier version: an address once committed there stays
+   readable in its history. In the app, EXPO_PUBLIC_PRIVACY_POLICY_URL and EXPO_PUBLIC_CONTACT_URL
+   stay settings of the environment and are not committed. Section 7 describes GitHub as the host
+   of the web pages.
 -->
 
 # Privacy policy for Night Courier
@@ -30,7 +56,9 @@ German version prevails.
 ## In short
 
 - Night Courier is a private app for letters between friends. I run it on my own, as a private
-  individual – no company, and no money made from it.
+  individual in Switzerland – no company, and no money made from it.
+- So the Swiss Federal Act on Data Protection (FADP) applies to me. If you live in the EU or the
+  EEA, the GDPR also applies to your data (section 1).
 - There are no ads, no tracking, no analytics tools, no push notifications and nothing to buy. I do
   not sell data.
 - I store only what the app needs to work: your email address, your password (only in a form nobody
@@ -38,13 +66,13 @@ German version prevails.
   block and what you report. On top of that comes technical data, such as your IP address, from
   signing in and in logs.
 - The database is kept by Supabase, a US service, on servers in Zurich, Switzerland (sections 7 and
-  8).
+  8). This policy and the support page are hosted by GitHub, also a US service.
 - Letters are not end-to-end encrypted. Technically, Supabase and I could read them. I read letters
   only when they are reported to me, or when I cannot fix a technical fault any other way.
 - You can delete your account in the app at any time. Every letter you sent or received goes with
   it, including from the friends you wrote with. Some things remain for a while afterwards, above
   all reports: for up to 180 days (section 11).
-- Night Courier is for people aged 12 and over. Anyone under 16 needs the permission of a parent or
+- Night Courier is for people aged 13 and over. Anyone under 16 needs the permission of a parent or
   guardian.
 - You have rights, such as access and erasure. Just write to me: {{CONTACT_EMAIL}}.
 
@@ -54,16 +82,41 @@ explicitly yet. Confirm or change it. -->
 
 ## 1. Who is responsible for your data?
 
-The controller under the General Data Protection Regulation (GDPR) is:
+The controller under the Swiss Federal Act on Data Protection (FADP) and the EU General Data
+Protection Regulation (GDPR) is:
 
 - **Name:** {{OPERATOR_NAME}}
 - **Address:** {{OPERATOR_ADDRESS}}
 - **Email:** {{CONTACT_EMAIL}}
 - **Contact and help:** {{SUPPORT_URL}}
 
-I run Night Courier as a private individual, not as a business. I have not appointed a data
-protection officer – for any question about your data, come straight to me. Where this policy says
-"I", it means me; "you" means you, when you use Night Courier.
+I run Night Courier as a private individual, not as a business, and I live in Switzerland. I have
+not appointed a data protection officer – for any question about your data, come straight to me.
+Where this policy says "I", it means me; "you" means you, when you use Night Courier.
+
+**Which law applies.** Because I live in Switzerland, the FADP applies to me, in its revised
+version in force since 1 September 2023. Night Courier is also offered to people in the EU and the
+EEA, so the GDPR also applies to their data (Art. 3(2)(a) GDPR). The legal bases this policy names
+are those of the GDPR. The FADP does not require such a basis for every processing; it requires me
+to keep to its principles (Art. 6 FADP) – for example, to process data only for the purposes named
+here, and only as far as needed.
+
+<!-- TO CHECK (legal):
+- EU representative (Art. 27 GDPR): whoever offers something to people in the EU without an
+  establishment there must, as a rule, designate a representative in the EU in writing. The
+  exemption in Art. 27(2)(a) GDPR (only occasional processing, no large-scale processing of special
+  categories, unlikely to result in a risk) probably does not fit an ongoing letter service. Get
+  legal advice. If a representative is needed, name them here with name and address (a placeholder
+  of its own, not filled in in this repository); they are then also the contact point for the
+  supervisory authorities in the EU (sections 11 and 13). Until then this policy names none.
+- Whether the sentence on the FADP can stay as it is (no legal basis needed for every processing,
+  principles under Art. 6 FADP; a justification under Art. 31 FADP only where processing would
+  breach someone's privacy, Art. 30 FADP). -->
+
+<!-- TO CHECK: duty to inform under Art. 19 FADP - identity and contact details (here), purposes
+(section 3), recipients or categories of recipients (section 7) and, where data is disclosed abroad,
+the countries and the safeguards (section 8, Art. 16 and 17 FADP). With every change, check that
+all four are still there. -->
 
 ## 2. What this is about
 
@@ -218,9 +271,13 @@ the note. Otherwise someone could take back a threat, along with the only proof 
 their account. If I pass a report on to the police, the police keep their copy under their own
 rules, beyond the 180 days too; I delete my own exported copy after handing it over.
 
-<!-- TO CHECK (legal): whether § 24 BDSG (change of purpose) plays a part, alongside Art. 6(1)(f)
-GDPR, in passing a report - and the reported account's sign-in data - to the police voluntarily.
-The policy already names it as a purpose. Not cited. The email alert for new reports that GO-LIVE
+<!-- TO CHECK (legal): what applies, alongside Art. 6(1)(f) GDPR, to passing a report - and the
+reported account's sign-in data - to the police voluntarily. Under the FADP: whether it is
+compatible with the purpose that was recognisable (Art. 6(3) FADP; the policy already names it as a
+purpose) or justified by an overriding interest (Art. 31 FADP). This used to name § 24 BDSG (change
+of purpose), written for an operator in Germany; whether the BDSG applies at all to a controller in
+Switzerland (§ 1(4) BDSG) is a question for legal advice. None of this is cited. Also: which police
+- those in Switzerland, or those in the country of the person threatened. The email alert for new reports that GO-LIVE
 suggests is content-free by its instructions; as long as it stays so, it does not belong here. -->
 
 **Legal basis:** Art. 6(1)(f) GDPR. My legitimate interest – and that of everyone who uses Night
@@ -348,7 +405,11 @@ message as long as I need it for your request, and delete it afterwards.
 request has been dealt with", and put the same period into section 9. Note: a personal Outlook.com
 mailbox runs under Microsoft's consumer terms; Microsoft is not a processor there, and there is no
 Art. 28 GDPR agreement for it. Whether that is enough for handling reports and data protection
-requests: TO CHECK. -->
+requests: TO CHECK; likewise under the FADP (processing by a processor, Art. 9 FADP). -->
+
+<!-- TO CHECK (legal): "legally required to answer" rests, for people in the EU, on the GDPR itself,
+otherwise on the FADP (Art. 25 FADP). Art. 6(1)(c) GDPR needs an obligation under EU law or the law
+of an EU member state (Art. 6(3) GDPR); see the comment in section 6. -->
 
 **Legal basis:** Art. 6(1)(b) GDPR when it is about your account; Art. 6(1)(c) GDPR when you
 exercise your data protection rights, because I am then legally required to answer; otherwise Art.
@@ -381,7 +442,7 @@ legitimate interest in finding and fixing crashes.
 
 ### 3.13 What I do not collect
 
-- **Your age.** At sign-up you only confirm that you are at least 12 and, if you are under 16, that
+- **Your age.** At sign-up you only confirm that you are at least 13 and, if you are under 16, that
   a parent or guardian has said yes. This is not stored.
 - **Your device's location, the address book on your phone, photos, camera or microphone.** The app
   does not ask for access to any of them. (The city you choose from a list is described in section
@@ -438,26 +499,34 @@ note 5 at the top. -->
 
 ## 6. Legal bases at a glance
 
+These are the legal bases under the GDPR. The FADP does not require such a basis for every
+processing (section 1).
+
 - **Art. 6(1)(b) GDPR (contract):** everything needed to provide the app to you – account, profile,
   city, friendships, letters, bats, blocking, sign-in and the emails about your account.
 - **Art. 6(1)(f) GDPR (legitimate interests):** security (sessions and logs), dealing with abuse
   (reports, warnings, removing accounts), keeping reports for 180 days, keeping removed accounts
-  banned for two years from the removal, passing a report to the police voluntarily, and crash
-  reports. The interests behind them: a safe app, protecting the people who use it – children and
+  banned for two years from the removal, passing a report to the police voluntarily, crash reports,
+  and visits to the web pages on GitHub Pages (section 7). The interests behind them: a safe app, protecting the people who use it – children and
   young people above all – and evidence for victims.
 - **Art. 6(1)(c) GDPR (legal obligation):** where the law requires me to hand data over, for example
   to the police, a public prosecutor or a court, and when I answer your requests about your data
   protection rights.
+
+<!-- TO CHECK (legal): Art. 6(1)(c) GDPR covers only obligations under EU law or the law of an EU
+member state (Art. 6(3) GDPR). An obligation under Swiss law, such as an order of a Swiss authority
+or a Swiss court, is not one; clarify whether Art. 6(1)(f) GDPR then applies, and reword this point
+if need be. -->
 
 ## 7. Who receives your data
 
 I do not sell data and do not pass it on for advertising. The only recipients are:
 
 - **Supabase Inc. (USA).** Supabase runs the database, sign-in, server and logs for me, as a
-  processor under Art. 28 GDPR, on the basis of a data processing agreement. My project runs in
-  Supabase's Zurich region (Switzerland), on servers of Amazon Web Services. Supabase uses further
-  sub-processors and publishes a list of them on supabase.com. Privacy policy:
-  https://supabase.com/privacy
+  processor under Art. 9 FADP and Art. 28 GDPR, on the basis of a data processing agreement. My
+  project runs in Supabase's Zurich region (Switzerland), on servers of Amazon Web Services.
+  Supabase uses further sub-processors and publishes a list of them on supabase.com. Privacy
+  policy: https://supabase.com/privacy
 - **Email delivery.** The emails about your account (section 3.10) are sent by Supabase or by an
   email delivery service acting as my processor. It receives your email address and the link in the
   email, and keeps a log of what it sent.
@@ -466,9 +535,13 @@ I do not sell data and do not pass it on for advertising. The only recipients ar
   https://privacy.microsoft.com/en-us/privacystatement
 - **Apple and Google.** They distribute the test versions (section 3.12), under their own privacy
   policies: https://www.apple.com/legal/privacy/ and https://policies.google.com/privacy
-- **The host of the web pages** {{PRIVACY_POLICY_URL}} and {{SUPPORT_URL}}. When you open them, it
-  receives your IP address and user agent, as any web server does (legal basis: Art. 6(1)(f) GDPR –
-  a web page cannot be delivered without them).
+- **GitHub, Inc. (USA).** The web pages {{PRIVACY_POLICY_URL}} and {{SUPPORT_URL}} are hosted on
+  GitHub Pages. When you open them, GitHub receives your IP address and user agent, as any web
+  server does, and keeps your IP address in logs, for the security and operation of the service
+  (legal basis: Art. 6(1)(f) GDPR – a web page cannot be delivered without them). The pages
+  themselves set no cookies and load nothing from other sites. How long GitHub keeps its logs is set
+  by its own privacy statement:
+  https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
 - **The police and other authorities** – only if I pass on a report, with the reported account's
   sign-in data (section 3.7), or the law requires me to hand data over.
 - **Other users** see what section 4 describes.
@@ -489,28 +562,52 @@ cities comes from – the list is in Night Courier's database, and GeoNames is n
   into section 9.
 - Microsoft: whether Microsoft's consumer privacy statement is the right one for a personal
   Outlook.com mailbox.
-- Web pages: name the host of the hosted page, and check what it logs, for how long, and whether it
-  sets cookies. -->
+- GitHub Pages: how long GitHub keeps visitors' IP addresses (if it states a fixed period, write it
+  in above); whether GitHub acts as a controller in its own right or as a processor (there is no
+  data processing agreement for a free personal account); open and check the link to GitHub's
+  privacy statement (it could not be reached on 5 November 2026 and was written in from memory).
+  When building the pages, check that they really set no cookies and load nothing from other
+  sites: no web fonts, scripts, images, analytics or embeds from elsewhere, and no Jekyll theme that
+  fetches such things. Whether GitHub is certified under the Data Privacy Framework: section 8. -->
 
-## 8. Data outside the EU
+## 8. The countries your data is processed in
 
-- **Switzerland.** The database is in Zurich. Switzerland is not in the EU, but the European
-  Commission has found that it offers an adequate level of data protection: Decision 2000/518/EC,
-  which remains in force under Art. 45(9) GDPR. In its review of January 2024, the Commission found
-  that Switzerland's level of protection is still adequate.
+- **Switzerland.** The database is in Zurich (Supabase region eu-central-2), so in the country I
+  live in. Keeping it there is not a disclosure abroad for me. For people in the EU and the EEA:
+  Switzerland is not in the EU, but the European Commission has found that it offers an adequate
+  level of data protection: Decision 2000/518/EC, which remains in force under Art. 45(9) GDPR. In
+  its review of January 2024, the Commission found that Switzerland's level of protection is still
+  adequate.
 - **USA.** Supabase Inc. is a US company. Where Supabase staff or systems access data from the USA,
-  for maintenance or support for example, this is covered by the European Commission's standard
-  contractual clauses in the data processing agreement (Art. 46(2)(c) GDPR). You can ask me for a
-  copy of the standard contractual clauses.
-- **Apple, Google and Microsoft** may also process data in the USA and other countries. How they
-  safeguard it is set out in their own privacy policies.
+  for maintenance or support for example, or a Supabase sub-processor processes data there, data
+  goes to the USA. The same goes for Microsoft (my mailbox, section 3.11) and GitHub (the web pages,
+  section 7), both US companies. Under the FADP this is safeguarded as follows: for companies
+  certified under the Swiss-US Data Privacy Framework, the Federal Council has recognised an
+  adequate level of data protection, in effect since 15 September 2024 (Art. 16(1) FADP). For
+  Supabase, the standard contractual clauses in the data processing agreement apply otherwise (Art.
+  16(2) FADP). For people in the EU and the EEA, these standard contractual clauses of the European
+  Commission cover Supabase's access from the USA (Art. 46(2)(c) GDPR); for Microsoft and GitHub, as
+  far as they are certified under the EU-US Data Privacy Framework, the European Commission's
+  adequacy decision of 10 July 2023 applies (Implementing Decision (EU) 2023/1795, Art. 45 GDPR).
+  You can ask me for a copy of the standard contractual clauses.
+- **Apple, Google, Microsoft and GitHub** may also process data in the USA and other countries. How
+  they safeguard it is set out in their own privacy policies.
 
 <!-- TO CHECK:
 - Publish only after the Supabase DPA (with the standard contractual clauses) is signed,
   gdpr-records.md 5.1; until then the sentence on the USA, and the offer of a copy of the clauses,
-  are untrue.
-- If a Supabase sub-processor (for logs, say, or in front of the API) processes data in a third
-  country other than the USA, name it here, with its safeguard. -->
+  are untrue. Check whether the DPA has the adjustments for Switzerland with which the FDPIC
+  recognised the EU standard contractual clauses (Art. 16(2)(d) FADP).
+- For Supabase Inc., Microsoft, GitHub, Inc., Apple and Google, look up on dataprivacyframework.gov
+  whether they are certified under the Swiss-US Data Privacy Framework (and, for the EU, the EU-US
+  Data Privacy Framework), and write the result in here: certified, or which contractual safeguard
+  applies instead. For Microsoft (personal Outlook.com mailbox) and GitHub (free account) there is
+  no contract I signed myself; if they are not certified, clarify with legal advice whether an
+  exception under Art. 17 FADP applies or another service is needed.
+- If a Supabase sub-processor (for logs, say, or in front of the API) processes data in a country
+  other than Switzerland and the USA, name it here, with its safeguard.
+- If I pass a report to police outside Switzerland (section 3.7), that is a disclosure abroad: name
+  the country here, with its basis under Art. 17 FADP (gdpr-records.md, sections 2 and 6.23). -->
 
 ## 9. How long I keep data
 
@@ -539,8 +636,10 @@ period into the table (or delete the row if there are none). -->
 
 ## 10. Children and young people – and their parents
 
-- Night Courier is for people aged **12 and over**. Anyone **under 16** needs the permission of a
-  parent or guardian. The house rules say so.
+- Night Courier is for people aged **13 and over**. Anyone **under 16** needs the permission of a
+  parent or guardian. The house rules say so. I chose 16 because it is the highest age any EU
+  country sets under Art. 8 GDPR for agreeing to an online service on one's own. Swiss law sets no
+  fixed age; what counts there is whether someone has the capacity of judgement.
 - I do not check or store anyone's age. At sign-up, it is only confirmed.
 - The app is built so that strangers cannot write to anyone: letters only travel between people who
   have both accepted each other as friends. Someone who knows the exact username can send a friend
@@ -553,17 +652,21 @@ period into the table (or delete the row if there are none). -->
   questions, want to report something, or their child has created an account without their
   permission. If a child under 16 has an account without permission, I delete it when the parents
   ask. Before that, I may ask questions to make sure the request really comes from the parents. If I
-  learn that someone is younger than 12, I delete their account – without keeping their email
+  learn that someone is younger than 13, I delete their account – without keeping their email
   address banned (section 3.8 is only for accounts removed for breaking the rules).
 - Good to know: when an account is deleted, all its letters are gone. Anyone who wants to keep a
   letter – as evidence, for example – should take a screenshot first.
 
 <!-- TO CHECK: whether a parent's permission under 16 must legally be consent under Art. 8 GDPR, or
-whether Art. 6(1)(b) GDPR is enough (and what the rules on contracts with minors say). This policy
-deliberately draws no conclusion. Deleting an account when the parents ask is an operator decision:
-confirm it. The account of anyone under 12 is deleted without a ban (Authentication → Users →
-Delete user, or the user's own deletion), not with private.remove_account; gdpr-records.md 5.4 has
-the steps. -->
+whether Art. 6(1)(b) GDPR is enough (and what the rules on contracts with minors say, in Switzerland
+Art. 19 of the Civil Code on minors with capacity of judgement). This policy deliberately draws no
+conclusion. 16 is not an age that a particular country sets for this operator, but the highest
+limit under Art. 8 GDPR (Germany among others); the FADP names no age, what counts is the capacity
+of judgement (Art. 16 Civil Code). Deleting an account when the parents ask is an operator
+decision: confirm it. No one under 13 is admitted, in the USA or anywhere (COPPA concerns children
+under 13; whether the rule, with the deletion, is enough: legal check). The account of anyone under
+13 is deleted without a ban (Authentication → Users → Delete user, or the user's own deletion), not
+with private.remove_account; gdpr-records.md 5.4 has the steps. -->
 
 ## 11. Your rights
 
@@ -582,11 +685,19 @@ Under the GDPR you have these rights:
   – while it is being settled whether it is correct, for example.
 - **Data portability (Art. 20):** you can get the data you gave me in a common, machine-readable
   format. There is no export button in the app; write to me.
-- **Complaint (Art. 77):** you can complain to a data protection supervisory authority, in
-  particular in the EU country where you live or work, or where the infringement took place. In
-  Germany, that is the data protection authority of your federal state. The authority responsible
-  for me is the one of the federal state I live in (address in section 1). I would rather you wrote
-  to me first, though.
+
+**Under the Swiss FADP** you have similar rights: access (Art. 25 FADP – free of charge, and
+normally within 30 days), getting your data handed over or transferred (Art. 28 FADP) and
+rectification (Art. 32(1) FADP). You can also demand, in court if need be, that a particular
+processing stops, that I do not pass your data on to third parties, or that I delete it (Art. 32(2)
+FADP).
+
+**Complaint.** The authority responsible for me is the Federal Data Protection and Information
+Commissioner (FDPIC), Feldeggweg 1, 3003 Bern, Switzerland, www.edoeb.admin.ch. You can turn to it
+if you think I am breaking the FADP. If you live in the EU or the EEA, you can also complain to a
+data protection supervisory authority (Art. 77 GDPR), in particular in the country where you live
+or work, or where the infringement took place. In Germany, that is the data protection authority of
+your federal state. I would rather you wrote to me first, though.
 
 > **Right to object (Art. 21):** where I process data on the basis of legitimate interests (Art.
 > 6(1)(f) GDPR), you can object at any time, on grounds relating to your particular situation. I
@@ -595,7 +706,7 @@ Under the GDPR you have these rights:
 > That may be the case with a report about a threat, for example.
 
 **How:** write to {{CONTACT_EMAIL}}, ideally from the email address you use for Night Courier – so I
-can be sure the request comes from you. Otherwise I will ask. I answer within one month. It costs
+can be sure the request comes from you. Otherwise I will ask. I answer within 30 days. It costs
 nothing.
 
 ## 12. No automated decisions
@@ -619,8 +730,16 @@ warnings and removing accounts are decided by me, a human.
 - Letters are not end-to-end encrypted (section 3.4).
 
 You can help: use a password you use nowhere else, and sign out on devices other people use too.
-Should something still go wrong and data fall into the wrong hands, I will inform the supervisory
-authority and, where necessary, you, as Art. 33 and 34 GDPR require.
+Should something still go wrong and data fall into the wrong hands, I will report it to the FDPIC
+as soon as possible if it is likely to lead to a high risk for the people affected (Art. 24 FADP),
+and, as far as people in the EU and the EEA are concerned, to the competent supervisory authority,
+as Art. 33 GDPR requires. Where necessary, I will also tell you (Art. 24(4) FADP, Art. 34 GDPR).
+
+<!-- TO CHECK (legal): which supervisory authority in the EU is competent for a notification under
+Art. 33 GDPR when the controller has no establishment in the EU - this also depends on whether a
+representative under Art. 27 GDPR is designated (comment in section 1). The thresholds differ: Art.
+24 FADP requires a report where a high risk is likely, Art. 33 GDPR already unless a risk is
+unlikely. -->
 
 ## 14. Do you have to provide data?
 
