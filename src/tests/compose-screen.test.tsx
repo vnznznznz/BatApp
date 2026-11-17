@@ -185,10 +185,12 @@ const dispatchToAnna = (): Dispatch => ({
 /** A promise the test settles by hand, to look at the screen while a call is in flight. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
     resolve = settle;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 /** Fixed insets so the screen renders deterministically outside a device. */
@@ -444,6 +446,43 @@ describe('ComposeScreen', () => {
 
       expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
       expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The request carries the words as they were when the button was pressed,
+     * and the confirmation then takes the place of the form. Anything typed in
+     * between would be neither sent nor kept, so the letter holds still until
+     * the send has its answer. (Found in review.)
+     */
+    it('takes no changes while the letter is being sent', async () => {
+      const sending = deferred<Dispatch>();
+      mockedSendMessage.mockReturnValue(sending.promise);
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      expect(sendButton()).toBeBusy();
+
+      await fireEvent.changeText(letterField(), 'See you on Friday. PS: bring the book.');
+
+      expect(letterField()).toHaveDisplayValue('See you on Fridya.');
+      expect(screen.queryByDisplayValue(/PS: bring the book/)).toBeNull();
+
+      await act(async () => sending.resolve(dispatchToAnna()));
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('can be changed again once a send has failed', async () => {
+      const sending = deferred<Dispatch>();
+      mockedSendMessage.mockReturnValueOnce(sending.promise);
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+
+      await act(async () => sending.reject(new RpcError(REFUSALS.try_again, 'try_again')));
+      await screen.findByText(REFUSALS.try_again);
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+
+      expect(letterField()).toHaveDisplayValue('See you on Friday.');
     });
 
     /**

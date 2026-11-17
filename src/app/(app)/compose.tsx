@@ -290,6 +290,9 @@ export default function ComposeScreen() {
           }}
           error={error}
           placeholder={`Dear ${friendName(recipient.friend)},`}
+          // The request carries the words as they were when Send was pressed.
+          // Anything typed while it is out would be neither sent nor kept.
+          editable={!sending}
           multiline
           autoCapitalize="sentences"
           accessibilityHint={`Up to ${MESSAGE_MAX_LENGTH} characters.`}
