@@ -146,6 +146,27 @@ describe('function privileges', () => {
     ]);
   });
 
+  /**
+   * The schema is closed to them; this is the second lock behind it. PostgreSQL
+   * lets everybody execute a new function unless that is taken away where the
+   * function is made, and a function left that way would be one grant on the
+   * schema away from the API. GoTrue's role is asked too: it holds nothing but
+   * what everybody holds.
+   */
+  it('lets no role but the owner execute anything in the private schema', async () => {
+    const { rows } = await db.query(
+      `select p.oid::regprocedure::text as function, r.rolname as role
+       from pg_proc p
+       cross join pg_roles r
+       where p.pronamespace = 'private'::regnamespace
+         and r.rolname in ('anon', 'authenticated', 'supabase_auth_admin')
+         and has_function_privilege(r.oid, p.oid, 'execute')
+       order by 1, 2`,
+    );
+
+    assert.deepEqual(rows, []);
+  });
+
   it('keeps the private schema out of reach of both API roles', async () => {
     const { rows } = await db.query(
       `select has_schema_privilege('anon', 'private', 'usage') as anon,
