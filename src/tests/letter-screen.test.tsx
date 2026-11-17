@@ -542,6 +542,30 @@ describe('LetterScreen', () => {
       expect(mockedReadMessage).toHaveBeenCalledTimes(2);
       expect(mockedReadMessage).toHaveBeenLastCalledWith('letter-from-anna');
     });
+
+    // As the other screens' "Try again" does: a press with nothing to show for
+    // it, while the connection is still down, reads as a button that is broken.
+    it('shows that it is trying again, and offers it once more if that fails too', async () => {
+      const NOT_OPENED = 'That letter could not be opened. Check your connection.';
+      mockedReadMessage.mockRejectedValueOnce(new Error(NOT_OPENED));
+      await renderScreen(<LetterScreen />);
+      await screen.findByText(NOT_OPENED);
+
+      let fail!: (reason: unknown) => void;
+      mockedReadMessage.mockReturnValueOnce(
+        new Promise<Letter>((_, reject) => {
+          fail = reject;
+        }),
+      );
+      await fireEvent.press(button('Try again'));
+
+      expect(button('Try again')).toBeBusy();
+
+      await act(async () => fail(new Error(NOT_OPENED)));
+
+      expect(button('Try again')).not.toBeBusy();
+      expect(screen.getByText(NOT_OPENED)).toBeOnTheScreen();
+    });
   });
 
   describe('reporting and blocking', () => {

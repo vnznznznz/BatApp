@@ -36,7 +36,7 @@ export default function LetterScreen() {
   const letter = useRemote(load);
   const now = useNow(1000);
   const focused = useScreenFocused();
-  const { reload } = letter;
+  const { reload, refresh } = letter;
   const [blocking, setBlocking] = useState(false);
   const [blockError, setBlockError] = useState<string | null>(null);
 
@@ -79,7 +79,12 @@ export default function LetterScreen() {
               {letter.error}
             </Text>
             <View style={styles.actions}>
-              <Button label="Try again" variant="secondary" onPress={() => void reload()} />
+              <Button
+                label="Try again"
+                variant="secondary"
+                loading={letter.isRefreshing}
+                onPress={() => void refresh()}
+              />
             </View>
           </>
         ) : (
