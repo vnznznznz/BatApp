@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import RootLayout from '@/app/_layout';
@@ -80,6 +81,13 @@ const metrics: Metrics = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
+const renderTheRoot = () =>
+  render(
+    <SafeAreaProvider initialMetrics={metrics}>
+      <RootLayout />
+    </SafeAreaProvider>,
+  );
+
 /**
  * Renders the app's root, with expo-router reporting the courier on
  * `segments`, and makes sure the navigator - and the guard in it - ran: a guard
@@ -87,15 +95,14 @@ const metrics: Metrics = {
  */
 async function openTheAppOn(...segments: string[]) {
   mockSegments.current = segments;
-  await render(
-    <SafeAreaProvider initialMetrics={metrics}>
-      <RootLayout />
-    </SafeAreaProvider>,
-  );
+  await renderTheRoot();
   expect(mockStack.drawn).toBeGreaterThan(0);
 }
 
+const mockedHideSplash = jest.mocked(SplashScreen.hideAsync);
+
 beforeEach(() => {
+  mockedHideSplash.mockClear();
   mockNavigation.length = 0;
   mockStack.canDismiss = true;
   mockStack.drawn = 0;
@@ -105,6 +112,34 @@ beforeEach(() => {
 });
 
 describe('the root guard', () => {
+  /**
+   * Whether anyone is signed in is read from the keychain, which takes a
+   * moment. Until then the splash screen stays and nothing is drawn or decided
+   * under it - a welcome screen flashing in front of a signed-in courier is
+   * what the splash is held for.
+   */
+  describe('while the stored session is being read', () => {
+    it('draws nothing, sends nobody anywhere, and keeps the splash screen', async () => {
+      mockAuth.isRestoring = true;
+      mockSegments.current = ['sign-in'];
+
+      await renderTheRoot();
+
+      expect(mockStack.drawn).toBe(0);
+      expect(mockNavigation).toEqual([]);
+      expect(mockedHideSplash).not.toHaveBeenCalled();
+    });
+
+    it('lets the splash screen go once it has been read', async () => {
+      mockAuth.session = null;
+      mockAuth.isRestoring = false;
+
+      await openTheAppOn();
+
+      expect(mockedHideSplash).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('with a session', () => {
     /**
      * The house rules are read from the profile as well as from the sign-up
