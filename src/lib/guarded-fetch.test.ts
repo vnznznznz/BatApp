@@ -356,11 +356,32 @@ describe('the answer to a renewal of the session', () => {
   });
 
   /** The code is what auth-js goes by; it counts whatever words come with it. */
+  it.each([
+    'refresh_token_not_found',
+    'refresh_token_already_used',
+    'session_not_found',
+    'session_expired',
+    'user_banned',
+    'user_not_found',
+    'invalid_grant',
+  ])('is handed on for the code %s alone', async (code) => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValue(json(400, { code, message: 'reworded' }));
+
+    const answer = await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(await answer.json()).toEqual({ code, message: 'reworded' });
+  });
+
+  /** A client that names no API version gets the code and the words under other names. */
   it.each<[string, object]>([
-    ['as supabase-js is given it', { code: 'session_expired', message: 'reworded' }],
-    ['in the older shape', { code: 400, error_code: 'session_expired', msg: 'reworded' }],
-    ['in the oldest shape', { error: 'invalid_grant', error_description: 'reworded' }],
-  ])('is handed on by its code alone, %s', async (_, body) => {
+    ['the code', { code: 400, error_code: 'session_expired', msg: 'reworded' }],
+    [
+      'the words',
+      { code: 400, error_code: 'validation_failed', msg: 'Refresh token is not valid' },
+    ],
+    ['a refusal from before there were codes', { error: 'invalid_grant' }],
+  ])('is handed on for %s in an older shape of the answer', async (_, body) => {
     const { guarded, network } = setUp();
     network.mockResolvedValue(json(400, body));
 

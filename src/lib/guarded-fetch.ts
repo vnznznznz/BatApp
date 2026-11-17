@@ -137,10 +137,11 @@ const SESSION_OVER = [
  */
 function endsTheSession(body: string): boolean {
   const said = fieldsOf(body);
-  // `code` and `message` are what supabase-js is answered with today; the
-  // other names are the same two in the shapes the auth server had before.
+  // `code` and `message` are how supabase-js is answered today. A client that
+  // names no API version is answered with `error_code` and `msg` instead, and
+  // before there were codes a refused token was `error: "invalid_grant"`.
   const codes = [said.code, said.error_code, said.error].map(textOf);
-  const words = textOf(said.message) || textOf(said.msg) || textOf(said.error_description);
+  const words = textOf(said.message) || textOf(said.msg);
   return (
     codes.some((code) => SESSION_OVER.includes(code)) ||
     /^(invalid refresh token|refresh token is not valid)/i.test(words)
