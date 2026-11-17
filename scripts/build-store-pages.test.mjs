@@ -42,6 +42,9 @@ const build = (env, out, more = []) =>
 
 const read = (out, name) => readFileSync(join(out, 'night-courier', name), 'utf8');
 
+/** The date it is, or will be, in UTC that many hours from now, as YYYY-MM-DD. */
+const dayIn = (hours) => new Date(Date.now() + hours * 60 * 60 * 1000).toISOString().slice(0, 10);
+
 let out;
 let scratch;
 
@@ -108,10 +111,35 @@ describe('the public web pages', () => {
   });
 
   it('take the 29th of February in a leap year', () => {
-    build({ ...DETAILS, EFFECTIVE_DATE: '2028-02-29' }, out);
+    build({ ...DETAILS, EFFECTIVE_DATE: '2024-02-29' }, out);
 
-    assert.match(read(out, 'privacy-policy.en.html'), /29 February 2028/);
-    assert.match(read(out, 'privacy-policy.de.html'), /29\. Februar 2028/);
+    assert.match(read(out, 'privacy-policy.en.html'), /29 February 2024/);
+    assert.match(read(out, 'privacy-policy.de.html'), /29\. Februar 2024/);
+  });
+
+  // The date is the policy's "Stand": the day this version of it is from. A
+  // year mistyped, 2027 for 2026, went through and was published as typed
+  // (found in review); the page is always the current version, so its date
+  // cannot be one that has not come.
+  it('are not built with a date that is still to come', () => {
+    for (const details of [DETAILS, LIVE])
+      for (const date of ['2999-01-01', dayIn(14 + 48)]) {
+        assert.throws(
+          () => build({ ...details, EFFECTIVE_DATE: date }, out),
+          new RegExp(`build-store-pages: EFFECTIVE_DATE \\(${date}\\) is in the future`),
+          `${details.LAUNCH_STATE} ${date}`,
+        );
+        assert.deepEqual(readdirSync(out), [], `${details.LAUNCH_STATE} ${date}`);
+      }
+  });
+
+  // Whoever builds in the evening in Zurich is a day ahead of a machine that
+  // keeps UTC, and is right about the date all the same.
+  it('take today’s date, and that of a day that has begun anywhere', () => {
+    for (const date of [dayIn(0), dayIn(14)]) {
+      build({ ...DETAILS, EFFECTIVE_DATE: date }, out);
+      build({ ...LIVE, EFFECTIVE_DATE: date }, out);
+    }
   });
 });
 
@@ -348,11 +376,14 @@ describe('a live build', () => {
   });
 
   it('is refused when the agreement is still to be signed', () => {
-    assert.throws(
-      () => build({ ...LIVE, EFFECTIVE_DATE: '2999-01-02', DPA_SIGNED: '2999-01-01' }, out),
-      /build-store-pages: DPA_SIGNED \(2999-01-01\) is in the future/,
-    );
-    assert.deepEqual(readdirSync(out), []);
+    for (const date of ['2999-01-01', dayIn(14 + 48)]) {
+      assert.throws(
+        () => build({ ...LIVE, DPA_SIGNED: date }, out),
+        new RegExp(`build-store-pages: DPA_SIGNED \\(${date}\\) is in the future`),
+        date,
+      );
+      assert.deepEqual(readdirSync(out), [], date);
+    }
   });
 
   it('takes the day the policy is dated, and says in what it prints when the agreement was signed', () => {

@@ -32,10 +32,10 @@
  * loaded from anywhere else. Then commit and push there. docs/GO-LIVE.md,
  * "The web pages", has the whole procedure.
  *
- * Refuses to build when a value is missing, a date does not exist, a live
- * build has no date for the agreement, a placeholder is left over, a link
- * within a page leads nowhere, or a page would load anything from another site -
- * the privacy policy promises it does not.
+ * Refuses to build when a value is missing, a date does not exist or is still
+ * to come, a live build has no date for the agreement, a placeholder is left
+ * over, a link within a page leads nowhere, or a page would load anything from
+ * another site - the privacy policy promises it does not.
  *
  * --sources <folder> builds from another folder than docs/store/. The tests use
  * it to show what a careless edit to a document would do.
@@ -99,6 +99,26 @@ function dayOf(text) {
 
 const date = dayOf(env.EFFECTIVE_DATE);
 if (!date) fail('EFFECTIVE_DATE is not a date that exists');
+
+/**
+ * Whether a YYYY-MM-DD names a day that has not begun anywhere yet.
+ *
+ * Clocks run up to fourteen hours ahead of UTC, so the latest day there is, at
+ * any moment, is the date fourteen hours from now. Whoever builds in the
+ * evening in Zurich is a day ahead of a machine that keeps UTC, and right.
+ */
+const stillToCome = (text) =>
+  text > new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+// The date is the policy's "Stand": the day this version of it is from. The
+// page is always the current version (its section 15), so a date ahead of
+// today is a slip of the hand - 2027 for 2026 - and would be published as
+// typed. A change announced in advance goes up on the day it takes effect.
+if (stillToCome(env.EFFECTIVE_DATE))
+  fail(
+    `EFFECTIVE_DATE (${env.EFFECTIVE_DATE}) is in the future. It is the day this version of ` +
+      'the policy is from: today, if the policy has just changed',
+  );
 const longDate = (locale, day = date) =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',
@@ -109,9 +129,8 @@ const longDate = (locale, day = date) =>
 
 // Live means the policy stands as written, and it says that Supabase works
 // under a signed processing agreement. So a live build has to be told when it
-// was signed: not later than the date the policy itself carries, and not on a
-// day still to come. (A day's grace, because the day has already begun
-// somewhere east of here when it has not yet in UTC.)
+// was signed: not on a day still to come, and not later than the date the
+// policy itself carries.
 let agreementSigned = null;
 if (env.LAUNCH_STATE === 'live') {
   const given = process.env.DPA_SIGNED?.trim();
@@ -122,10 +141,9 @@ if (env.LAUNCH_STATE === 'live') {
     );
   agreementSigned = dayOf(given);
   if (!agreementSigned) fail('DPA_SIGNED must be a date that exists, as YYYY-MM-DD');
+  if (stillToCome(given)) fail(`DPA_SIGNED (${given}) is in the future`);
   if (agreementSigned > date)
     fail(`DPA_SIGNED (${given}) is later than EFFECTIVE_DATE (${env.EFFECTIVE_DATE})`);
-  if (agreementSigned.getTime() > Date.now() + 24 * 60 * 60 * 1000)
-    fail(`DPA_SIGNED (${given}) is in the future`);
 }
 
 const link = (url) => `[${url}](${url})`;

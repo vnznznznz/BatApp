@@ -22,7 +22,7 @@ below), never written here:
 | `{{CONTACT_EMAIL}}`      | The contact address: on the support page, which the app's Contact button opens, and in the privacy policy                                                                                                                                                              |
 | `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html`  |
 | `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route, also behind the app's Contact button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/`                                                                      |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                                               |
+| `{{EFFECTIVE_DATE}}`     | The date of this version of the privacy policy: the day it was last changed and rebuilt, never one still to come                                                                                                                                                       |
 
 The addresses are named here, in section 2 and in the checklists for reference only. Where a
 text below is pasted into App Store Connect, it keeps the placeholder, and the address replaces it

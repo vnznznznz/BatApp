@@ -849,10 +849,13 @@ transits it, so a content-free push keeps message text out of a US processor.
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
   README has the command with the values filled in (written before `LAUNCH_STATE` existed: add it
-  there). `EFFECTIVE_DATE` is the policy's "Stand": move it on whenever the policy's content
-  changes, and tell users of an important change (policy section 15). The next rebuild is such a
-  change: sections 3.7, 3.9 and 9 of the policy were corrected on 17 November 2026 (and a
-  sentence of section 11 in the English version), and the help page with them.
+  there). `EFFECTIVE_DATE` is the policy's "Stand", the day this version of it is from: move it
+  on to the day of the rebuild whenever the policy's content changes, and tell users of an
+  important change (policy section 15). The build refuses a date that is still to come, so a
+  change announced in advance goes up on the day it takes effect, not before with that day's
+  date. The next rebuild is such a change: sections 3.7, 3.9 and 9 of the policy were corrected
+  on 17 November 2026 (and a sentence of section 11 in the English version), and the help page
+  with them.
 
   **`LAUNCH_STATE` says whether Night Courier has started,** and nothing is built without it. The
   policy speaks in the present tense - a database in Zurich, a processing agreement with Supabase,
@@ -883,9 +886,10 @@ transits it, so a content-free push keeps message text out of a US processor.
     never a date made up for the purpose.
 
   `scripts/build-store-pages.mjs` refuses to build while a value is missing, a date is not one
-  that exists (30 February), a live build has no date for the agreement, a placeholder is left
-  over, a link within a page leads nowhere, or a page would load anything from another site, and
-  its test builds the pages with made-up details on every `npm run verify`.
+  that exists (30 February) or is still to come, a live build has no date for the agreement, a
+  placeholder is left over, a link within a page leads nowhere, or a page would load anything
+  from another site, and its test builds the pages with made-up details on every
+  `npm run verify`.
 
   The Markdown sources here keep their placeholders; the filled-in pages, with the operator's name
   and postal address, live only in the site repository, never in this one. That repository is
