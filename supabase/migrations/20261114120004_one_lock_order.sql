@@ -115,9 +115,9 @@ revoke all on function private.lock_courier_rows(uuid) from public, anon, authen
 -- deletion took on its way to the profile: each would be waiting for the
 -- other. Sending and asking never did. Blocking did, the moment friendships
 -- were among the rows a deletion takes: it wrote the block, and then ended
--- the friendship. Tried that way round against a real Postgres, a courier
--- blocking a friend who was deleting their account at that moment stopped one
--- of the two, every time.
+-- the friendship. Tried that way round against a real Postgres, with the
+-- block made to pause between its two steps, a courier blocking a friend who
+-- was deleting their account at that moment stopped one of the two each time.
 --
 -- Blocking therefore ends the friendship first and writes the block second,
 -- and a report that is to block as well does that before it writes the

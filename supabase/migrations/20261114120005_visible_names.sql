@@ -120,9 +120,9 @@ where p.id = refused.id;
 -- writes the row, and for a courier changing their own name that is the API's
 -- role, which can use neither the private schema nor any function in it: a
 -- check that called private.has_visible_character would refuse every change
--- of name the app makes, and pass every test that changes one as the owner.
--- So the list stands here a second time, and the parity test holds the two
--- copies together.
+-- of name the app makes, and pass any test that changes a name as a
+-- superuser. So the list stands here a second time, and the parity test
+-- holds the two copies together.
 alter table public.profiles
   add constraint profiles_display_name_no_controls check (
     display_name !~ '[\u0001-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]'
