@@ -39,7 +39,7 @@ runs in Expo Go.
 
 | Item                                    | Cost                                              | Status                          | Blocks                                                               |
 | --------------------------------------- | ------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
-| Supabase project in Zurich              | free tier                                         | **not created**                 | everything — see "Setting up the hosted project"                     |
+| Supabase project in Zurich              | free tier (pauses when idle: "Traps to diarise")  | **not created**                 | everything — see "Setting up the hosted project"                     |
 | Custom SMTP (Resend/Postmark/SES)       | free tier                                         | not started                     | any second user; password reset                                      |
 | Apple Developer Program                 | 99 USD/year (CHF 99 in Switzerland, **to check**) | not started                     | Phases 15–17: any install beyond Expo Go                             |
 | Expo account for EAS builds             | free tier                                         | not started                     | Phases 15–16                                                         |
@@ -321,6 +321,11 @@ project**; go slowly there, and correct this page when you know more.
    `"status":"ACTIVE_HEALTHY"`. Its `"ref"` is the `<ref>` of every later step. The region cannot be
    changed afterwards: if it is not `eu-central-2`, stop here and say so.
 
+   **The same day,** read what the free plan says about pausing a project nobody uses, and decide
+   what to do about it: "Traps to diarise" has what is known, what a pause would do to this app,
+   and the three options. This is for the operator to read and decide, not for a session to
+   settle.
+
 2. **Link and push the auth settings:**
 
    ```bash
@@ -538,13 +543,58 @@ Mitigations, both worth doing on day one:
   in Brazil, Indonesia, Singapore and Thailand, with a global rollout planned from 2027. This path
   has a shelf life.
 
-### Two multi-year traps to diarise
+### Traps to diarise
+
+Two of them take years to spring, the third a quiet week.
 
 - **Google inactive-account closure.** Google marks accounts for closure that were created over
   a year ago and never submitted an app for review. Verify your contact email and phone in Play
   Console and sign in at least every 180 days. This is the only way the Android side breaks
   silently years from now.
 - **Apple membership lapse.** If the yearly renewal fails, TestFlight builds stop working.
+- **Supabase pauses a free project nobody uses.** This plan puts the project on Supabase's free
+  plan. As far as is known here, a free project with no activity for about a week is paused,
+  after a warning by email, and one left paused for long (90 days was the figure) can no longer
+  be restored in place, only downloaded as a backup. **None of that could be checked when this
+  was written** (17 November 2026): supabase.com cannot be reached from the session's network,
+  and such terms change. So **on the day the project is created, read what the free plan says
+  about pausing** - the plan's description in the dashboard, and Supabase's documentation on
+  paused projects - and write the answers here: after how long, what counts as activity (the
+  app's requests, certainly; whether the delivery job, which runs inside the database every
+  minute, counts is not known), how the warning arrives, and for how long a paused project can
+  be restored.
+
+  What a pause would mean for this app. Every request fails, so nobody can sign in, read or
+  write. Nothing is lost, but nothing moves: the three scheduled jobs stop with the database. A
+  letter that falls due in that time lands only once the project is restored - at the next run
+  of the delivery job, or the first time its recipient opens the app. And everything the privacy
+  policy says is deleted on time - sign-in records after 30 days, unused sessions after 90,
+  reports after 180 - waits for as long as the pause lasts, and is caught up at the first run
+  afterwards. A quiet week is not unlikely for slow letters among a handful of friends: one
+  holiday is enough.
+
+  The honest options:
+  1. **Accept it.** See that Supabase's emails reach a mailbox that is read, restore the project
+     from the dashboard when the warning comes, and tell the friends that the app can be away for
+     a day. Costs nothing; the app is down until someone notices.
+  2. **Keep it awake from outside**, with a small request on a schedule - a GitHub Actions
+     workflow, say, that calls the project's API once a day with the publishable key (the URL and
+     that key are public by design). Cheap, but a workaround. The database lets nothing be read
+     without a sign-in, so such a request is answered with a refusal: whether Supabase counts
+     it, and puts up with it, is part of the check above. And GitHub is said to switch off the
+     scheduled workflows of a public repository that has seen no activity for 60 days (**to
+     check**), which would only move the trap.
+  3. **Pay.** A paid plan is not paused (Pro, 25 USD a month - **to check**). It would also change
+     what the paperwork assumes about backups, how long logs are kept and how long a session may
+     last (`docs/store/gdpr-records.md`, V8, V9 and L1), so the privacy policy would need another
+     pass.
+
+  How to see it, whichever it is: `npx supabase@3.2.0 projects list --output-format json` gives
+  the project's `"status"`. `ACTIVE_HEALTHY` is right; `INACTIVE` is what this CLI calls a paused
+  project, and its commands then stop with "project is paused" and send you to the dashboard
+  (read in the CLI's own messages; no project existed to try it on). After a restore, run the
+  checks of "Setting up the hosted project", step 4, again: the three jobs must still be there
+  and active.
 
 ---
 

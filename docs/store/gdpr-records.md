@@ -1255,7 +1255,10 @@ Betreiber noch selbst tut:
    der Protokolle?), ob eine Transfer-Folgenabschätzung nötig ist oder das Swiss-US bzw. EU-US
    Data Privacy Framework greift; die Verschlüsselung gespeicherter Daten.
 9. Supabase-Tarif: Aufbewahrung der Protokolle (kostenlos vermutlich ein Tag), Sicherungen und ihre
-   Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind.
+   Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind; und ob, wann und mit
+   welcher Vorwarnung Supabase ein kostenloses Projekt ohne Aktivität pausiert. Solange ein
+   Projekt pausiert ist, ruhen alle Löschaufträge aus 4.5 und holen erst beim ersten Lauf danach
+   auf (GO-LIVE, „Traps to diarise“, mit den drei Möglichkeiten, damit umzugehen).
 10. GoTrue und Postgres gehostet: ob `select private.tidy_up();` eine leere Liste ergibt, die Rolle
     `postgres` also jeden Schritt an den Tabellen von Supabase ausführen darf (sonst überspringt
     `tidy_up` diesen Schritt und nennt ihn, und `delete_own_account` überspringt das Löschen im

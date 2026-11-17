@@ -728,8 +728,8 @@ A short note, not legal advice.
 ## 8. Checklist before the first internal test
 
 - [ ] Play Console developer account (personal, 25 USD once) created and identity-verified.
-      Verify its contact email and phone, and sign in at least every 180 days (GO-LIVE, "Two
-      multi-year traps").
+      Verify its contact email and phone, and sign in at least every 180 days (GO-LIVE, "Traps to
+      diarise").
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project").
 - [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE, "Before a
       second person can sign up"). Then change section 3.10 of both privacy policies as their TO
