@@ -504,14 +504,28 @@ describe('a request to the database', () => {
 
     it('renews once for all the requests refused together', async () => {
       const { guarded, network, renewSession } = setUp();
+      // Refusals whose reading can be counted, so that the renewal is let go
+      // only once every request has its refusal - by count, not by the clock.
+      let refusalsRead = 0;
+      const refusal = {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: new Headers(),
+        text: async () => {
+          refusalsRead += 1;
+          return JSON.stringify({ code: 'PGRST303', message: 'JWT expired' });
+        },
+      } as Response;
       network.mockImplementation(async (_address, init) =>
-        bearerOf(init) === 'new-token' ? json(200, []) : expired(),
+        bearerOf(init) === 'new-token' ? json(200, []) : refusal,
       );
       let renewed: (token: string) => void = () => {};
       renewSession.mockReturnValue(new Promise((resolve) => (renewed = resolve)));
+      const nextTurn = () => new Promise<void>((resolve) => setImmediate(() => resolve()));
 
       const requests = [1, 2, 3].map(() => guarded(ROOST, call('old-token')));
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      while (refusalsRead < 3) await nextTurn();
+      await nextTurn();
       renewed('new-token');
       const answers = await Promise.all(requests);
 
