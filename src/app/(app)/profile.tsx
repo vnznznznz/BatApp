@@ -23,6 +23,7 @@ export default function ProfileScreen() {
   const { signOut, deleteAccount } = useAuth();
   const { profile, isLoading, error, reload, updateDisplayName } = useProfile();
   const [deleting, setDeleting] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   /**
    * Null until the user types, so the field shows whatever the profile last
@@ -65,6 +66,19 @@ export default function ProfileScreen() {
       announce(problem);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function leave() {
+    // Busy for as long as it takes: the server is asked first, and without a
+    // network the answer is a while in not coming.
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch (caught) {
+      notify('Could not sign out', caught instanceof Error ? caught.message : 'Please try again.');
+    } finally {
+      setSigningOut(false);
     }
   }
 
@@ -209,7 +223,7 @@ export default function ProfileScreen() {
         <Text variant="caption" tone="secondary" accessibilityRole="header">
           Account
         </Text>
-        <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+        <Button label="Sign out" variant="secondary" loading={signingOut} onPress={leave} />
         <Button
           label="Delete my account"
           variant="danger"

@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { normaliseUsername } from '@/features/auth/validation';
+import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
 
 export type SignUpDetails = {
@@ -29,23 +30,60 @@ export type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * True once this device has been signed out without the server hearing of it.
+ *
+ * The server then still honours the session, and a renewal that was under way
+ * as it was taken from the keychain can still come through: the client saves
+ * what it brings and announces it, and the device would be signed in again
+ * with nobody having signed in. A session announced while this is set is
+ * therefore not taken, but ended - with the server, now that it answers.
+ * Signing in or up, which the person does, clears it; so must any other way
+ * of signing in that is added here.
+ */
+let signedOutUnheard = false;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
 
   useEffect(() => {
     let active = true;
+    // Set once the client has said who is signed in. What was read from the
+    // keychain before that is older news, and must not overrule it.
+    let announced = false;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      setIsRestoring(false);
-    });
+    // Signed in or not is a question about this device, so the keychain
+    // answers it. The client's own answer waits for the server: after an hour
+    // away it first renews the token, and without a network that was half a
+    // minute of splash screen followed by "nobody" - for someone signed in.
+    readStoredSession()
+      .then((stored) => {
+        if (!active) return;
+        if (!announced) setSession(stored);
+        setIsRestoring(false);
+      })
+      .catch(() => {
+        // Nothing that could be read is nothing stored: the way in is the
+        // welcome screen, not a splash screen that never ends.
+        if (active) setIsRestoring(false);
+      });
 
     // Covers sign-in, sign-out, token refresh and expiry from one place, so no
     // screen has to remember to update the session itself.
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (!active) return;
+      // The client also says "no session" when it only could not renew one
+      // just now. Whoever is signed in stays so for as long as the session is
+      // on this device; the client removes it before it announces a sign-out.
+      if (next === null && event !== 'SIGNED_OUT' && isSessionStored()) return;
+      if (next && signedOutUnheard) {
+        // Nobody signed in. Signing out is finished instead: the server is
+        // told, and what the client has just saved goes with it.
+        void supabase.auth.signOut().catch(() => {});
+        return;
+      }
+      announced = true;
       setSession(next);
       setIsRestoring(false);
     });
@@ -62,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
 
       async signIn(email, password) {
+        signedOutUnheard = false;
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -70,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signUp({ email, password, username, displayName }) {
+        signedOutUnheard = false;
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -90,8 +130,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signOut() {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw new Error(describeAuthError(error.message));
+        // The server is asked first: only that ends the session on the
+        // courier's other devices as well.
+        const heard = await supabase.auth.signOut().then(
+          ({ error }) => !error,
+          () => false,
+        );
+        if (heard) return;
+
+        // It was not told, or cannot be known to have been. Signing out signs
+        // this device out all the same - and the client does not see to that
+        // by itself: with a token over an hour old and no network, it gives up
+        // before it has removed anything.
+        signedOutUnheard = true;
+        try {
+          await clearStoredSession();
+        } catch (cause) {
+          // Still signed in, then, and to be treated as such.
+          signedOutUnheard = false;
+          throw new Error('This device could not be signed out. Try again.', { cause });
+        }
+        setSession(null);
       },
 
       async sendPasswordReset(email) {

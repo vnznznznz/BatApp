@@ -447,6 +447,47 @@ describe('ProfileScreen', () => {
     });
 
     /**
+     * Signing out asks the server first, and without a network that can take
+     * the better part of a minute. A button that looked as if nothing had
+     * happened was pressed again, or given up on.
+     */
+    it('shows that signing out is under way, and cannot start it again', async () => {
+      let finishSigningOut: () => void = () => {};
+      mockSignOut.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishSigningOut = resolve;
+        }),
+      );
+      await renderScreen(<ProfileScreen />);
+
+      // Not awaited yet: a press is only over once the sign-out it started is.
+      const firstPress = fireEvent.press(button('Sign out'));
+      await waitFor(() => expect(button('Sign out')).toBeBusy());
+      expect(button('Sign out')).toBeDisabled();
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+
+      await act(async () => finishSigningOut());
+      await firstPress;
+    });
+
+    /** The one way it can fail: the keychain would not let go of the session. */
+    it('says so when the device could not be signed out, and lets the courier try again', async () => {
+      mockSignOut.mockRejectedValue(new Error('This device could not be signed out. Try again.'));
+      await renderScreen(<ProfileScreen />);
+
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockedAlert).toHaveBeenCalledTimes(1);
+      expect(mockedAlert).toHaveBeenLastCalledWith(
+        'Could not sign out',
+        'This device could not be signed out. Try again.',
+      );
+      expect(button('Sign out')).toBeEnabled();
+    });
+
+    /**
      * Deleting an account takes its letters from both sides: the ones a friend
      * received go from their inbox too. Nobody should learn that afterwards.
      */
