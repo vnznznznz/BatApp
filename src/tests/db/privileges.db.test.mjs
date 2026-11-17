@@ -141,6 +141,7 @@ describe('function privileges', () => {
       'search_cities',
       'send_message',
       'unblock_courier',
+      'withdraw_request',
     ]);
   });
 

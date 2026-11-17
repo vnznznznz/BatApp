@@ -33,6 +33,7 @@ export const REFUSALS = {
   note_too_long: `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`,
   try_again: 'That did not go through. Try again.',
   account_suspended: 'This account has been suspended.',
+  too_many_friend_requests: 'That is a lot of requests in a short time. Try again in an hour.',
 } as const;
 
 export type RefusalReason = keyof typeof REFUSALS;

@@ -42,6 +42,7 @@ const REPORT_NOTE_MAX_LENGTH = constant('REPORT_NOTE_MAX_LENGTH');
 const REPORTS_PER_DAY = constant('REPORTS_PER_DAY');
 const REPORT_RETENTION_DAYS = constant('REPORT_RETENTION_DAYS');
 const BAN_PERIOD_YEARS = constant('BAN_PERIOD_YEARS');
+const FRIEND_REQUESTS_PER_HOUR = constant('FRIEND_REQUESTS_PER_HOUR');
 
 const REPORT_REASONS = (() => {
   const match = CONFIG.match(/export const REPORT_REASONS = \[([^\]]*)\]/);
@@ -212,5 +213,23 @@ describe('the database agrees with src/constants/config.ts', () => {
     );
 
     assert.equal(rows[0].same, true);
+  });
+
+  /** The number, and that it is the number the database acts on. */
+  it('on FRIEND_REQUESTS_PER_HOUR', async () => {
+    const { rows } = await db.query(`select private.friend_requests_per_hour() as limit`);
+    assert.equal(rows[0].limit, FRIEND_REQUESTS_PER_HOUR);
+
+    const anna = await createCourier(db, { name: 'anna' });
+    for (let i = 0; i <= FRIEND_REQUESTS_PER_HOUR; i++) {
+      await createCourier(db, { name: `other${i}` });
+    }
+    for (let i = 0; i < FRIEND_REQUESTS_PER_HOUR; i++) {
+      await rpc(db, anna, 'request_friend', { username: `other${i}` });
+    }
+    await rejectsWithHint(
+      rpc(db, anna, 'request_friend', { username: `other${FRIEND_REQUESTS_PER_HOUR}` }),
+      'too_many_friend_requests',
+    );
   });
 });

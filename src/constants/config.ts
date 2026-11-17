@@ -99,6 +99,14 @@ export const REPORT_RETENTION_DAYS = 180;
 export const BAN_PERIOD_YEARS = 2;
 
 /**
+ * How many new friend requests one courier may make in an hour, as the database
+ * counts them: its private.friend_requests_per_hour(), which the parity test
+ * checks against this. A request counts whatever becomes of it; asking someone
+ * again, or answering someone who asked first, does not.
+ */
+export const FRIEND_REQUESTS_PER_HOUR = 20;
+
+/**
  * Who may use Night Courier: no one younger than MINIMUM_AGE, and anyone younger
  * than PARENTAL_PERMISSION_UNDER only with a parent's or guardian's permission -
  * the operator's decision. 13 is Apple's lowest age rating above 12 and keeps

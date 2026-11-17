@@ -715,6 +715,90 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       const { rows } = await admin.query(`select status from public.friendships`);
       assert.deepEqual(rows, [{ status: 'accepted' }]);
     });
+
+    /**
+     * Counted side by side, thirty requests sent at once would each find fewer
+     * than twenty made, and all thirty would go out.
+     */
+    it('holds a courier to twenty new requests an hour however many arrive at once', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const others = [];
+      for (let i = 0; i < 30; i++) others.push(await createCourier(`other${i}`, ['Munich', 'DE']));
+      const sessions = await Promise.all(others.map(() => connectAs(anna)));
+
+      const outcomes = await Promise.allSettled(
+        sessions.map((session, i) =>
+          session.query(`select public.request_friend($1) as outcome`, [`other${i}`]),
+        ),
+      );
+
+      const tally = outcomes.reduce((t, o) => {
+        const what = o.status === 'fulfilled' ? o.value.rows[0].outcome : o.reason.hint;
+        return { ...t, [what]: (t[what] ?? 0) + 1 };
+      }, {});
+      assert.deepEqual(tally, { requested: 20, too_many_friend_requests: 10 });
+      const { rows } = await admin.query(
+        `select (select count(*)::int from public.friendships) as requests,
+                (select requests from private.friend_request_counts where courier_id = $1) as counted`,
+        [anna],
+      );
+      assert.deepEqual(rows[0], { requests: 20, counted: 20 });
+    });
+
+    /**
+     * The daily tidy-up removes counts that are a day old, and holds whatever
+     * it touches until it ends. A count a request is adding to just then is
+     * not old any more: the job passes over it instead of waiting for it.
+     */
+    it('does not make the tidy-up wait for a count that a request is using', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      await createCourier('ben', ['Munich', 'DE']);
+      await admin.query(
+        `insert into private.friend_request_counts (courier_id, hour_began_at, requests)
+         values ($1, now() - interval '2 days', 5)`,
+        [anna],
+      );
+      const annaSession = await connectAs(anna);
+      const tidier = await connect();
+
+      await annaSession.query('begin');
+      await annaSession.query(`select public.request_friend('ben')`);
+      const tidying = tidier.query('select private.tidy_up()');
+      assert.equal(await settlesWithin(tidying, 3000), true, 'the tidy-up waited for the request');
+      await annaSession.query('commit');
+      await tidying;
+
+      const { rows } = await admin.query(
+        `select requests from private.friend_request_counts where courier_id = $1`,
+        [anna],
+      );
+      assert.deepEqual(rows, [{ requests: 1 }]);
+    });
+
+    /**
+     * "Withdraw" pressed at the moment the other person accepts. Whichever
+     * comes first stands: an acceptance is not undone by a withdrawal that was
+     * aimed at a request.
+     */
+    it('lets an acceptance stand against a withdrawal arriving at the same moment', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const annaSession = await connectAs(anna);
+      const benSession = await connectAs(ben);
+      await annaSession.query(`select public.request_friend('ben')`);
+      const { rows } = await admin.query(`select id from public.friendships`);
+      const id = rows[0].id;
+
+      await benSession.query('begin');
+      await benSession.query(`select public.accept_friend($1)`, [id]);
+      const withdrawing = annaSession.query(`select public.withdraw_request($1)`, [id]);
+      assert.equal(await settlesWithin(withdrawing, 300), false, 'the withdrawal did not wait');
+      await benSession.query('commit');
+
+      await assert.rejects(withdrawing, (error) => error.hint === 'request_not_found');
+      const { rows: left } = await admin.query(`select status from public.friendships`);
+      assert.deepEqual(left, [{ status: 'accepted' }]);
+    });
   });
 
   describe('blocking and reporting', () => {

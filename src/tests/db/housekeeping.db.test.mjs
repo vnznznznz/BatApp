@@ -254,6 +254,32 @@ describe('the daily tidy-up', () => {
     assert.equal(await flightCity(moving), 'Berlin');
   });
 
+  /** A count matters for an hour. After a day it only says when someone was last asking. */
+  it('forgets how many friend requests a courier made, a day after their hour began', async () => {
+    const dayOld = await createCourier(db, { name: 'dayold' });
+    const recent = await createCourier(db, { name: 'recent' });
+    await createCourier(db, { name: 'ben' });
+    await rpc(db, dayOld, 'request_friend', { username: 'ben' });
+    await rpc(db, recent, 'request_friend', { username: 'ben' });
+    const hourBegan = (who, hoursAgo) =>
+      db.query(
+        `update private.friend_request_counts
+         set hour_began_at = now() - make_interval(hours => $2) where courier_id = $1`,
+        [who, hoursAgo],
+      );
+    await hourBegan(dayOld, 25);
+    await hourBegan(recent, 23);
+
+    await tidyUp();
+
+    const { rows } = await db.query(`select courier_id from private.friend_request_counts`);
+    assert.deepEqual(
+      rows.map((row) => row.courier_id),
+      [recent],
+    );
+    assert.equal(await count(db, `select 1 from public.friendships`), 2, 'the requests stay');
+  });
+
   it('reports what it could not do: here only pg_cron, which the tests do not have', async () => {
     const skipped = await skippedSteps();
     assert.equal(skipped.length, 1, skipped.join('\n'));
@@ -293,6 +319,7 @@ describe('the daily tidy-up', () => {
       grant execute on all functions in schema private to tidier;
       grant select, delete on auth.audit_log_entries, auth.sessions to tidier;
       grant select, update on auth.identities, public.profiles to tidier;
+      grant select, update, delete on private.friend_request_counts to tidier;
       set role tidier;
     `);
     try {
