@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -38,9 +38,18 @@ export default function CourierScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
   const { reload } = list;
-  const { profile } = useProfile();
+  const { profile, reload: reloadProfile } = useProfile();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The city picker, opened from here, saves the city itself and pops back:
+  // what this page says about a city of the courier's own has to be read again
+  // each time it comes back into view.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadProfile();
+    }, [reloadProfile]),
+  );
 
   const friendship = list.data?.find((entry) => entry.friend.id === id) ?? null;
 
@@ -155,9 +164,10 @@ export default function CourierScreen() {
   }
 
   // Without a city of their own no bat can leave, so Write a letter is off -
-  // beside the friend's city, which looks like the reason but is not. The
-  // profile is read only as the page opens; a route, read again each time it
-  // comes back into view, is the surer sign of a city chosen since.
+  // beside the friend's city, which looks like the reason but is not. Nothing
+  // is said while the profile is unknown. A route means a city all the same:
+  // the two are read side by side as the page comes back, and either may
+  // answer first.
   const noCityOfYourOwn =
     friendship.status === 'accepted' && profile !== null && !profile.city && !friendship.route;
 

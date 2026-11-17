@@ -18,6 +18,8 @@ import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
+/** The focus effects of the screen as it is now, to run again as it comes back into view. */
+const mockFocusEffects = new Set<() => void | (() => void)>();
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
@@ -25,7 +27,14 @@ jest.mock('expo-router', () => {
     useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
+      React.useEffect(() => {
+        mockFocusEffects.add(effect);
+        const cleanup = effect();
+        return () => {
+          mockFocusEffects.delete(effect);
+          if (typeof cleanup === 'function') cleanup();
+        };
+      }, [effect]),
   };
 });
 
@@ -41,11 +50,21 @@ jest.mock('@/features/friends/friends', () => ({
   withdrawRequest: jest.fn(),
 }));
 
+/** The courier's profile as the database has it now. */
 const mockProfileState: { profile: Profile | null } = { profile: null };
 
-jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({ profile: mockProfileState.profile, isLoading: false, error: null }),
-}));
+// As the real hook does, it holds what it read last, and reads again only when
+// asked to.
+jest.mock('@/features/profile/use-profile', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useProfile: () => {
+      const [profile, setProfile] = React.useState(() => mockProfileState.profile);
+      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      return { profile, isLoading: false, error: null, reload };
+    },
+  };
+});
 
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedRequestFriend = jest.mocked(requestFriend);
@@ -165,6 +184,12 @@ function rowsAround(element: ReturnType<typeof screen.getByText>) {
   return rows;
 }
 
+/** Comes back to the screen, as when the picker on top of it is popped. */
+const comeBack = () =>
+  act(async () => {
+    for (const effect of [...mockFocusEffects]) effect();
+  });
+
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
 
 /** The alert the screen raised most recently: its title, its message and its buttons. */
@@ -185,6 +210,7 @@ async function chooseInAlert(label: string) {
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
+  mockFocusEffects.clear();
   mockProfileState.profile = courier;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
@@ -507,8 +533,10 @@ describe('FriendsScreen', () => {
       expect(mockPush).toHaveBeenCalledWith('/city-picker');
     });
 
-    it('says nothing of a city of their own once the courier has one', async () => {
-      serve(() => [anna, ben]);
+    // Ben has no city, so there is no route to him whoever has one: only the
+    // courier's own city tells that the notice is not theirs.
+    it('says nothing of a city of their own once the courier has one, though no friend has', async () => {
+      serve(() => [ben]);
       await renderScreen(<FriendsScreen />);
       await listLoaded();
 
@@ -516,10 +544,40 @@ describe('FriendsScreen', () => {
       expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
     });
 
+    it('says nothing of a city while the profile is not known', async () => {
+      mockProfileState.profile = null;
+      serve(() => [ben]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+    });
+
     /**
-     * The profile is read once, as the screen opens; the list again each time
-     * it comes back into view. A route on the list means the courier has a
-     * city by now - chosen from here, say - whatever the profile last said.
+     * The picker saves the city itself and pops back. Ben has no city, so no
+     * route appears to tell of it: the screen has to read the profile again
+     * as it comes back. (Found in review: it went on saying "You have not
+     * chosen your city yet" until it was opened anew.)
+     */
+    it('lets go of it once the city is chosen, though no friend has a city', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [ben]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+      await fireEvent.press(screen.getByRole('button', { name: 'Choose your city' }));
+      expect(mockPush).toHaveBeenCalledWith('/city-picker');
+
+      mockProfileState.profile = courier;
+      await comeBack();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
+    });
+
+    /**
+     * The list and the profile are read side by side as the screen comes back.
+     * A route on the list means the courier has a city by now, whichever of
+     * the two answered first.
      */
     it('lets go of it once the list shows a route, the city chosen in the meantime', async () => {
       mockProfileState.profile = { ...courier, city: null };

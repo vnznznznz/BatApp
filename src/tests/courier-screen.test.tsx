@@ -27,6 +27,8 @@ const mockDismissTo = jest.fn();
 const mockParams = { id: 'user-anna' };
 /** Whether the page is still in front when an answer comes back. */
 const mockFocus = { focused: true };
+/** The focus effects of the page as it is now, to run again as it comes back into view. */
+const mockFocusEffects = new Set<() => void | (() => void)>();
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -41,7 +43,14 @@ jest.mock('expo-router', () => {
     useNavigation: () => ({ isFocused: () => mockFocus.focused }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
+      React.useEffect(() => {
+        mockFocusEffects.add(effect);
+        const cleanup = effect();
+        return () => {
+          mockFocusEffects.delete(effect);
+          if (typeof cleanup === 'function') cleanup();
+        };
+      }, [effect]),
   };
 });
 
@@ -62,11 +71,21 @@ jest.mock('@/features/safety/safety', () => ({
   blockCourier: jest.fn(),
 }));
 
+/** The courier's profile as the database has it now. */
 const mockProfileState: { profile: Profile | null } = { profile: null };
 
-jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({ profile: mockProfileState.profile, isLoading: false, error: null }),
-}));
+// As the real hook does, it holds what it read last, and reads again only when
+// asked to.
+jest.mock('@/features/profile/use-profile', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useProfile: () => {
+      const [profile, setProfile] = React.useState(() => mockProfileState.profile);
+      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      return { profile, isLoading: false, error: null, reload };
+    },
+  };
+});
 
 /** The courier whose app this is: in Berlin, unless a test says otherwise. */
 const courier: Profile = {
@@ -219,6 +238,12 @@ function expectStayed() {
   expect(mockBack).not.toHaveBeenCalled();
 }
 
+/** Comes back to the page, as when the picker on top of it is popped. */
+const comeBack = () =>
+  act(async () => {
+    for (const effect of [...mockFocusEffects]) effect();
+  });
+
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
 
 /** The alert the screen raised most recently: its title, its message and its buttons. */
@@ -256,6 +281,7 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockParams.id = 'user-anna';
   mockFocus.focused = true;
+  mockFocusEffects.clear();
   mockProfileState.profile = courier;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
@@ -371,11 +397,54 @@ describe('CourierScreen', () => {
       expect(mockPush).toHaveBeenCalledWith('/city-picker');
     });
 
-    it.each<[string, Profile, Friendship]>([
+    /**
+     * The picker saves the city itself and pops back. Ben has no city, so no
+     * route appears to tell of it: the page has to read the profile again as
+     * it comes back. (Found in review: it went on saying "You have not chosen
+     * your city yet" until it was opened anew.)
+     */
+    it('lets go of it once the city is chosen, though the friend has none', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [ben]);
+      await openPageOf(ben);
+      expect(screen.getByText(NO_CITY_OF_YOUR_OWN)).toBeOnTheScreen();
+      await fireEvent.press(button('Choose your city'));
+
+      mockProfileState.profile = courier;
+      await comeBack();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
+      expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
+    });
+
+    it('keeps Choose your city off while an action is on its way', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      const removing = deferred<void>();
+      mockedRemoveFriend.mockReturnValue(removing.promise);
+      serve(() => [ben]);
+      await openPageOf(ben);
+      await fireEvent.press(button('Remove friend'));
+      await chooseInAlert('Remove');
+
+      expect(button('Choose your city')).toBeDisabled();
+      await fireEvent.press(button('Choose your city'));
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => removing.resolve());
+    });
+
+    it.each<[string, Profile | null, Friendship]>([
       ['the courier has a city', courier, anna],
       ['only the friend has none', courier, ben],
-      // The list is read again as the page comes back into view; the profile is not.
+      // The list and the profile are read side by side as the page comes back;
+      // a route means a city, whichever answered first.
       ['the list shows a route, the city chosen in the meantime', { ...courier, city: null }, anna],
+      ['the profile is not known', null, ben],
+      // No letter is offered to someone who has not said yes, so there is no
+      // Write to explain.
+      ['it is a request, not a friendship', { ...courier, city: null }, dora],
+      ['someone is asking, not a friend', { ...courier, city: null }, carla],
     ])('says nothing of a city of their own when %s', async (_, profile, friendship) => {
       mockProfileState.profile = profile;
       serve(() => [friendship]);

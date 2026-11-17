@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState, type ReactNode } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -39,9 +39,18 @@ import { useRemote } from '@/lib/use-remote';
  */
 export default function FriendsScreen() {
   const router = useRouter();
-  const { profile } = useProfile();
+  const { profile, reload: reloadProfile } = useProfile();
   const list = useRemote(fetchFriendships);
   const { reload, refresh } = list;
+
+  // The city picker, opened from here or from the profile, saves the city
+  // itself and pops back: what this screen says about a city of the courier's
+  // own has to be read again each time it comes back into view.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadProfile();
+    }, [reloadProfile]),
+  );
 
   const [username, setUsername] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -219,10 +228,10 @@ export default function FriendsScreen() {
       ) : null}
 
       {/* Without a city of their own no bat can leave, so every Write is off -
-          beside the friend's city, which looks like the reason but is not. The
-          profile is read only as the screen opens, so a route on the list, read
-          each time it comes back into view, is the surer sign of a city chosen
-          since. */}
+          beside the friend's city, which looks like the reason but is not.
+          Nothing is said while the profile is unknown. A route on the list
+          means a city all the same: the two are read side by side as the
+          screen comes back, and either may answer first. */}
       {profile &&
       !profile.city &&
       groups.friends.length > 0 &&
