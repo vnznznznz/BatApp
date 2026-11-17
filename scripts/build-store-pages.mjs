@@ -81,7 +81,16 @@ const SOURCES = resolve(option('--sources') ?? join(ROOT, 'docs', 'store'));
 const MIGRATIONS = resolve(option('--migrations') ?? OWN_MIGRATIONS);
 
 const missing = REQUIRED.filter((name) => !process.env[name]?.trim());
-if (missing.length) fail(`set ${missing.join(', ')} (see the comment at the top of this file)`);
+if (missing.length)
+  fail(
+    `set ${missing.join(', ')} (see the comment at the top of this file)` +
+      // The one value that is a decision, and that older copies of the build
+      // command do not have: say which answer is the safe one.
+      (missing.includes('LAUNCH_STATE')
+        ? '. LAUNCH_STATE=before-launch until Night Courier has started; docs/GO-LIVE.md, ' +
+          '"Where the web pages live", says when it is live'
+        : ''),
+  );
 
 const env = Object.fromEntries(REQUIRED.map((name) => [name, process.env[name].trim()]));
 if (!/^https:\/\/.+\/$/.test(env.SITE_URL)) fail('SITE_URL must be an https URL ending in /');

@@ -424,6 +424,19 @@ describe('the launch notice', () => {
     }
   });
 
+  // The site repository's README carried the build command from before the
+  // setting existed. Whoever runs that command has to learn from the refusal
+  // itself what to add, and which of the two values is the safe one.
+  it('tells whoever left the setting out which state to give', () => {
+    const rest = { ...DETAILS };
+    delete rest.LAUNCH_STATE;
+
+    assert.throws(
+      () => build(rest, out),
+      /build-store-pages: set LAUNCH_STATE \(see the comment at the top of this file\)\. LAUNCH_STATE=before-launch until Night Courier has started; docs\/GO-LIVE\.md, "Where the web pages live", says when it is live/,
+    );
+  });
+
   it('is named in what the build prints, so that a wrong state is seen before it is pushed', () => {
     assert.match(build(DETAILS, out), /not started yet: every page carries the notice/);
     assert.match(build(LIVE, out), /live: no notice/);

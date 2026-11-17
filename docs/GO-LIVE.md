@@ -52,15 +52,15 @@ cost on the iOS side; nothing in the app itself costs money.
 
 ### C. Compliance artifacts — the web pages are live; the store answers are drafted in `docs/store/`
 
-| Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages`, as `LAUNCH_STATE=before-launch` until the project is in Zurich and the DPA is signed (see "Where the web pages live")     |
-| Support URL                       | Apple 1.2                                  | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/`, built from `docs/store/support-page.md`. It names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the privacy policy URL, if Apple wants the address on the Support URL itself |
-| Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                |
-| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                |
-| App Privacy "nutrition label"     | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                                                                       |
-| Age rating questionnaire          | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                                                                   |
-| Trader status declaration         | EU DSA                                     | **Not applicable** on a TestFlight-only path. Any App Store distribution in the EU needs it, wherever the operator lives. A private, non-commercial operator would normally declare non-trader (**to check**); as a trader, Apple would show the postal address, phone number and email on the store page. See `docs/store/app-store.md`, section 7             |
+| Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages`, as `LAUNCH_STATE=before-launch` until the project is in Zurich and the DPA is signed. The pages of 10 November went up without that notice; whether the site carries it by now is the check under "Where the web pages live" |
+| Support URL                       | Apple 1.2                                  | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/`, built from `docs/store/support-page.md`. It names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the privacy policy URL, if Apple wants the address on the Support URL itself                                                                                                    |
+| Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                                                                                                                   |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                                                                                                                   |
+| App Privacy "nutrition label"     | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                                                                                                                                                                          |
+| Age rating questionnaire          | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                                                                                                                                                                      |
+| Trader status declaration         | EU DSA                                     | **Not applicable** on a TestFlight-only path. Any App Store distribution in the EU needs it, wherever the operator lives. A private, non-commercial operator would normally declare non-trader (**to check**); as a trader, Apple would show the postal address, phone number and email on the store page. See `docs/store/app-store.md`, section 7                                                                                                                |
 
 Account deletion is already built and tested, which is the one item on Apple's list that is code
 rather than paperwork.
@@ -848,8 +848,32 @@ transits it, so a content-free push keeps message text out of a US processor.
   ```
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
-  README has the command with the values filled in (written before `LAUNCH_STATE` existed: add it
-  there). `EFFECTIVE_DATE` is the policy's "Stand", the day this version of it is from: move it
+  README has the command with the values filled in. It was written before `LAUNCH_STATE` existed,
+  and as it stands there the build refuses it ("set LAUNCH_STATE"): with the first rebuild, add
+  `LAUNCH_STATE=before-launch` to the command there, and a line saying that a live build also
+  needs `DPA_SIGNED` (below).
+
+  **Check that it arrived,** a few minutes after the push. The pages are what people read, not
+  the repository:
+
+  ```bash
+  for page in index.html privacy-policy.de.html privacy-policy.en.html; do
+    curl -fsS "https://vnznznznz.github.io/night-courier/$page" -o "/tmp/night-courier-$page" &&
+      grep -c 'class="notice"' "/tmp/night-courier-$page"
+  done
+  grep -o 'Stand: [^<]*' /tmp/night-courier-privacy-policy.de.html | head -1
+  ```
+
+  Built as `before-launch` this prints 2, 1 and 1 - the help page carries the notice once in each
+  language - and then the date that was given as `EFFECTIVE_DATE`. Built as `live` it prints 0
+  three times. A page that could not be fetched gives an error and no number: that is not a 0.
+  The pages that went up on 10 November 2026 print 0, 0, 0 and "Stand: 10. November 2026";
+  whether the site has moved on from them is this check, and the item for it is in
+  `docs/store/gdpr-records.md`, 5.2. (Tried on 17 November 2026 against a local stand-in serving
+  a rebuilt copy of the site. GitHub Pages itself cannot be reached from the session's network,
+  so against the real site it is **not yet tried**.)
+
+  `EFFECTIVE_DATE` is the policy's "Stand", the day this version of it is from: move it
   on to the day of the rebuild whenever the policy's content changes, and tell users of an
   important change (policy section 15). The build refuses a date that is still to come, so a
   change announced in advance goes up on the day it takes effect, not before with that day's

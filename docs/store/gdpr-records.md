@@ -802,6 +802,12 @@ nutzt (4.4).
 - [x] Das Repository `vnznznznz.github.io` anlegen und die Datenschutzerklärung mit ausgefüllten
       Platzhaltern unter `{{PRIVACY_POLICY_URL}}` veröffentlichen, die Kontaktseite unter
       `{{SUPPORT_URL}}` (V13): geschehen am 10. November 2026.
+- [ ] Die Seiten mit dem Hinweis neu bauen und veröffentlichen, dass Night Courier noch nicht
+      gestartet ist. Die Fassung vom 10. November 2026 trägt ihn nicht: Sie nennt den DPA und das
+      Projekt in Zürich als Tatsachen, bevor es beides gibt. Befehl und Prüfung stehen in GO-LIVE,
+      „Where the web pages live“ (`LAUNCH_STATE=before-launch`, das Datum des Tages als
+      `EFFECTIVE_DATE`); erledigt ist es, wenn die Prüfung dort 2, 1 und 1 ausgibt. Der Befehl im
+      README des Seiten-Repositorys kennt `LAUNCH_STATE` noch nicht: dort ergänzen.
 - [ ] Die PRÜFEN-Hinweise der Datenschutzerklärung abarbeiten. Sie waren beim Veröffentlichen noch
       offen; bis dahin, und bis das Datum in 5.1 steht, die Seiten nur mit
       `LAUNCH_STATE=before-launch` bauen, also mit dem Hinweis, dass Night Courier noch nicht
