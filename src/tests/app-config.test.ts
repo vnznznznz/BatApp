@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 import appJson from '../../app.json';
 
 /**
@@ -42,5 +44,30 @@ describe('what the store declarations rely on', () => {
         'android.permission.WRITE_EXTERNAL_STORAGE',
       ].sort(),
     );
+  });
+});
+
+/**
+ * `typedRoutes` makes a link to a screen that does not exist a type error - but
+ * only where the route types are part of the typecheck. They are generated
+ * (`npm run generate:routes`), not committed, and for a long time `tsconfig.json`
+ * shut them out, so `npm run typecheck` passed whatever a link said.
+ *
+ * The line marked below is such a link. As long as the route types are in
+ * force it is an error, which is what the mark expects. Take them away again -
+ * drop the generation from `npm run typecheck`, exclude `.expo` - and the mark
+ * itself becomes the error: "Unused '@ts-expect-error' directive".
+ */
+describe('what the typecheck relies on', () => {
+  it('has typed routes switched on', () => {
+    expect(expo.experiments.typedRoutes).toBe(true);
+  });
+
+  it('knows a screen that does not exist from one that does', () => {
+    // @ts-expect-error -- there is no such screen; see the comment above before removing this.
+    const nowhere: Href = '/no-such-screen';
+    const somewhere: Href = '/sign-in';
+
+    expect([nowhere, somewhere]).toHaveLength(2);
   });
 });

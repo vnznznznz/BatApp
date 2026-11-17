@@ -142,7 +142,7 @@ should ever have.
 | ------------------------- | ----------------------------------------------------------- |
 | `npm start`               | Start the Expo dev server                                   |
 | `npm run ios` / `android` | Start and open a simulator                                  |
-| `npm run typecheck`       | `tsc --noEmit`                                              |
+| `npm run typecheck`       | Generate the route types, then `tsc --noEmit`               |
 | `npm run lint`            | ESLint over the whole repo, warnings treated as errors      |
 | `npm run format`          | Rewrite files with Prettier                                 |
 | `npm test`                | Jest                                                        |

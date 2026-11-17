@@ -56,6 +56,14 @@ File-based routing keeps navigation structure visible in the directory tree, and
 makes a link to a route that does not exist a type error. `reactCompiler` is left on — it ships
 with the SDK 57 template and `babel-plugin-react-compiler` is already installed.
 
+_Corrected in November 2026:_ that was the intention, and until then it did not hold. The route
+types are generated into `.expo/types`, never committed, and `tsconfig.json` excluded `.expo` -
+which wins over the include beside it - so `npm run typecheck` and CI passed whatever a link
+said. `npm run typecheck` now generates the types first (`npm run generate:routes`, which is
+`expo customize tsconfig.json`) and the exclude is gone. `src/tests/app-config.test.ts` holds a link to a screen that does not exist, marked as an
+expected error: if the route types ever go missing from the typecheck again, that mark fails it.
+No link in the app was broken when this was switched on.
+
 ### A design system, not per-screen styling
 
 `src/components/` holds five primitives — `Screen`, `Text`, `Button`, `Card`, `BatMark` — and
