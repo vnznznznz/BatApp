@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import type { AppStateStatus } from 'react-native';
 
+import { toRpcError } from '@/lib/rpc-error';
 import { secureStorage } from '@/lib/secure-storage';
 import { SESSION_KEY } from '@/lib/session-store';
 
@@ -82,6 +83,11 @@ const isRenewal = (request: Sent) =>
   request.url.includes('/auth/v1/token?grant_type=refresh_token');
 const isRest = (request: Sent) => request.url.includes('/rest/v1/');
 const offline = () => Promise.reject(new TypeError('Network request failed'));
+
+/** What a screen would show for a failed request. */
+const shown = (error: { message: string } | null) =>
+  error && toRpcError(error, 'Your roost could not be loaded.').message;
+const NO_CONNECTION = 'No connection. Check your network and try again.';
 
 type Client = (typeof import('@/lib/supabase'))['supabase'];
 let supabase: Client | null;
@@ -269,7 +275,19 @@ describe('a request to the database', () => {
     const { error } = await settled(client.rpc('get_roost'));
 
     expect(sent.filter(isRest)).toEqual([]);
-    expect(error?.message).toMatch(/network request/i);
+    expect(shown(error)).toBe(NO_CONNECTION);
+  });
+
+  it('gives up after twenty seconds on a connection that never answers', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+    network = () => new Promise<Response>(() => {});
+    const { client } = launch();
+
+    const started = Date.now();
+    const { error } = await settled(client.rpc('get_roost'));
+
+    expect(Date.now() - started).toBeLessThanOrEqual(21_000);
+    expect(shown(error)).toBe(NO_CONNECTION);
   });
 
   it('is sent with the publishable key when nobody is signed in', async () => {
@@ -338,7 +356,7 @@ describe('a request to the database', () => {
 
       const { error } = await settled(client.rpc('get_roost'));
 
-      expect(error?.message).toMatch(/network request/i);
+      expect(shown(error)).toBe(NO_CONNECTION);
       expect(await kept()).toEqual(session);
     });
 
