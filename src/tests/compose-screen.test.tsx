@@ -695,12 +695,14 @@ describe('ComposeScreen', () => {
       mockedSendMessage.mockReturnValue(sending.promise);
       await openLetterTo('user-anna');
       await fireEvent.changeText(letterField(), 'See you at the lake.');
-      const button = sendButton();
+      // The button's own handler for a press, as the platform calls it. Called
+      // twice within one act, nothing is drawn in between - as within one
+      // frame - where two fireEvent.press calls would each draw first.
+      const press = sendButton().props.onClick as (event: object) => void;
 
-      // One act for both: nothing is drawn in between, as within one frame.
       await act(async () => {
-        void fireEvent.press(button);
-        void fireEvent.press(button);
+        press({});
+        press({});
       });
 
       expect(sendButton()).toBeBusy();
