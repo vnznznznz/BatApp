@@ -19,15 +19,23 @@
  * processed yet; with live, the pages stand as written. There is no default:
  * docs/GO-LIVE.md, "Where the web pages live", says when live becomes true.
  *
+ * A live build also needs DPA_SIGNED=YYYY-MM-DD, the date the processing
+ * agreement with Supabase was signed, as it is written into
+ * docs/store/gdpr-records.md, 5.1. The pages do not show it. It is asked for
+ * because the policy says the agreement exists, and the pages have once been
+ * published before it did: whoever cannot give the date is not ready to build
+ * as live.
+ *
  * --out is the site repository's checkout. The pages go into its folder
  * night-courier/ (index.html is the help page), with a redirect at its root and
  * a .nojekyll, so that GitHub serves the files as they are: no theme, nothing
  * loaded from anywhere else. Then commit and push there. docs/GO-LIVE.md,
  * "The web pages", has the whole procedure.
  *
- * Refuses to build when a value is missing, the date does not exist, a
- * placeholder is left over, a link within a page leads nowhere, or a page would
- * load anything from another site - the privacy policy promises it does not.
+ * Refuses to build when a value is missing, a date does not exist, a live
+ * build has no date for the agreement, a placeholder is left over, a link
+ * within a page leads nowhere, or a page would load anything from another site -
+ * the privacy policy promises it does not.
  *
  * --sources <folder> builds from another folder than docs/store/. The tests use
  * it to show what a careless edit to a document would do.
@@ -75,20 +83,50 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(env.EFFECTIVE_DATE)) fail('EFFECTIVE_DATE must b
 if (!['before-launch', 'live'].includes(env.LAUNCH_STATE))
   fail('LAUNCH_STATE must be before-launch or live');
 
-// JavaScript rolls a day the month does not have into the next month: 30
-// February becomes 2 March, and the binding policy would carry a date nobody
-// typed. So the date has to come back out as it went in. (An impossible month
-// gives no date at all, and toISOString would throw on it: hence the first test.)
-const date = new Date(`${env.EFFECTIVE_DATE}T12:00:00Z`);
-if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== env.EFFECTIVE_DATE)
-  fail('EFFECTIVE_DATE is not a date that exists');
-const longDate = (locale) =>
+/**
+ * The day a YYYY-MM-DD names, at noon UTC, or null when there is no such day.
+ *
+ * JavaScript rolls a day the month does not have into the next month: 30
+ * February becomes 2 March, and the binding policy would carry a date nobody
+ * typed. So the date has to come back out as it went in. (An impossible month
+ * gives no date at all, and toISOString would throw on it: hence the first test.)
+ */
+function dayOf(text) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const day = new Date(`${text}T12:00:00Z`);
+  return Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== text ? null : day;
+}
+
+const date = dayOf(env.EFFECTIVE_DATE);
+if (!date) fail('EFFECTIVE_DATE is not a date that exists');
+const longDate = (locale, day = date) =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
-  }).format(date);
+  }).format(day);
+
+// Live means the policy stands as written, and it says that Supabase works
+// under a signed processing agreement. So a live build has to be told when it
+// was signed: not later than the date the policy itself carries, and not on a
+// day still to come. (A day's grace, because the day has already begun
+// somewhere east of here when it has not yet in UTC.)
+let agreementSigned = null;
+if (env.LAUNCH_STATE === 'live') {
+  const given = process.env.DPA_SIGNED?.trim();
+  if (!given)
+    fail(
+      'LAUNCH_STATE=live needs DPA_SIGNED, the date the processing agreement with Supabase was ' +
+        'signed (docs/store/gdpr-records.md, 5.1). Without one, build with LAUNCH_STATE=before-launch',
+    );
+  agreementSigned = dayOf(given);
+  if (!agreementSigned) fail('DPA_SIGNED must be a date that exists, as YYYY-MM-DD');
+  if (agreementSigned > date)
+    fail(`DPA_SIGNED (${given}) is later than EFFECTIVE_DATE (${env.EFFECTIVE_DATE})`);
+  if (agreementSigned.getTime() > Date.now() + 24 * 60 * 60 * 1000)
+    fail(`DPA_SIGNED (${given}) is in the future`);
+}
 
 const link = (url) => `[${url}](${url})`;
 const email = `[${env.CONTACT_EMAIL}](mailto:${env.CONTACT_EMAIL})`;
@@ -280,10 +318,9 @@ for (const [name, html] of Object.entries(pages))
 writeFileSync(join(OUT, 'index.html'), ROOT_PAGE);
 writeFileSync(join(OUT, '.nojekyll'), '');
 
-const state =
-  env.LAUNCH_STATE === 'live'
-    ? 'live: no notice'
-    : 'not started yet: every page carries the notice';
+const state = agreementSigned
+  ? `live: no notice (processing agreement signed ${longDate('en-GB', agreementSigned)})`
+  : 'not started yet: every page carries the notice';
 console.log(
   `Built ${Object.keys(pages).length + 1} pages into ${OUT}, dated ${POLICIES.en.date}, ${state}.`,
 );

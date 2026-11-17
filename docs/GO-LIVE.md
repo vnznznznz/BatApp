@@ -99,9 +99,9 @@ Both recorded where the work is, not only here:
 7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026, to
    be built with `LAUNCH_STATE=before-launch` for now. Once the project exists in Zurich (step 1)
    and the DPA is signed and dated in `docs/store/gdpr-records.md`, 5.1 - and before anyone but
-   the operator has an account - rebuild them with `LAUNCH_STATE=live` and a new `EFFECTIVE_DATE`
-   (see "Where the web pages live"). The rest of group C (the store answers in `docs/store/`) goes
-   in when the accounts exist.
+   the operator has an account - rebuild them with `LAUNCH_STATE=live`, that date as `DPA_SIGNED`,
+   and a new `EFFECTIVE_DATE` (see "Where the web pages live"). The rest of group C (the store
+   answers in `docs/store/`) goes in when the accounts exist.
 8. `eas.json`, first build, TestFlight, invite the circle.
 
 ---
@@ -830,7 +830,9 @@ transits it, so a content-free push keeps message text out of a US processor.
   then commit and push there; GitHub publishes within a minute or two. The site repository's
   README has the command with the values filled in (written before `LAUNCH_STATE` existed: add it
   there). `EFFECTIVE_DATE` is the policy's "Stand": move it on whenever the policy's content
-  changes, and tell users of an important change (policy section 15).
+  changes, and tell users of an important change (policy section 15). The next rebuild is such a
+  change: sections 3.7, 3.9 and 9 of the policy were corrected on 17 November 2026 (and a
+  sentence of section 11 in the English version), and the help page with them.
 
   **`LAUNCH_STATE` says whether Night Courier has started,** and nothing is built without it. The
   policy speaks in the present tense - a database in Zurich, a processing agreement with Supabase,
@@ -852,10 +854,18 @@ transits it, so a content-free push keeps message text out of a US processor.
     by then. And do it before anyone but the operator gets an account: from that day "there are no
     accounts" is the sentence that is not true.
 
-  `scripts/build-store-pages.mjs` refuses to build while a value is missing, the date is not one
-  that exists (30 February), a placeholder is left over, a link within a page leads nowhere, or a
-  page would load anything from another site, and its test builds the pages with made-up details
-  on every `npm run verify`.
+    A live build asks for that date: add `DPA_SIGNED=YYYY-MM-DD` to the command, copied from
+    `gdpr-records.md`, 5.1. Without it the build stops, and so it does when the date is later
+    than `EFFECTIVE_DATE` or still to come. The pages do not show it; the build's last line does
+    ("live: no notice (processing agreement signed …)"). It is there so that "live" cannot be
+    typed by someone who has no date to give - the pages have once gone up before the agreement
+    existed. If the blank in 5.1 is still empty, the answer is `LAUNCH_STATE=before-launch`,
+    never a date made up for the purpose.
+
+  `scripts/build-store-pages.mjs` refuses to build while a value is missing, a date is not one
+  that exists (30 February), a live build has no date for the agreement, a placeholder is left
+  over, a link within a page leads nowhere, or a page would load anything from another site, and
+  its test builds the pages with made-up details on every `npm run verify`.
 
   The Markdown sources here keep their placeholders; the filled-in pages, with the operator's name
   and postal address, live only in the site repository, never in this one. That repository is

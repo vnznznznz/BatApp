@@ -767,7 +767,9 @@ nutzt (4.4).
       und 8 der Datenschutzerklärung sagen, dass es den DPA mit den Standardvertragsklauseln gibt
       (PRÜFEN-Hinweise dort), und nur der Hinweis oben auf jeder Seite sagt, dass Night Courier
       noch nicht gestartet ist. Erst mit diesem Datum und dem Projekt in Zürich wird mit
-      `LAUNCH_STATE=live` gebaut.
+      `LAUNCH_STATE=live` gebaut; der Bau verlangt das Datum dann als `DPA_SIGNED=JJJJ-MM-TT` und
+      bricht ohne es ab. Nie ein Datum dafür erfinden: Steht hier keines, ist die Antwort
+      `LAUNCH_STATE=before-launch`.
 - [ ] Supabases Liste der Unterauftragsverarbeiter lesen; prüfen, ob vor der API ein Dienst wie
       Cloudflare liegt und wo Protokolle gespeichert werden; Abschnitt 2 und die
       Datenschutzerklärung (7, 8) ergänzen. Ob man sich für Änderungen der Liste benachrichtigen
