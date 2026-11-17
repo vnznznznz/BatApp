@@ -891,6 +891,13 @@ transits it, so a content-free push keeps message text out of a US processor.
   from another site, and its test builds the pages with made-up details on every
   `npm run verify`.
 
+  It also refuses to build from a checkout whose migrations lack a function that a promise on
+  the pages rests on, and names it: that an account deleted on request loses its sign-in records
+  at once, for one, is `private.delete_account`. Documents and migrations are written on
+  different branches; the pages are built from a tree that has both, or not at all. Build them
+  from the tree whose migrations are on the hosted project - before the launch, the one whose
+  migrations will be.
+
   The Markdown sources here keep their placeholders; the filled-in pages, with the operator's name
   and postal address, live only in the site repository, never in this one. That repository is
   public too, and git keeps every earlier version of a page, so an address once committed there

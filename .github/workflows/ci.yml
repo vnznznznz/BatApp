@@ -37,6 +37,13 @@ jobs:
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # A step of the operator's runbooks that names a database function which
+      # no migration in the tree creates cannot be run. On a branch that waits
+      # for the migration, scripts/runbooks.test.mjs skips the step and says
+      # so. What is pushed has to be whole - documents that send the operator
+      # to a function that is not there are worse than no documents - so here
+      # the same gap is a failure.
+      RUNBOOKS_MUST_RUN: '1'
 
     steps:
       - uses: actions/checkout@v4

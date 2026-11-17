@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { fastForward, makeFriends, rpc, runWorker, setCity } from '../src/tests/db/fixtures.mjs';
 import { createTestDatabase, createUser } from '../src/tests/db/harness.mjs';
+import { definesFunction } from './migrations.mjs';
 
 /**
  * The operator's runbooks are followed word for word - by someone who is not a
@@ -26,12 +27,6 @@ import { createTestDatabase, createUser } from '../src/tests/db/harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(join(ROOT, file), 'utf8');
-
-/** Whether any migration of this tree has these words in it. */
-const migrationsSay = (words) =>
-  readdirSync(join(ROOT, 'supabase', 'migrations'))
-    .filter((file) => file.endsWith('.sql'))
-    .some((file) => read(join('supabase', 'migrations', file)).includes(words));
 
 /** The SQL blocks between two headings of a document, without their indentation. */
 function sqlBetween(file, from, to) {
@@ -250,11 +245,19 @@ describe('gdpr-records.md 5.4, deleting an account for someone, run as written',
 
   it('deletes the account and all it holds, bans nothing, and says so when there is none', async (t) => {
     // The function comes with a migration that another branch adds. Until one
-    // of this tree's migrations defines it, the step that names it cannot run,
-    // and the test says so instead of passing. From then on it runs for good:
-    // a function renamed or dropped later is a failure, not a skip.
-    if (!migrationsSay('function private.delete_account(')) {
-      t.skip('no migration in this tree defines private.delete_account yet');
+    // of this tree's migrations creates it, the step that names it cannot run.
+    // On a branch that is waiting for that migration the test says so and is
+    // skipped. A skip is easily read past, though, and a tree that is pushed
+    // with the documents and without the function sends the operator to a
+    // statement that fails: so where RUNBOOKS_MUST_RUN is set - CI sets it -
+    // the gap is a failure. Once the function is there the test runs for good.
+    if (!definesFunction('private.delete_account')) {
+      const gap =
+        'docs/store/gdpr-records.md 5.4 has the operator run private.delete_account, and no ' +
+        'migration in this tree creates it. Merge the branch that adds it before these ' +
+        'documents are used or published';
+      assert.notEqual(process.env.RUNBOOKS_MUST_RUN, '1', gap);
+      t.skip(gap);
       return;
     }
     const db = await createTestDatabase();

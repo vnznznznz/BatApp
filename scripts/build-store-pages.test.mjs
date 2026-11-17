@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { definesFunction } from './migrations.mjs';
+
 /**
  * The public web pages are built from docs/store/ by build-store-pages.mjs. An
  * edit to those documents - a new placeholder, an image, a link to a font -
@@ -33,12 +35,31 @@ const DETAILS = {
  */
 const LIVE = { ...DETAILS, LAUNCH_STATE: 'live', DPA_SIGNED: '2026-11-05' };
 
+/**
+ * The functions the pages rest on, each as a migration would create it. The
+ * build is refused without them, and whether this tree has them all is not
+ * what the tests below are about: they build against a folder that does.
+ */
+const RESTS_ON = [
+  'public.delete_own_account',
+  'private.delete_account',
+  'private.remove_account',
+  'private.tidy_up',
+  'private.forget_old_reports',
+];
+
 const build = (env, out, more = []) =>
-  execFileSync(process.execPath, [SCRIPT, '--out', out, ...more], {
-    env: { PATH: process.env.PATH ?? '', ...env },
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
+  execFileSync(
+    process.execPath,
+    [
+      SCRIPT,
+      '--out',
+      out,
+      ...(more.includes('--migrations') ? [] : ['--migrations', migrations]),
+      ...more,
+    ],
+    { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', stdio: 'pipe' },
+  );
 
 const read = (out, name) => readFileSync(join(out, 'night-courier', name), 'utf8');
 
@@ -47,15 +68,28 @@ const dayIn = (hours) => new Date(Date.now() + hours * 60 * 60 * 1000).toISOStri
 
 let out;
 let scratch;
+let migrations;
+
+/** A folder of migrations that creates these functions, and nothing else. */
+function migrationsWith(functions) {
+  const folder = mkdtempSync(join(tmpdir(), 'store-migrations-'));
+  writeFileSync(
+    join(folder, '20260101000000_stand_in.sql'),
+    functions.map((name) => `create or replace function ${name}()\nreturns void;\n`).join('\n'),
+  );
+  return folder;
+}
 
 beforeEach(() => {
   out = mkdtempSync(join(tmpdir(), 'store-pages-'));
   scratch = mkdtempSync(join(tmpdir(), 'store-sources-'));
+  migrations = migrationsWith(RESTS_ON);
 });
 
 afterEach(() => {
   rmSync(out, { recursive: true, force: true });
   rmSync(scratch, { recursive: true, force: true });
+  rmSync(migrations, { recursive: true, force: true });
 });
 
 /** A copy of the documents with one of them changed, to build from with --sources. */
@@ -248,6 +282,74 @@ describe('what is kept after an account is deleted', () => {
     ].filter((item) => /says how long|Wie lange, steht in der Datenschutzerklärung/.test(item));
 
     if (unknown) assert.deepEqual(pointers, []);
+  });
+});
+
+/**
+ * The pages promise what the database does: that an account deleted on request
+ * loses its sign-in records at once, that a report is gone after 180 days.
+ * Each of those is a function in a migration, and documents and migrations are
+ * written on different branches. The pages were once about to be rebuilt from
+ * a tree that had the sentence and not yet the function (found in review).
+ */
+describe('what the pages promise of the database', () => {
+  it('is not published from a tree that lacks a function it rests on', () => {
+    for (const missing of RESTS_ON) {
+      const folder = migrationsWith(RESTS_ON.filter((name) => name !== missing));
+      try {
+        assert.throws(
+          () => build(DETAILS, out, ['--migrations', folder]),
+          new RegExp(
+            `build-store-pages: the pages say .+ That is ${missing.replace('.', '\\.')}, ` +
+              'and no migration in .+ creates it',
+          ),
+          missing,
+        );
+        assert.deepEqual(readdirSync(out), [], missing);
+      } finally {
+        rmSync(folder, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('is not taken on trust from a migration that only mentions the function', () => {
+    const folder = migrationsWith(RESTS_ON.filter((name) => name !== 'private.delete_account'));
+    writeFileSync(
+      join(folder, '20260102000000_mention.sql'),
+      '-- private.delete_account comes later\n' +
+        'revoke all on function private.delete_account(uuid) from public;\n',
+    );
+    try {
+      assert.throws(
+        () => build(DETAILS, out, ['--migrations', folder]),
+        /That is private\.delete_account, and no migration in .+ creates it/,
+      );
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  // Left to itself the build asks this repository's own migrations. Whether
+  // they have every function depends on which branches are in the tree, so the
+  // test asks the same question first and expects the matching answer.
+  it('is checked against this repository’s own migrations unless told otherwise', () => {
+    const missing = RESTS_ON.filter((name) => !definesFunction(name));
+    const fromThisTree = () =>
+      execFileSync(process.execPath, [SCRIPT, '--out', out], {
+        env: { PATH: process.env.PATH ?? '', ...DETAILS },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+
+    if (missing.length === 0) {
+      assert.match(fromThisTree(), /Built 4 pages/);
+    } else {
+      assert.throws(
+        fromThisTree,
+        new RegExp(`That is ${missing[0].replace('.', '\\.')}, and no migration in .+ creates it`),
+      );
+      assert.deepEqual(readdirSync(out), []);
+    }
   });
 });
 

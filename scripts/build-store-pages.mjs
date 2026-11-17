@@ -34,11 +34,14 @@
  *
  * Refuses to build when a value is missing, a date does not exist or is still
  * to come, a live build has no date for the agreement, a placeholder is left
- * over, a link within a page leads nowhere, or a page would load anything from
- * another site - the privacy policy promises it does not.
+ * over, a link within a page leads nowhere, a page would load anything from
+ * another site - the privacy policy promises it does not - or this tree's
+ * migrations lack a function that a promise on the pages rests on.
  *
- * --sources <folder> builds from another folder than docs/store/. The tests use
- * it to show what a careless edit to a document would do.
+ * --sources <folder> builds from another folder than docs/store/, and
+ * --migrations <folder> looks for the functions in another folder than
+ * supabase/migrations/. The tests use them to show what a careless edit to a
+ * document, or a tree without a migration, would do.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -46,6 +49,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { marked } from 'marked';
+
+import { definesFunction, MIGRATIONS as OWN_MIGRATIONS } from './migrations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -73,6 +78,7 @@ const outArg = option('--out');
 if (!outArg) fail('pass --out <the site repository checkout>');
 const OUT = resolve(outArg);
 const SOURCES = resolve(option('--sources') ?? join(ROOT, 'docs', 'store'));
+const MIGRATIONS = resolve(option('--migrations') ?? OWN_MIGRATIONS);
 
 const missing = REQUIRED.filter((name) => !process.env[name]?.trim());
 if (missing.length) fail(`set ${missing.join(', ')} (see the comment at the top of this file)`);
@@ -144,6 +150,30 @@ if (env.LAUNCH_STATE === 'live') {
   if (stillToCome(given)) fail(`DPA_SIGNED (${given}) is in the future`);
   if (agreementSigned > date)
     fail(`DPA_SIGNED (${given}) is later than EFFECTIVE_DATE (${env.EFFECTIVE_DATE})`);
+}
+
+/**
+ * What the pages promise of the database, each with the function that keeps
+ * the promise. Documents and migrations are written on different branches, and
+ * the pages are built by hand, whenever someone decides to: without this, a
+ * tree that has the sentence and not yet the function publishes the sentence.
+ * (The tests of the functions themselves are the database tests; this only
+ * asks that they are there.)
+ */
+const RESTS_ON = [
+  ['deleting your account in the app deletes it for good', 'public.delete_own_account'],
+  ['an account deleted on request loses its sign-in records at once', 'private.delete_account'],
+  ['an account removed for breaking the rules is banned for two years', 'private.remove_account'],
+  ['a daily job deletes what has reached the end of its period', 'private.tidy_up'],
+  ['a report is deleted 180 days after it was made', 'private.forget_old_reports'],
+];
+
+for (const [promise, name] of RESTS_ON) {
+  if (!definesFunction(name, MIGRATIONS))
+    fail(
+      `the pages say that ${promise}. That is ${name}, and no migration in ${MIGRATIONS} ` +
+        'creates it: the branch that adds it has to be in this tree before the pages are built',
+    );
 }
 
 const link = (url) => `[${url}](${url})`;
