@@ -23,7 +23,7 @@ config.cacheVersion = cacheVersion(process.env);
  * A production bundle built without the Supabase values builds all the same -
  * on a phone it stops at its first screen. Better to stop here, where somebody
  * is looking. The development server is left alone: there the app itself says
- * what is missing, with how to fix it, and picks up a corrected .env.
+ * what is missing, with how to fix it.
  */
 if (process.env.NODE_ENV === 'production') {
   const { errors, warnings } = checkBuildEnv(process.env);
