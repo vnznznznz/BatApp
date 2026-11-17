@@ -147,15 +147,18 @@ should ever have.
 | `npm run format`          | Rewrite files with Prettier                                 |
 | `npm test`                | Jest                                                        |
 | `npm run test:db`         | The database tests: migrations replayed in PGlite           |
-| `npm run verify`          | typecheck + lint + format check + tests (what CI runs)      |
+| `npm run verify`          | typecheck + lint + format check + tests (CI runs it too)    |
 | `npm run check:build-env` | Say whether `.env` has what a production build needs        |
 | `npm run generate:assets` | Redraw the app artwork from source                          |
 | `npm run generate:types`  | Regenerate `src/lib/database.types.ts` from the local stack |
 
-Run `npm run verify` before every commit. CI runs exactly the same command.
+Run `npm run verify` before every commit. CI runs the same command, and in a second job bundles
+the app for the web and for iOS (`npx expo export`): only the bundler notices an image that is not
+there or an import it cannot resolve, and nothing in `verify` builds the app.
 
 The concurrency tests (`src/tests/db/concurrency.pg.test.mjs`) need a real Postgres, because the
-races they check cannot happen on PGlite's single connection. CI provides one. Locally they are
+races they check cannot happen on PGlite's single connection. CI provides one - version 17, which
+is what the local Supabase stack and a new hosted project run. Locally they are
 skipped, saying so, unless you point them at a server where they may create a scratch database:
 
 ```bash
