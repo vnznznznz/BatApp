@@ -816,6 +816,13 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
   from the removal, the operator's decision - so that the same email cannot simply sign up again.
   The ban used to be a hundred years, set by hand, and kept for ever. When it runs out, the sign-in
   is deleted.
+- **Accounts deleted for someone.** An account its owner asks to have deleted, a child's, an
+  address that was not the person's to use: the operator deletes these with
+  `private.delete_account`, which bans nothing and takes the account's rows in the order the
+  courier's own deletion takes them. The dashboard's "Delete user" is not used for it: review
+  showed it deadlocking against a letter that lands at that moment, and leaving an entry in the
+  sign-in log that names the person (17 November 2026; the steps are in
+  `docs/store/gdpr-records.md`, 5.4).
 - **Sessions.** A session, with the IP address and device it was opened from, lasted until its
   owner signed out - on a phone lost years ago, for ever. Supabase limits that only on its paid
   plans, so the tidy-up ends a session nobody has used for 90 days

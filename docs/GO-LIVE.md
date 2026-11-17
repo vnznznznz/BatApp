@@ -211,8 +211,16 @@ been deleted, and its username is free: it may belong to someone else by now.
   sent or received, on both sides; the reports about them stay, without their id. Their sign-in
   stays behind, banned for two years from the removal (`private.ban_period()`), so that the same
   email cannot simply sign up again, and the daily tidy-up deletes it when the ban runs out. The
-  privacy policy says exactly this, so do not ban for longer by hand. (Authentication → Users →
-  Delete user also works, but frees the email at once.)
+  privacy policy says exactly this, so do not ban for longer by hand.
+
+  To delete an account without a ban instead - at its owner's request, a child's account, an
+  address that was not the person's to sign up with - there is
+  `select private.delete_account('<id>');`, with the steps around it in
+  `docs/store/gdpr-records.md`, 5.4. It frees the email address at once. Use the dashboard's
+  button (Authentication → Users → Delete user) for neither: it deletes with one statement that
+  reaches the account's rows in a different order from everything else here, so that a letter
+  landing at that moment makes one of the two fail, and it writes an entry of its own into the
+  sign-in log, with the person's id and email address.
 
 - **A threat** — stop the account at once, but delete nothing yet: removing it takes every letter
   between the two of them with it, and the report keeps only the one reported.

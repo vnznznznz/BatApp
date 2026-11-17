@@ -677,7 +677,8 @@ The "kept" list follows the code as of the housekeeping migration
 (`20261104120000_privacy_housekeeping.sql`, up to commit acd4efe): sign-in records 30 days and
 deleted with the account, removed accounts banned for `private.ban_period()`, two years from the
 removal, and then deleted by the tidy-up. Sessions are not on the list because they go with the
-account, both in the app and when the operator deletes it in the dashboard; a removed account's
+account, both in the app and when the operator deletes it at someone's request
+(`private.delete_account`, `gdpr-records.md` 5.4); a removed account's
 sessions are deleted by the tidy-up once unused for 90 days, like any others (privacy policy 3.8). The single-letter
 sentence follows privacy policy 3.4: there is no per-letter deletion, by the user or on request.
 When any of that changes, change this list, `support-page.md`, the privacy policy (sections 3.4,
@@ -711,7 +712,8 @@ A short note, not legal advice.
 - **What to do.** Invite no one under 13, in the US or anywhere: the house rules admit no one
   younger. Do not post the TestFlight link where it could reach children. If the operator learns
   that an account belongs to someone under 13, wherever they live, delete it without a ban
-  (Authentication → Users → Delete user, not `private.remove_account`): the two-year ban is only
+  (`select private.delete_account('<id>');` as in `gdpr-records.md` 5.4 - not
+  `private.remove_account`, and not the dashboard's Delete user): the two-year ban is only
   for accounts removed for breaking the rules (privacy policy 3.8). For a child in the US, COPPA
   would also require a parent's verifiable consent, which the app has no way to collect. Build
   nothing for COPPA unless the app is ever offered in the US.

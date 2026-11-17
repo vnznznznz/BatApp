@@ -318,7 +318,9 @@ longer by hand. Keeping the account record with its password hash is deliberate:
 ban could be got round. The sessions end after 90 days unused, like any others (tidy_up); that a
 refused renewal does not count as use (updated_at) is still to check (gdpr-records.md V7). What the
 police are to have of them, the runbook exports in the week between the suspension and the removal.
-Other deletions (the user's own, or Authentication → Users → Delete user) set no ban. -->
+Other deletions set no ban: the user's own, and the operator's at someone's request, which is
+"select private.delete_account('<id>');" (gdpr-records.md 5.4) and never the dashboard's
+Authentication → Users → Delete user. -->
 
 **Legal basis:** Art. 6(1)(f) GDPR – the legitimate interest in protecting everyone else from
 someone who was removed for breaking the rules.
@@ -364,8 +366,12 @@ system (the so-called user agent).
   project, both skip the step without an error; tidy_up then names it in what it returns. The
   check: "select private.tidy_up();" must return an empty list (docs/GO-LIVE.md, "Setting up the
   hosted project", step 4; locally it is empty). delete_own_account finds the entries
-  by payload->>'actor_id'; entries without an actor_id that still hold the email address go only
-  after 30 days. ip_address is empty locally, hence "where recorded".
+  by payload->>'actor_id', and so does private.delete_account, the operator's deletion at
+  someone's request. Entries that name a person without that id were seen on the local stack only
+  where the operator had done something to the account through the dashboard or the admin API
+  (user_signedup, user_modified, user_deleted): they name the person in payload->'traits', and go
+  with the statement in gdpr-records.md 5.4, step 3, or else after 30 days. ip_address is empty
+  locally, hence "where recorded".
 - Server logs: look up the retention of the chosen Supabase plan and write it in (e.g. "after one
   day"); keep "after a short time" only if it really is a few days. Also where these logs are stored
   (section 8). -->
@@ -671,8 +677,9 @@ limit under Art. 8 GDPR (Germany among others); the FADP names no age, what coun
 of judgement (Art. 16 Civil Code). Deleting an account when the parents ask is an operator
 decision: confirm it. No one under 13 is admitted, in the USA or anywhere (COPPA concerns children
 under 13; whether the rule, with the deletion, is enough: legal check). The account of anyone under
-13 is deleted without a ban (Authentication → Users → Delete user, or the user's own deletion), not
-with private.remove_account; gdpr-records.md 5.4 has the steps. -->
+13 is deleted without a ban ("select private.delete_account('<id>');", or the user's own deletion),
+not with private.remove_account and not with the dashboard's Delete user; gdpr-records.md 5.4 has
+the steps. -->
 
 ## 11. Your rights
 

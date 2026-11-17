@@ -427,9 +427,15 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
 - **Löschfristen:**
   - Anmeldeprotokoll: **30 Tage** (`private.sign_in_record_retention()`). Der tägliche Auftrag
     `tidy_up` (pg_cron-Job `tidy-up`, `43 4 * * *`) löscht ältere Einträge. `delete_own_account()`
-    löscht die Einträge des Kontos sofort mit, erkannt an `payload->>'actor_id'`; Einträge ohne
-    `actor_id`, die trotzdem die E-Mail-Adresse enthalten, gehen erst nach den 30 Tagen. Die Tabelle
-    selbst hat keine Nutzer-ID-Spalte und keinen Fremdschlüssel, und GoTrue räumt sie nicht auf.
+    löscht die Einträge des Kontos sofort mit, erkannt an `payload->>'actor_id'`, und ebenso
+    `private.delete_account`, mit dem der Betreiber ein Konto auf Anfrage löscht (5.4). Einträge,
+    die eine Person ohne diese ID nennen, gab es am lokalen Stack nur dort, wo der Betreiber
+    selbst über das Dashboard oder die Admin-API etwas an dem Konto getan hatte (`user_signedup`,
+    `user_modified`, `user_deleted`, mit `actor_username` = `service_role`); sie nennen die
+    Person in `traits` (`user_id`, `user_email`) und gehen mit der Anweisung in 5.4, Schritt 3,
+    sonst erst nach den 30 Tagen. `private.remove_account` lässt alle Einträge bewusst stehen
+    (V7). Die Tabelle selbst hat keine Nutzer-ID-Spalte und keinen Fremdschlüssel, und GoTrue
+    räumt sie nicht auf.
   - **Vorbehalt:** Hat die Rolle `postgres` auf dem gehosteten Projekt kein `DELETE`-Recht auf
     `auth.audit_log_entries` (lokal hat sie es), überspringen beide Funktionen diesen Schritt ohne
     Fehler: `tidy_up` nennt ihn dann in seinem Ergebnis (`sign-in log: …`, 4.5),
@@ -655,6 +661,10 @@ fehlt, steht in 4.8.
   Trigger gibt einem Freund die Fledermaus zurück, deren Brief noch flog.
 - **Entfernen durch den Betreiber** (`private.remove_account`): löscht dasselbe und sperrt die
   Anmeldung für genau `private.ban_period()` (zwei Jahre ab dem Entfernen).
+- **Löschen durch den Betreiber auf Anfrage** (`private.delete_account`, 5.4): löscht wie die
+  Kontolöschung in der App, mit denselben Sperren in derselben Reihenfolge und samt den Einträgen
+  des Kontos im Anmeldeprotokoll, und sperrt nichts. Der Knopf „Delete user“ im Dashboard tut
+  das nicht und wird dafür nicht benutzt.
 - **Täglicher Auftrag** `private.tidy_up()` (pg_cron-Job `tidy-up`, `43 4 * * *`, UTC): löscht
   Einträge im Anmeldeprotokoll nach 30 Tagen; entfernt die Namen von der Registrierung aus
   `auth.users` und `auth.identities`; löscht Sitzungen, die 90 Tage nicht benutzt wurden, mit ihren
@@ -866,15 +876,22 @@ nutzt (4.4).
    Antwort notieren, ohne die Daten selbst aufzubewahren.
 
 Die Abfrage, am 4. November 2026 am lokalen Stack geprüft (in einer schreibgeschützten Transaktion,
-für ein Konto mit Briefen, Sitzungen und Anmeldeprotokoll, eines ohne und eine unbekannte Adresse).
-Nur die E-Mail-Adresse in der dritten Zeile ersetzen. Das Anmeldeprotokoll findet sie über die
-Nutzer-ID und über die E-Mail-Adresse, damit auch Einträge ohne `actor_id` dabei sind:
+für ein Konto mit Briefen, Sitzungen und Anmeldeprotokoll, eines ohne und eine unbekannte Adresse)
+und am 17. November 2026 noch einmal, mit den beiden Änderungen dieses Tages. Nur
+`<E-Mail-Adresse des Kontos>` ersetzen; es steht an genau einer Stelle, oben in `me`. Groß- und
+Kleinschreibung spielt dabei keine Rolle: GoTrue speichert jede Adresse in Kleinbuchstaben, und
+die Abfrage vergleicht so (vorher fand eine Adresse mit Großbuchstaben nichts, und das sah aus wie
+„kein Konto“). Das Anmeldeprotokoll findet sie über die Nutzer-ID und über die E-Mail-Adresse,
+auch in `traits`: Dort, und nur dort, nennen die Einträge die Person, die der Betreiber über das
+Dashboard auslöst (`user_signedup`, `user_modified`, `user_deleted`; sie stehen unter
+`service_role`, nicht unter der ID des Kontos):
 
 ```sql
 -- Auskunft nach Art. 25 DSG und Art. 15 DSGVO: alles, was die Datenbank zu einem Konto hält.
 -- Liest nur.
 with me as (
-  select id, id::text as id_text, email from auth.users where email = '<E-Mail-Adresse des Kontos>'
+  select id, id::text as id_text, email from auth.users
+  where lower(email) = lower('<E-Mail-Adresse des Kontos>')
 )
 select jsonb_pretty(jsonb_build_object(
   'konto', (
@@ -903,7 +920,11 @@ select jsonb_pretty(jsonb_build_object(
       'zeit', a.created_at, 'ereignis', a.payload ->> 'action', 'ip', a.ip_address)
       order by a.created_at)
     from auth.audit_log_entries a
-    join me on me.id_text = a.payload ->> 'actor_id' or me.email = a.payload ->> 'actor_username'),
+    join me
+      on me.id_text = a.payload ->> 'actor_id'
+      or me.email = a.payload ->> 'actor_username'
+      or me.id_text = a.payload -> 'traits' ->> 'user_id'
+      or me.email = a.payload -> 'traits' ->> 'user_email'),
   'profil', (
     select jsonb_build_object(
       'benutzername', p.username, 'anzeigename', p.display_name,
@@ -960,9 +981,10 @@ select jsonb_pretty(jsonb_build_object(
 ```
 
 Ist das Konto schon gelöscht, findet die Abfrage nichts mehr. Was dann noch übrig sein kann: das
-Anmeldeprotokoll (`where payload ->> 'actor_username' = '<E-Mail-Adresse>'`, bis zu 30 Tage) und
-Meldungen. Meldungen über die Person tragen keine Nutzer-ID mehr, nur Benutzername und Anzeigename
-von damals – und Benutzernamen werden nach einer Löschung neu vergeben; nur mit Vorsicht zuordnen.
+Anmeldeprotokoll (bis zu 30 Tage; die Bedingung aus 5.4, Schritt 3, mit `select *` statt `delete`
+findet die Einträge) und Meldungen. Meldungen über die Person tragen keine Nutzer-ID mehr, nur
+Benutzername und Anzeigename von damals – und Benutzernamen werden nach einer Löschung neu
+vergeben; nur mit Vorsicht zuordnen.
 Meldungen, die die Person selbst gemacht hat, lassen sich gar nicht mehr zuordnen: Eine Meldung
 speichert über die meldende Person nur `reporter_id`, und die ist dann leer. Ist das Konto entfernt
 und noch gesperrt, findet die Abfrage den Kontodatensatz, die Identität, die Sitzungen und das
@@ -972,24 +994,60 @@ Anmeldeprotokoll weiter, aber kein Profil mehr.
 
 1. Meist kann die Person selbst löschen: Your profile → Delete my account. Kommt die Bitte per
    E-Mail: Eingang notieren, Identität wie in 5.3 klären; Frist wie dort.
-2. **Konto löschen:** Dashboard → Authentication → Users → Delete user. Das gibt die E-Mail-Adresse
-   frei und löscht per Kaskade wie `delete_own_account()` Profil, Fledermäuse, Freundschaften,
-   Blockierungen und alle Briefe auf beiden Seiten. (`private.remove_account` ist für entfernte
-   Konten und sperrt die Adresse zwei Jahre ab dem Entfernen: V7. Bei einer Löschanfrage nicht
-   sperren.)
-3. **Anmeldeprotokoll löschen.** Anders als `delete_own_account()` lässt das Löschen im Dashboard
-   die Einträge stehen; der tägliche Auftrag löscht sie erst nach 30 Tagen. Auf Wunsch sofort
-   (das geht, wenn `select private.tidy_up();` keinen Schritt `sign-in log` meldet, 5.2; V8):
+2. **Konto löschen**, im SQL-Editor des Supabase-Dashboards: erst die Nutzer-ID zur Adresse
+   nachsehen, dann löschen.
+
+   ```sql
+   select id, email, banned_until from auth.users
+   where lower(email) = lower('<E-Mail-Adresse>');
+
+   select private.delete_account('<Nutzer-ID>');
+   ```
+
+   `private.delete_account` löscht wie `delete_own_account()`: die Anmeldung, per Kaskade Profil,
+   Fledermäuse, Freundschaften, Blockierungen und alle Briefe auf beiden Seiten, und die Einträge
+   im Anmeldeprotokoll, die das Konto selbst ausgelöst hat. Es sperrt nichts: Die E-Mail-Adresse
+   ist sofort wieder frei. Gibt es das Konto nicht (mehr), meldet es
+   `there is no account <Nutzer-ID>` und ändert nichts. Zeigt die erste Abfrage in `banned_until`
+   ein Datum in der Zukunft, ist das Konto gesperrt oder wegen eines Regelverstoßes entfernt
+   (V7): `delete_account` löscht es trotzdem, und die Sperre mit ihm. Dann erst abwägen, ob die
+   Sperre der Löschung vorgeht („Die anderen Rechte“ unten), und das Ergebnis mitteilen.
+
+   **Nicht** den Knopf im Dashboard nehmen (Authentication → Users → Delete user). Er löscht mit
+   einer einzigen Anweisung, die die Zeilen des Kontos in einer anderen Reihenfolge erreicht als
+   alles andere hier: Landet in dem Moment ein Brief, scheitert eines von beiden (Deadlock; in
+   der Prüfung nachgestellt). `delete_account` nimmt sie in derselben Reihenfolge wie die
+   Kontolöschung in der App (`private.lock_courier_rows`). Außerdem schreibt der Knopf selbst
+   einen Eintrag `user_deleted` mit Nutzer-ID und E-Mail-Adresse der Person ins Anmeldeprotokoll.
+   (`private.remove_account` ist für entfernte Konten und sperrt die Adresse zwei Jahre ab dem
+   Entfernen: V7. Bei einer Löschanfrage nicht sperren.)
+
+3. **Im Anmeldeprotokoll löschen, was die Person sonst noch nennt.** `delete_account` findet die
+   Einträge des Kontos an ihrer `actor_id`. Was der Betreiber selbst über das Dashboard an dem
+   Konto getan hat – angelegt, geändert, früher einmal mit dem Knopf gelöscht –, steht dort
+   unter `service_role` statt unter der ID des Kontos und nennt die Person nur in `traits`
+   (`user_id`, `user_email`). Diese Anweisung erfasst beides; der tägliche Auftrag käme erst nach
+   30 Tagen:
 
    ```sql
    delete from auth.audit_log_entries
    where payload ->> 'actor_id' = '<Nutzer-ID>'
-      or payload ->> 'actor_username' = '<E-Mail-Adresse>';
+      or payload ->> 'actor_username' = lower('<E-Mail-Adresse>')
+      or payload -> 'traits' ->> 'user_id' = '<Nutzer-ID>'
+      or payload -> 'traits' ->> 'user_email' = lower('<E-Mail-Adresse>');
    ```
 
+   Scheitert sie mit `permission denied for table audit_log_entries`, darf `postgres` auf dem
+   gehosteten Projekt dort nicht löschen. Dann hat auch `delete_account` diese Einträge stehen
+   lassen, ohne es zu melden, und `select private.tidy_up();` nennt den Schritt `sign-in log`
+   (5.2; V8): Die Einträge bleiben, bis das mit Supabase geklärt ist.
+
 4. **Sagen, was bleibt und warum** (Art. 17 Abs. 3): Meldungen bis zu 180 Tage (V6); Server-
-   Protokolle und Sicherungen, bis sie automatisch gelöscht oder überschrieben werden; Einträge im
-   Anmeldeprotokoll ohne Nutzer-ID bis zu 30 Tage; der E-Mail-Verkehr zur Anfrage als Nachweis.
+   Protokolle und Sicherungen, bis sie automatisch gelöscht oder überschrieben werden; der
+   E-Mail-Verkehr zur Anfrage als Nachweis. Im Anmeldeprotokoll nennt nach den Schritten 2 und 3
+   nichts mehr die Person. Nur wenn Schritt 3 scheiterte, stehen ihre Einträge dort noch, mit
+   Nutzer-ID und E-Mail-Adresse: Dann genau das sagen, und Bescheid geben, sobald sie gelöscht
+   sind.
 5. **Empfängern Bescheid geben** (Art. 19), soweit Daten weitergegeben wurden und das möglich ist –
    etwa der Polizei bei einer übergebenen Meldung (ob nötig: zu prüfen).
 6. Die Person von Testerlisten nehmen (Play Console, TestFlight), wenn sie dort steht.
@@ -1000,10 +1058,10 @@ Sperre**: Hat ein Kind unter 16 ohne Erlaubnis ein Konto, wird es auf Bitte der 
 nachdem geklärt ist, dass die Bitte von ihnen kommt (Datenschutzerklärung 10). Hat jemand eine
 fremde E-Mail-Adresse registriert, wird das Konto auf Bitte des Inhabers der Adresse gelöscht
 (3.10). Erfährt der Betreiber, dass jemand jünger als 13 ist, löscht er das Konto
-(Datenschutzerklärung 10): Dashboard → Authentication → Users → Delete user, oder die Person löscht
-es selbst. Nicht mit `private.remove_account`: Dessen Sperre gilt nur für Konten, die wegen
-Regelverstößen entfernt werden (V7, Datenschutzerklärung 3.8), und hielte die E-Mail-Adresse eines
-Kindes zwei Jahre gespeichert.
+(Datenschutzerklärung 10), ebenfalls mit `select private.delete_account('<Nutzer-ID>');` und
+Schritt 3, oder die Person löscht es selbst. Nicht mit `private.remove_account`: Dessen Sperre
+gilt nur für Konten, die wegen Regelverstößen entfernt werden (V7, Datenschutzerklärung 3.8), und
+hielte die E-Mail-Adresse eines Kindes zwei Jahre gespeichert.
 
 Die anderen Rechte: **Berichtigung** (Art. 32 Abs. 1 DSG, Art. 16 DSGVO) – Anzeigename und Stadt
 ändert die Person selbst; Benutzername oder E-Mail-Adresse ändert der Betreiber im Dashboard (Weg zu
@@ -1150,7 +1208,8 @@ Betreiber noch selbst tut:
 - **Nach zwei Jahren** ist sonst nichts zu tun. Bleibt eine abgelaufene Sperre doch stehen, läuft
   `tidy_up` nicht, oder es überspringt den Schritt: Dann nennt `select private.tidy_up();` ihn mit
   Grund (`expired bans: …`), oder der Fehler steht in `cron.job_run_details`. Bis das gelöst ist,
-  den Datensatz von Hand löschen (Dashboard → Authentication → Users → Delete user).
+  den Datensatz von Hand löschen: `select private.delete_account('<Nutzer-ID>');` (5.4, Schritt 2;
+  nicht mit dem Knopf im Dashboard).
 
 ### 5.7 Regelmäßig
 

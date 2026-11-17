@@ -347,7 +347,9 @@ ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 9
 Benutzung wie alle anderen (tidy_up); dass eine abgelehnte Erneuerung nicht als Benutzung zählt
 (updated_at), ist noch zu prüfen (gdpr-records.md V7). Was die Polizei davon bekommen soll,
 exportiert das Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
-(durch die Person selbst oder Authentication → Users → Delete user) sperren nichts. -->
+sperren nichts: die durch die Person selbst und die durch den Betreiber auf jemandes Bitte, also
+"select private.delete_account('<id>');" (gdpr-records.md 5.4) und nie der Knopf Authentication →
+Users → Delete user im Dashboard. -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – das berechtigte Interesse, alle anderen vor
 jemandem zu schützen, der wegen Regelverstößen entfernt wurde.
@@ -396,8 +398,12 @@ oder Betriebssystems (den sogenannten User-Agent).
   das Recht, überspringen beide den Schritt ohne Fehler; tidy_up nennt ihn dann in seiner Rückgabe.
   Die Prüfung: "select private.tidy_up();" muss eine leere Liste ergeben (docs/GO-LIVE.md, "Setting
   up the hosted project", Schritt 4; lokal ist sie leer).
-  delete_own_account erkennt die Einträge an payload->>'actor_id'; Einträge ohne actor_id, die
-  trotzdem die E-Mail-Adresse enthalten, gehen erst nach 30 Tagen. ip_address ist lokal leer, darum
+  delete_own_account erkennt die Einträge an payload->>'actor_id', und ebenso
+  private.delete_account, das Löschen durch den Betreiber auf jemandes Bitte. Einträge, die eine
+  Person ohne diese ID nennen, gab es am lokalen Stack nur dort, wo der Betreiber über das
+  Dashboard oder die Admin-API etwas an dem Konto getan hatte (user_signedup, user_modified,
+  user_deleted): Sie nennen die Person in payload->'traits' und gehen mit der Anweisung in
+  gdpr-records.md 5.4, Schritt 3, sonst erst nach 30 Tagen. ip_address ist lokal leer, darum
   "gegebenenfalls IP-Adresse".
 - Server-Protokolle: Aufbewahrungsdauer des gewählten Supabase-Tarifs nachsehen und eintragen
   (z. B. "nach einem Tag"); "nach kurzer Zeit" nur stehen lassen, wenn es wirklich wenige Tage sind.
@@ -733,9 +739,10 @@ festlegt, sondern die höchste Grenze nach Art. 8 DSGVO (unter anderem in Deutsc
 kein Alter, es kommt auf die Urteilsfähigkeit an (Art. 16 ZGB). Die Zusage, ein Konto auf Bitte der
 Eltern zu löschen, ist eine Entscheidung des Betreibers: bestätigen. Niemand unter 13 wird
 zugelassen, in den USA wie anderswo (COPPA betrifft Kinder unter 13; ob die Regel samt Löschen
-genügt, rechtlich prüfen). Das Konto von jemandem unter 13 wird ohne Sperre gelöscht
-(Authentication → Users → Delete user oder das Löschen durch die Person selbst), nicht mit
-private.remove_account; die Schritte stehen in gdpr-records.md 5.4. -->
+genügt, rechtlich prüfen). Das Konto von jemandem unter 13 wird ohne Sperre gelöscht ("select
+private.delete_account('<id>');" oder das Löschen durch die Person selbst), nicht mit
+private.remove_account und nicht mit dem Knopf Delete user im Dashboard; die Schritte stehen in
+gdpr-records.md 5.4. -->
 
 ## 11. Deine Rechte
 
