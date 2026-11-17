@@ -632,8 +632,12 @@ fehlt, steht in 4.8.
 - Inhalte in POST-Bodies statt in URLs, keine Parameter in den Postgres-Protokollen (V8).
 - Auf Android fordert die App nur die Berechtigung `INTERNET` an: `app.json` sperrt
   `SYSTEM_ALERT_WINDOW`, `VIBRATE`, `READ_EXTERNAL_STORAGE` und `WRITE_EXTERNAL_STORAGE`, die Expos
-  Vorlage und `expo-file-system` sonst ins Manifest brächten, obwohl die App sie nicht nutzt; das
-  erzeugte Manifest behält nur `INTERNET` (Commit 191bc50). `src/tests/app-config.test.ts` schlägt
+  Vorlage und `expo-file-system` sonst ins Manifest brächten (Commit 191bc50), und `USE_BIOMETRIC`
+  und `USE_FINGERPRINT`, die `expo-secure-store` über `androidx.biometric` mitbringt – die App
+  nutzt nichts davon. Im fertigen Manifest bleibt daneben voraussichtlich nur
+  `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` aus `androidx.core`: eine
+  Berechtigung der App an sich selbst, die niemandem sonst etwas erlaubt. Zu prüfen am ersten
+  Build (google-play.md, Abschnitt 3). `src/tests/app-config.test.ts` schlägt
   fehl, wenn sich diese Zeilen ändern, ebenso bei Face ID (4.1).
 - Kontakt- und Datenschutz-Links kommen aus der Build-Konfiguration (`src/lib/links.ts`); Angaben
   zum Betreiber stehen weder im Code noch im Repository.

@@ -329,15 +329,24 @@ on the first build, in Play Console's App bundle explorer: that the merged manif
 The app itself needs only `INTERNET`. The Android template that `expo prebuild` uses
 (`node_modules/expo/template.tgz`, SDK 57) also lists `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
 `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (the last two only up to Android 12L), and
-`expo-file-system`, which `expo` depends on, adds the two storage permissions again. **Done:**
-`app.json` now lists those four under `android.blockedPermissions` (commit 191bc50), and
-`src/tests/app-config.test.ts` fails if that list changes or `android.permissions` appears. Expo
-writes each of them into the app's manifest with `tools:node="remove"`, which takes it out of the
-merged manifest too, whichever library asked for it (`npx expo config --type introspect` shows
-`INTERNET` and the four removals). So the merged manifest should keep `INTERNET` alone. **To
-check** on the first build, in App bundle explorer: that it does, that no other library has added
-a permission of its own, and that the build still runs. The app never asks for any permission at
-run time.
+`expo-file-system`, which `expo` depends on, adds the two storage permissions again. Two more come
+in where the generated manifest cannot show them: `expo-secure-store` pulls in
+`androidx.biometric:biometric:1.1.0`, whose own manifest declares `USE_BIOMETRIC` and
+`USE_FINGERPRINT`, and Gradle merges a library's manifest into the app's only when the app is
+built. The app never uses biometrics (`requireAuthentication` appears nowhere in `src/`). **Done:**
+`app.json` lists all six under `android.blockedPermissions` (the first four since commit
+191bc50), and `src/tests/app-config.test.ts` fails if that list changes or `android.permissions`
+appears. Expo writes each of them into the app's manifest with `tools:node="remove"`, which takes
+it out of the merged manifest too, whichever library asked for it
+(`npx expo config --type introspect` shows `INTERNET` and the six removals). One other permission
+is expected to stay: `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which
+`androidx.core` declares under every app's own name. It is private to the app (protection level
+`signature`), opens nothing to anyone, and must not be blocked. So the merged manifest should keep
+`INTERNET` and that one. **To check** on the first build, in App bundle explorer: that it does,
+that no other library has added a permission of its own, and that the build still runs. (The two
+biometric permissions and the app's own one were traced through the libraries' sources, not seen
+in a build: no Android build has been made yet.) The app never asks for any permission at run
+time.
 
 ### The other declarations
 
@@ -751,9 +760,11 @@ A short note, not legal advice.
       `EXPO_PUBLIC_PRIVACY_POLICY_URL` (the planned address at the top): settings of the EAS
       environment, never committed.
 - [x] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
-      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID). Done in
-      commit 191bc50, guarded by `src/tests/app-config.test.ts`.
-- [ ] On the first build, the merged manifest checked in App bundle explorer: `INTERNET` only, no
+      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID; commit
+      191bc50), and for `USE_BIOMETRIC` and `USE_FINGERPRINT`, which `expo-secure-store` brings in
+      through `androidx.biometric`. Guarded by `src/tests/app-config.test.ts`.
+- [ ] On the first build, the merged manifest checked in App bundle explorer: `INTERNET` and the
+      app's own `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, nothing else, no
       `AD_ID`.
 - [ ] Internal testing: a tester list (at most 100 Google account email addresses), kept only in
       Play Console, and the opt-in link sent to those people. No one under 13, and anyone under 16
@@ -777,9 +788,10 @@ Collected from above, so none is lost:
 6. Graphic sizes, the category (Communication or Social) and tags.
 7. Google's current privacy policy requirements, and the account deletion page requirements.
 8. Whether pre-launch reports run on internal testing, and turning them off.
-9. The built app's permissions: that the merged manifest keeps only `INTERNET` now that `app.json`
-   blocks the template's other four (commit 191bc50), that no library adds one of its own, and that
-   there is no `AD_ID` permission; that blocking them breaks nothing.
+9. The built app's permissions: that the merged manifest keeps only `INTERNET` and the app's own
+   `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` now that `app.json` blocks the
+   other six, that no library adds one of its own, and that there is no `AD_ID` permission; that
+   blocking them breaks nothing.
 10. The IARC category names, the exact questions, and whether a self-chosen city counts as "shares
     location". The ratings the certificate gives, especially the USK's. That a rating cannot be
     overridden upwards.
