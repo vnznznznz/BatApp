@@ -606,9 +606,10 @@ Liste der Städte stammt – sie liegt in der Datenbank von Night Courier, und G
 gefragt.
 
 <!-- PRÜFEN:
-- Supabase-DPA: erst veröffentlichen, wenn der DPA von Supabase (mit den
-  Standardvertragsklauseln) unterzeichnet ist, gdpr-records.md 5.1; bis dahin stimmt "auf Grundlage
-  eines Vertrags zur Auftragsverarbeitung" oben nicht.
+- Supabase-DPA: erst mit LAUNCH_STATE=live bauen (docs/GO-LIVE.md, "Where the web pages live"),
+  wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet ist, gdpr-records.md
+  5.1; bis dahin stimmt "auf Grundlage eines Vertrags zur Auftragsverarbeitung" oben nicht, und die
+  Seite trägt den Hinweis, dass Night Courier noch nicht gestartet ist.
 - Supabase: Liste der Unterauftragsverarbeiter aufrufen (vermutlich https://supabase.com/legal/subprocessors)
   und hier verlinken; prüfen, ob dort ein Dienst vor der API (z. B. Cloudflare) oder ein
   Protokolldienst außerhalb der Schweiz steht.
@@ -652,9 +653,10 @@ gefragt.
   verarbeiten. Wie sie das absichern, steht in ihren eigenen Datenschutzbestimmungen.
 
 <!-- PRÜFEN:
-- Erst veröffentlichen, wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet
-  ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot einer Kopie der
-  Klauseln nicht. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
+- Erst mit LAUNCH_STATE=live bauen, wenn der DPA von Supabase (mit den Standardvertragsklauseln)
+  unterzeichnet ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot
+  einer Kopie der Klauseln nicht, und die Seite trägt den Hinweis, dass Night Courier noch nicht
+  gestartet ist. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
   Standardvertragsklauseln der EU anerkannt hat (Art. 16 Abs. 2 lit. d DSG).
 - Für Supabase Inc., Microsoft, GitHub, Inc., Apple und Google auf dataprivacyframework.gov
   nachsehen, ob sie für den Swiss-US Data Privacy Framework (und für die EU den EU-US Data Privacy

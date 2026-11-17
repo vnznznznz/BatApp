@@ -718,9 +718,10 @@ A short note, not legal advice.
 - [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE, "Before a
       second person can sign up"). Then change section 3.10 of both privacy policies as their TO
       CHECK and PRÜFEN comments say.
-- [ ] Supabase DPA signed before the privacy policy is published (`gdpr-records.md` 5.1), with
-      the safeguard for the USA that the privacy policy's section 8 names: until then, its sections
-      7 and 8 are untrue.
+- [ ] Supabase DPA signed before the web pages are rebuilt with `LAUNCH_STATE=live`
+      (`gdpr-records.md` 5.1; GO-LIVE, "Where the web pages live"), with the safeguard for the USA
+      that the privacy policy's section 8 names: until then, its sections 7 and 8 are untrue, and
+      every page carries the notice that Night Courier has not started.
 - [ ] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}` (planned:
       `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
       alongside), with the placeholders filled in only in the site repository `vnznznznz.github.io`,

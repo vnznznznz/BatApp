@@ -8,9 +8,16 @@
  * file here:
  *
  *   OPERATOR_NAME='…' OPERATOR_ADDRESS_DE='…' OPERATOR_ADDRESS_EN='…' \
- *   CONTACT_EMAIL='…' EFFECTIVE_DATE=2026-11-10 \
+ *   CONTACT_EMAIL='…' EFFECTIVE_DATE=2026-11-10 LAUNCH_STATE=before-launch \
  *   SITE_URL=https://vnznznznz.github.io/night-courier/ \
  *   npm run build:pages -- --out ../vnznznznz.github.io
+ *
+ * LAUNCH_STATE says whether Night Courier has started. The policy speaks in
+ * the present tense - a database in Zurich, a signed processing agreement -
+ * and the pages are public before any of that exists. With before-launch,
+ * every page says at its top that the app has not started and that nothing is
+ * processed yet; with live, the pages stand as written. There is no default:
+ * docs/GO-LIVE.md, "Where the web pages live", says when live becomes true.
  *
  * --out is the site repository's checkout. The pages go into its folder
  * night-courier/ (index.html is the help page), with a redirect at its root and
@@ -41,6 +48,7 @@ const REQUIRED = [
   'CONTACT_EMAIL',
   'EFFECTIVE_DATE',
   'SITE_URL',
+  'LAUNCH_STATE',
 ];
 
 function fail(message) {
@@ -64,6 +72,8 @@ if (missing.length) fail(`set ${missing.join(', ')} (see the comment at the top 
 const env = Object.fromEntries(REQUIRED.map((name) => [name, process.env[name].trim()]));
 if (!/^https:\/\/.+\/$/.test(env.SITE_URL)) fail('SITE_URL must be an https URL ending in /');
 if (!/^\d{4}-\d{2}-\d{2}$/.test(env.EFFECTIVE_DATE)) fail('EFFECTIVE_DATE must be YYYY-MM-DD');
+if (!['before-launch', 'live'].includes(env.LAUNCH_STATE))
+  fail('LAUNCH_STATE must be before-launch or live');
 
 // JavaScript rolls a day the month does not have into the next month: 30
 // February becomes 2 March, and the binding policy would carry a date nobody
@@ -119,6 +129,28 @@ th { background: color-mix(in srgb, var(--line) 40%, transparent); }
 code { font-size: .9em; }
 nav { font-size: .95rem; margin-bottom: 1.5rem; color: var(--muted); }`;
 
+const NOTICE_STYLE = `.notice { margin: 0 0 1.5rem; padding: .7rem .9rem; border: 1px solid var(--line); border-left: .3rem solid var(--accent); }`;
+
+/**
+ * What every page says at its top until Night Courier has started. Each is
+ * true on its own: no hosted project, so no accounts and nothing the app could
+ * process. Opening the page itself is another matter (GitHub logs the visit),
+ * and the policy's section on the web pages covers that already.
+ */
+const NOTICES = {
+  policy: {
+    de: '<strong>Night Courier ist noch nicht gestartet.</strong> Diese Erklärung beschreibt, wie die App ab ihrem Start mit deinen Daten umgeht. Bis dahin gibt es keine Konten, und die App verarbeitet keine personenbezogenen Daten.',
+    en: '<strong>Night Courier has not started yet.</strong> This policy describes how the app will handle your data from the day it starts. Until then there are no accounts, and the app processes no personal data.',
+  },
+  help: {
+    de: '<strong>Night Courier ist noch nicht gestartet.</strong> Was diese Seite über die App und deine Daten sagt, gilt ab ihrem Start. Bis dahin gibt es keine Konten, und die App verarbeitet keine personenbezogenen Daten.',
+    en: '<strong>Night Courier has not started yet.</strong> What this page says about the app and your data holds from the day it starts. Until then there are no accounts, and the app processes no personal data.',
+  },
+};
+
+const notice = (kind, lang) =>
+  env.LAUNCH_STATE === 'live' ? '' : `<p class="notice" role="note">${NOTICES[kind][lang]}</p>\n`;
+
 const page = ({ lang, title, nav, body }) => `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -126,7 +158,7 @@ const page = ({ lang, title, nav, body }) => `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <style>
-${STYLE}
+${body.includes('class="notice"') ? `${STYLE}\n${NOTICE_STYLE}` : STYLE}
 </style>
 </head>
 <body>
@@ -172,7 +204,8 @@ for (const [lang, policy] of Object.entries(POLICIES)) {
     lang,
     title: policy.title,
     nav: policy.nav,
-    body: render(markdown),
+    // Directly under the navigation, above the heading: nobody reads past it.
+    body: notice('policy', lang) + render(markdown),
   });
 }
 
@@ -202,7 +235,11 @@ for (const [lang, policy] of Object.entries(POLICIES)) {
   // reworded without its link.
   const heading = german.match(/<h1>(.*?)<\/h1>/)?.[1];
   if (!heading) fail('support-page.md: the German half has no heading');
-  const body = `${english}<hr>\n<div lang="de" id="${anchor(heading)}">\n${german}</div>`;
+  // The notice is the first thing in each half, so that whoever follows the
+  // link to the German half lands on it.
+  const body =
+    `${notice('help', 'en')}${english}<hr>\n` +
+    `<div lang="de" id="${anchor(heading)}">\n${notice('help', 'de')}${german}</div>`;
   pages['index.html'] = page({ lang: 'en', title: 'Night Courier – help and contact', body });
 }
 
@@ -243,4 +280,10 @@ for (const [name, html] of Object.entries(pages))
 writeFileSync(join(OUT, 'index.html'), ROOT_PAGE);
 writeFileSync(join(OUT, '.nojekyll'), '');
 
-console.log(`Built ${Object.keys(pages).length + 1} pages into ${OUT}, dated ${POLICIES.en.date}.`);
+const state =
+  env.LAUNCH_STATE === 'live'
+    ? 'live: no notice'
+    : 'not started yet: every page carries the notice';
+console.log(
+  `Built ${Object.keys(pages).length + 1} pages into ${OUT}, dated ${POLICIES.en.date}, ${state}.`,
+);

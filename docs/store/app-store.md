@@ -650,8 +650,10 @@ it again from step 1, because Apple wants a demo account that does not expire.
       and the USA for Supabase Inc., Microsoft (the mailbox), GitHub (the web pages), and Apple and
       Google (for testers). Check Supabase's sub-processor list before writing "hosted in
       Switzerland" without that qualification.
-- [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the privacy policy is published: its
-      sections 7 and 8 say the agreement exists. **To check:** whether Supabase Inc. is certified
+- [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the web pages are rebuilt with
+      `LAUNCH_STATE=live` (GO-LIVE, "Where the web pages live"): sections 7 and 8 of the privacy
+      policy say the agreement exists, and until then every page carries the notice that Night
+      Courier has not started. **To check:** whether Supabase Inc. is certified
       under the Swiss-US Data Privacy Framework, or else which contractual safeguards (such as the
       standard contractual clauses) the DPA gives, and whether it covers disclosures under the Swiss
       DSG as well as the GDPR.

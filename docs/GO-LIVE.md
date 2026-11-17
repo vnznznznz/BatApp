@@ -54,7 +54,7 @@ cost on the iOS side; nothing in the app itself costs money.
 
 | Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                           |
 | --------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages` (see "Where the web pages live")                                                                                           |
+| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages`, as `LAUNCH_STATE=before-launch` until the project is in Zurich and the DPA is signed (see "Where the web pages live")     |
 | Support URL                       | Apple 1.2                                  | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/`, built from `docs/store/support-page.md`. It names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the privacy policy URL, if Apple wants the address on the Support URL itself |
 | Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                |
 | EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                |
@@ -96,8 +96,12 @@ Both recorded where the work is, not only here:
 4. Custom SMTP, then email confirmation on, then finish password reset.
 5. ~~Phase 10 push.~~ Dropped.
 6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
-7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026. The
-   rest of group C (the store answers in `docs/store/`) goes in when the accounts exist.
+7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026, to
+   be built with `LAUNCH_STATE=before-launch` for now. Once the project exists in Zurich (step 1)
+   and the DPA is signed and dated in `docs/store/gdpr-records.md`, 5.1 - and before anyone but
+   the operator has an account - rebuild them with `LAUNCH_STATE=live` and a new `EFFECTIVE_DATE`
+   (see "Where the web pages live"). The rest of group C (the store answers in `docs/store/`) goes
+   in when the accounts exist.
 8. `eas.json`, first build, TestFlight, invite the circle.
 
 ---
@@ -567,8 +571,9 @@ USD a year) is the cleaner foundation.
    Swiss-US Data Privacy Framework if Supabase is certified (**to check**), otherwise on the SCCs in
    their DPA, and for people in the EU on those SCCs. That is appropriate for a hobby project but
    worth knowing. The DPA has to be requested and signed
-   (`docs/store/gdpr-records.md`, 5.1) before the privacy policy is published, since its sections 7
-   and 8 say it exists.
+   (`docs/store/gdpr-records.md`, 5.1) before the web pages are rebuilt with `LAUNCH_STATE=live`,
+   since sections 7 and 8 of the privacy policy say it exists; until then the pages carry the
+   notice that Night Courier has not started (see "Where the web pages live").
 
 ### Before a second person can sign up: custom SMTP
 
@@ -698,17 +703,40 @@ transits it, so a content-free push keeps message text out of a US processor.
 
   ```bash
   OPERATOR_NAME=… OPERATOR_ADDRESS_DE=… OPERATOR_ADDRESS_EN=… CONTACT_EMAIL=… \
-  EFFECTIVE_DATE=YYYY-MM-DD SITE_URL=https://vnznznznz.github.io/night-courier/ \
+  EFFECTIVE_DATE=YYYY-MM-DD LAUNCH_STATE=before-launch \
+  SITE_URL=https://vnznznznz.github.io/night-courier/ \
   npm run build:pages -- --out ../vnznznznz.github.io
   ```
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
-  README has the command with the values filled in. `EFFECTIVE_DATE` is the policy's "Stand": move
-  it on whenever the policy's content changes, and tell users of an important change (policy
-  section 15). `scripts/build-store-pages.mjs` refuses to build while a value is missing, the
-  date is not one that exists (30 February), a placeholder is left over, a link within a page leads
-  nowhere, or a page would load anything from another site, and its test builds the pages with
-  made-up details on every `npm run verify`.
+  README has the command with the values filled in (written before `LAUNCH_STATE` existed: add it
+  there). `EFFECTIVE_DATE` is the policy's "Stand": move it on whenever the policy's content
+  changes, and tell users of an important change (policy section 15).
+
+  **`LAUNCH_STATE` says whether Night Courier has started,** and nothing is built without it. The
+  policy speaks in the present tense - a database in Zurich, a processing agreement with Supabase,
+  standard contractual clauses a reader can ask for a copy of - and the pages have been public
+  since 10 November 2026, before any of that existed. So:
+  - `LAUNCH_STATE=before-launch` puts a short notice on every page: directly under the navigation
+    of each policy, and at the top of each half of the help page, in the page's language. It says
+    that Night Courier has not started yet, that the page describes how the app will handle data
+    from its start, and that until then there are no accounts and the app processes no personal
+    data. Every rebuild uses this, whatever its reason, until the conditions below are met. (The
+    pages that went up on 10 November had no such notice; the first rebuild adds it.)
+  - `LAUNCH_STATE=live` builds the pages without the notice. Use it, together with a new
+    `EFFECTIVE_DATE`, only once both of these are true: the hosted project exists in
+    `eu-central-2` (Zurich), the region the policy names ("Setting up the hosted project", step 1
+    and its check); and the processing agreement with Supabase, the DPA with the standard
+    contractual clauses, is signed and its date is written into `docs/store/gdpr-records.md`,
+    section 5.1, first item ("hier das Datum eintragen"). The policy's PRÜFEN notes (TO CHECK in
+    the English version) list what else it says that has to be checked against the real project
+    by then. And do it before anyone but the operator gets an account: from that day "there are no
+    accounts" is the sentence that is not true.
+
+  `scripts/build-store-pages.mjs` refuses to build while a value is missing, the date is not one
+  that exists (30 February), a placeholder is left over, a link within a page leads nowhere, or a
+  page would load anything from another site, and its test builds the pages with made-up details
+  on every `npm run verify`.
 
   The Markdown sources here keep their placeholders; the filled-in pages, with the operator's name
   and postal address, live only in the site repository, never in this one. That repository is

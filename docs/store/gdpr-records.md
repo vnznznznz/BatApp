@@ -739,9 +739,12 @@ nutzt (4.4).
       geändert). Er enthält die Standardvertragsklauseln (Durchführungsbeschluss (EU) 2021/914;
       welche Module: zu prüfen; ob er die Anpassungen für die Schweiz enthält, mit denen der EDÖB
       die Klauseln anerkannt hat, Art. 16 Abs. 2 lit. d DSG: zu prüfen). Die unterzeichnete Fassung
-      privat ablegen und hier das Datum eintragen: \_\_\_\_\_\_\_\_. Vorher die Datenschutzerklärung
-      nicht veröffentlichen: Ihre Abschnitte 7 und 8 sagen, dass es den DPA mit den
-      Standardvertragsklauseln gibt (PRÜFEN-Hinweise dort).
+      privat ablegen und hier das Datum eintragen: \_\_\_\_\_\_\_\_. Vorher die Webseiten nur mit
+      `LAUNCH_STATE=before-launch` bauen (GO-LIVE, „Where the web pages live“): Die Abschnitte 7
+      und 8 der Datenschutzerklärung sagen, dass es den DPA mit den Standardvertragsklauseln gibt
+      (PRÜFEN-Hinweise dort), und nur der Hinweis oben auf jeder Seite sagt, dass Night Courier
+      noch nicht gestartet ist. Erst mit diesem Datum und dem Projekt in Zürich wird mit
+      `LAUNCH_STATE=live` gebaut.
 - [ ] Supabases Liste der Unterauftragsverarbeiter lesen; prüfen, ob vor der API ein Dienst wie
       Cloudflare liegt und wo Protokolle gespeichert werden; Abschnitt 2 und die
       Datenschutzerklärung (7, 8) ergänzen. Ob man sich für Änderungen der Liste benachrichtigen

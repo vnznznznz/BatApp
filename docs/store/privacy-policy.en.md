@@ -551,9 +551,10 @@ Receiving no data about you: Expo, a service I use to build the app, and GeoName
 cities comes from – the list is in Night Courier's database, and GeoNames is never asked.
 
 <!-- TO CHECK:
-- Supabase DPA: publish only after the Supabase DPA (with the standard contractual clauses) is
-  signed, gdpr-records.md 5.1; until then "on the basis of a data processing agreement" above is
-  untrue.
+- Supabase DPA: build with LAUNCH_STATE=live (docs/GO-LIVE.md, "Where the web pages live") only
+  after the Supabase DPA (with the standard contractual clauses) is signed, gdpr-records.md 5.1;
+  until then "on the basis of a data processing agreement" above is untrue, and the page carries
+  the notice that Night Courier has not started yet.
 - Supabase: open the list of sub-processors (probably https://supabase.com/legal/subprocessors) and
   link it here; check whether it lists a service in front of the API (such as Cloudflare) or a
   logging service outside Switzerland.
@@ -595,9 +596,10 @@ cities comes from – the list is in Night Courier's database, and GeoNames is n
   they safeguard it is set out in their own privacy policies.
 
 <!-- TO CHECK:
-- Publish only after the Supabase DPA (with the standard contractual clauses) is signed,
-  gdpr-records.md 5.1; until then the sentence on the USA, and the offer of a copy of the clauses,
-  are untrue. Check whether the DPA has the adjustments for Switzerland with which the FDPIC
+- Build with LAUNCH_STATE=live only after the Supabase DPA (with the standard contractual clauses)
+  is signed, gdpr-records.md 5.1; until then the sentence on the USA, and the offer of a copy of
+  the clauses, are untrue, and the page carries the notice that Night Courier has not started yet.
+  Check whether the DPA has the adjustments for Switzerland with which the FDPIC
   recognised the EU standard contractual clauses (Art. 16(2)(d) FADP).
 - For Supabase Inc., Microsoft, GitHub, Inc., Apple and Google, look up on dataprivacyframework.gov
   whether they are certified under the Swiss-US Data Privacy Framework (and, for the EU, the EU-US
