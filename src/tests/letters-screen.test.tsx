@@ -490,21 +490,158 @@ describe('LettersScreen', () => {
       expect(await screen.findByText('Landed in Vienna · 30 Dec 21:04')).toBeOnTheScreen();
     });
 
-    it('calls a letter landed once the arrival time the server set has passed', async () => {
+    /**
+     * Whether a letter has landed is the server's to say. The list used to
+     * call it landed the moment the phone's clock passed the arrival time,
+     * while the roost and the letter itself went on waiting for the server: on
+     * a phone running fast, a letter had "landed" here that was still in the
+     * air everywhere else. (Found in review.) Asking again is what lands it -
+     * the server delivers whatever is due before it answers.
+     */
+    it('asks the server again once a letter is due, and calls it landed when the server does', async () => {
       const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
-      mockedFetchSent.mockResolvedValue([letter]);
+      mockedFetchSent
+        .mockResolvedValueOnce([letter])
+        .mockResolvedValue([{ ...letter, delivered: true }]);
       await renderScreen(<LettersScreen />);
       await showSent();
       expect(
         await screen.findByText('In the air to Vienna · lands in less than a minute'),
       ).toBeOnTheScreen();
 
-      await letTimePass(31 * SECOND);
+      await letTimePass(29 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
 
+      await letTimePass(3 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
       expect(
         screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/any moment now/)).toBeNull();
+    });
+
+    it('does not call a letter landed before the server does, and keeps asking until it has', async () => {
+      const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
+      mockedFetchSent
+        .mockResolvedValueOnce([letter])
+        // The phone runs a little fast: by the server's clock it is not due yet.
+        .mockResolvedValueOnce([letter])
+        .mockResolvedValue([{ ...letter, delivered: true }]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in less than a minute');
+
+      // To the second: due by this clock, and not yet asked after.
+      await letTimePass(30 * SECOND);
+      expect(screen.getByText('In the air to Vienna · landing any moment now')).toBeOnTheScreen();
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
+
+      await letTimePass(2 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('In the air to Vienna · landing any moment now')).toBeOnTheScreen();
+      expect(screen.queryByText(/^Landed/)).toBeNull();
+      expect(screen.queryByText(/lands in any moment now/)).toBeNull();
+
+      await letTimePass(3 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(3);
+      expect(
+        screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+    });
+
+    it('asks again after a failed fetch while a letter is overdue', async () => {
+      const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
+      mockedFetchSent
+        .mockResolvedValueOnce([letter])
+        .mockRejectedValueOnce(new Error('No connection. Check your network and try again.'))
+        .mockResolvedValue([{ ...letter, delivered: true }]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in less than a minute');
+
+      await letTimePass(MINUTE);
+
+      expect(
+        screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
+    });
+
+    it('waits for the letter that lands first when several are in the air', async () => {
+      // Listed newest first, as the server lists them, which is not the order
+      // they land in: the one that lands first is neither the first row nor
+      // the last, and a letter that landed long ago comes after them all.
+      const toHamburg = sent({
+        id: 'to-anna',
+        recipient: anna,
+        destination: { name: 'Hamburg', countryCode: 'DE' },
+        deliverAt: new Date(NOW + 10 * MINUTE),
+      });
+      const toVienna = sent({ id: 'to-ben', deliverAt: new Date(NOW + 2 * MINUTE) });
+      const toPrague = sent({
+        id: 'to-ben-too',
+        destination: { name: 'Prague', countryCode: 'CZ' },
+        deliverAt: new Date(NOW + 5 * MINUTE),
+      });
+      const landedLongAgo = sent({
+        id: 'older',
+        destination: { name: 'Graz', countryCode: 'AT' },
+        delivered: true,
+        deliverAt: new Date(NOW - 5 * HOUR),
+      });
+      mockedFetchSent
+        .mockResolvedValueOnce([toHamburg, toVienna, toPrague, landedLongAgo])
+        .mockResolvedValue([toHamburg, { ...toVienna, delivered: true }, toPrague, landedLongAgo]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in 2m');
+
+      await letTimePass(MINUTE + 58 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
+
+      await letTimePass(4 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/^Landed in Vienna/)).toBeOnTheScreen();
+      expect(screen.getByText('In the air to Prague · lands in 2m')).toBeOnTheScreen();
+      expect(screen.getByText('In the air to Hamburg · lands in 7m')).toBeOnTheScreen();
+
+      // And then not again until the next one is due.
+      await letTimePass(2 * MINUTE + 50 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+
+      await letTimePass(10 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not keep asking while no letter is in the air', async () => {
+      mockedFetchSent.mockResolvedValue([
+        sent({ delivered: true, deliverAt: new Date(NOW - 2 * HOUR) }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText(/^Landed in Vienna/);
+
+      await letTimePass(5 * MINUTE);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
+    });
+
+    // The server's word counts the other way round too: on a phone running
+    // slow, a letter has landed although its time has not come by this clock.
+    it('calls a letter landed as soon as the server does, whatever the phone’s clock says', async () => {
+      const letter = sent({ delivered: true, deliverAt: new Date(NOW + 5 * MINUTE) });
+      mockedFetchSent.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(
+        await screen.findByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^In the air/)).toBeNull();
     });
 
     /**
