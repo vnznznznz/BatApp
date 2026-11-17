@@ -46,8 +46,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      # --engine-strict: the Node above has to fit what package.json asks for
+      # under "engines", and what every installed package asks for. Without it
+      # npm only warns, and a dependency that needs a newer Node than this one
+      # would show as whatever breaks first.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --engine-strict
 
       # The same gate developers run locally before committing. Its typecheck
       # generates the route types first (npm run generate:routes): they are not
@@ -87,7 +91,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --engine-strict
 
       - name: Bundle for the web
         run: npx expo export --platform web --output-dir "$RUNNER_TEMP/web"
