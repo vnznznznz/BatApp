@@ -1,0 +1,477 @@
+import type { Session } from '@supabase/supabase-js';
+import type { AppStateStatus } from 'react-native';
+
+import { secureStorage } from '@/lib/secure-storage';
+import { SESSION_KEY } from '@/lib/session-store';
+
+/**
+ * The client as the app builds it - the real supabase-js, the real storage and
+ * the real fetch of our own - with only the two things underneath replaced: the
+ * keychain and the network.
+ *
+ * Everything here is about one question: what becomes of the session, and of
+ * the request in hand, when the network or the server does something other
+ * than answer properly. The library decides most of that by itself, so the only
+ * faithful check is to let it run.
+ */
+
+const mockKeychain = new Map<string, string>();
+
+jest.mock('expo-secure-store', () => {
+  const valid = (key: string) => {
+    if (!/^[\w.-]+$/.test(key)) throw new Error(`invalid key for the keychain: ${key}`);
+    return key;
+  };
+  return {
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+    getItemAsync: jest.fn(async (key: string) => mockKeychain.get(valid(key)) ?? null),
+    setItemAsync: jest.fn(async (key: string, value: string) => {
+      if (value.length > 2048) throw new Error('value too large for the keychain');
+      mockKeychain.set(valid(key), value);
+    }),
+    deleteItemAsync: jest.fn(async (key: string) => {
+      mockKeychain.delete(valid(key));
+    }),
+  };
+});
+
+const ANON_KEY = 'sb_publishable_test_key';
+const OLD_TOKEN = `header.${'a'.repeat(1000)}.signature`;
+const NEW_TOKEN = `header.${'b'.repeat(1000)}.signature`;
+
+/** A session as the auth server issues one, `expiresIn` seconds before its access token ends. */
+function sessionOf(accessToken: string, refreshToken: string, expiresIn: number): Session {
+  return {
+    access_token: accessToken,
+    token_type: 'bearer',
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + expiresIn,
+    refresh_token: refreshToken,
+    user: {
+      id: '11111111-1111-4111-8111-111111111111',
+      aud: 'authenticated',
+      email: 'mara@example.test',
+      app_metadata: { provider: 'email' },
+      user_metadata: { username: 'mara', display_name: 'Mara', padding: 'p'.repeat(1000) },
+      created_at: '2026-11-01T10:00:00Z',
+    },
+  };
+}
+
+type Sent = { url: string; method: string; bearer: string | null; body: unknown };
+
+/** Every request that reached the network, and what the network makes of the next one. */
+let sent: Sent[];
+let network: (request: Sent) => Response | Promise<Response>;
+
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json', ...headers },
+  });
+
+/** A refusal in the shape the auth server gives one to supabase-js. */
+const authRefusal = (status: number, code: string, message: string) =>
+  json(status, { code, message }, { 'X-Supabase-Api-Version': '2024-01-01' });
+
+const isRenewal = (request: Sent) =>
+  request.url.includes('/auth/v1/token?grant_type=refresh_token');
+const isRest = (request: Sent) => request.url.includes('/rest/v1/');
+const offline = () => Promise.reject(new TypeError('Network request failed'));
+
+type Client = (typeof import('@/lib/supabase'))['supabase'];
+let supabase: Client | null;
+
+/** Puts a session in the keychain the way the app itself would have. */
+async function keep(session: Session) {
+  await secureStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+/** What the keychain holds under the session's name. */
+async function kept(): Promise<Session | null> {
+  const value = await secureStorage.getItem(SESSION_KEY);
+  return value === null ? null : (JSON.parse(value) as Session);
+}
+
+/**
+ * Starts the app's client afresh, as a launch does. The client, and what the
+ * app knows of the stored session, live in their modules, so each launch loads
+ * them anew.
+ */
+function launch() {
+  jest.resetModules();
+
+  const { AppState } = jest.requireActual<typeof import('react-native')>('react-native');
+  let appStateChanged: (state: AppStateStatus) => void = () => {};
+  jest.mocked(AppState.addEventListener).mockImplementation((_type, listener) => {
+    appStateChanged = listener;
+    return { remove: () => {} };
+  });
+
+  const client = jest.requireActual<typeof import('@/lib/supabase')>('@/lib/supabase').supabase;
+  supabase = client;
+  const events: string[] = [];
+  client.auth.onAuthStateChange((event) => {
+    events.push(event);
+  });
+
+  return {
+    client,
+    events,
+    store: jest.requireActual<typeof import('@/lib/session-store')>('@/lib/session-store'),
+    appBecomes: (state: AppStateStatus) => appStateChanged(state),
+  };
+}
+
+/** Lets time pass until `promise` settles: the library waits between its own retries. */
+async function settled<T>(promise: PromiseLike<T>, withinSeconds = 120): Promise<T> {
+  let done = false;
+  const watched = Promise.resolve(promise).finally(() => {
+    done = true;
+  });
+  watched.catch(() => {});
+  for (let second = 0; second < withinSeconds && !done; second++) {
+    await jest.advanceTimersByTimeAsync(1000);
+  }
+  if (!done) throw new Error(`still waiting after ${withinSeconds} s`);
+  return watched;
+}
+
+beforeEach(() => {
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  mockKeychain.clear();
+  sent = [];
+  network = () => json(200, []);
+  jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const request: Sent = {
+      url: String(input),
+      method: init?.method ?? 'GET',
+      bearer: new Headers(init?.headers).get('Authorization')?.replace(/^Bearer /, '') ?? null,
+      body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
+    };
+    sent.push(request);
+    return network(request);
+  });
+});
+
+afterEach(async () => {
+  await supabase?.auth.stopAutoRefresh();
+  supabase = null;
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
+
+describe('renewing a session whose hour has run out', () => {
+  /**
+   * auth-js deletes the stored session on every answer to a renewal that it
+   * does not class as worth retrying, and its list is short. A rate limit, a
+   * paused project or a gateway's own page says nothing about this session.
+   */
+  it.each<[string, () => Response]>([
+    [
+      'a rate limit',
+      () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached'),
+    ],
+    ['a rate limit from the gateway', () => new Response('error code: 1015', { status: 429 })],
+    ['a paused project', () => json(540, { message: 'Project paused' })],
+    [
+      'a restricted project',
+      () => json(402, { message: 'Service for this project is restricted' }),
+    ],
+    [
+      'a page from a filter in between',
+      () => new Response('<html>blocked</html>', { status: 403 }),
+    ],
+    ['a request timeout', () => new Response('timeout', { status: 408 })],
+  ])('keeps the session when the answer is %s', async (_, respond) => {
+    const session = sessionOf(OLD_TOKEN, 'refresh-old', -600);
+    await keep(session);
+    network = (request) => (isRenewal(request) ? respond() : json(200, []));
+
+    const { client, events } = launch();
+    const { data } = await settled(client.auth.getSession());
+
+    expect(data.session).toBeNull();
+    expect(await kept()).toEqual(session);
+    expect(events).not.toContain('SIGNED_OUT');
+  });
+
+  it('ends the session when the auth server says it is over', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    network = (request) =>
+      isRenewal(request)
+        ? authRefusal(
+            400,
+            'refresh_token_not_found',
+            'Invalid Refresh Token: Refresh Token Not Found',
+          )
+        : json(200, []);
+
+    const { client, events } = launch();
+    const { data } = await settled(client.auth.getSession());
+
+    expect(data.session).toBeNull();
+    expect(await kept()).toBeNull();
+    expect(events).toContain('SIGNED_OUT');
+  });
+
+  it('takes the new session when the auth server gives one', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    const renewed = sessionOf(NEW_TOKEN, 'refresh-new', 3600);
+    network = (request) => (isRenewal(request) ? json(200, renewed) : json(200, []));
+
+    const { client } = launch();
+    const { data } = await settled(client.auth.getSession());
+
+    expect(data.session?.access_token).toBe(NEW_TOKEN);
+    expect((await kept())?.refresh_token).toBe('refresh-new');
+  });
+
+  /**
+   * Nothing underneath sets a time limit: on a connection that takes requests
+   * and never answers, the client waited for as long as the app was open.
+   */
+  it('gives up on a connection that never answers, and keeps the session', async () => {
+    const session = sessionOf(OLD_TOKEN, 'refresh-old', -600);
+    await keep(session);
+    network = () => new Promise<Response>(() => {});
+
+    const { client } = launch();
+    const { data, error } = await settled(client.auth.getSession(), 60);
+
+    expect(data.session).toBeNull();
+    expect(error?.name).toBe('AuthRetryableFetchError');
+    expect(await kept()).toEqual(session);
+  });
+});
+
+describe('a request to the database', () => {
+  /**
+   * After a renewal has failed, auth-js answers "no session" from memory for a
+   * minute, and supabase-js then sends the request with the publishable key in
+   * the session's place. The database refuses that as a stranger's request.
+   */
+  it('is not sent in the name of nobody while a session is stored', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    network = offline;
+    const { client } = launch();
+    await settled(client.auth.getSession());
+
+    // The network is back; the client still remembers the failure.
+    network = () => json(200, []);
+    const { error } = await settled(client.rpc('get_roost'));
+
+    expect(sent.filter(isRest)).toEqual([]);
+    expect(error?.message).toMatch(/network request/i);
+  });
+
+  it('is sent with the publishable key when nobody is signed in', async () => {
+    const { client } = launch();
+
+    const { data, error } = await settled(client.rpc('get_roost'));
+
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+    expect(sent.filter(isRest).map((request) => request.bearer)).toEqual([ANON_KEY]);
+  });
+
+  /**
+   * The client renews by this device's clock; the server refuses by its own. On
+   * a phone whose clock is slow the token runs out on the server first, and
+   * every request was then refused until the phone thought the hour was over.
+   */
+  describe('refused because the server holds the token for expired', () => {
+    const expired = () =>
+      json(401, { code: 'PGRST303', details: null, hint: null, message: 'JWT expired' });
+
+    it('is repeated once with a renewed session', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      const renewed = sessionOf(NEW_TOKEN, 'refresh-new', 3600);
+      network = (request) => {
+        if (isRenewal(request)) return json(200, renewed);
+        return request.bearer === NEW_TOKEN ? json(200, [{ bat_id: 'b1' }]) : expired();
+      };
+      const { client } = launch();
+
+      const { data, error } = await settled(client.rpc('get_roost'));
+
+      expect(error).toBeNull();
+      expect(data).toEqual([{ bat_id: 'b1' }]);
+      expect(sent.filter(isRenewal)).toHaveLength(1);
+      expect(sent.filter(isRest).map((request) => request.bearer)).toEqual([OLD_TOKEN, NEW_TOKEN]);
+      expect((await kept())?.refresh_token).toBe('refresh-new');
+    });
+
+    it('renews once for all the requests refused together', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      const renewed = sessionOf(NEW_TOKEN, 'refresh-new', 3600);
+      network = (request) => {
+        if (isRenewal(request)) return json(200, renewed);
+        return request.bearer === NEW_TOKEN ? json(200, []) : expired();
+      };
+      const { client } = launch();
+
+      const answers = await settled(
+        Promise.all([
+          client.rpc('get_roost'),
+          client.rpc('get_badges'),
+          client.rpc('list_friends'),
+        ]),
+      );
+
+      expect(answers.map((answer) => answer.error)).toEqual([null, null, null]);
+      expect(sent.filter(isRenewal)).toHaveLength(1);
+    });
+
+    it('says there is no connection when the renewal cannot reach the auth server', async () => {
+      const session = sessionOf(OLD_TOKEN, 'refresh-old', 3000);
+      await keep(session);
+      network = (request) => (isRenewal(request) ? offline() : expired());
+      const { client } = launch();
+
+      const { error } = await settled(client.rpc('get_roost'));
+
+      expect(error?.message).toMatch(/network request/i);
+      expect(await kept()).toEqual(session);
+    });
+
+    /**
+     * Both tokens refused: the session is over. auth-js removes it by itself
+     * only when this device's clock agrees that the access token has run out,
+     * and a slow clock - what leads here - says it has not.
+     */
+    it('ends the session when the auth server refuses the renewal as well', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      network = (request) => {
+        if (isRenewal(request)) {
+          return authRefusal(
+            400,
+            'refresh_token_not_found',
+            'Invalid Refresh Token: Refresh Token Not Found',
+          );
+        }
+        // What is left is the sign-out, with a token the auth server holds for expired too.
+        return isRest(request)
+          ? expired()
+          : authRefusal(403, 'bad_jwt', 'invalid JWT: token has invalid claims: token is expired');
+      };
+      const { client, events, store } = launch();
+
+      const { error } = await settled(client.rpc('get_roost'));
+
+      expect(error?.code).toBe('PGRST303');
+      expect(await kept()).toBeNull();
+      expect(store.isSessionStored()).toBe(false);
+      expect(events).toContain('SIGNED_OUT');
+    });
+
+    it('does not renew again when its refusal arrives after the renewal', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      let refuseLate: (answer: Response) => void = () => {};
+      network = (request) => {
+        if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        if (request.bearer === NEW_TOKEN) return json(200, []);
+        return request.url.endsWith('/get_badges')
+          ? new Promise<Response>((resolve) => (refuseLate = resolve))
+          : expired();
+      };
+      const { client } = launch();
+
+      // Two requests leave with the old token. One is refused at once and
+      // renews the session; the other hears of its refusal only afterwards.
+      const slow = Promise.resolve(client.rpc('get_badges'));
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent.filter(isRest).map((request) => request.bearer)).toEqual([OLD_TOKEN]);
+      await settled(client.rpc('get_roost'));
+      refuseLate(expired());
+      const { error } = await settled(slow);
+
+      expect(error).toBeNull();
+      expect(sent.filter(isRenewal)).toHaveLength(1);
+    });
+  });
+});
+
+describe('signing in and out', () => {
+  const issued = () => sessionOf(NEW_TOKEN, 'refresh-new', 3600);
+  const credentials = { email: 'mara@example.test', password: 'night-courier' };
+
+  /**
+   * The app reads the session for itself at launch, so it has to know where it
+   * is - and the keychain refuses some of the names supabase-js makes up.
+   */
+  it('keeps the session in the keychain, under the name the app reads it by', async () => {
+    network = (request) =>
+      request.url.includes('grant_type=password') ? json(200, issued()) : json(200, []);
+    const { client, store } = launch();
+
+    const { error } = await settled(client.auth.signInWithPassword(credentials));
+
+    expect(error).toBeNull();
+    expect((await kept())?.refresh_token).toBe('refresh-new');
+    expect(await store.readStoredSession()).toEqual(await kept());
+    expect(store.isSessionStored()).toBe(true);
+  });
+
+  it('leaves nothing in the keychain after signing out', async () => {
+    network = (request) => {
+      if (request.url.includes('grant_type=password')) return json(200, issued());
+      return new Response(null, { status: 204 });
+    };
+    const { client, store } = launch();
+    await settled(client.auth.signInWithPassword(credentials));
+
+    const { error } = await settled(client.auth.signOut());
+
+    expect(error).toBeNull();
+    expect(mockKeychain.size).toBe(0);
+    expect(store.isSessionStored()).toBe(false);
+  });
+
+  it('lets the form see a rate limit as the auth server gave it', async () => {
+    network = () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached');
+    const { client } = launch();
+
+    const { error } = await settled(client.auth.signInWithPassword(credentials));
+
+    expect(error?.status).toBe(429);
+    expect(error?.message).toBe('Request rate limit reached');
+  });
+});
+
+describe('while the app is open', () => {
+  const renews = () => {
+    network = (request) =>
+      isRenewal(request) ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)) : json(200, []);
+  };
+
+  it('renews a session that is about to run out, without being asked', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 200));
+    renews();
+    launch();
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(sent.filter(isRenewal)).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(60_000);
+
+    expect(sent.filter(isRenewal)).toHaveLength(1);
+    expect((await kept())?.refresh_token).toBe('refresh-new');
+  });
+
+  it('renews nothing while the app is in the background, and catches up in front', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 200));
+    renews();
+    const { appBecomes } = launch();
+    await jest.advanceTimersByTimeAsync(1_000);
+
+    appBecomes('background');
+    await jest.advanceTimersByTimeAsync(150_000);
+    expect(sent.filter(isRenewal)).toHaveLength(0);
+
+    appBecomes('active');
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(sent.filter(isRenewal)).toHaveLength(1);
+  });
+});
