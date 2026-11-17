@@ -21,7 +21,7 @@ import {
   type Friendship,
 } from '@/features/friends/friends';
 import { keepDraft, useDraft, useSend } from '@/features/messages/drafts';
-import { letterLength, previewOf, validateBody } from '@/features/messages/messages';
+import { letterLength, prepareBody, previewOf, validateBody } from '@/features/messages/messages';
 import {
   askAfterLetterAt,
   onLetterOutcome,
@@ -284,7 +284,11 @@ export default function ComposeScreen() {
   }
 
   const route = recipient.route;
-  const length = letterLength(text);
+  // Counted as it will be sent, which is what the limit is on: without the
+  // blank space around it. Counted as typed, a letter of exactly the limit with
+  // a new line after it showed a red "2001 / 2000" and went all the same.
+  // (Found in review.)
+  const length = letterLength(prepareBody(text));
   const tooLong = length > MESSAGE_MAX_LENGTH;
   // Only a courier known to have no city is held back here. A profile that
   // could not be loaded holds no letter back: the server knows where home is,

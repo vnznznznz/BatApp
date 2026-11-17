@@ -518,6 +518,46 @@ describe('ComposeScreen', () => {
       expect(mockedSendMessage).not.toHaveBeenCalled();
     });
 
+    /**
+     * The limit is on the letter as it is sent, without the blank space around
+     * it. Counted as typed, a letter of exactly the limit that ended in a new
+     * line showed a red "2001 / 2000" - and went all the same. (Found in
+     * review.)
+     */
+    it('counts the letter as it will be sent, without the blank space around it', async () => {
+      await openLetterTo('user-anna');
+      const letter = 'a'.repeat(MESSAGE_MAX_LENGTH);
+
+      await fireEvent.changeText(letterField(), `  ${letter}\n\n`);
+
+      expect(screen.getByText(`${MESSAGE_MAX_LENGTH} / ${MESSAGE_MAX_LENGTH}`)).toHaveStyle({
+        color: Colors.textMuted,
+      });
+      expect(
+        screen.getByLabelText(`${MESSAGE_MAX_LENGTH} of ${MESSAGE_MAX_LENGTH} characters`),
+      ).toBeOnTheScreen();
+
+      await fireEvent.press(sendButton());
+
+      expect(mockedSendMessage).toHaveBeenCalledWith('user-anna', letter, expect.any(String));
+    });
+
+    it('counts the blank space inside a letter, which is sent as written', async () => {
+      await openLetterTo('user-anna');
+
+      await fireEvent.changeText(letterField(), ' Dear Anna,\n\nsoon. ');
+
+      expect(screen.getByText(`17 / ${MESSAGE_MAX_LENGTH}`)).toBeOnTheScreen();
+    });
+
+    it('counts nothing for a letter of nothing but blank space', async () => {
+      await openLetterTo('user-anna');
+
+      await fireEvent.changeText(letterField(), '  \n\t  ');
+
+      expect(screen.getByText(`0 / ${MESSAGE_MAX_LENGTH}`)).toBeOnTheScreen();
+    });
+
     it.each([
       ['an empty letter', ''],
       ['a letter of nothing but blank space', '  \n\t  '],
