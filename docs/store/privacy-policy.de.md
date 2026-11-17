@@ -36,8 +36,8 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    der Registrierung heißt "I am 13 or older", die Hausregeln (src/app/rules.tsx) lesen die
    Konstanten. Ändert sich eine der Zahlen, "Kurz gesagt" und die Abschnitte 3.13 und 10 anpassen.
 8. Die Webseiten liegen bei GitHub Pages, als Nutzer-Site: ein öffentliches Repository
-   vnznznznz.github.io (vom Betreiber noch anzulegen), erreichbar unter
-   https://vnznznznz.github.io/. Night Courier liegt im Ordner night-courier/: index.html (aus
+   vnznznznz.github.io, erreichbar unter https://vnznznznz.github.io/ und online seit dem
+   10. November 2026. Night Courier liegt im Ordner night-courier/: index.html (aus
    support-page.md), privacy-policy.de.html (diese Fassung, verbindlich) und
    privacy-policy.en.html. Also
    {{SUPPORT_URL}} = https://vnznznznz.github.io/night-courier/ und {{PRIVACY_POLICY_URL}} =
@@ -361,13 +361,16 @@ Anfrage der App an den Server enthält deine IP-Adresse und eine technische Kenn
 oder Betriebssystems (den sogenannten User-Agent).
 
 - **Sitzungen.** Für jede Anmeldung entsteht eine Sitzung mit IP-Adresse, User-Agent und
-  Zeitpunkten. Wenn du dich abmeldest („Sign out“), werden deine Sitzungen gelöscht, und zwar auf
-  allen deinen Geräten gleichzeitig. Mit deinem Konto werden sie ebenfalls gelöscht. Eine Sitzung,
-  die **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem du die App so lange nicht geöffnet
+  Zeitpunkten. Wenn du dich abmeldest („Sign out“), werden deine Sitzungen sofort gelöscht, und
+  zwar für alle deine Geräte. Ein anderes Gerät, das noch angemeldet ist, funktioniert weiter, bis
+  seine Anmeldung das nächste Mal erneuert werden müsste – höchstens eine Stunde –, und muss sich
+  dann neu anmelden. Mit deinem Konto werden die Sitzungen ebenfalls gelöscht. Eine Sitzung, die
+  **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem du die App so lange nicht geöffnet
   hast –, löscht ein täglicher Auftrag; dort meldest du dich dann neu an. Erreicht die Abmeldung den
   Server nicht, etwa ohne Netz, meldet die App dich auf deinem Gerät trotzdem ab, aber die Sitzungen
   beim Server bleiben bis dahin; melde dich dann einmal an und wieder ab. Wenn du ein Handy
-  verlierst, melde dich auf einem anderen Gerät an und ab oder schreib mir.
+  verlierst, melde dich auf einem anderen Gerät an und ab – die Anmeldung auf dem verlorenen Handy
+  funktioniert dann spätestens nach einer Stunde nicht mehr – oder schreib mir.
 - **Anmelde-Token.** Während die App geöffnet ist, wird deine Anmeldung etwa einmal pro Stunde
   erneuert. Dabei entsteht jedes Mal ein neues Token, und das alte wird ungültig. Gespeichert bleiben
   die Token höchstens so lange wie die Sitzung, zu der sie gehören.
@@ -375,7 +378,9 @@ oder Betriebssystems (den sogenannten User-Agent).
   jedes Erneuern der Anmeldung, Anforderung eines neuen Passworts und Passwortänderung, jeweils mit
   Nutzer-ID, E-Mail-Adresse, Zeitpunkt und gegebenenfalls IP-Adresse. Daraus lässt sich ablesen,
   wann du die App benutzt hast. Ein täglicher Auftrag löscht jeden Eintrag nach 30 Tagen. Wenn du
-  dein Konto löschst, werden deine Einträge sofort mitgelöscht.
+  dein Konto löschst oder ich es lösche – auf deine Bitte oder in den Fällen aus den Abschnitten
+  3.10 und 10 –, werden deine Einträge sofort mitgelöscht. Nur ein Konto, das ich wegen
+  Regelverstößen entferne, behält seine Einträge, bis sie 30 Tage alt sind (Abschnitt 3.8).
 - **Server-Protokolle.** Supabase protokolliert Anfragen an den Server: IP-Adresse, Zeitpunkt, die
   aufgerufene Adresse (sie kann deine Nutzer-ID enthalten), User-Agent und Ergebnis, bei Anmeldungen
   auch deine E-Mail-Adresse, außerdem Fehlermeldungen der Datenbank. Briefe, Notizen und Namen
@@ -388,7 +393,11 @@ oder Betriebssystems (den sogenannten User-Agent).
 - Sitzungen: am 4. November 2026 auf dem lokalen Supabase-Stack geprüft. Jede Anmeldung legt eine
   Zeile in auth.sessions (mit IP-Adresse und User-Agent) und in auth.refresh_tokens an; das Abmelden
   der App (scope "global") löscht beide für alle Geräte. Das gehostete Projekt läuft mit demselben
-  GoTrue; nichts mehr zu tun.
+  GoTrue; nichts mehr zu tun. "Höchstens eine Stunde": Ein Zugangs-Token, den ein anderes Gerät
+  schon hält, gilt an der Datenbank-API weiter, bis er abläuft (jwt_expiry = 3600 in
+  supabase/config.toml), weil dort nichts nach der Sitzung sieht; am 17. November 2026 am lokalen
+  Stack gezeigt, mit einem signierten Token ganz ohne Sitzung. Supabase Auth selbst lehnt einen
+  solchen Token ab, und erneuern lässt er sich nicht.
 - Anmelde-Token: GoTrues automatisches Aufräumen (ersetzte Token nach 24 Stunden) ist nur aktiv,
   wenn GOTRUE_DB_CLEANUP_ENABLED gesetzt ist; der Standard ist "false", lokal ist es aus. Ist es auf
   dem gehosteten Projekt an, kann der Satz lauten: "Ersetzte Token löscht Supabase nach 24 Stunden."
@@ -699,7 +708,7 @@ gefragt.
 | Kontodatensatz eines gesperrten, entfernten Kontos      | zwei Jahre ab dem Entfernen, dann automatisch gelöscht (Abschnitt 3.8)                                                  |
 | Sitzungen                                               | bis zum Abmelden oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
 | Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                      |
-| Anmeldeprotokoll                                        | 30 Tage; deine Einträge werden mit deinem Konto gelöscht                                                                |
+| Anmeldeprotokoll                                        | 30 Tage; deine Einträge gehen sofort, wenn du dein Konto löschst oder ich es auf deine Bitte lösche (Abschnitt 3.9)     |
 | Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                       |
 | Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                         |
 | Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                           |

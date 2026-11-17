@@ -201,8 +201,9 @@ possible.
 | A push failure does not corrupt message state            | 10    | not applicable - Phase 10 is dropped, so there is no push             |
 | Account deletion removes or anonymises the required data | 2     | `messages.db.test.mjs`, `bats.db.test.mjs`, `friendships.db.test.mjs` |
 
-Every one of them now exists, under its own name, in `src/tests/db` - all but the push test, which
-has nothing left to test. The two
+Every one of them now exists in `src/tests/db` - all but the push test, which has nothing left to
+test - and most under the very name in the table. The two about bats are worded differently:
+`gives a new user exactly three bats`, and a group of three tests headed `a fourth bat`. The two
 concurrency tests run only where `DATABASE_URL` points at a real Postgres - CI provides one, and
 locally they are skipped with a message saying so.
 
@@ -266,9 +267,10 @@ under Apple Guideline 1.2, and Beta App Review checks it. The decisions are reco
   write to a stranger. That gate, with report and block behind it, is the filter. There is no
   automated scanning of letters: they are private correspondence between friends, and reading them
   by machine would be a larger intrusion than the risk it addresses in an invite-only app.
-- **A contact route**: Contact and Privacy policy buttons in the profile, the house rules and the
-  sign-up form, whose addresses come from the build's environment so that nothing personal is ever
-  committed. The postal address for the store listing is paperwork for group C in GO-LIVE.
+- **A contact route**: Contact and Privacy policy buttons in the profile and the house rules, and
+  the Privacy policy button on the sign-up form too. Their addresses come from the build's
+  environment so that nothing personal is ever committed. The postal address for the store
+  listing is paperwork for group C in GO-LIVE.
 
 Then three independent reviews - the database, the client, and App Review with GDPR - found, among
 smaller things: a blocked courier could go on writing to the blocker through their display name;

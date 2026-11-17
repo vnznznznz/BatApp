@@ -18,22 +18,22 @@ operator's details, this file names a placeholder, and the real value is typed s
 Console (or into the filled-in web pages, which live only in the site repository described below),
 never written here:
 
-| Placeholder              | Means                                                                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                                                                                                                                                              |
-| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there                                                                                                                                              |
-| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                                                                                                                                                                         |
-| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Planned: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html` |
-| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route and the deletion steps; no postal address. Planned: `https://vnznznznz.github.io/night-courier/`                                                                 |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                          |
+| Placeholder              | Means                                                                                                                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                                                                                                                                                                                  |
+| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there                                                                                                                                                                  |
+| `{{CONTACT_EMAIL}}`      | The contact address: on the support page, which the app's Contact button opens, and in the privacy policy                                                                                                                                                             |
+| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html` |
+| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route and the deletion steps; no postal address. Also behind the app's Contact button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/`                           |
+| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                                              |
 
-The planned addresses are named here and in the checklist for reference only. Where a text below
+The addresses are named here and in the checklist for reference only. Where a text below
 is pasted into Play Console or onto a page, it keeps the placeholder, and the address replaces it
 as it is typed in.
 
 **Where the web pages live.** The privacy policy and the support page are published with GitHub
-Pages, in the operator's user site: a public repository named `vnznznznz.github.io`, still to be
-created, with Night Courier's pages in its folder `night-courier/` (`index.html` from
+Pages, in the operator's user site: a public repository named `vnznznznz.github.io`, live since
+10 November 2026, with Night Courier's pages in its folder `night-courier/` (`index.html` from
 `support-page.md`, `privacy-policy.de.html` and `privacy-policy.en.html`). The filled-in pages,
 with the operator's name and postal address, exist only in that repository, never in this one.
 GitHub, Inc. (USA) hosts them and logs visitors' IP addresses; the pages set no cookies and load
@@ -602,8 +602,9 @@ ever applied after all), or a mail provider that keeps more.
 The Delete account URL points here. Google's requirements for the page, as far as they are known
 here: it names the app and the developer as the store listing does, shows the steps prominently,
 and says what is deleted, what is kept and for how long (**to check** the current list). The page
-at `{{SUPPORT_URL}}` (planned: `https://vnznznznz.github.io/night-courier/`, the site repository's
-`night-courier/index.html`) is drafted in `support-page.md`, whose "Deleting your account" section
+at `{{SUPPORT_URL}}` (`https://vnznznznz.github.io/night-courier/`, the site repository's
+`night-courier/index.html`, live since 10 November 2026) is built from `support-page.md`, whose
+"Deleting your account" section
 must say the same as the text below, with the placeholders filled in only in the site repository;
 keep both in step with the privacy policy's section 9.
 
@@ -628,7 +629,7 @@ Your account and sign-in, your profile (username, display name and city), your b
 
 What is kept, and for how long
 • Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made. If I passed a report to the police, they keep their copy under their own rules.
-• The sign-in log at Supabase, the app's hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, yours go at once.
+• The sign-in log at Supabase, the app's hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, or I delete it at your request, yours go at once.
 • Server logs and any backups at Supabase, until Supabase deletes or overwrites them automatically. I cannot name the periods yet: they depend on Supabase's plan, and the privacy policy will state them once they are known.
 • Emails between you and me, as long as I need them for what you asked.
 • If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years from the removal so that it cannot simply sign up again, and is then deleted automatically.
@@ -661,7 +662,7 @@ Dein Konto und deine Anmeldung, dein Profil (Benutzername, Anzeigename und Stadt
 
 Was bleibt, und wie lange
 • Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben, bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
-• Das Anmeldeprotokoll bei Supabase, dem Hosting-Anbieter der App (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
+• Das Anmeldeprotokoll bei Supabase, dem Hosting-Anbieter der App (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App oder lösche ich es auf deine Bitte, sind deine sofort weg.
 • Server-Protokolle und etwaige Sicherungskopien bei Supabase, bis Supabase sie automatisch löscht oder überschreibt. Die Fristen kann ich noch nicht nennen: Sie hängen von Supabases Tarif ab und stehen in der Datenschutzerklärung, sobald sie feststehen.
 • E-Mails zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 • Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
@@ -675,7 +676,8 @@ Datenschutzerklärung: {{PRIVACY_POLICY_URL}}
 
 The "kept" list follows the code as of the housekeeping migration
 (`20261104120000_privacy_housekeeping.sql`, up to commit acd4efe): sign-in records 30 days and
-deleted with the account, removed accounts banned for `private.ban_period()`, two years from the
+deleted with the account (by the app's own deletion, and by `private.delete_account` when the
+operator deletes it on request), removed accounts banned for `private.ban_period()`, two years from the
 removal, and then deleted by the tidy-up. Sessions are not on the list because they go with the
 account, both in the app and when the operator deletes it at someone's request
 (`private.delete_account`, `gdpr-records.md` 5.4); a removed account's
@@ -738,14 +740,17 @@ A short note, not legal advice.
       (`gdpr-records.md` 5.1; GO-LIVE, "Where the web pages live"), with the safeguard for the USA
       that the privacy policy's section 8 names: until then, its sections 7 and 8 are untrue, and
       every page carries the notice that Night Courier has not started.
-- [ ] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}` (planned:
-      `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
-      alongside), with the placeholders filled in only in the site repository `vnznznznz.github.io`,
+- [x] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}`
+      (`https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
+      alongside) since 10 November 2026, to be rebuilt with `LAUNCH_STATE=before-launch` until the
+      item before this one is done; with the placeholders filled in only in the site repository
+      `vnznznznz.github.io`,
       never in this one, and the database's location named as Switzerland. It is the only page with
       the postal address.
-- [ ] Support page live at `{{SUPPORT_URL}}` (planned: `https://vnznznznz.github.io/night-courier/`,
-      from `support-page.md`), with the account deletion text (section 6), and without the postal
-      address: it points to the privacy policy for that.
+- [x] Support page live at `{{SUPPORT_URL}}` (`https://vnznznznz.github.io/night-courier/`, from
+      `support-page.md`) since 10 November 2026, with the account deletion text (section 6), and
+      without the postal address: it points to the privacy policy for that. Rebuild it whenever
+      that text changes (a test holds the two to the same words).
 - [ ] The EU trader declaration, if Play Console asks for one (section 1): non-trader expected,
       **to check**.
 - [ ] App created (section 1), store listing in English and German, icon, feature graphic and
@@ -763,8 +768,8 @@ A short note, not legal advice.
       access unticked (section 3).
 - [ ] First Android App Bundle built with EAS. `eas.json` does not exist yet (GO-LIVE, D). The EAS
       environment has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted
-      project, `EXPO_PUBLIC_CONTACT_URL` (a `mailto:` link or the support page) and
-      `EXPO_PUBLIC_PRIVACY_POLICY_URL` (the planned address at the top): settings of the EAS
+      project, `EXPO_PUBLIC_CONTACT_URL` (the support page, `{{SUPPORT_URL}}`) and
+      `EXPO_PUBLIC_PRIVACY_POLICY_URL` (`{{PRIVACY_POLICY_URL}}`): settings of the EAS
       environment, never committed.
 - [x] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
       `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID; commit

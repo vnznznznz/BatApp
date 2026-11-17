@@ -5,7 +5,7 @@ Notes for the operator - remove before publishing, like every comment in this fi
    Play as the Website and the Delete account URL (google-play.md, "The account deletion page").
    One page does all three, in English and German.
 2. Where it lives: GitHub Pages, in the operator's user site, the public repository
-   vnznznznz.github.io (still to be created), as night-courier/index.html. So {{SUPPORT_URL}} is
+   vnznznznz.github.io (live since 10 November 2026), as night-courier/index.html. So {{SUPPORT_URL}} is
    https://vnznznznz.github.io/night-courier/, and {{PRIVACY_POLICY_URL}} is
    https://vnznznznz.github.io/night-courier/privacy-policy.de.html, with privacy-policy.en.html
    beside it. Replace the placeholders only in that repository: {{OPERATOR_NAME}},
@@ -85,7 +85,7 @@ bats, your friendships and friend requests, your blocks, and every letter you ha
   made. If I passed a report to the police, they keep their copy under their own rules.
 - **The sign-in log** at Supabase, the app's hosting provider (sign-up and sign-in events, with
   your email address). A daily job deletes every entry once it is 30 days old; when you delete your
-  account in the app, yours go at once.
+  account in the app, or I delete it at your request, yours go at once.
 - **Server logs and any backups** at Supabase, until Supabase deletes or overwrites them
   automatically. I cannot name the periods yet: they depend on Supabase's plan, and the privacy
   policy will state them once they are known.
@@ -127,7 +127,7 @@ Abschnitt 1 der Datenschutzerklärung: {{PRIVACY_POLICY_URL}}.
 ## Kontakt
 
 Schreib an {{CONTACT_EMAIL}}, und wenn es um dein Konto geht, von der E-Mail-Adresse deines Kontos.
-Ich lese jede E-Mail und antworte, so bald ich kann.
+Ich lese jede E-Mail und antworte, sobald ich kann.
 
 ## Etwas stimmt nicht
 
@@ -172,7 +172,8 @@ bei dir.
   bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
 - **Das Anmeldeprotokoll** bei Supabase, dem Hosting-Anbieter der App (Registrierung und
   Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er
-  30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
+  30 Tage alt ist; löschst du dein Konto in der App oder lösche ich es auf deine Bitte, sind deine
+  sofort weg.
 - **Server-Protokolle und etwaige Sicherungskopien** bei Supabase, bis Supabase sie automatisch
   löscht oder überschreibt. Die Fristen kann ich noch nicht nennen: Sie hängen von Supabases Tarif
   ab und stehen in der Datenschutzerklärung, sobald sie feststehen.

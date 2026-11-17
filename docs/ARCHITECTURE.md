@@ -866,9 +866,10 @@ What it cannot do from SQL, and the privacy policy therefore says plainly:
 
 Recorded here so the reasoning is not lost between phases.
 
-- **Environment configuration and secrets** (Phase 2). No `.env.example` yet because there is
-  nothing to configure. The Supabase anon key is publishable by design; the service-role key
-  must never reach the app bundle, and enforcing that is a Phase 2 decision.
+- ~~**Environment configuration and secrets** (Phase 2).~~ Built: `.env.example` names the four
+  values a build takes, all public by design, and the service-role key is kept out of the bundle
+  by refusing to start with one - see "Refusing to start on a service-role key" above. A
+  production bundle is not even built without the Supabase URL and key (`metro.config.js`).
 - ~~**Delivery time algorithm** (Phase 8).~~ Built: see "Delivery time lives in SQL" above.
 - ~~**Scheduled delivery** (Phase 9).~~ Built: pg_cron calling a SQL function directly; see
   "Delivery: a worker, and every read" above.

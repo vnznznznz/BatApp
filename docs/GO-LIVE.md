@@ -50,7 +50,7 @@ runs in Expo Go.
 it gates every build that is not Expo Go — TestFlight included. It is also the only unavoidable
 cost on the iOS side; nothing in the app itself costs money.
 
-### C. Compliance artifacts — drafted in `docs/store/`; personal details still open, hosting planned
+### C. Compliance artifacts — the web pages are live; the store answers are drafted in `docs/store/`
 
 | Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                           |
 | --------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -180,7 +180,8 @@ them as long as you do, beyond the 180 days the privacy policy promises.
 first, in the SQL editor:
 
 ```sql
-select created_at, reason, reported_username, reported_display_name, letter_body, note, id
+select created_at, reason, reported_username, reported_display_name, letter_body, note,
+       id, reported_id, reporter_id
 from public.reports
 where resolved_at is null
 order by created_at;
@@ -191,9 +192,23 @@ why, the reporter's note, and for a reported letter its full text (`letter_body`
 `reporter_id`; the person reported is not told who that was, unless the law requires it, so do not
 tell them — and remember
 that a letter has one reader, so acting on a letter can tell its sender who reported it anyway.
+`id` is the report's own, for the last step below.
 
 Identify people by `reported_id`, not by the username. When `reported_id` is null the account has
 been deleted, and its username is free: it may belong to someone else by now.
+
+The steps below write to one or the other of the two people. Their addresses are on their
+accounts, and nowhere in the report:
+
+```sql
+select id, email, banned_until from auth.users
+where id in ('<reported_id>', '<reporter_id>');
+```
+
+Keep the two apart: a warning goes to the address beside `reported_id`, the email after a threat
+to the one beside `reporter_id`. An email that reaches the wrong one of them tells the person
+reported who reported them. `banned_until` shows whether an account is already suspended or
+removed.
 
 **What to do**, by how serious it is:
 
@@ -257,6 +272,19 @@ been deleted, and its username is free: it may belong to someone else by now.
 
   When the week is up, `select private.remove_account('<reported_id>');` as above. Delete your own
   exported copy once the police have theirs.
+
+  If the threat proves unfounded within the week - a joke between friends, the wrong account -
+  lift the suspension instead, and write to both of them:
+
+  ```sql
+  update auth.users set banned_until = null where id = '<reported_id>';
+  ```
+
+  The account can sign in again at once, with everything it had: nothing was deleted. Only do
+  this to an account that still has its profile. One that `private.remove_account` has removed
+  has nothing left to come back to, and its ban is what the privacy policy promises (the query
+  under "Sperren nach spätestens zwei Jahren beenden" in `docs/store/gdpr-records.md`, 5.6, lists
+  the suspended accounts that still have a profile).
 
 Then record the outcome, so the report leaves the queue:
 
@@ -696,10 +724,12 @@ transits it, so a content-free push keeps message text out of a US processor.
 - ~~**Report, block, and a contact route**~~ — built in Phase 13a. The contact route is a
   **Contact** button in the profile and in the house rules, and a **Privacy policy** button there
   and on the sign-up form. Both read their address from the build's environment —
-  `EXPO_PUBLIC_CONTACT_URL` (a `mailto:` or an https page) and `EXPO_PUBLIC_PRIVACY_POLICY_URL` —
-  and are hidden while unset. **Set both for every build anyone else will use**, in `.env` and in
-  the EAS environment: an App Reviewer looks for exactly these. They end up in the app bundle, so
-  use an address made for the purpose, never a home address.
+  `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` — and are hidden while unset.
+  **Set both for every build anyone else will use**, in `.env` and in the EAS environment: an App
+  Reviewer looks for exactly these. Night Courier's builds use the help page and the privacy
+  policy on GitHub Pages; the two values are in "Setting up the hosted project", step 5. (The
+  contact setting would also take a `mailto:` link. It is not used here: whatever is set ends up
+  in the app bundle, and the help page can change its address without a new build.)
 - **Beta App Review needs a way in.** A fresh account has no friends and no letters, so a reviewer
   who signs up finds no Report or Block button anywhere. Before submitting, create a reviewer
   account and a "Demo Friend" on the hosted project, make them friends, and a day before, send two
@@ -759,9 +789,11 @@ transits it, so a content-free push keeps message text out of a US processor.
   1.2 requires published contact information, and Art. 19 FADP and GDPR Art. 13 require the
   controller's identity.
 
-  The contact email is decided. Like the postal address it stays out of this repository: it goes
-  into `EXPO_PUBLIC_CONTACT_URL` as a `mailto:` link, in `.env` and in the EAS environment, and into
-  the hosted privacy policy.
+  The contact email is decided. Like the postal address it stays out of this repository: it is
+  on the help page and in the hosted privacy policy, both built with it from the environment
+  (`CONTACT_EMAIL`, in "Where the web pages live" below). The app itself does not carry it: its
+  Contact button opens the help page, whose address is what goes into `EXPO_PUBLIC_CONTACT_URL`
+  ("Setting up the hosted project", step 5).
 
   The operator has decided to use a personal postal address. **It is deliberately not stored in
   this repository, and must not be.** This repository is public; anything committed here is
