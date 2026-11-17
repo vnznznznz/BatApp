@@ -12,6 +12,13 @@ import { createTestDatabase } from './harness.mjs';
  * in full, what each role is meant to hold. A migration that adds a table or a
  * function without deciding its privileges fails here, by name, rather than
  * inheriting the platform's defaults unnoticed.
+ *
+ * "Table" here means anything in `public` that can be read like one - a view
+ * too - and a privilege on a single column counts as much as one on the whole
+ * table. The audit used to ask about whole tables only, and only about
+ * ordinary ones: a column of letters granted to a signed-out visitor, or a view
+ * over them, passed it. (Found in review.) The last tests here grant exactly
+ * those, on a database of their own, to see that the audit now says so.
  */
 
 let db;
@@ -34,26 +41,50 @@ const TABLE_PRIVILEGES = [
   'TRIGGER',
 ];
 
-/** Every table in `public`, mapped to the table-level privileges `role` holds. */
-async function tablePrivileges(role) {
-  const { rows } = await db.query(
+/** Tables of every kind, and views: whatever a role could be granted a way to read. */
+const TABLES_AND_VIEWS = `('r', 'p', 'v', 'm', 'f')`;
+
+/** Every table and view in `public`, mapped to the table-level privileges `role` holds. */
+async function tablePrivileges(role, database = db) {
+  const { rows } = await database.query(
     `select c.relname as table, p.privilege
      from pg_class c
      cross join unnest($2::text[]) as p (privilege)
      where c.relnamespace = 'public'::regnamespace
-       and c.relkind = 'r'
+       and c.relkind in ${TABLES_AND_VIEWS}
        and has_table_privilege($1, c.oid, p.privilege)
      order by 1, 2`,
     [role, TABLE_PRIVILEGES],
   );
-  const { rows: tables } = await db.query(
+  const { rows: tables } = await database.query(
     `select relname as table from pg_class
-     where relnamespace = 'public'::regnamespace and relkind = 'r'
+     where relnamespace = 'public'::regnamespace and relkind in ${TABLES_AND_VIEWS}
      order by 1`,
   );
   const result = Object.fromEntries(tables.map(({ table }) => [table, []]));
   for (const { table, privilege } of rows) result[table].push(privilege);
   return result;
+}
+
+/**
+ * Every column in `public` on which `role` holds a privilege that it does not
+ * hold on the whole table, as 'table.column PRIVILEGE'. A privilege granted
+ * column by column is invisible to has_table_privilege.
+ */
+async function columnPrivileges(role, database = db) {
+  const { rows } = await database.query(
+    `select c.relname || '.' || a.attname || ' ' || p.privilege as held
+     from pg_class c
+     join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
+     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) as p (privilege)
+     where c.relnamespace = 'public'::regnamespace
+       and c.relkind in ${TABLES_AND_VIEWS}
+       and has_column_privilege($1, c.oid, a.attnum, p.privilege)
+       and not has_table_privilege($1, c.oid, p.privilege)
+     order by 1`,
+    [role],
+  );
+  return rows.map((row) => row.held);
 }
 
 /** Every function in `public`, mapped to whether `role` may execute it. */
@@ -98,21 +129,16 @@ describe('table privileges', () => {
     });
   });
 
-  it('lets a signed-in user update only their name and city on a profile', async () => {
-    const { rows } = await db.query(
-      `select a.attname as column
-       from pg_attribute a
-       where a.attrelid = 'public.profiles'::regclass
-         and a.attnum > 0
-         and not a.attisdropped
-         and has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE')
-       order by 1`,
-    );
+  it('gives a signed-out visitor no single column of any of them either', async () => {
+    assert.deepEqual(await columnPrivileges('anon'), []);
+  });
 
-    assert.deepEqual(
-      rows.map((row) => row.column),
-      ['city_id', 'display_name'],
-    );
+  /** In all of `public`: the two things a courier changes about themselves. */
+  it('gives a signed-in user two columns beyond that: their name and their city, to update', async () => {
+    assert.deepEqual(await columnPrivileges('authenticated'), [
+      'profiles.city_id UPDATE',
+      'profiles.display_name UPDATE',
+    ]);
   });
 });
 
@@ -182,13 +208,71 @@ describe('row level security', () => {
     const { rows } = await db.query(
       `select relname as table, relrowsecurity as enabled, relforcerowsecurity as forced
        from pg_class
-       where relnamespace = 'public'::regnamespace and relkind = 'r'
+       where relnamespace = 'public'::regnamespace and relkind in ('r', 'p')
        order by 1`,
     );
 
+    assert.ok(rows.length >= 7, `expected every table, found ${rows.length}`);
     for (const row of rows) {
       assert.ok(row.enabled && row.forced, `RLS is not enabled and forced on ${row.table}`);
     }
+  });
+
+  /**
+   * A view reads its tables as its owner unless it says otherwise, and on the
+   * platform the owner of everything here passes row level security by. There
+   * is no view today; one that is added has to say so.
+   */
+  it('is not passed by through a view that reads as its owner', async () => {
+    const { rows } = await db.query(
+      `select relname as view
+       from pg_class
+       where relnamespace = 'public'::regnamespace
+         and relkind in ('v', 'm')
+         and not coalesce(reloptions, '{}') @> array['security_invoker=true']
+       order by 1`,
+    );
+
+    assert.deepEqual(rows, []);
+  });
+});
+
+/**
+ * That the audit above can fail. Two things a later migration might do without
+ * anyone meaning harm, each of which it used to pass: a column granted on its
+ * own, and a view over a table nobody may read.
+ */
+describe('the audit itself', () => {
+  let scratch;
+
+  before(async () => {
+    scratch = await createTestDatabase();
+    await scratch.exec(`
+      grant select (body) on public.messages to anon;
+      grant update (status) on public.friendships to authenticated;
+      create view public.all_letters as select id, sender_id, recipient_id, body from public.messages;
+      grant select on public.all_letters to anon;
+    `);
+  });
+
+  after(async () => {
+    await scratch?.close();
+  });
+
+  it('sees a privilege granted on a single column', async () => {
+    assert.deepEqual(await columnPrivileges('anon', scratch), ['messages.body SELECT']);
+    assert.deepEqual(await columnPrivileges('authenticated', scratch), [
+      'friendships.status UPDATE',
+      'profiles.city_id UPDATE',
+      'profiles.display_name UPDATE',
+    ]);
+  });
+
+  it('sees a view, and what a role may do with it', async () => {
+    const held = await tablePrivileges('anon', scratch);
+
+    assert.deepEqual(held.all_letters, ['SELECT']);
+    assert.deepEqual(held.messages, []);
   });
 });
 

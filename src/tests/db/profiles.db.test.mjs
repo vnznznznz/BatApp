@@ -35,6 +35,19 @@ const count = async (sql, params = []) => {
 const readProfile = (id) =>
   db.query(`select id, username, display_name from public.profiles where id = $1`, [id]);
 
+/**
+ * A refusal, and the reason for it. "It failed" is not enough to assert: a
+ * sign-up fails for a taken username and for a broken trigger alike.
+ */
+const refusedFor = (code, reason) => (error) => {
+  assert.equal(error.code, code, error.message);
+  assert.match(error.message, reason);
+  return true;
+};
+const uniqueViolation = (name) => refusedFor('23505', new RegExp(`"${name}"`));
+const checkViolation = (name) => refusedFor('23514', new RegExp(`"${name}"`));
+const permissionDenied = (what) => refusedFor('42501', new RegExp(`permission denied for ${what}`));
+
 describe('profile creation', () => {
   it('creates exactly one profile for a new auth user', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
@@ -80,23 +93,67 @@ describe('profile creation', () => {
   it('rejects a username that is already taken', async () => {
     await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() => createUser(db, { username: 'anna', displayName: 'Other' }));
+    await assert.rejects(
+      () => createUser(db, { username: 'anna', displayName: 'Other' }),
+      uniqueViolation('profiles_username_key'),
+    );
   });
 
   // Otherwise "anna" and "Anna" coexist and impersonation is trivial.
   it('treats usernames as case-insensitive for uniqueness', async () => {
     await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() => createUser(db, { username: 'ANNA', displayName: 'Other' }));
+    await assert.rejects(
+      () => createUser(db, { username: 'ANNA', displayName: 'Other' }),
+      uniqueViolation('profiles_username_key'),
+    );
+  });
+
+  /** The promise the index makes on its own, whatever the sign-up trigger does first. */
+  it('cannot hold two usernames that differ only in case, by any route', async () => {
+    const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
+    await createUser(db, { username: 'ben', displayName: 'Ben' });
+    await db.exec(`alter table public.profiles drop constraint profiles_username_format`);
+    try {
+      await assert.rejects(
+        db.query(`update public.profiles set username = 'BEN' where id = $1`, [anna]),
+        uniqueViolation('profiles_username_lower_idx'),
+      );
+    } finally {
+      await db.exec(
+        `alter table public.profiles
+           add constraint profiles_username_format check (username ~ '^[a-z0-9_]+$')`,
+      );
+    }
   });
 
   it('rejects usernames containing characters outside the allowed set', async () => {
-    await assert.rejects(() => createUser(db, { username: 'anna weber' }));
-    await assert.rejects(() => createUser(db, { username: 'anna.weber' }));
+    await assert.rejects(
+      () => createUser(db, { username: 'anna weber' }),
+      checkViolation('profiles_username_format'),
+    );
+    await assert.rejects(
+      () => createUser(db, { username: 'anna.weber' }),
+      checkViolation('profiles_username_format'),
+    );
   });
 
-  it('rejects a username that is too short', async () => {
+  it('rejects a username that is too short, or too long', async () => {
+    await assert.rejects(
+      () => createUser(db, { username: 'an' }),
+      checkViolation('profiles_username_length'),
+    );
+    await assert.rejects(
+      () => createUser(db, { username: 'a'.repeat(21) }),
+      checkViolation('profiles_username_length'),
+    );
+  });
+
+  it('leaves nothing of a sign-up it refused', async () => {
     await assert.rejects(() => createUser(db, { username: 'an' }));
+
+    assert.equal(await count(`select count(*)::text as count from auth.users`), 0);
+    assert.equal(await count(`select count(*)::text as count from public.profiles`), 0);
   });
 });
 
@@ -478,7 +535,10 @@ describe('row level security', () => {
   it('shows nothing at all to a signed-out visitor', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() => asAnon(db, () => readProfile(anna)));
+    await assert.rejects(
+      () => asAnon(db, () => readProfile(anna)),
+      permissionDenied('table profiles'),
+    );
   });
 
   it('lets a user update their own display name', async () => {
@@ -511,22 +571,25 @@ describe('row level security', () => {
   it('does not let a user insert a profile row', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() =>
-      asUser(db, anna, () =>
-        db.query(`insert into public.profiles (id, username, display_name) values ($1, $2, $3)`, [
-          anna,
-          'imposter',
-          'Imposter',
-        ]),
-      ),
+    await assert.rejects(
+      () =>
+        asUser(db, anna, () =>
+          db.query(`insert into public.profiles (id, username, display_name) values ($1, $2, $3)`, [
+            anna,
+            'imposter',
+            'Imposter',
+          ]),
+        ),
+      permissionDenied('table profiles'),
     );
   });
 
   it('does not let a user delete their profile row directly', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() =>
-      asUser(db, anna, () => db.query(`delete from public.profiles where id = $1`, [anna])),
+    await assert.rejects(
+      () => asUser(db, anna, () => db.query(`delete from public.profiles where id = $1`, [anna])),
+      permissionDenied('table profiles'),
     );
 
     assert.equal(await count(`select count(*)::text as count from public.profiles`), 1);
@@ -579,6 +642,9 @@ describe('account deletion', () => {
   it('refuses when there is no authenticated caller', async () => {
     await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() => asAnon(db, () => db.query(`select public.delete_own_account()`)));
+    await assert.rejects(
+      () => asAnon(db, () => db.query(`select public.delete_own_account()`)),
+      permissionDenied('function delete_own_account'),
+    );
   });
 });

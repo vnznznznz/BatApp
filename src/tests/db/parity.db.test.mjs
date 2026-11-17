@@ -4,7 +4,14 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { count, createCourier, makeFriends, rejectsWithHint, rpc } from './fixtures.mjs';
+import {
+  count,
+  createCourier,
+  landedLetters,
+  makeFriends,
+  rejectsWithHint,
+  rpc,
+} from './fixtures.mjs';
 import { createTestDatabase, createUser } from './harness.mjs';
 
 /**
@@ -23,11 +30,18 @@ const CONFIG = readFileSync(
   'utf8',
 );
 
-function constant(name) {
-  const match = CONFIG.match(new RegExp(`export const ${name} = ([0-9.]+)`));
-  assert.ok(match, `${name} not found in src/constants/config.ts`);
+function constant(name, source = CONFIG, file = 'src/constants/config.ts') {
+  const match = source.match(new RegExp(`export const ${name} = ([0-9.]+)`));
+  assert.ok(match, `${name} not found in ${file}`);
   return Number(match[1]);
 }
+
+/** One number lives with the code that uses it rather than in config.ts. */
+const MESSAGES = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'features', 'messages', 'messages.ts'),
+  'utf8',
+);
+const MAX_PAGE_SIZE = constant('MAX_PAGE_SIZE', MESSAGES, 'src/features/messages/messages.ts');
 
 const BATS_PER_USER = constant('BATS_PER_USER');
 const BAT_SPEED_KMH = constant('BAT_SPEED_KMH');
@@ -159,8 +173,35 @@ describe('the database agrees with src/constants/config.ts', () => {
     await createUser(db, { username: 'a'.repeat(USERNAME_MIN_LENGTH) });
     await createUser(db, { username: 'b'.repeat(USERNAME_MAX_LENGTH) });
 
-    await assert.rejects(() => createUser(db, { username: 'c'.repeat(USERNAME_MIN_LENGTH - 1) }));
-    await assert.rejects(() => createUser(db, { username: 'd'.repeat(USERNAME_MAX_LENGTH + 1) }));
+    await assert.rejects(
+      () => createUser(db, { username: 'c'.repeat(USERNAME_MIN_LENGTH - 1) }),
+      /profiles_username_length/,
+    );
+    await assert.rejects(
+      () => createUser(db, { username: 'd'.repeat(USERNAME_MAX_LENGTH + 1) }),
+      /profiles_username_length/,
+    );
+  });
+
+  /**
+   * The app stops asking for older letters when a page comes back shorter than
+   * the most a page can hold, so that number has to be the database's.
+   */
+  it('on MAX_PAGE_SIZE, in src/features/messages/messages.ts', async () => {
+    const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
+    const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
+    await landedLetters(db, anna, ben, MAX_PAGE_SIZE + 20);
+
+    for (const [list, who] of [
+      ['list_inbox', ben],
+      ['list_sent', anna],
+    ]) {
+      const page = async (asked) => (await rpc(db, who, list, { max_results: asked })).length;
+
+      assert.equal(await page(MAX_PAGE_SIZE), MAX_PAGE_SIZE, list);
+      assert.equal(await page(MAX_PAGE_SIZE + 1), MAX_PAGE_SIZE, list);
+      assert.equal(await page(MAX_PAGE_SIZE - 1), MAX_PAGE_SIZE - 1, list);
+    }
   });
   it('on REPORT_REASONS, accepting each one and nothing else', async () => {
     const anna = await createCourier(db, { name: 'anna' });

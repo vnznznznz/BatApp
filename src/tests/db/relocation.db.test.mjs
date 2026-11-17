@@ -47,8 +47,31 @@ const moveHappenedAgo = (who, hours) =>
     [who, hours],
   );
 
+/**
+ * Lets `hours` go by for a move that is settling, whenever the database says
+ * it began. Unlike moveHappenedAgo, this keeps what the trigger recorded, which
+ * is the thing to use where the trigger's own record is what a test is about.
+ */
+const hoursPass = (who, hours) =>
+  db.query(
+    `update public.profiles set city_changed_at = city_changed_at - make_interval(hours => $2)
+     where id = $1`,
+    [who, hours],
+  );
+
 const send = async (from, to, body = 'Good evening.') =>
   (await rpc(db, from, 'send_message', { recipient_id: to, body }))[0];
+
+/** How far apart two seeded cities are, as the database measures it. */
+const kmBetween = async (from, to) =>
+  (
+    await db.query(
+      `select private.distance_km(a.latitude, a.longitude, b.latitude, b.longitude) as km
+       from public.cities a, public.cities b
+       where a.id = $1 and b.id = $2`,
+      [await cityId(db, from[0], from[1]), await cityId(db, to[0], to[1])],
+    )
+  ).rows[0].km;
 
 const flightMinutes = async (messageId) => {
   const { rows } = await db.query(
@@ -113,17 +136,58 @@ describe('moving', () => {
     assert.ok((await flightMinutes(sent.message_id)).km > 500);
   });
 
+  /**
+   * Otherwise: move anywhere today, switch to a friend's city a minute before
+   * the day is out, and the friend's city counts a minute later.
+   *
+   * This test used to set the time of the second move by hand, which wrote
+   * over the very thing it is about - whether the database restarted the wait
+   * - and passed with a trigger that did not. (Found in review.) Time now only
+   * goes by; when the second move began is left as the trigger recorded it.
+   */
   it('restarts the wait when a courier moves on again before settling', async () => {
     const { anna, ben } = await annaInBerlinBenInMunich();
     await moveTo(anna, ['Hamburg', 'DE']);
-    await moveHappenedAgo(anna, 20);
+    await moveHappenedAgo(anna, 23);
     await moveTo(anna, ['Munich', 'DE']);
-    await moveHappenedAgo(anna, 5);
+    // Twenty-five hours after the first move, two after the second.
+    await hoursPass(anna, 2);
 
     const sent = await send(anna, ben);
 
     // Still from Berlin: neither Hamburg nor Munich has been home for a day.
     assert.ok(Math.abs((await flightMinutes(sent.message_id)).km - 505) < 5);
+  });
+
+  it('counts the second city a day after the second move', async () => {
+    const { anna, ben } = await annaInBerlinBenInMunich();
+    await moveTo(anna, ['Hamburg', 'DE']);
+    await moveHappenedAgo(anna, 23);
+    await moveTo(anna, ['Munich', 'DE']);
+    await hoursPass(anna, 25);
+
+    const sent = await send(anna, ben);
+
+    assert.equal((await flightMinutes(sent.message_id)).km, 0);
+  });
+
+  /**
+   * The city a courier moved away from stays on the profile until the nightly
+   * tidy-up forgets it, long after the move has settled. A later move must
+   * leave from where the courier has come to live since, not from there.
+   */
+  it('leaves from the city that became home when a courier moves again later', async () => {
+    const { anna, ben } = await annaInBerlinBenInMunich();
+    await moveTo(anna, ['Hamburg', 'DE']);
+    await moveHappenedAgo(anna, 25);
+    await moveTo(anna, ['Munich', 'DE']);
+
+    const sent = await send(anna, ben);
+
+    const flown = (await flightMinutes(sent.message_id)).km;
+    const fromHamburg = await kmBetween(['Hamburg', 'DE'], ['Munich', 'DE']);
+    assert.ok(fromHamburg > 550, `Hamburg to Munich is ${fromHamburg} km`);
+    assert.ok(Math.abs(flown - fromHamburg) < 0.001, `flew ${flown} km, not from Hamburg`);
   });
 
   it('cancels the move when a courier goes back before settling', async () => {

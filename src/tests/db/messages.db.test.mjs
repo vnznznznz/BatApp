@@ -6,6 +6,7 @@ import {
   count,
   createCourier,
   fastForward,
+  landedLetters,
   makeFriends,
   rejectsWithHint,
   rpc,
@@ -901,6 +902,23 @@ describe('reading', () => {
       assert.equal(letter.opened_at, null);
     });
 
+    /**
+     * The other half of it. A sender who could mark their own letter opened by
+     * reading it would clear the recipient's unread mark for them, unseen.
+     */
+    it('does not mark a letter opened when its sender reads it', async () => {
+      const { anna, ben } = await berlinAndMunich();
+      const sent = await send(anna, ben);
+      await fastForward(db, sent.message_id);
+      await runWorker(db);
+
+      await rpc(db, anna, 'read_message', { message_id: sent.message_id });
+
+      assert.equal((await messageRow(sent.message_id)).opened_at, null);
+      assert.equal((await rpc(db, ben, 'get_badges'))[0].unread_messages, 1);
+      assert.equal((await rpc(db, ben, 'list_inbox'))[0].opened_at, null);
+    });
+
     it('does not let the sender read the letters table directly', async () => {
       const { anna, ben } = await berlinAndMunich();
       await send(anna, ben);
@@ -912,54 +930,101 @@ describe('reading', () => {
   });
 
   describe('A user cannot read another user’s message', () => {
-    it('through read_message', async () => {
+    /**
+     * Anna's letter to Ben, landed, and Cara, who has no part in it. While a
+     * letter is in the air nobody but its sender can see it anyway, so only a
+     * landed letter shows whether Cara is kept out because it is not hers.
+     * These tests used to stop short of landing it, and went on passing with
+     * every courier's landed letters open to everyone. (Found in review.)
+     */
+    async function landedBetweenAnnaAndBen() {
       const { anna, ben } = await berlinAndMunich();
       const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
       const sent = await send(anna, ben, 'Between us.');
       await fastForward(db, sent.message_id);
+      assert.equal(await runWorker(db), 1);
+      return { anna, ben, cara, letter: sent.message_id };
+    }
+
+    it('through read_message', async () => {
+      const { cara, letter } = await landedBetweenAnnaAndBen();
 
       await rejectsWithHint(
-        rpc(db, cara, 'read_message', { message_id: sent.message_id }),
+        rpc(db, cara, 'read_message', { message_id: letter }),
         'message_not_found',
       );
+
+      // Nor has trying opened it for Ben.
+      assert.equal((await messageRow(letter)).opened_at, null);
     });
 
     it('through either list', async () => {
-      const { anna, ben } = await berlinAndMunich();
-      const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
-      const sent = await send(anna, ben, 'Between us.');
-      await fastForward(db, sent.message_id);
+      const { ben, cara, letter } = await landedBetweenAnnaAndBen();
 
       assert.deepEqual(await rpc(db, cara, 'list_inbox'), []);
       assert.deepEqual(await rpc(db, cara, 'list_sent'), []);
-    });
-
-    it('through the table', async () => {
-      const { anna, ben } = await berlinAndMunich();
-      const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
-      await send(anna, ben, 'Between us.');
-
-      await assert.rejects(() =>
-        asUser(db, cara, () => db.query(`select body from public.messages`)),
+      assert.deepEqual(
+        (await rpc(db, ben, 'list_inbox')).map((row) => row.message_id),
+        [letter],
       );
     });
 
+    it('through the count of unread letters', async () => {
+      const { ben, cara } = await landedBetweenAnnaAndBen();
+
+      assert.equal((await rpc(db, cara, 'get_badges'))[0].unread_messages, 0);
+      assert.equal((await rpc(db, ben, 'get_badges'))[0].unread_messages, 1);
+    });
+
+    it('through the table', async () => {
+      const { cara } = await landedBetweenAnnaAndBen();
+
+      await assert.rejects(
+        asUser(db, cara, () => db.query(`select body from public.messages`)),
+        /permission denied for table messages/,
+      );
+    });
+
+    /** A cursor names a letter: taking someone else's would say that it exists, and when it landed. */
     it('through someone else’s page cursor', async () => {
-      const { anna, ben } = await berlinAndMunich();
-      const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
+      const { anna, cara, letter: theirs } = await landedBetweenAnnaAndBen();
       await makeFriends(db, anna, cara);
-      const theirs = await send(anna, ben, 'Between us.');
       const mine = await send(anna, cara, 'For Cara.');
-      await fastForward(db, theirs.message_id);
       await fastForward(db, mine.message_id);
+      assert.equal(await runWorker(db), 1);
 
       // Refused exactly as a cursor naming no letter at all would be: no page
       // positioned relative to it, and no hint that it exists.
       await rejectsWithHint(
-        rpc(db, cara, 'list_inbox', { older_than: theirs.message_id }),
+        rpc(db, cara, 'list_inbox', { older_than: theirs }),
         'cursor_not_found',
       );
     });
+
+    it('through someone else’s page cursor in the list of sent letters', async () => {
+      const { ben, cara, letter: theirs } = await landedBetweenAnnaAndBen();
+      await makeFriends(db, cara, ben);
+      await send(cara, ben, 'From Cara.');
+
+      await rejectsWithHint(rpc(db, cara, 'list_sent', { older_than: theirs }), 'cursor_not_found');
+    });
+  });
+
+  /**
+   * Nor does a recipient's own letter place a page before it has landed: its
+   * id would then answer whether a bat is on its way.
+   */
+  it('does not continue the inbox from a letter that is still in the air', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const landed = await send(anna, ben, 'landed');
+    await fastForward(db, landed.message_id);
+    await runWorker(db);
+    const flying = await send(anna, ben, 'still flying');
+
+    await rejectsWithHint(
+      rpc(db, ben, 'list_inbox', { older_than: flying.message_id }),
+      'cursor_not_found',
+    );
   });
 
   /**
@@ -1007,13 +1072,90 @@ describe('reading', () => {
     assert.deepEqual([...seen].sort(), ['letter 0', 'letter 1', 'letter 2']);
   });
 
-  it('bounds a page however many letters are asked for', async () => {
+  /**
+   * A letter sent first can land last: it had further to fly. The inbox goes by
+   * arrival, and so does the place a page continues from - sorted by one and
+   * continued by the other, pages would repeat letters and lose them.
+   */
+  it('lists the inbox by arrival, newest first, whatever order the letters were sent in', async () => {
     const { anna, ben } = await berlinAndMunich();
-    const sent = await send(anna, ben);
-    await fastForward(db, sent.message_id);
+    for (const [body, sentHoursAgo, arrivedHoursAgo] of [
+      ['sent second, arrived last', 10, 1],
+      ['sent last, arrived second', 5, 3],
+      ['sent first, arrived first', 20, 15],
+    ]) {
+      const sent = await send(anna, ben, body);
+      await db.query(
+        `update public.messages
+         set sent_at = now() - make_interval(hours => $2),
+             deliver_at = now() - make_interval(hours => $3)
+         where id = $1`,
+        [sent.message_id, sentHoursAgo, arrivedHoursAgo],
+      );
+    }
 
-    assert.equal((await rpc(db, ben, 'list_inbox', { max_results: 0 })).length, 1);
-    assert.equal((await rpc(db, ben, 'list_inbox', { max_results: 100000 })).length, 1);
+    const seen = [];
+    let cursor = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await rpc(db, ben, 'list_inbox', { max_results: 1, older_than: cursor });
+      if (rows.length === 0) break;
+      seen.push(...rows.map((row) => row.preview));
+      cursor = rows.at(-1).message_id;
+    }
+
+    assert.deepEqual(seen, [
+      'sent second, arrived last',
+      'sent last, arrived second',
+      'sent first, arrived first',
+    ]);
+  });
+
+  /** The same for the letters a courier sent: three in one instant, two to a page. */
+  it('pages through the sent list without losing or repeating letters sent together', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    for (let i = 0; i < 3; i++) await send(anna, ben, `letter ${i}`);
+    await db.query(
+      `update public.messages set sent_at = now() - interval '1 hour' where sender_id = $1`,
+      [anna],
+    );
+
+    const seen = [];
+    let cursor = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await rpc(db, anna, 'list_sent', { max_results: 2, older_than: cursor });
+      if (rows.length === 0) break;
+      seen.push(...rows.map((row) => row.preview));
+      cursor = rows.at(-1).message_id;
+    }
+
+    assert.deepEqual([...seen].sort(), ['letter 0', 'letter 1', 'letter 2']);
+  });
+
+  /**
+   * With one letter to list, the top of the range could not be seen: a page
+   * without any upper bound passed. So, more letters than the most a page
+   * may hold.
+   */
+  it('bounds a page however many letters are asked for, or however few', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    await landedLetters(db, anna, ben, 120);
+
+    for (const [list, who] of [
+      ['list_inbox', ben],
+      ['list_sent', anna],
+    ]) {
+      const page = async (args) => (await rpc(db, who, list, args)).length;
+
+      assert.equal(await page({ max_results: 100000 }), 100, list);
+      assert.equal(await page({ max_results: 101 }), 100, list);
+      assert.equal(await page({ max_results: 100 }), 100, list);
+      assert.equal(await page({ max_results: 99 }), 99, list);
+      assert.equal(await page({ max_results: 0 }), 1, list);
+      assert.equal(await page({ max_results: -5 }), 1, list);
+      // Nothing asked for is fifty.
+      assert.equal(await page({}), 50, list);
+      assert.equal(await page({ max_results: null }), 50, list);
+    }
   });
 
   it('counts friend requests waiting for an answer', async () => {
@@ -1029,6 +1171,19 @@ describe('reading', () => {
     const [badges] = await rpc(db, benId, 'get_badges');
 
     assert.equal(badges.friend_requests, 2);
+  });
+
+  /** Not the ones the caller made, and not the ones already answered. */
+  it('counts only requests made to the caller that are still waiting', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const ben = await createCourier(db, { name: 'ben' });
+    const cara = await createCourier(db, { name: 'cara' });
+    await rpc(db, anna, 'request_friend', { username: 'ben' });
+    await makeFriends(db, cara, ben);
+
+    assert.equal((await rpc(db, anna, 'get_badges'))[0].friend_requests, 0);
+    assert.equal((await rpc(db, ben, 'get_badges'))[0].friend_requests, 1);
+    assert.equal((await rpc(db, cara, 'get_badges'))[0].friend_requests, 0);
   });
 
   it('is not available to a signed-out visitor', async () => {
@@ -1072,6 +1227,31 @@ describe('Account deletion removes or anonymises the required data', () => {
     await asUser(db, ben, () => db.query(`select public.delete_own_account()`));
 
     assert.deepEqual(await batStatuses(db, anna), ['available', 'available', 'available']);
+  });
+
+  /**
+   * A bat's earlier letters stay on record once it is home, and go with either
+   * of their two people. That must not be taken for a letter lost in the air:
+   * by then the bat may be out again with somebody else's. Sent home on paper
+   * while it is still flying, it would be the first bat every later send
+   * reached for - and each of them would fail, until that letter landed.
+   */
+  it('leaves a bat in the air when a letter it carried earlier goes', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
+    await makeFriends(db, anna, cara);
+    const first = await send(anna, ben, 'one');
+    await fastForward(db, first.message_id);
+    await runWorker(db);
+    await send(anna, cara, 'two');
+    assert.deepEqual(await batStatuses(db, anna), ['flying', 'available', 'available']);
+
+    // Ben goes, and the landed letter to him with him.
+    await asUser(db, ben, () => db.query(`select public.delete_own_account()`));
+
+    assert.deepEqual(await batStatuses(db, anna), ['flying', 'available', 'available']);
+    await send(anna, cara, 'three');
+    assert.deepEqual(await batStatuses(db, anna), ['flying', 'flying', 'available']);
   });
 
   it('leaves letters between other couriers alone', async () => {
