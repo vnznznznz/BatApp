@@ -74,6 +74,9 @@ const LEAD =
   'Unblocking brings their letters back and lets them ask again; to write to each other, ' +
   'one of you has to ask to be friends.';
 const NOBODY = 'You have not blocked anyone.';
+const REPORT_FROM_HERE =
+  'Report sends the person who runs Night Courier their names as they are now, without any ' +
+  'letter. To report a letter of theirs, unblock them, open the letter and report it there.';
 const LOAD_FAILED = 'Your blocked couriers could not be loaded.';
 const UNBLOCK_FAILED = 'That courier could not be unblocked. Try again.';
 
@@ -316,6 +319,27 @@ describe('BlockedScreen', () => {
       // Reporting asks nothing here, and lifts nothing: the block stays.
       expect(alertSpy).not.toHaveBeenCalled();
       expect(mockedUnblockCourier).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A report from here carries the courier's names, but no letter: their
+     * letters are hidden while they are blocked. Someone who wants a letter
+     * itself in front of the person who runs Night Courier learns the way
+     * here, rather than from a report that arrives without it.
+     */
+    it('says a report from here goes without a letter, and how to report a letter of theirs', async () => {
+      await renderScreen(<BlockedScreen />);
+      await listLoaded();
+
+      expect(screen.getByText(REPORT_FROM_HERE)).toBeOnTheScreen();
+    });
+
+    it('says nothing of reporting while nobody is blocked', async () => {
+      serve(() => []);
+      await renderScreen(<BlockedScreen />);
+
+      expect(await screen.findByText(NOBODY)).toBeOnTheScreen();
+      expect(screen.queryByText(REPORT_FROM_HERE)).toBeNull();
     });
   });
 

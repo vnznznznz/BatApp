@@ -13,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import {
   REASON_LABELS,
   reportCourier,
+  prepareNote,
   reportLetter,
   validateNote,
   type ReportOutcome,
@@ -162,6 +163,10 @@ export default function ReportScreen() {
   if (sent) {
     const lines = describeSent(sent, alreadyBlocked, handle, Boolean(letter));
     const title = TITLES[sent.outcome];
+    // A report that was not recorded, or added nothing to an earlier one, did
+    // not take the note either. What was typed stays here, where it can be
+    // copied, rather than going with the form.
+    const noteKept = sent.outcome !== 'reported' && prepareNote(note) ? note : null;
     return (
       <Screen scroll edges={['bottom']} style={styles.screen}>
         {/* headerBackVisible for iOS and Android; the web build's stack ignores it
@@ -188,6 +193,16 @@ export default function ReportScreen() {
             </Text>
           ))}
         </View>
+        {noteKept ? (
+          <View style={styles.lines}>
+            <Text variant="caption" tone="secondary" style={styles.line}>
+              Your note was not sent with it. Here it is, so you can keep it:
+            </Text>
+            <Text variant="body" selectable style={styles.line}>
+              {noteKept}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.actions}>
           <Button label="Done" onPress={finish} />
         </View>
@@ -285,6 +300,11 @@ function describeSent(
   aboutLetter: boolean,
 ): string[] {
   const blocked = sent.blockedNow || alreadyBlocked;
+  // The limit counts the last 24 hours, not the calendar day, so "tomorrow"
+  // could be too early. And once a block has hidden the letter, the blocked
+  // list is no way to report it: a report from there carries no letter.
+  const notRecorded =
+    'You have made a lot of reports in the last 24 hours, so this one was not recorded.';
   const lines = [
     sent.outcome === 'reported'
       ? 'Your report is with the person who runs Night Courier.'
@@ -292,9 +312,11 @@ function describeSent(
         ? aboutLetter
           ? 'You have already reported this letter, and that report is still open.'
           : `You have already reported ${handle}, and that report is still open.`
-        : blocked
-          ? `You have sent a lot of reports today, so this one was not recorded. Report ${handle} again tomorrow, from your blocked couriers in your profile.`
-          : 'You have sent a lot of reports today, so this one was not recorded. Try again tomorrow.',
+        : !blocked
+          ? `${notRecorded} Try again 24 hours from now.`
+          : aboutLetter
+            ? `${notRecorded} To report this letter 24 hours from now, unblock ${handle} in your profile, then open the letter and report it again. From your blocked couriers you can report ${handle} too, but without the letter.`
+            : `${notRecorded} Report ${handle} again 24 hours from now, from your blocked couriers in your profile.`,
   ];
   if (sent.blockedNow) {
     lines.push(

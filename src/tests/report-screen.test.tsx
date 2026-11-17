@@ -118,11 +118,27 @@ const REPORTED = 'Your report is with the person who runs Night Courier.';
 const LETTER_REPORTED_BEFORE =
   'You have already reported this letter, and that report is still open.';
 const COURIER_REPORTED_BEFORE = 'You have already reported @anna, and that report is still open.';
+/**
+ * The limit counts the last 24 hours, not the calendar day, so "tomorrow" could
+ * be too early: 24 hours from now is the time that is sure to do.
+ */
 const OVER_THE_LIMIT =
-  'You have sent a lot of reports today, so this one was not recorded. Try again tomorrow.';
+  'You have made a lot of reports in the last 24 hours, so this one was not recorded. Try ' +
+  'again 24 hours from now.';
 const OVER_THE_LIMIT_BLOCKED =
-  'You have sent a lot of reports today, so this one was not recorded. Report @anna again ' +
-  'tomorrow, from your blocked couriers in your profile.';
+  'You have made a lot of reports in the last 24 hours, so this one was not recorded. Report ' +
+  '@anna again 24 hours from now, from your blocked couriers in your profile.';
+/**
+ * Reporting from the blocked list sends no letter, so that is not the way to
+ * report this one: the letter is hidden until its sender is unblocked.
+ */
+const OVER_THE_LIMIT_LETTER_BLOCKED =
+  'You have made a lot of reports in the last 24 hours, so this one was not recorded. To ' +
+  'report this letter 24 hours from now, unblock @anna in your profile, then open the letter ' +
+  'and report it again. From your blocked couriers you can report @anna too, but without the ' +
+  'letter.';
+/** Above the note a report did not take, which is kept on screen to be copied. */
+const NOTE_NOT_SENT = 'Your note was not sent with it. Here it is, so you can keep it:';
 const BLOCKED =
   '@anna is blocked: they cannot write to you or ask to be friends, and their letters are ' +
   'hidden. You can unblock them in your profile.';
@@ -830,7 +846,7 @@ describe('ReportScreen', () => {
         'limit_reached',
         true,
         'Not recorded',
-        [OVER_THE_LIMIT_BLOCKED, BLOCKED],
+        [OVER_THE_LIMIT_LETTER_BLOCKED, BLOCKED],
       ],
       [
         "a letter over the day's limit",
@@ -912,11 +928,50 @@ describe('ReportScreen', () => {
     );
 
     /**
-     * A block ends the friendship and hides the courier's letters, this one
-     * too - whatever became of the report - so the letter or the courier's
-     * page the report was made from has nothing left to show. Done goes back
-     * past it as well.
+     * A report that was not recorded, or added nothing to an earlier one, did
+     * not take the note either. What was typed - a threat described in the
+     * courier's own words, say - stays on screen, where it can be copied,
+     * rather than going with the form.
      */
+    it.each<[string, () => Promise<void>, ReportOutcome]>([
+      ["a letter over the day's limit", reportingTheLetter, 'limit_reached'],
+      ['a letter reported before', reportingTheLetter, 'already_reported'],
+      ["a courier over the day's limit", reportingTheCourier, 'limit_reached'],
+      ['a courier reported before', reportingTheCourier, 'already_reported'],
+    ])(
+      'keeps the note on screen after the report of %s, which did not take it',
+      async (_, open, outcome) => {
+        const note = 'He says he knows where I live.';
+        mockedReportLetter.mockResolvedValue(outcome);
+        mockedReportCourier.mockResolvedValue(outcome);
+        await open();
+        await fireEvent.press(reasonChoice('Threats or violence'));
+        await fireEvent.changeText(noteField(), note);
+
+        await fireEvent.press(sendButton());
+
+        expect(await screen.findByText(NOTE_NOT_SENT)).toBeOnTheScreen();
+        const kept = screen.getByText(note);
+        expect(kept).toBeOnTheScreen();
+        expect(kept).toHaveProp('selectable', true);
+      },
+    );
+
+    it.each<[string, ReportOutcome, string]>([
+      ['went through', 'reported', 'Some text'],
+      ["was over the day's limit, with no note", 'limit_reached', '   '],
+    ])('shows no note kept back when the report %s', async (_, outcome, note) => {
+      mockedReportLetter.mockResolvedValue(outcome);
+      await reportingTheLetter();
+      await fireEvent.press(reasonChoice('Threats or violence'));
+      await fireEvent.changeText(noteField(), note);
+
+      await fireEvent.press(sendButton());
+
+      await screen.findByRole('button', { name: 'Done' });
+      expect(screen.queryByText(NOTE_NOT_SENT)).toBeNull();
+    });
+
     /**
      * Two taps before the screen has gone would dismiss twice: four screens
      * back instead of two, past the letters list. (Found in review.)
