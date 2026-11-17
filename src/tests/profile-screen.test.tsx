@@ -601,10 +601,30 @@ describe('ProfileScreen', () => {
 
       expect(mockedAlert).toHaveBeenCalledTimes(2);
       expect(mockedAlert).toHaveBeenLastCalledWith(
-        'Could not delete',
+        'Deleting your account',
         'Your account could not be deleted. Please try again.',
       );
       expect(button('Delete my account')).toBeEnabled();
+    });
+
+    /**
+     * When no answer comes back, nobody knows whether the account is gone. The
+     * alert used to be headed "Could not delete" whatever had happened, over a
+     * sentence that may now say the opposite.
+     */
+    it('does not claim the account was kept when that is not known', async () => {
+      const unknown =
+        'Your account may or may not have been deleted - no answer came back. ' +
+        'Check again once you are online.';
+      mockDeleteAccount.mockRejectedValue(new Error(unknown));
+      await renderScreen(<ProfileScreen />);
+      await fireEvent.press(button('Delete my account'));
+
+      await answerAlert('Delete');
+
+      const [title, message] = mockedAlert.mock.calls.at(-1) ?? [];
+      expect(title).not.toMatch(/not|fail/i);
+      expect(message).toBe(unknown);
     });
 
     it('offers nothing for sale', async () => {

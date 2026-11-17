@@ -85,6 +85,20 @@ describe('toRpcError', () => {
     },
   );
 
+  /**
+   * A suspended account is refused by every function, so the same words are
+   * shown for a roost that would not load and for a deletion that was refused.
+   * They say what has happened and where to turn, and blame neither.
+   */
+  it('tells a suspended courier what has happened and where to turn', () => {
+    const result = toRpcError(refusal('account_suspended'), FALLBACK);
+
+    expect(result.message).toBe(
+      'This account has been suspended. Write to the contact address on the help page.',
+    );
+    expect(result.reason).toBe('account_suspended');
+  });
+
   it('ignores an empty or missing hint', () => {
     expect(toRpcError({ message: 'boom', code: 'XX000', hint: '' }, FALLBACK).reason).toBeNull();
     expect(toRpcError({ message: 'boom', code: 'XX000', hint: null }, FALLBACK).reason).toBeNull();
@@ -138,6 +152,23 @@ describe('toRpcError', () => {
     expect(result.message).toBe(FALLBACK);
     expect(result.reason).toBeNull();
     expect(result.cause).toBe(error);
+  });
+
+  /**
+   * Not every error comes from PostgREST. A gateway in front of it answers in
+   * a shape of its own, without a message, and reading that as one showed the
+   * courier "Cannot read properties of undefined".
+   */
+  it.each<[string, unknown]>([
+    ['a gateway that names its error differently', { error: 'upstream connect error' }],
+    ['a message that is not text', { message: 502 }],
+    ['nothing at all', {}],
+  ])('uses the words of the screen that asked for %s', (_, body) => {
+    const result = toRpcError(body as ApiError, FALLBACK);
+
+    expect(result.message).toBe(FALLBACK);
+    expect(result.reason).toBeNull();
+    expect(result.cause).toBe(body);
   });
 
   /** The database phrases its messages for whoever reads the logs, not for the courier. */

@@ -101,8 +101,10 @@ export default function ProfileScreen() {
         try {
           await deleteAccount();
         } catch (caught) {
+          // Headed by what was asked, not by an outcome: when no answer came
+          // back, the account may be gone, and the words below say so.
           notify(
-            'Could not delete',
+            'Deleting your account',
             caught instanceof Error ? caught.message : 'Please try again.',
           );
         } finally {

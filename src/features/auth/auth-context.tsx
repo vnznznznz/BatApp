@@ -1,7 +1,8 @@
-import type { Session } from '@supabase/supabase-js';
+import { isAuthApiError, type AuthError, type Session } from '@supabase/supabase-js';
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { normaliseUsername } from '@/features/auth/validation';
+import { toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
 
@@ -94,8 +95,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
+  const value = useMemo<AuthContextValue>(() => {
+    async function signOut() {
+      // The server is asked first: only that ends the session on the
+      // courier's other devices as well.
+      const heard = await supabase.auth.signOut().then(
+        ({ error }) => !error,
+        () => false,
+      );
+      if (heard) return;
+
+      // It was not told, or cannot be known to have been. Signing out signs
+      // this device out all the same - and the client does not see to that
+      // by itself: with a token over an hour old and no network, it gives up
+      // before it has removed anything.
+      signedOutUnheard = true;
+      try {
+        await clearStoredSession();
+      } catch (cause) {
+        // Still signed in, then, and to be treated as such.
+        signedOutUnheard = false;
+        throw new Error('This device could not be signed out. Try again.', { cause });
+      }
+      setSession(null);
+    }
+
+    return {
       session,
       isRestoring,
 
@@ -129,29 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { needsEmailConfirmation: data.session === null };
       },
 
-      async signOut() {
-        // The server is asked first: only that ends the session on the
-        // courier's other devices as well.
-        const heard = await supabase.auth.signOut().then(
-          ({ error }) => !error,
-          () => false,
-        );
-        if (heard) return;
-
-        // It was not told, or cannot be known to have been. Signing out signs
-        // this device out all the same - and the client does not see to that
-        // by itself: with a token over an hour old and no network, it gives up
-        // before it has removed anything.
-        signedOutUnheard = true;
-        try {
-          await clearStoredSession();
-        } catch (cause) {
-          // Still signed in, then, and to be treated as such.
-          signedOutUnheard = false;
-          throw new Error('This device could not be signed out. Try again.', { cause });
-        }
-        setSession(null);
-      },
+      signOut,
 
       async sendPasswordReset(email) {
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
@@ -160,14 +163,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       async deleteAccount() {
         const { error } = await supabase.rpc('delete_own_account');
-        if (error) throw new Error('Your account could not be deleted. Please try again.');
-        // The session belongs to a user that no longer exists; clearing it
-        // locally is what returns the app to the welcome screen.
-        await supabase.auth.signOut();
+        if (error) {
+          // A refusal is an answer: the account is still there, and the
+          // database's reason has words of its own.
+          const refusal = toRpcError(error, COULD_NOT_DELETE);
+          if (refusal.reason) throw refusal;
+
+          // Anything else says nothing about the account. The request may
+          // have been carried out and only its answer lost, and "could not be
+          // deleted" would then leave the courier signed in to nothing. The
+          // auth server knows whether the account is still there.
+          const { data, error: unanswered } = await supabase.auth
+            .getUser()
+            .catch(() => ({ data: { user: null }, error: null }));
+          if (data.user) throw new Error(COULD_NOT_DELETE, { cause: error });
+          if (!isAccountGone(unanswered)) {
+            throw new Error(
+              'Your account may or may not have been deleted - no answer came back. ' +
+                'Check again once you are online.',
+              { cause: error },
+            );
+          }
+        }
+        // The session belongs to a user that no longer exists; ending it on
+        // this device is what returns the app to the welcome screen.
+        await signOut();
       },
-    }),
-    [session, isRestoring],
-  );
+    };
+  }, [session, isRestoring]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
 }
@@ -177,6 +200,17 @@ export function useAuth(): AuthContextValue {
   if (!value) throw new Error('useAuth must be used inside an AuthProvider');
   return value;
 }
+
+const COULD_NOT_DELETE = 'Your account could not be deleted. Please try again.';
+
+/**
+ * Whether the auth server has said that the account asked about does not
+ * exist. Only its own words count: a gateway answers 404 as well, for an
+ * address it does not know, and that says nothing about anyone's account.
+ */
+const isAccountGone = (error: AuthError | null) =>
+  isAuthApiError(error) &&
+  (error.code === 'user_not_found' || /user (not found|.* does not exist)/i.test(error.message));
 
 /**
  * Supabase's messages are written for developers. These are the ones a user can

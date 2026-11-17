@@ -675,3 +675,185 @@ describe('signing out', () => {
     expect(state()).toBe('signed in');
   });
 });
+
+describe('deleting the account', () => {
+  const isDeletion = (request: Sent) => request.url.includes('/rest/v1/rpc/delete_own_account');
+  const isWhoAmI = (request: Sent) => request.url.endsWith('/auth/v1/user');
+  const isLogout = (request: Sent) => request.url.includes('/auth/v1/logout');
+
+  /** What the auth server answers to anything asked in the name of an account that is gone. */
+  const noSuchUser = () =>
+    authRefusal(403, 'user_not_found', 'User from sub claim in JWT does not exist');
+  const user = () => json(200, sessionOf(OLD_TOKEN, 'refresh-old', 3000).user);
+
+  const COULD_NOT_DELETE = 'Your account could not be deleted. Please try again.';
+
+  async function signedIn() {
+    const session = sessionOf(OLD_TOKEN, 'refresh-old', 3000);
+    await keep(session);
+    await launch();
+    await passes(A_MOMENT);
+    expect(state()).toBe('signed in');
+    return session;
+  }
+
+  it('deletes it, and leaves nothing on the device', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return new Response(null, { status: 204 });
+      return isLogout(request) ? noSuchUser() : json(200, []);
+    };
+    await signedIn();
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
+
+    expect(sent.filter(isDeletion).map(({ method, bearer }) => [method, bearer])).toEqual([
+      ['POST', OLD_TOKEN],
+    ]);
+    expect(state()).toBe('signed out');
+    expect(mockKeychain.size).toBe(0);
+  });
+
+  /**
+   * The database refuses a suspended or removed account, so that deleting it
+   * cannot undo the suspension. A refusal is an answer: the account is there.
+   */
+  it('says why when the database refuses, and asks nobody else', async () => {
+    network = (request) =>
+      isDeletion(request)
+        ? json(400, {
+            code: 'P0001',
+            details: null,
+            hint: 'account_suspended',
+            message: 'this account is suspended',
+          })
+        : json(200, []);
+    const session = await signedIn();
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
+      'This account has been suspended. Write to the contact address on the help page.',
+    );
+
+    expect(sent.filter(isWhoAmI)).toEqual([]);
+    expect(state()).toBe('signed in');
+    expect(await kept()).toEqual(session);
+  });
+
+  /**
+   * A request that fails without a refusal says nothing about the account: it
+   * may have been deleted and only the answer lost. Saying "could not delete"
+   * then left the courier signed in to an account that no longer existed.
+   */
+  describe('when no answer comes back', () => {
+    /**
+     * The auth server's word that the user does not exist: as it says it
+     * today, by its code alone should the words change, and in the words alone
+     * of a server from before it had codes.
+     */
+    it.each<[string, () => Response]>([
+      ['the account turns out to be gone', noSuchUser],
+      [
+        'the auth server says so in other words',
+        () => authRefusal(403, 'user_not_found', 'No such user'),
+      ],
+      ['an older auth server says so', () => json(404, { code: 404, msg: 'User not found' })],
+    ])('is done, and signed out, if %s', async (_, gone) => {
+      network = (request) => {
+        if (isDeletion(request)) return offline();
+        return isWhoAmI(request) || isLogout(request) ? gone() : json(200, []);
+      };
+      await signedIn();
+
+      expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
+
+      expect(sent.filter(isWhoAmI).map((request) => request.bearer)).toEqual([OLD_TOKEN]);
+      expect(state()).toBe('signed out');
+      expect(mockKeychain.size).toBe(0);
+    });
+
+    it('says it could not be deleted if the account is still there', async () => {
+      network = (request) => {
+        if (isDeletion(request)) return offline();
+        return isWhoAmI(request) ? user() : json(200, []);
+      };
+      const session = await signedIn();
+
+      expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(COULD_NOT_DELETE);
+
+      expect(state()).toBe('signed in');
+      expect(await kept()).toEqual(session);
+    });
+
+    it('says so honestly if that cannot be found out either', async () => {
+      network = (request) => (isDeletion(request) || isWhoAmI(request) ? offline() : json(200, []));
+      const session = await signedIn();
+
+      expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
+        'Your account may or may not have been deleted - no answer came back. ' +
+          'Check again once you are online.',
+      );
+
+      expect(state()).toBe('signed in');
+      expect(await kept()).toEqual(session);
+    });
+  });
+
+  /**
+   * Asking who is signed in can end the session - it was ended elsewhere - and
+   * the client then fails over a keychain that will not delete. Whatever goes
+   * wrong with the question, the answer is "not known", in the app's words.
+   */
+  it('says so honestly when the question itself goes wrong', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return offline();
+      return isWhoAmI(request)
+        ? authRefusal(
+            403,
+            'session_not_found',
+            'Session from session_id claim in JWT does not exist',
+          )
+        : json(200, []);
+    };
+    await signedIn();
+    mockRefusal.deletes = true;
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
+      'Your account may or may not have been deleted - no answer came back. ' +
+        'Check again once you are online.',
+    );
+  });
+
+  it('looks whether the account is still there after an error from the server, too', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return json(500, { message: 'something broke' });
+      return isWhoAmI(request) ? user() : json(200, []);
+    };
+    await signedIn();
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(COULD_NOT_DELETE);
+
+    expect(sent.filter(isWhoAmI)).toHaveLength(1);
+    expect(state()).toBe('signed in');
+  });
+
+  /**
+   * Only the auth server's word that the user does not exist counts as gone. A
+   * gateway that knows no such address answers 404 too, about nothing at all.
+   */
+  it('does not take any refusal of the question for the account being gone', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return offline();
+      return isWhoAmI(request)
+        ? json(404, { message: 'no Route matched with those values' })
+        : json(200, []);
+    };
+    const session = await signedIn();
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
+      'Your account may or may not have been deleted - no answer came back. ' +
+        'Check again once you are online.',
+    );
+
+    expect(state()).toBe('signed in');
+    expect(await kept()).toEqual(session);
+  });
+});
