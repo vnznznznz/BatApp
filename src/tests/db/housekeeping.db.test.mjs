@@ -1,13 +1,25 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { count, createCourier, makeFriends, rpc, setCity } from './fixtures.mjs';
+import {
+  cityId,
+  count,
+  createCourier,
+  fastForward,
+  makeFriends,
+  rejectsWithHint,
+  rpc,
+  runWorker,
+  setCity,
+} from './fixtures.mjs';
 import { asUser, createTestDatabase } from './harness.mjs';
 
 /**
  * Keeping less, for less long: the daily tidy-up, and what account deletion and
  * removal take with them. What the privacy policy promises about sign-in
- * records, sign-up details, banned accounts and moves is checked here.
+ * records, sign-up details, banned accounts and moves is checked here - and
+ * that an account the operator has stopped is stopped: at once, and without a
+ * way to delete what the operator is keeping.
  */
 
 let db;
@@ -51,6 +63,22 @@ const signInExists = async (id) =>
   (await count(db, `select 1 from auth.users where id = $1`, [id])) === 1;
 const profileExists = async (id) =>
   (await count(db, `select 1 from public.profiles where id = $1`, [id])) === 1;
+
+/** The statement docs/GO-LIVE.md gives the operator for "A threat", word for word. */
+const suspend = (id) =>
+  db.query(`update auth.users set banned_until = now() + private.ban_period() where id = $1`, [id]);
+
+const bannedUntil = async (id) =>
+  (await db.query(`select banned_until from auth.users where id = $1`, [id])).rows[0]?.banned_until;
+
+const session = (userId) =>
+  db.query(
+    `insert into auth.sessions (user_id, ip, user_agent) values ($1, '203.0.113.7', 'Night Courier')`,
+    [userId],
+  );
+
+/** Runs `sql` as the signed-in courier, the way a direct request to a table does. */
+const asCourier = (id, sql, params = []) => asUser(db, id, () => db.query(sql, params));
 
 /** Runs `fn` with GoTrue's audit table gone, as on a platform that withholds it. */
 async function withoutAuditTable(fn) {
@@ -319,6 +347,245 @@ describe('deleting your own account', () => {
       assert.equal(await signInExists(anna), false);
     });
   });
+
+  /**
+   * After a threat the operator suspends the account and deletes nothing for a
+   * week (docs/GO-LIVE.md, "A threat"). The app it is signed in on still holds
+   * a token that works for up to an hour, and with it "Delete my account" took
+   * the letters, the sign-in records and the ban itself. (Found in review.)
+   */
+  it('is refused to a suspended account, and nothing the suspension keeps is lost', async () => {
+    const anna = await createCourier(db, { city: ['Berlin', 'DE'] });
+    const ben = await createCourier(db, { city: ['Munich', 'DE'] });
+    await makeFriends(db, anna, ben);
+    const [letter] = await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'A threat.' });
+    await fastForward(db, letter.message_id);
+    await runWorker(db);
+    await audit(anna);
+    await session(anna);
+
+    await suspend(anna);
+
+    await rejectsWithHint(rpc(db, anna, 'delete_own_account'), 'account_suspended');
+
+    assert.equal(await signInExists(anna), true);
+    assert.equal(await profileExists(anna), true);
+    assert.equal(
+      await count(db, `select 1 from public.messages where recipient_id = $1`, [ben]),
+      1,
+    );
+    assert.equal(await auditCount(anna), 1);
+    assert.equal(await count(db, `select 1 from auth.sessions where user_id = $1`, [anna]), 1);
+  });
+
+  /** Its sign-in is what keeps the same email address from signing up again. */
+  it('is refused to a removed account, whose banned sign-in stays', async () => {
+    const anna = await createCourier(db);
+    await audit(anna);
+    await db.query(`select private.remove_account($1)`, [anna]);
+
+    await rejectsWithHint(rpc(db, anna, 'delete_own_account'), 'account_suspended');
+
+    assert.ok((await bannedUntil(anna)) > new Date(), 'the sign-in is still there, and banned');
+    assert.equal(await auditCount(anna), 1);
+  });
+
+  it('works again once a suspension has run out, or has been lifted', async () => {
+    const lapsed = await createCourier(db);
+    const lifted = await createCourier(db);
+    await db.query(
+      `update auth.users set banned_until = now() - interval '1 second' where id = $1`,
+      [lapsed],
+    );
+    await suspend(lifted);
+    await db.query(`update auth.users set banned_until = null where id = $1`, [lifted]);
+
+    await rpc(db, lapsed, 'delete_own_account');
+    await rpc(db, lifted, 'delete_own_account');
+
+    assert.equal(await signInExists(lapsed), false);
+    assert.equal(await signInExists(lifted), false);
+  });
+
+  /** Two phones signed in to one account: the second finds nothing left to delete. */
+  it('is not an error for an account that is already gone', async () => {
+    const anna = await createCourier(db);
+
+    await rpc(db, anna, 'delete_own_account');
+    await rpc(db, anna, 'delete_own_account');
+
+    assert.equal(await signInExists(anna), false);
+  });
+});
+
+/**
+ * GoTrue stops a banned account signing in or renewing its sign-in, but the
+ * token an app already holds is good at the API until it expires, up to an hour
+ * later. The database is where "at once" has to be made true.
+ */
+describe('a suspended account', () => {
+  const SAMPLE = {
+    uuid: '00000000-0000-4000-8000-000000000000',
+    text: 'x',
+    integer: 1,
+    boolean: false,
+  };
+
+  /**
+   * Every function the API offers a signed-in courier, read from the catalog
+   * with a value for each argument - so that a function added later is held to
+   * the same rule without anyone remembering to list it here.
+   */
+  async function apiCalls() {
+    const { rows } = await db.query(
+      `select p.proname as name, pg_get_function_identity_arguments(p.oid) as arguments
+       from pg_proc p
+       where p.pronamespace = 'public'::regnamespace
+         and has_function_privilege('authenticated', p.oid, 'execute')
+       order by 1`,
+    );
+    return rows.map(({ name, arguments: list }) => {
+      const types = list ? list.split(', ').map((arg) => arg.split(' ').slice(1).join(' ')) : [];
+      for (const type of types) {
+        assert.ok(type in SAMPLE, `add a sample ${type} for ${name}(${list})`);
+      }
+      return {
+        name,
+        sql: `select * from public.${name}(${types.map((type, i) => `$${i + 1}::${type}`).join(', ')})`,
+        values: types.map((type) => SAMPLE[type]),
+      };
+    });
+  }
+
+  /** The public list of cities is all it searches; the table can be read as well. */
+  const refusing = async () => (await apiCalls()).filter((call) => call.name !== 'search_cities');
+
+  it('is refused at once by every function of the API but the city search', async () => {
+    const anna = await createCourier(db, { city: ['Berlin', 'DE'] });
+    const calls = await refusing();
+    assert.ok(calls.length > 15, `expected the whole API, found ${calls.length} functions`);
+
+    await suspend(anna);
+
+    for (const call of calls) {
+      await rejectsWithHint(asCourier(anna, call.sql, call.values), 'account_suspended');
+    }
+  });
+
+  it('is refused the same way once it has been removed', async () => {
+    const anna = await createCourier(db);
+    await db.query(`select private.remove_account($1)`, [anna]);
+
+    for (const call of await refusing()) {
+      await rejectsWithHint(asCourier(anna, call.sql, call.values), 'account_suspended');
+    }
+  });
+
+  it('is served again as soon as the suspension is lifted, or has run out', async () => {
+    const lifted = await createCourier(db);
+    const lapsed = await createCourier(db);
+    await suspend(lifted);
+    await suspend(lapsed);
+    await rejectsWithHint(rpc(db, lifted, 'get_badges'), 'account_suspended');
+
+    await db.query(`update auth.users set banned_until = null where id = $1`, [lifted]);
+    await db.query(
+      `update auth.users set banned_until = now() - interval '1 second' where id = $1`,
+      [lapsed],
+    );
+
+    const nothingWaiting = [{ unread_messages: 0, friend_requests: 0 }];
+    assert.deepEqual(await rpc(db, lifted, 'get_badges'), nothingWaiting);
+    assert.deepEqual(await rpc(db, lapsed, 'get_badges'), nothingWaiting);
+  });
+
+  it('leaves everyone else alone', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const ben = await createCourier(db, { name: 'ben' });
+    await makeFriends(db, anna, ben);
+
+    await suspend(anna);
+
+    const friends = await rpc(db, ben, 'list_friends');
+    assert.deepEqual(
+      friends.map((row) => row.username),
+      ['anna'],
+    );
+  });
+
+  /**
+   * The one thing a courier writes without a function: their name and their
+   * city, through the table. A name is shown to friends, on letters, and to
+   * anyone the courier has asked to be friends.
+   */
+  it('cannot change its name or its city', async () => {
+    const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
+    const berlin = await cityId(db, 'Berlin', 'DE');
+    const munich = await cityId(db, 'Munich', 'DE');
+    await suspend(anna);
+
+    await rejectsWithHint(
+      asCourier(anna, `update public.profiles set display_name = 'Still here' where id = $1`, [
+        anna,
+      ]),
+      'account_suspended',
+    );
+    await rejectsWithHint(
+      asCourier(anna, `update public.profiles set city_id = $2 where id = $1`, [anna, munich]),
+      'account_suspended',
+    );
+
+    const { rows } = await db.query(
+      `select display_name, city_id from public.profiles where id = $1`,
+      [anna],
+    );
+    assert.deepEqual(rows, [{ display_name: 'anna', city_id: berlin }]);
+  });
+
+  /** A name that has to come down, say. The refusal is for the account's own requests. */
+  it('does not stop the operator changing its profile', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    await suspend(anna);
+
+    await db.query(`update public.profiles set display_name = 'Courier' where id = $1`, [anna]);
+
+    const { rows } = await db.query(`select display_name from public.profiles where id = $1`, [
+      anna,
+    ]);
+    assert.equal(rows[0].display_name, 'Courier');
+  });
+
+  /**
+   * What is left to it until its token runs out, within the hour: reading
+   * what is its own or public. Listed here so that the list is known.
+   */
+  it('can still read its own profile, the bare rows of its friendships and the city list', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const ben = await createCourier(db, { name: 'ben' });
+    await makeFriends(db, anna, ben);
+    await suspend(anna);
+
+    const profiles = await asCourier(anna, `select username from public.profiles`);
+    const friendships = await asCourier(anna, `select status from public.friendships`);
+    const cities = await asCourier(anna, `select count(*)::int as count from public.cities`);
+    const found = await asCourier(anna, `select name from public.search_cities('berlin', 1)`);
+
+    assert.deepEqual(profiles.rows, [{ username: 'anna' }]);
+    assert.deepEqual(friendships.rows, [{ status: 'accepted' }]);
+    assert.ok(cities.rows[0].count > 4000);
+    assert.deepEqual(found.rows, [{ name: 'Berlin' }]);
+  });
+
+  it('keeps who is suspended out of reach of the API', async () => {
+    const anna = await createCourier(db);
+    const ben = await createCourier(db);
+    await suspend(ben);
+
+    await assert.rejects(
+      asCourier(anna, `select private.is_suspended($1)`, [ben]),
+      /permission denied/,
+    );
+  });
 });
 
 describe('the operator removing an account', () => {
@@ -378,6 +645,46 @@ describe('the operator removing an account', () => {
     await assert.rejects(remove('00000000-0000-0000-0000-000000000000'), /there is no account/);
   });
 
+  /**
+   * Run a second time by mistake, it set the ban again: two more years, counted
+   * from the mistake rather than from the removal the privacy policy names.
+   */
+  it('says so when the account was already removed, and leaves its ban as it was', async () => {
+    const anna = await createCourier(db);
+    await remove(anna);
+    // As if a year of the two had passed.
+    await db.query(
+      `update auth.users set banned_until = banned_until - interval '1 year' where id = $1`,
+      [anna],
+    );
+    const before = await bannedUntil(anna);
+
+    await assert.rejects(remove(anna), /has already been removed/);
+
+    assert.deepEqual(await bannedUntil(anna), before);
+  });
+
+  /** The runbook's order after a threat: suspended at once, removed a week later. */
+  it('counts the two years from the removal when the account was suspended first', async () => {
+    const anna = await createCourier(db);
+    await db.query(
+      `update auth.users set banned_until = now() - interval '7 days' + private.ban_period()
+       where id = $1`,
+      [anna],
+    );
+
+    await remove(anna);
+
+    assert.equal(await profileExists(anna), false);
+    const { rows } = await db.query(
+      `select banned_until between now() + interval '2 years' - interval '1 minute'
+                               and now() + interval '2 years' as two_years
+       from auth.users where id = $1`,
+      [anna],
+    );
+    assert.equal(rows[0]?.two_years, true);
+  });
+
   it('cannot be done through the API', async () => {
     const anna = await createCourier(db);
     const ben = await createCourier(db);
@@ -386,5 +693,76 @@ describe('the operator removing an account', () => {
       /permission denied/,
     );
     assert.equal(await profileExists(ben), true);
+  });
+});
+
+/**
+ * For a deletion somebody asks the operator for - their own account, a child's,
+ * an address that was never theirs to sign up with. Nothing is held against
+ * the address afterwards.
+ */
+describe('the operator deleting an account', () => {
+  const deleteAccount = (id) => db.query(`select private.delete_account($1)`, [id]);
+
+  it('deletes the sign-in, all it holds and its sign-in records, and bans nobody', async () => {
+    const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
+    const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
+    await makeFriends(db, anna, ben);
+    await rpc(db, anna, 'send_message', { recipient_id: ben, body: 'Good evening.' });
+    await audit(anna);
+    await audit(ben);
+    await session(anna);
+    const { rows } = await db.query(`select email from auth.users where id = $1`, [anna]);
+
+    await deleteAccount(anna);
+
+    assert.equal(await signInExists(anna), false);
+    assert.equal(await profileExists(anna), false);
+    assert.equal(await count(db, `select 1 from public.messages`), 0);
+    assert.equal(await count(db, `select 1 from auth.sessions where user_id = $1`, [anna]), 0);
+    assert.equal(await auditCount(anna), 0);
+    assert.equal(await auditCount(ben), 1);
+    assert.equal(await profileExists(ben), true);
+    // The same address, and the same username, can sign up again at once.
+    await db.query(
+      `insert into auth.users (email, raw_user_meta_data) values ($1, '{"username": "anna"}')`,
+      [rows[0].email],
+    );
+  });
+
+  /** The operator may be asked to erase what a removal left behind, too. */
+  it('deletes a removed account’s sign-in as well, ban and all', async () => {
+    const anna = await createCourier(db);
+    await db.query(`select private.remove_account($1)`, [anna]);
+
+    await deleteAccount(anna);
+
+    assert.equal(await signInExists(anna), false);
+  });
+
+  it('still works where the audit log is out of reach', async () => {
+    const anna = await createCourier(db);
+
+    await withoutAuditTable(async () => {
+      await deleteAccount(anna);
+      assert.equal(await signInExists(anna), false);
+    });
+  });
+
+  it('says so when there is no such account', async () => {
+    await assert.rejects(
+      deleteAccount('00000000-0000-0000-0000-000000000000'),
+      /there is no account/,
+    );
+  });
+
+  it('cannot be done through the API', async () => {
+    const anna = await createCourier(db);
+    const ben = await createCourier(db);
+    await assert.rejects(
+      asUser(db, anna, () => db.query(`select private.delete_account($1)`, [ben])),
+      /permission denied/,
+    );
+    assert.equal(await signInExists(ben), true);
   });
 });

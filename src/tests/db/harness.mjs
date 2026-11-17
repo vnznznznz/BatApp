@@ -76,11 +76,20 @@ export const AUTH_STUB = `
 
   -- Supabase resolves the current user from the request's JWT claims. Mirroring
   -- that exactly means the RLS policies are exercised as they will run in
-  -- production, rather than against a convenient stand-in.
+  -- production, rather than against a convenient stand-in. This is the
+  -- platform's function word for word, read from a running stack. It matters
+  -- that it takes the empty string for "nobody": that is what the setting reads
+  -- as on a connection once a request has used it, and what asUser() leaves
+  -- behind here, and a trigger that asks who is calling fires for the operator
+  -- on such a connection too.
   create or replace function auth.uid() returns uuid
   language sql stable
   as $$
-    select nullif(current_setting('request.jwt.claims', true)::json ->> 'sub', '')::uuid
+    select
+    coalesce(
+      nullif(current_setting('request.jwt.claim.sub', true), ''),
+      (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
+    )::uuid
   $$;
 
   do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;

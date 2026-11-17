@@ -98,6 +98,16 @@ const flyingBats = async (ownerId) =>
     ])
   ).rows.length;
 
+/** Whether `promise` settles within `ms` - false means it is still waiting. */
+const settlesWithin = (promise, ms) =>
+  Promise.race([
+    promise.then(
+      () => true,
+      () => true,
+    ),
+    new Promise((resolve) => setTimeout(() => resolve(false), ms)),
+  ]);
+
 describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
   before(async () => {
     databaseName = `night_courier_test_${process.pid}_${Date.now()}`;
@@ -526,6 +536,163 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       const { rows } = await admin.query(`select count(*)::int as count from public.messages`);
       assert.equal(rows[0].count, 0);
     });
+
+    /**
+     * The operator deletes an account on request with private.delete_account,
+     * which takes the account's rows in the order a landing does. The
+     * dashboard's "Delete user" does not, and deadlocked here. (From review.)
+     */
+    it('lets the operator delete an account while one of its letters is landing', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const annaSession = await connectAs(anna);
+      const { rows } = await annaSession.query(
+        `select message_id from public.send_message($1, 'due now')`,
+        [ben],
+      );
+      await admin.query(
+        `update public.messages
+         set sent_at = now() - interval '2 hours', deliver_at = now() - interval '1 minute'
+         where id = $1`,
+        [rows[0].message_id],
+      );
+
+      const outcomes = await slowLandings(async () => {
+        const benReading = await connectAs(ben);
+        const operator = await connect();
+        const landing = benReading.query('select * from public.list_inbox()');
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const deleting = operator.query('select private.delete_account($1)', [anna]);
+        return Promise.allSettled([landing, deleting]);
+      });
+
+      for (const outcome of outcomes) {
+        assert.equal(outcome.status, 'fulfilled', outcome.reason?.message);
+      }
+      const { rows: left } = await admin.query(
+        `select count(*)::int as count from auth.users where id = $1`,
+        [anna],
+      );
+      assert.equal(left[0].count, 0);
+    });
+  });
+
+  describe('an account the operator stops', () => {
+    const banned = async (id) =>
+      (
+        await admin.query(`select banned_until > now() as banned from auth.users where id = $1`, [
+          id,
+        ])
+      ).rows;
+
+    /**
+     * The operator suspends an account while its owner's deletion is already
+     * running. The deletion checked for a suspension when it began and found
+     * none; the delete itself has to look again, or the ban is deleted with
+     * the account in the moment it is made.
+     */
+    it('honours a suspension that commits while the account is deleting itself', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const operator = await connect();
+      const annaLeaving = await connectAs(anna);
+
+      await operator.query('begin');
+      await operator.query(
+        `update auth.users set banned_until = now() + private.ban_period() where id = $1`,
+        [anna],
+      );
+      const deleting = annaLeaving.query('select public.delete_own_account()');
+      assert.equal(await settlesWithin(deleting, 300), false, 'the deletion did not wait');
+      await operator.query('commit');
+
+      await assert.rejects(deleting, (error) => error.hint === 'account_suspended');
+      assert.deepEqual(await banned(anna), [{ banned: true }]);
+    });
+
+    it('refuses a deletion that waited for the removal, and leaves the banned sign-in', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const operator = await connect();
+      const annaLeaving = await connectAs(anna);
+
+      await operator.query('begin');
+      await operator.query('select private.remove_account($1)', [anna]);
+      const deleting = annaLeaving.query('select public.delete_own_account()');
+      assert.equal(await settlesWithin(deleting, 300), false, 'the deletion did not wait');
+      await operator.query('commit');
+
+      await assert.rejects(deleting, (error) => error.hint === 'account_suspended');
+      assert.deepEqual(await banned(anna), [{ banned: true }]);
+    });
+
+    /**
+     * A removal waits for the account's rows, and what it is waiting for may be
+     * the courier deleting the account. It used to return as if it had banned
+     * something.
+     */
+    it('tells the operator when the account was deleted while the removal waited', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const annaLeaving = await connectAs(anna);
+      const operator = await connect();
+
+      await annaLeaving.query('begin');
+      await annaLeaving.query('select public.delete_own_account()');
+      const removing = operator.query('select private.remove_account($1)', [anna]);
+      assert.equal(await settlesWithin(removing, 300), false, 'the removal did not wait');
+      await annaLeaving.query('commit');
+
+      await assert.rejects(removing, /there is no account/);
+      assert.deepEqual(await banned(anna), []);
+    });
+
+    /**
+     * Whatever holds one of the account's rows may be the courier's own
+     * deletion, on its way to the sign-in. A removal that held the sign-in
+     * while it waited for that row would have each waiting for the other.
+     */
+    it('takes the sign-in last when it removes an account, as a deletion does', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const holder = await connect();
+      const operator = await connect();
+      const probe = await connect();
+
+      await holder.query('begin');
+      await holder.query(`select 1 from public.bats where owner_id = $1 for update`, [anna]);
+      const removing = operator.query('select private.remove_account($1)', [anna]);
+      assert.equal(await settlesWithin(removing, 300), false, 'the removal did not wait');
+
+      // Fails at once, rather than waiting, if the removal already holds it.
+      await probe.query(`select 1 from auth.users where id = $1 for update nowait`, [anna]);
+
+      await holder.query('commit');
+      await removing;
+      assert.deepEqual(await banned(anna), [{ banned: true }]);
+    });
+
+    /** Started together, with nothing arranged: one of the two honest endings, never a third. */
+    it('ends a removal and a deletion at the same moment in a ban or in a refusal to the operator', async () => {
+      for (let round = 0; round < 20; round++) {
+        const anna = await createCourier(`anna${round}`, ['Berlin', 'DE']);
+        const annaLeaving = await connectAs(anna);
+        const operator = await connect();
+
+        const [deleting, removing] = await Promise.allSettled([
+          annaLeaving.query('select public.delete_own_account()'),
+          operator.query('select private.remove_account($1)', [anna]),
+        ]);
+
+        const left = await banned(anna);
+        if (removing.status === 'fulfilled') {
+          assert.deepEqual(left, [{ banned: true }], `round ${round}: removed, but not banned`);
+          assert.equal(deleting.reason?.hint, 'account_suspended', `round ${round}`);
+        } else {
+          assert.match(removing.reason.message, /there is no account/, `round ${round}`);
+          assert.equal(deleting.status, 'fulfilled', deleting.reason?.message);
+          assert.deepEqual(left, []);
+        }
+        await Promise.all([annaLeaving.end(), operator.end()]);
+      }
+    });
   });
 
   describe('friend requests', () => {
@@ -551,16 +718,6 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
   });
 
   describe('blocking and reporting', () => {
-    /** Whether `promise` settles within `ms` - false means it is still waiting. */
-    const settlesWithin = (promise, ms) =>
-      Promise.race([
-        promise.then(
-          () => true,
-          () => true,
-        ),
-        new Promise((resolve) => setTimeout(() => resolve(false), ms)),
-      ]);
-
     const friendshipsLeft = async () =>
       (await admin.query(`select count(*)::int as count from public.friendships`)).rows[0].count;
 
