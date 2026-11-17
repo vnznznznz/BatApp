@@ -344,9 +344,11 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Straftaten nach Art. 10 DSGVO sind: zu prüfen.
   - Verwarnungen: E-Mails an die Adresse des Kontos, aus dem Postfach des Betreibers (V11).
   - Bei einer Drohung (GO-LIVE, „Handling a report“, „A threat“): eine E-Mail an die meldende
-    Person, dass das andere Konto in einer Woche entfernt wird; und, soll die Polizei die Meldung
-    bekommen, ein Export der Sitzungen (`created_at`, `refreshed_at`, IP-Adresse, User-Agent) und
-    der Einträge im Anmeldeprotokoll (Zeit, Ereignis, IP-Adresse) des gemeldeten Kontos.
+    Person, dass das andere Konto in einer Woche entfernt wird und wie sie vorher an die Briefe
+    kommt – wer beim Melden blockiert hat (die Voreinstellung), muss die Blockierung zuerst
+    aufheben, sonst sind die Briefe ausgeblendet; und, soll die Polizei die Meldung bekommen, ein
+    Export der Sitzungen (`created_at`, `refreshed_at`, IP-Adresse, User-Agent) und der Einträge
+    im Anmeldeprotokoll (Zeit, Ereignis, IP-Adresse) des gemeldeten Kontos.
 - **Wer was sieht:** nur der Betreiber, im Supabase-Dashboard. Keine API-Rolle kann die Tabelle
   lesen, auch die meldende Person nicht. Die gemeldete Person erfährt nicht, wer gemeldet hat; weil
   ein Brief nur einen Empfänger hat, kann sie es aber ahnen.
@@ -1102,7 +1104,8 @@ Betreiber noch selbst tut:
 
   Der erste Schritt sperrt ein Konto, das noch besteht, vorläufig; der zweite setzt die Sperre neu,
   und die zwei Jahre zählen ab dem Entfernen. GO-LIVE („Handling a report“, „A threat“)
-  beschreibt genau diesen Ablauf, mit einer Woche Wartezeit, der E-Mail an die meldende Person und
+  beschreibt genau diesen Ablauf, mit einer Woche Wartezeit, der E-Mail an die meldende Person
+  (samt dem Hinweis, dass sie eine Blockierung zuerst aufheben muss, um die Briefe zu sehen) und
   dem Export für die Polizei; die Datenschutzerklärung (3.7, 3.8) sagt dasselbe.
 
   **Den zweiten Schritt nicht vergessen.** Bis dahin bleibt das Konto mit Profil und allen Briefen

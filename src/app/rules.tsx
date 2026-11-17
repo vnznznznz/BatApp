@@ -104,6 +104,14 @@ export default function RulesScreen() {
           own copy, under their own rules. If an account is removed, every letter between it and
           anyone else goes with it, so keep a copy of anything you may need: a screenshot will do.
         </Text>
+        {/* Without this the advice above cannot be followed by whoever reported
+            the usual way: the report blocked the courier, and a block hides
+            their letters, the reported one included. */}
+        <Text variant="caption" tone="muted" style={styles.line}>
+          Reporting also blocks, unless you switch that off, and the letters of a courier you have
+          blocked are hidden from you. To copy them, unblock the courier first: Your profile, then
+          Blocked couriers. You can block them again afterwards, from one of their letters.
+        </Text>
       </Section>
 
       {CONTACT_URL || PRIVACY_POLICY_URL ? (

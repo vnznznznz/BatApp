@@ -261,7 +261,10 @@ person a warning to the email address of their account, or remove their account 
 it is about a threat, I suspend the reported account at once, but remove it only a week later.
 Before that, I write to the person who reported it, at the email address of their account: every
 letter between the two of you goes with the other account, and they should be able to keep copies
-first. With threats or possible crimes, I may pass a report on to the police, together with the
+first. If you blocked the person when you reported them – which happens unless you switch it off –
+their letters are hidden from you (section 3.6). To make copies, unblock them first: "Your profile"
+→ "Blocked couriers" → "Unblock". You can block them again afterwards, from one of their letters.
+With threats or possible crimes, I may pass a report on to the police, together with the
 reported account's sign-in data as far as it is still stored by then: its sessions and its entries
 in the sign-in log, each with an IP address (section 3.9).
 

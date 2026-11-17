@@ -281,7 +281,11 @@ ich nichts, schreibe der Person eine Verwarnung an die E-Mail-Adresse ihres Kont
 Konto (Abschnitt 3.8). Geht es um eine Drohung, sperre ich das gemeldete Konto sofort vorläufig,
 entferne es aber erst eine Woche später. Vorher schreibe ich der Person, die gemeldet hat, an die
 E-Mail-Adresse ihres Kontos: Mit dem anderen Konto verschwinden alle Briefe zwischen euch, und sie
-soll vorher Kopien machen können. Bei Drohungen oder möglichen Straftaten kann ich eine Meldung an
+soll vorher Kopien machen können. Hast du die Person beim Melden blockiert – das passiert, wenn du
+es nicht ausschaltest –, sind ihre Briefe für dich ausgeblendet (Abschnitt 3.6). Um Kopien zu
+machen, hebst du die Blockierung zuerst auf: „Your profile“ → „Blocked couriers“ → „Unblock“.
+Danach kannst du die Person wieder blockieren, über einen ihrer Briefe. Bei Drohungen oder
+möglichen Straftaten kann ich eine Meldung an
 die Polizei weitergeben, zusammen mit den Anmeldedaten des gemeldeten Kontos, soweit sie dann noch
 gespeichert sind: seinen Sitzungen und seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse
 (Abschnitt 3.9).

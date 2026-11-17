@@ -49,7 +49,8 @@ I read every email and answer as soon as I can.
   or open the courier's page from Friends and tap _Report_. A report reaches me directly; the person
   you report is not told who reported them, unless the law requires it – but a letter has only one
   reader, so if I act on one, its sender may guess. Reporting also blocks them, unless you switch
-  that off.
+  that off. A block hides their letters from you: to see them again, to keep a copy for example,
+  unblock them under _Your profile_ → _Blocked couriers_. You can block them again afterwards.
 - **Someone threatens you or anyone else**, or you think a crime is involved: report it in the app,
   and contact the police. In an emergency, call the police on 117 in Switzerland or 110 in Germany,
   or 112 anywhere in Europe, Switzerland included.
@@ -130,7 +131,9 @@ Ich lese jede E-Mail und antworte, so bald ich kann.
   kommt direkt bei mir an; die gemeldete Person erfährt nicht, wer sie gemeldet hat, es sei denn,
   ein Gesetz verpflichtet mich dazu – ein Brief hat aber nur einen Empfänger, und wenn ich etwas
   unternehme, kann sich der Absender das denken. Beim Melden wird die Person auch blockiert, außer
-  du schaltest das aus.
+  du schaltest das aus. Eine Blockierung blendet ihre Briefe für dich aus: Willst du sie wieder
+  sehen, etwa um eine Kopie zu machen, hebst du die Blockierung unter „Your profile“ → „Blocked
+  couriers“ auf. Danach kannst du die Person wieder blockieren.
 - **Jemand bedroht dich oder andere**, oder du glaubst, dass es um eine Straftat geht: Melde es in
   der App und wende dich an die Polizei. Im Notfall: Polizei 117 in der Schweiz, 110 in
   Deutschland, oder 112 überall in Europa, auch in der Schweiz.

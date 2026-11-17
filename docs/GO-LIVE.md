@@ -223,11 +223,23 @@ been deleted, and its username is free: it may belong to someone else by now.
 
   They can no longer sign in, and their app stops working within the hour, when its sign-in would
   be renewed. This is a suspension: the account still exists, with its profile and letters, and the
-  two years the privacy policy names count from the removal, which sets the ban afresh. Then write
-  to the reporter, at the address on their account, from the contact mailbox, that the account will
-  be removed in a week and why they may want copies (screenshots) of their letters first. If the
-  police are to have the report, export it now, together with the account's sign-in records - the
-  privacy policy says these may go with it:
+  two years the privacy policy names count from the removal, which sets the ban afresh.
+
+  Then write to the reporter, at the address on their account, from the contact mailbox. The email
+  has to say two things:
+  - that the account is suspended and will be removed in a week, and that every letter between the
+    two of them goes with it, so they may want copies (screenshots) of their letters first;
+  - **how to get at the letters.** Reporting blocks by default, and a block hides every letter from
+    that courier, the reported one too: a reporter who opens the app to take screenshots finds
+    nothing there. So tell them to unblock first - Your profile → Blocked couriers → Unblock, and
+    the letters are back under Letters - and that they can block again afterwards, from one of
+    the letters (open it → Block). Unblocking does not make the two friends again, so no new
+    letter can reach them. Without this step the week is of no use to them. (Tried on the test
+    database: after the default report and the suspension the reporter's inbox is empty and both
+    letters are refused; after Unblock both are back.)
+
+  If the police are to have the report, export it now, together with the account's sign-in
+  records - the privacy policy says these may go with it:
 
   ```sql
   select created_at, payload ->> 'action' as action, ip_address
