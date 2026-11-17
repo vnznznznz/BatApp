@@ -145,6 +145,11 @@ const OVER_THE_LIMIT_LETTER_BLOCKED =
   'letter.';
 /** Above the note a report did not take, which is kept on screen to be copied. */
 const NOTE_NOT_SENT = 'Your note was not sent with it. Here it is, so you can keep it:';
+/**
+ * Above the note after "already reported": an earlier try whose answer was
+ * lost may have carried it, so the screen says only what it knows.
+ */
+const NOTE_NOT_ADDED = 'Nothing was added to that report. Here is your note, so you can keep it:';
 const BLOCKED =
   '@anna is blocked: they cannot write to you or ask to be friends, and their letters are ' +
   'hidden. You can unblock them in your profile.';
@@ -1020,14 +1025,38 @@ describe('ReportScreen', () => {
      * courier's own words, say - stays on screen, where it can be copied,
      * rather than going with the form.
      */
-    it.each<[string, () => Promise<void>, ReportOutcome]>([
-      ["a letter over the day's limit", reportingTheLetter, 'limit_reached'],
-      ['a letter reported before', reportingTheLetter, 'already_reported'],
-      ["a courier over the day's limit", reportingTheCourier, 'limit_reached'],
-      ['a courier reported before', reportingTheCourier, 'already_reported'],
+    it.each<[string, () => Promise<void>, ReportOutcome, string, string]>([
+      [
+        "a letter over the day's limit",
+        reportingTheLetter,
+        'limit_reached',
+        NOTE_NOT_SENT,
+        NOTE_NOT_ADDED,
+      ],
+      [
+        'a letter reported before',
+        reportingTheLetter,
+        'already_reported',
+        NOTE_NOT_ADDED,
+        NOTE_NOT_SENT,
+      ],
+      [
+        "a courier over the day's limit",
+        reportingTheCourier,
+        'limit_reached',
+        NOTE_NOT_SENT,
+        NOTE_NOT_ADDED,
+      ],
+      [
+        'a courier reported before',
+        reportingTheCourier,
+        'already_reported',
+        NOTE_NOT_ADDED,
+        NOTE_NOT_SENT,
+      ],
     ])(
       'keeps the note on screen after the report of %s, which did not take it',
-      async (_, open, outcome) => {
+      async (_, open, outcome, above, notSaid) => {
         const note = 'He says he knows where I live.';
         mockedReportLetter.mockResolvedValue(outcome);
         mockedReportCourier.mockResolvedValue(outcome);
@@ -1037,12 +1066,41 @@ describe('ReportScreen', () => {
 
         await fireEvent.press(sendButton());
 
-        expect(await screen.findByText(NOTE_NOT_SENT)).toBeOnTheScreen();
+        expect(await screen.findByText(above)).toBeOnTheScreen();
+        expect(screen.queryByText(notSaid)).toBeNull();
         const kept = screen.getByText(note);
         expect(kept).toBeOnTheScreen();
         expect(kept).toHaveProp('selectable', true);
       },
     );
+
+    /**
+     * The first Send reached the database, and the report was made with the
+     * note; only its answer was lost. The second is answered "already
+     * reported". The note may well be with the person who runs Night Courier,
+     * so the screen does not say it was not sent. (Found in review.)
+     */
+    it('does not say the note was not sent when an earlier try may have carried it', async () => {
+      const note = 'He says he knows where I live.';
+      const lost = 'No connection. Check your network and try again.';
+      mockedReportLetter
+        .mockRejectedValueOnce(new RpcError(lost, null))
+        .mockResolvedValueOnce('already_reported');
+      await reportingTheLetter();
+      await fireEvent.press(reasonChoice('Threats or violence'));
+      await fireEvent.changeText(noteField(), note);
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText(lost)).toBeOnTheScreen();
+
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Already reported')).toBeOnTheScreen();
+      expect(mockedReportLetter).toHaveBeenCalledTimes(2);
+      expect(mockedReportLetter.mock.calls.map(([, report]) => report.note)).toEqual([note, note]);
+      expect(screen.queryByText(NOTE_NOT_SENT)).toBeNull();
+      expect(screen.getByText(NOTE_NOT_ADDED)).toBeOnTheScreen();
+      expect(screen.getByText(note)).toBeOnTheScreen();
+    });
 
     it.each<[string, ReportOutcome, string]>([
       ['went through', 'reported', 'Some text'],

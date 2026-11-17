@@ -177,6 +177,14 @@ export default function ReportScreen() {
     // not take the note either. What was typed stays here, where it can be
     // copied, rather than going with the form.
     const noteKept = sent.outcome !== 'reported' && prepareNote(note) ? note : null;
+    // Over the limit nothing was recorded, so neither was the note. "Already
+    // reported" can follow a try that did reach the database, note and all,
+    // and only lost its answer on the way back: then only this try added
+    // nothing.
+    const aboveNote =
+      sent.outcome === 'limit_reached'
+        ? 'Your note was not sent with it. Here it is, so you can keep it:'
+        : 'Nothing was added to that report. Here is your note, so you can keep it:';
     return (
       <Screen scroll edges={['bottom']} style={styles.screen}>
         {/* headerBackVisible for iOS and Android; the web build's stack ignores it
@@ -206,7 +214,7 @@ export default function ReportScreen() {
         {noteKept ? (
           <View style={styles.lines}>
             <Text variant="caption" tone="secondary" style={styles.line}>
-              Your note was not sent with it. Here it is, so you can keep it:
+              {aboveNote}
             </Text>
             <Text variant="body" selectable style={styles.line}>
               {noteKept}
