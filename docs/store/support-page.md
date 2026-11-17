@@ -22,7 +22,11 @@ Notes for the operator - remove before publishing, like every comment in this fi
 4. "Deleting your account" must say the same as the deletion text in google-play.md, "The account
    deletion page" (Google checks this page against it). "What is kept, and for how long" follows
    the privacy policy, sections 3.4, 3.7 to 3.9, 9 and 11, and the migration
-   supabase/migrations/20261104120000_privacy_housekeeping.sql. Change them together.
+   supabase/migrations/20261104120000_privacy_housekeeping.sql. Change them together. The line on
+   server logs and backups names no period, because the policy has none yet (its TO CHECK notes
+   in sections 3.9 and 9): once the hosted plan's periods are written into the policy, replace
+   the line's second sentence with "The privacy policy says how long." ("Wie lange, steht in der
+   Datenschutzerklärung."), here and in google-play.md.
 5. Forgotten password: the app sends the reset email, but cannot yet finish the reset (GO-LIVE,
    "Password reset cannot be completed in-app"), and no email leaves the hosted project before a
    custom SMTP provider is set up. Until both are done, this page sends people to the contact
@@ -82,8 +86,9 @@ bats, your friendships and friend requests, your blocks, and every letter you ha
 - **The sign-in log** at Supabase, the app's hosting provider (sign-up and sign-in events, with
   your email address). A daily job deletes every entry once it is 30 days old; when you delete your
   account in the app, yours go at once.
-- **Server logs and any backups** at Supabase, until they are deleted or overwritten
-  automatically. The privacy policy says how long.
+- **Server logs and any backups** at Supabase, until Supabase deletes or overwrites them
+  automatically. I cannot name the periods yet: they depend on Supabase's plan, and the privacy
+  policy will state them once they are known.
 - **Emails** between you and me, as long as I need them for what you asked.
 - If I removed an account for breaking the house rules, its sign-in, email address included, stays
   banned for two years from the removal so that it cannot simply sign up again, and is then deleted
@@ -168,8 +173,9 @@ bei dir.
 - **Das Anmeldeprotokoll** bei Supabase, dem Hosting-Anbieter der App (Registrierung und
   Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er
   30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
-- **Server-Protokolle und etwaige Sicherungskopien** bei Supabase, bis sie automatisch gelöscht
-  oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
+- **Server-Protokolle und etwaige Sicherungskopien** bei Supabase, bis Supabase sie automatisch
+  löscht oder überschreibt. Die Fristen kann ich noch nicht nennen: Sie hängen von Supabases Tarif
+  ab und stehen in der Datenschutzerklärung, sobald sie feststehen.
 - **E-Mails** zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 - Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt
   E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und

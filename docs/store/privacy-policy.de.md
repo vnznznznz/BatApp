@@ -407,7 +407,10 @@ oder Betriebssystems (den sogenannten User-Agent).
   "gegebenenfalls IP-Adresse".
 - Server-Protokolle: Aufbewahrungsdauer des gewählten Supabase-Tarifs nachsehen und eintragen
   (z. B. "nach einem Tag"); "nach kurzer Zeit" nur stehen lassen, wenn es wirklich wenige Tage sind.
-  Ebenso, wo diese Protokolle gespeichert werden (Abschnitt 8). -->
+  Ebenso, wo diese Protokolle gespeichert werden (Abschnitt 8). Solange hier und in Abschnitt 9
+  keine Frist steht, sagen die Hilfeseite und der Löschtext in google-play.md, dass die Fristen
+  noch nicht feststehen; sind sie eingetragen, können beide wieder hierher verweisen ("Wie lange,
+  steht in der Datenschutzerklärung."; ihre Hinweise sagen, wo). -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO, soweit es um deine Anmeldung geht. Im Übrigen Art.
 6 Abs. 1 lit. f DSGVO: Mein berechtigtes Interesse ist, die App sicher und stabil zu betreiben,

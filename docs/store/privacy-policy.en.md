@@ -374,7 +374,9 @@ system (the so-called user agent).
   locally, hence "where recorded".
 - Server logs: look up the retention of the chosen Supabase plan and write it in (e.g. "after one
   day"); keep "after a short time" only if it really is a few days. Also where these logs are stored
-  (section 8). -->
+  (section 8). Until a period stands here and in section 9, the help page and the deletion text in
+  google-play.md say that the periods are not known yet; with the periods written in, they can
+  point here again ("The privacy policy says how long."; their notes say where). -->
 
 **Legal basis:** Art. 6(1)(b) GDPR as far as your sign-in is concerned. Otherwise Art. 6(1)(f) GDPR:
 my legitimate interest is running the app safely and reliably, spotting attacks and abuse, and

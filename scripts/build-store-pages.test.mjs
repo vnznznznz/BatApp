@@ -156,6 +156,68 @@ describe('the help page', () => {
 });
 
 /**
+ * Google is given the account deletion text in docs/store/google-play.md and
+ * checks the help page against it. What is kept, and for how long, is the part
+ * that changes - a new period, another way an account is deleted - and it is
+ * written out twice, in two languages. Changed in one place only, the two say
+ * different things to the same reader.
+ */
+describe('what is kept after an account is deleted', () => {
+  const plain = (text) => text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+
+  /** The list under a heading of the help page, one entry per item. */
+  function onTheHelpPage(heading) {
+    const page = readFileSync(join(SOURCES, 'support-page.md'), 'utf8');
+    const list = page.split(`**${heading}:**\n\n`)[1]?.split('\n\n')[0];
+    assert.ok(list, `the help page has no list under "${heading}"`);
+    return list.split(/^- /m).slice(1).map(plain);
+  }
+
+  /** The same list in the text for Google Play, which is plain text with bullets. */
+  function forGooglePlay(title, heading) {
+    const document = readFileSync(join(SOURCES, 'google-play.md'), 'utf8');
+    const text = document.split(`\`\`\`text\n${title}\n`)[1]?.split('```')[0];
+    assert.ok(text, `google-play.md has no text that starts "${title}"`);
+    const list = text.split(`\n${heading}\n`)[1]?.split('\n\n')[0];
+    assert.ok(list, `the text "${title}" has no list under "${heading}"`);
+    return list.split(/^• /m).slice(1).map(plain);
+  }
+
+  it('reads the same on the help page and in the text for Google Play, in English', () => {
+    const page = onTheHelpPage('What is kept, and for how long');
+    assert.equal(page.length, 6);
+    assert.deepEqual(
+      forGooglePlay('Deleting your Night Courier account', 'What is kept, and for how long'),
+      page,
+    );
+  });
+
+  it('reads the same on the help page and in the text for Google Play, in German', () => {
+    const page = onTheHelpPage('Was bleibt, und wie lange');
+    assert.equal(page.length, 6);
+    assert.deepEqual(
+      forGooglePlay('Dein Night-Courier-Konto löschen', 'Was bleibt, und wie lange'),
+      page,
+    );
+  });
+
+  // The policy names no period for these yet. A pointer to it for "how long"
+  // sends the reader to a page that does not say (found in review).
+  it('does not send the reader to the privacy policy for a period the policy does not give', () => {
+    const policies = ['privacy-policy.en.md', 'privacy-policy.de.md'].map((file) =>
+      readFileSync(join(SOURCES, file), 'utf8'),
+    );
+    const unknown = policies.some((text) => /a short time|nach kurzer Zeit/.test(text));
+    const pointers = [
+      ...onTheHelpPage('What is kept, and for how long'),
+      ...onTheHelpPage('Was bleibt, und wie lange'),
+    ].filter((item) => /says how long|Wie lange, steht in der Datenschutzerklärung/.test(item));
+
+    if (unknown) assert.deepEqual(pointers, []);
+  });
+});
+
+/**
  * The pages went up before anyone could use the app, and the policy speaks in
  * the present tense: a project in Zurich, a signed processing agreement. Until
  * those exist, each page has to say that Night Courier has not started.

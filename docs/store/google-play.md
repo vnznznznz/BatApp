@@ -629,7 +629,7 @@ Your account and sign-in, your profile (username, display name and city), your b
 What is kept, and for how long
 • Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made. If I passed a report to the police, they keep their copy under their own rules.
 • The sign-in log at Supabase, the app's hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, yours go at once.
-• Server logs and any backups at Supabase, until they are deleted or overwritten automatically. The privacy policy says how long.
+• Server logs and any backups at Supabase, until Supabase deletes or overwrites them automatically. I cannot name the periods yet: they depend on Supabase's plan, and the privacy policy will state them once they are known.
 • Emails between you and me, as long as I need them for what you asked.
 • If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years from the removal so that it cannot simply sign up again, and is then deleted automatically.
 • If you test the Android version: your Google account's email address on my tester list in Google Play Console, until you tell me you have stopped testing. Asking me to delete your account counts. What Google itself keeps follows Google's own terms.
@@ -662,7 +662,7 @@ Dein Konto und deine Anmeldung, dein Profil (Benutzername, Anzeigename und Stadt
 Was bleibt, und wie lange
 • Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben, bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
 • Das Anmeldeprotokoll bei Supabase, dem Hosting-Anbieter der App (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
-• Server-Protokolle und etwaige Sicherungskopien bei Supabase, bis sie automatisch gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
+• Server-Protokolle und etwaige Sicherungskopien bei Supabase, bis Supabase sie automatisch löscht oder überschreibt. Die Fristen kann ich noch nicht nennen: Sie hängen von Supabases Tarif ab und stehen in der Datenschutzerklärung, sobald sie feststehen.
 • E-Mails zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 • Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
 • Wenn du die Android-Version testest: die E-Mail-Adresse deines Google-Kontos auf meiner Testerliste in der Google Play Console, bis du mir schreibst, dass du nicht mehr testest. Die Bitte, dein Konto zu löschen, zählt dazu. Was Google selbst speichert, regeln Googles eigene Bestimmungen.
@@ -681,6 +681,11 @@ account, both in the app and when the operator deletes it at someone's request
 (`private.delete_account`, `gdpr-records.md` 5.4); a removed account's
 sessions are deleted by the tidy-up once unused for 90 days, like any others (privacy policy 3.8). The single-letter
 sentence follows privacy policy 3.4: there is no per-letter deletion, by the user or on request.
+The line on server logs and backups names no period, because none is known before the hosted
+project exists: the privacy policy says only "a short time" and "until the backup is overwritten"
+(its sections 3.9 and 9, and their TO CHECK notes). It used to say "The privacy policy says how
+long", which the policy did not. Once the plan's periods are written into the policy, put that
+sentence back, here and on the help page.
 When any of that changes, change this list, `support-page.md`, the privacy policy (sections 3.4,
 3.7, 3.8, 3.9, 9 and 11) and `gdpr-records.md` together.
 
