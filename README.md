@@ -203,11 +203,27 @@ The visual identity is original to this project.
 
 ## A note on `npm audit`
 
-A fresh install reports 22 advisories. All of them resolve to three issues (`image-size` ×2,
-`uuid` ×1) inside Expo's and React Native's **build-time** dependency tree — asset measurement
-and prebuild config. None of them are reachable from the shipped app at runtime, and there is no
-non-breaking fix: `npm audit fix --force` downgrades Expo itself. They are left in place
-deliberately and should be re-checked when Expo publishes an SDK bump.
+`npm audit` reports advisories on a fresh install, and how many changes from week to week with
+the advisory database - so no number is written here; run it to see today's. Nearly everything it
+names is in what the build tools bring along: Expo's and React Native's command-line tools, the
+linter's parser. None of that is in the app. The one exception when this was last looked at (17
+November 2026, in the bundles' source maps) was `decode-uri-component`, which `expo-router`
+brings in through `query-string` and which is in every bundle; the only fix npm knows of is the
+`expo-router` of the next Expo SDK.
+
+Do not answer the report with `npm audit fix`:
+
+- With `--force`, npm says it will install another Expo SDK altogether.
+- Without it, it looks harmless and is not. Tried in a separate copy on 17 November 2026, it left
+  `package.json` alone but rearranged the lockfile around a second `expo-router`, from the next
+  SDK, nested under `expo`. The typecheck, the linter and every test still passed, and the iOS
+  and Android bundles were built - but `npm ls` called the tree invalid, and the web bundle was
+  no longer built at all.
+
+What can be taken safely is a fix that lies within the versions a package's dependents already
+ask for: `npm update <package>` for that package alone, then `npm run verify` and the three
+bundles (`npx expo export --platform web`, `ios` and `android`). The rest waits for the next Expo
+SDK, and is worth looking at again then.
 
 ## Licence and intent
 
