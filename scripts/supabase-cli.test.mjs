@@ -55,6 +55,8 @@ function commands() {
 
 const all = commands();
 const starting = (words) => all.filter((command) => command.words.startsWith(words));
+/** The flag as a word of its own: `--yes`, also before a quote or a comma, but not `--yes-please`. */
+const has = (command, flag) => new RegExp(`(^|\\s)${flag}(?![\\w-])`).test(command.words);
 
 describe('the Supabase commands in the documents', () => {
   it('are found at all, in the places that are known to have them', () => {
@@ -95,7 +97,7 @@ describe('the Supabase commands in the documents', () => {
     ];
     assert.ok(changing.length >= 3, 'expected to find the commands that change the project');
     assert.deepEqual(
-      changing.filter((command) => !/(^|\s)--yes(\s|$)/.test(command.words)),
+      changing.filter((command) => !has(command, '--yes')),
       [],
     );
   });
@@ -106,7 +108,7 @@ describe('the Supabase commands in the documents', () => {
     const hosted = [...starting('db push'), ...starting('db query'), ...starting('migration list')];
     assert.ok(hosted.length >= 3, 'expected to find the commands that reach the hosted database');
     assert.deepEqual(
-      hosted.filter((command) => !/(^|\s)--remote(\s|$)/.test(command.words)),
+      hosted.filter((command) => !has(command, '--remote')),
       [],
     );
   });
