@@ -715,6 +715,98 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     });
 
     /**
+     * Reading a letter landed whatever had come due for the reader first, and
+     * took the letter being read second: a newer letter, then an older one.
+     * Everything else takes letters oldest first - their sender deleting the
+     * account among them, who then held the older letter and wanted the newer
+     * while the reader held the newer and wanted the older. (Found while going
+     * through the lock order after review.)
+     */
+    it('waits for someone reading one of its letters instead of deadlocking with them', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const annaSession = await connectAs(anna);
+      const dueLetter = async (body) => {
+        const { rows } = await annaSession.query(
+          `select message_id from public.send_message($1, $2)`,
+          [ben, body],
+        );
+        await admin.query(
+          `update public.messages
+           set sent_at = now() - interval '2 hours', deliver_at = now() - interval '1 minute'
+           where id = $1`,
+          [rows[0].message_id],
+        );
+        return rows[0].message_id;
+      };
+      const older = await dueLetter('older');
+      await admin.query(`select private.deliver_due_messages()`);
+      // Due as Ben opens the older one, and landed by that very request.
+      await dueLetter('newer');
+
+      const outcomes = await slowLandings(async () => {
+        const benReading = await connectAs(ben);
+        const reading = benReading.query('select body from public.read_message($1)', [older]);
+        await pause(300);
+        const deleting = annaSession.query('select public.delete_own_account()');
+        return Promise.allSettled([reading, deleting]);
+      });
+
+      allFulfilled(outcomes);
+      assert.deepEqual(outcomes[0].value.rows, [{ body: 'older' }]);
+      assert.equal(await accountsLeft([anna]), 0);
+    });
+
+    /**
+     * The same rule from the other side: reading takes everything it will
+     * touch oldest first, whichever of its letters that is. Here the letter
+     * being read is the newer one, and an older one is still to be landed -
+     * the worker has been away. A connection in the way makes the read wait
+     * for the newer letter; if it had passed over the older one to get there,
+     * the reader's own deletion, coming from the older letter, would meet it
+     * the wrong way round.
+     */
+    it('lets a letter be read while its reader’s account is deleted from another phone', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const cara = await createCourier('cara', ['Hamburg', 'DE']);
+      await makeFriends(anna, ben);
+      await makeFriends(cara, ben);
+      const letterTo = async (from, hoursSinceLanding) => {
+        const { rows } = await (
+          await connectAs(from)
+        ).query(`select message_id from public.send_message($1, 'for Ben')`, [ben]);
+        await admin.query(
+          `update public.messages
+           set sent_at = now() - interval '9 hours', deliver_at = now() - make_interval(hours => $2)
+           where id = $1`,
+          [rows[0].message_id, hoursSinceLanding],
+        );
+        return rows[0].message_id;
+      };
+      const newer = await letterTo(anna, 1);
+      await admin.query(`select private.deliver_due_messages()`);
+      const olderAndNotLanded = await letterTo(cara, 3);
+      const inTheWay = await connect();
+      const benReading = await connectAs(ben);
+      const benLeaving = await connectAs(ben);
+
+      await inTheWay.query('begin');
+      await inTheWay.query(`select 1 from public.messages where id = $1 for update`, [newer]);
+      const reading = benReading.query('select body from public.read_message($1)', [newer]);
+      assert.equal(await settlesWithin(reading, 300), false, 'the read did not wait');
+      const deleting = benLeaving.query('select public.delete_own_account()');
+      assert.equal(await settlesWithin(deleting, 300), false, 'the deletion did not wait');
+      await inTheWay.query('commit');
+
+      allFulfilled(await Promise.allSettled([reading, deleting]));
+      assert.equal(await accountsLeft([ben]), 0);
+      const { rows } = await admin.query(`select count(*)::int as count from public.messages`);
+      assert.equal(rows[0].count, 0, `${olderAndNotLanded} went with Ben's account`);
+    });
+
+    /**
      * A courier deleting their account while one of their own sends is still
      * running: the send holds a bat and then needs the profile for its letter's
      * foreign key, while the deletion's cascade held the profile and wanted the
