@@ -1343,6 +1343,9 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
         await inTheWay.query(`set deadlock_timeout = '60s'`);
         await tidier.query(`set deadlock_timeout = '100ms'`);
         const tidierPid = (await tidier.query('select pg_backend_pid() as pid')).rows[0].pid;
+        // The nightly job shows what a run returns to nobody; the log has it too.
+        const warnings = [];
+        tidier.on('notice', (notice) => warnings.push(notice.message));
 
         const [sql, id] = held(couriers);
         await inTheWay.query('begin');
@@ -1378,6 +1381,7 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
           skipped.filter((entry) => !entry.startsWith('pg_cron run log: ')),
           [`${step}: deadlock detected`],
         );
+        assert.deepEqual(warnings, [`the tidy-up left out: ${skipped.join('; ')}`]);
         const expected = Object.fromEntries(
           Object.keys(everything).map((name) => [name, name === step ? 1 : 0]),
         );

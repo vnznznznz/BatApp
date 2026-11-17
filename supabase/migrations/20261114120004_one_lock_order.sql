@@ -307,6 +307,9 @@ grant execute on function public.report_courier(uuid, text, text, boolean) to au
 -- waiting for the other, that step is undone alone and listed in what this
 -- returns, like a step that could not reach its table. Everything else the
 -- run did stands, and the next night's run does what this one left.
+--
+-- What a run returns, the nightly job shows to nobody. So whatever it left
+-- out is also said in the server's log, as a warning.
 create or replace function private.tidy_up()
 returns text[]
 language plpgsql
@@ -428,6 +431,10 @@ begin
       or deadlock_detected then
       skipped := skipped || ('pg_cron run log: ' || sqlerrm);
   end;
+
+  if cardinality(skipped) > 0 then
+    raise warning 'the tidy-up left out: %', array_to_string(skipped, '; ');
+  end if;
 
   return skipped;
 end;
