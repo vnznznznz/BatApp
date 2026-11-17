@@ -14,9 +14,9 @@ import {
   MIN_QUERY_LENGTH,
   searchCities,
 } from '@/features/cities/search';
+import { formatSettlesAt } from '@/features/cities/settles-at';
 import { useProfile, type Profile } from '@/features/profile/use-profile';
 import { confirmAction, type Confirmation } from '@/lib/confirm';
-import { formatTimestamp } from '@/lib/format';
 
 /** What the search said for one set of words: the cities found, or why it failed. */
 type Answer = { term: string; cities: City[]; error: string | null };
@@ -155,9 +155,12 @@ export default function CityPickerScreen() {
         keyExtractor={(city) => String(city.id)}
         keyboardShouldPersistTaps="handled"
         // The field takes focus as the picker opens, so the keyboard is up from
-        // the start: the list's insets follow it on iOS, so the last rows can
-        // be scrolled above it, and a drag puts it away. (Android's window
-        // resizes for the keyboard instead.)
+        // the start. These two are for iOS: the list's insets follow the
+        // keyboard, so the last rows can be scrolled above it, and a drag puts
+        // it away. Android draws the app edge to edge, where the window is not
+        // resized for the keyboard, so there the last rows can stay under it
+        // until the shared Screen component makes room (not yet tried on a
+        // device).
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="on-drag"
         ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -244,7 +247,7 @@ function describeChoice(
   const settles = new Date(now.getTime() + RELOCATION_HOURS * 3_600_000);
   return {
     title: `Move to ${name}?`,
-    message: `A move takes a day to count. Until ${formatTimestamp(settles, now)}, your letters leave from ${describeCity(departing)}, and your friends' letters land there.`,
+    message: `A move takes a day to count. Until ${formatSettlesAt(settles, now)}, your letters leave from ${describeCity(departing)}, and your friends' letters land there.`,
     confirmLabel: 'Move',
   };
 }

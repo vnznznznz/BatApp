@@ -258,6 +258,90 @@ describe('CityPickerScreen', () => {
       expect(screen.getByText('Hamburg')).toBeOnTheScreen();
     });
 
+    /** One search per pause in typing, not one per keystroke. */
+    it('waits for a pause in typing, then searches only the words typed last', async () => {
+      await renderScreen(<CityPickerScreen />);
+
+      await type('Ha');
+      await act(async () => jest.advanceTimersByTimeAsync(200));
+      await type('Ham');
+      await act(async () => jest.advanceTimersByTimeAsync(200));
+      await type('Hamb');
+      await act(async () => jest.advanceTimersByTimeAsync(200));
+      expect(mockedSearchCities).not.toHaveBeenCalled();
+
+      await pause();
+
+      expect(mockedSearchCities).toHaveBeenCalledTimes(1);
+      expect(mockedSearchCities).toHaveBeenCalledWith('Hamb');
+    });
+
+    /**
+     * An answer for earlier words can come after the answer for later ones.
+     * It is let go, whether it found cities or failed: the later answer stays,
+     * rather than giving way to a spinner that never ends.
+     */
+    it.each<[string, (earlier: ReturnType<typeof deferred<City[]>>) => void]>([
+      ['found cities', (earlier) => earlier.resolve([hameln])],
+      ['failed', (earlier) => earlier.reject(new Error(SEARCH_FAILED))],
+    ])('keeps the newest answer when an earlier search that %s answers late', async (_, settle) => {
+      const earlier = deferred<City[]>();
+      const later = deferred<City[]>();
+      mockedSearchCities.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(later.promise);
+      await renderScreen(<CityPickerScreen />);
+      await type('Ham');
+      await pause();
+      await type('Hamb');
+      await pause();
+
+      await act(async () => later.resolve([hamburg]));
+      await act(async () => settle(earlier));
+
+      expect(screen.getByText('Hamburg')).toBeOnTheScreen();
+      expect(screen.queryByText('Hameln')).toBeNull();
+      expect(screen.queryByText(SEARCH_FAILED)).toBeNull();
+      expect(spinners()).toHaveLength(0);
+    });
+
+    /**
+     * Cut back to one letter while the search was still out, the field asks
+     * for more; a failure that comes back then is not about these words.
+     */
+    it('says nothing of a search that failed after the words were cut short', async () => {
+      const answer = deferred<City[]>();
+      mockedSearchCities.mockReturnValue(answer.promise);
+      await renderScreen(<CityPickerScreen />);
+      await type('Ham');
+      await pause();
+
+      await type('H');
+      await act(async () => answer.reject(new Error(SEARCH_FAILED)));
+
+      expect(screen.queryByText(SEARCH_FAILED)).toBeNull();
+      expect(screen.getByText(TOO_SHORT)).toBeOnTheScreen();
+    });
+
+    /** Trying again, the old failure is not the answer: the picker is looking. */
+    it('shows that it is looking, not the old failure, while it tries again', async () => {
+      const again = deferred<City[]>();
+      mockedSearchCities
+        .mockRejectedValueOnce(new Error(SEARCH_FAILED))
+        .mockReturnValueOnce(again.promise);
+      await renderScreen(<CityPickerScreen />);
+      await type('Hamburg');
+      await pause();
+      expect(screen.getByText(SEARCH_FAILED)).toBeOnTheScreen();
+
+      await type('Hamburg ');
+      await pause();
+
+      expect(mockedSearchCities).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText(SEARCH_FAILED)).toBeNull();
+      expect(spinners()).toHaveLength(1);
+      await act(async () => again.resolve([hamburg]));
+      expect(screen.getByText('Hamburg')).toBeOnTheScreen();
+    });
+
     it('does not search the same words again once they have been answered', async () => {
       await renderScreen(<CityPickerScreen />);
       await type('Hamburg');
@@ -292,7 +376,7 @@ describe('CityPickerScreen', () => {
      * The city data is GeoNames', under CC BY 4.0, which asks for the credit
      * wherever the data is shown - in every state of the list.
      */
-    it('credits GeoNames before a search, beside results, beside none, and after a failure', async () => {
+    it('credits GeoNames before a search, while it runs, beside results, beside none, and after a failure', async () => {
       mockedSearchCities
         .mockResolvedValueOnce([hamburg])
         .mockResolvedValueOnce([])
@@ -302,6 +386,9 @@ describe('CityPickerScreen', () => {
 
       for (const text of ['Hamburg', 'Hamburgo', 'Hamburgos']) {
         await type(text);
+        // Looking: the spinner, and the credit beneath it.
+        expect(spinners()).toHaveLength(1);
+        expect(screen.getByText(CITY_DATA_CREDIT)).toBeOnTheScreen();
         await pause();
         expect(screen.getByText(CITY_DATA_CREDIT)).toBeOnTheScreen();
       }
@@ -344,6 +431,23 @@ describe('CityPickerScreen', () => {
           "and your friends' letters land there.",
         buttons: ['Cancel', 'Move'],
       });
+    });
+
+    /**
+     * Asked on New Year's Eve, the day the move settles is in the next year.
+     * It still says at what time: "Until 1 Jan 2027" alone left the courier to
+     * guess. (Found in review.)
+     */
+    it('names the time the move settles in the next year, too', async () => {
+      jest.setSystemTime(new Date(2026, 11, 31, 21, 0));
+      await renderScreen(<CityPickerScreen />);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert().message).toBe(
+        'A move takes a day to count. Until 1 Jan 2027 21:00, your letters leave from Berlin, ' +
+          "DE, and your friends' letters land there.",
+      );
     });
 
     /**
@@ -452,6 +556,29 @@ describe('CityPickerScreen', () => {
 
       expect(mockUpdateCity).toHaveBeenCalledTimes(1);
       expect(mockBack).not.toHaveBeenCalled();
+      // Left as it was, for whenever they come back to it.
+      expect(spinners()).toHaveLength(0);
+      expect(screen.getByRole('button', { name: /^Hamburg/ })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /^Hameln/ })).toBeEnabled();
+    });
+
+    /** One save at a time, shown on the row it is for. */
+    it('shows the save on the row chosen, and takes no other choice meanwhile', async () => {
+      const saving = deferred<void>();
+      mockUpdateCity.mockReturnValue(saving.promise);
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+      await chooseInAlert('Move');
+
+      const row = screen.getByRole('button', { name: /^Hamburg/ });
+      expect(spinners()).toHaveLength(1);
+      expect(row.queryAll((node) => node.type === 'ActivityIndicator')).toHaveLength(1);
+      expect(row).toBeDisabled();
+      expect(screen.getByRole('button', { name: /^Hameln/ })).toBeDisabled();
+      await fireEvent.press(screen.getByRole('button', { name: /^Hameln/ }));
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+
+      await act(async () => saving.resolve());
     });
 
     it('says why a save failed, and stays so the courier can try again', async () => {
@@ -464,6 +591,24 @@ describe('CityPickerScreen', () => {
       expect(screen.getByText('That city could not be saved.')).toBeOnTheScreen();
       expect(mockBack).not.toHaveBeenCalled();
       expect(screen.getByRole('button', { name: /^Hamburg/ })).toBeEnabled();
+    });
+
+    it('lets go of a failed save once the courier tries again', async () => {
+      const again = deferred<void>();
+      mockUpdateCity
+        .mockRejectedValueOnce(new Error('That city could not be saved.'))
+        .mockReturnValueOnce(again.promise);
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+      await chooseInAlert('Move');
+      expect(screen.getByText('That city could not be saved.')).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: /^Hamburg/ }));
+      await chooseInAlert('Move');
+
+      expect(screen.queryByText('That city could not be saved.')).toBeNull();
+      await act(async () => again.resolve());
+      expect(mockBack).toHaveBeenCalledTimes(1);
     });
   });
 });
