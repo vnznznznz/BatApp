@@ -79,11 +79,6 @@ export function isSessionStored(): boolean {
   return sessionStored;
 }
 
-/** For whoever learns that a session has come or gone by another way than `authStorage`. */
-export function markSessionStored(stored: boolean): void {
-  sessionStored = stored;
-}
-
 function parseSession(value: string | null): Session | null {
   if (value === null) return null;
   try {

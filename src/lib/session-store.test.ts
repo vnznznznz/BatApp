@@ -205,16 +205,6 @@ describe('whether a session is stored', () => {
     await authStorage.getItem(`${SESSION_KEY}-user`);
     expect(isSessionStored()).toBe(true);
   });
-
-  it('can be set by whoever knows better', () => {
-    const { isSessionStored, markSessionStored } = launch();
-
-    markSessionStored(true);
-    expect(isSessionStored()).toBe(true);
-
-    markSessionStored(false);
-    expect(isSessionStored()).toBe(false);
-  });
 });
 
 describe('on the web', () => {
