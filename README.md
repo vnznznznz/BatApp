@@ -44,7 +44,9 @@ updates. Not done yet: the hosted Supabase project (see
 
 ## Requirements
 
-- Node.js 20.19+ (developed on 22.22)
+- Node.js 22, version 22.13 or newer (developed on 22.23; CI runs 22). Node 24.3+ also fits
+  what the installed packages declare. Node 20 does not: the Supabase client and the test
+  library both ask for 22.
 - npm 10+
 - An iOS or Android device with [Expo Go](https://expo.dev/go), or a simulator
 - macOS with Xcode is only required for local native iOS builds; cloud builds via EAS do not
