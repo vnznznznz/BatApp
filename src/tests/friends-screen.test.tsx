@@ -9,6 +9,7 @@ import {
   fetchFriendships,
   removeFriend,
   requestFriend,
+  withdrawRequest,
   type Friendship,
   type RequestOutcome,
 } from '@/features/friends/friends';
@@ -37,6 +38,7 @@ jest.mock('@/features/friends/friends', () => ({
   requestFriend: jest.fn(),
   acceptFriend: jest.fn(),
   removeFriend: jest.fn(),
+  withdrawRequest: jest.fn(),
 }));
 
 const mockProfileState: { profile: Profile | null } = { profile: null };
@@ -49,6 +51,7 @@ const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedRequestFriend = jest.mocked(requestFriend);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
 const mockedRemoveFriend = jest.mocked(removeFriend);
+const mockedWithdrawRequest = jest.mocked(withdrawRequest);
 
 /** A fixed moment, so "asked ..." reads the same on every run. */
 const NOW = new Date('2026-10-31T21:00:00Z').getTime();
@@ -172,6 +175,7 @@ beforeEach(() => {
   mockedRequestFriend.mockReset();
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
+  mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
 
@@ -533,16 +537,54 @@ describe('FriendsScreen', () => {
 
     it('withdraws a request, and then drops it from the list', async () => {
       serve(() => [dora]);
-      mockedRemoveFriend.mockImplementation(async () => {
+      mockedWithdrawRequest.mockImplementation(async () => {
         serve(() => []);
       });
       await renderScreen(<FriendsScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
 
-      expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-dora');
+      expect(mockedWithdrawRequest).toHaveBeenCalledWith('friendship-dora', 'dora');
+      // Never the call that ends whatever the row has become by now.
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
       await waitFor(() => expect(screen.queryByText('@dora')).toBeNull());
-      expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Dora said yes while the list still showed her request. The withdrawal is
+     * refused rather than ending the new friendship; the courier is told what
+     * happened, and ending it now goes through the usual question.
+     */
+    it('says so when the other person accepted in the meantime, and keeps the friendship', async () => {
+      const acceptedMeanwhile =
+        '@dora accepted your request in the meantime, so you are friends now.';
+      const accepted: Friendship = {
+        ...dora,
+        status: 'accepted',
+        acceptedAt: new Date(NOW),
+        friend: { ...dora.friend, displayName: 'Dora Lind' },
+      };
+      serve(() => [dora]);
+      mockedWithdrawRequest.mockImplementation(async () => {
+        serve(() => [accepted]);
+        throw new RpcError(acceptedMeanwhile, 'request_not_found');
+      });
+      await renderScreen(<FriendsScreen />);
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
+
+      expect(await screen.findByText(acceptedMeanwhile)).toBeOnTheScreen();
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(screen.queryByRole('header', { name: 'Waiting for an answer' })).toBeNull(),
+      );
+      expect(screen.getByText('Dora Lind')).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Remove Dora Lind' }));
+
+      expect(lastAlert().title).toBe('Stop being friends with Dora Lind?');
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
     });
   });
 

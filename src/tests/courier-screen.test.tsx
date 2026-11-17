@@ -8,6 +8,7 @@ import {
   acceptFriend,
   fetchFriendships,
   removeFriend,
+  withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
@@ -51,6 +52,7 @@ jest.mock('@/features/friends/friends', () => ({
   fetchFriendships: jest.fn(),
   acceptFriend: jest.fn(),
   removeFriend: jest.fn(),
+  withdrawRequest: jest.fn(),
 }));
 
 // Blocking is the one call the page makes into the safety module.
@@ -62,6 +64,7 @@ jest.mock('@/features/safety/safety', () => ({
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
 const mockedRemoveFriend = jest.mocked(removeFriend);
+const mockedWithdrawRequest = jest.mocked(withdrawRequest);
 const mockedBlockCourier = jest.mocked(blockCourier);
 
 /**
@@ -236,6 +239,7 @@ beforeEach(() => {
   serve(() => [anna, ben, carla, dora]);
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
+  mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   mockedBlockCourier.mockReset().mockResolvedValue('blocked');
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   announceSpy = jest
@@ -463,10 +467,46 @@ describe('CourierScreen', () => {
       await fireEvent.press(button('Withdraw request'));
 
       expect(alertSpy).not.toHaveBeenCalled();
-      expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
-      expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-dora');
+      expect(mockedWithdrawRequest).toHaveBeenCalledTimes(1);
+      expect(mockedWithdrawRequest).toHaveBeenCalledWith('friendship-dora', 'dora');
+      // Never the call that ends whatever the row has become by now.
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
       await expectWentToFriends();
       expect(announced()).toEqual(['Withdrew your request to @dora.']);
+    });
+
+    /**
+     * Dora said yes while the page still showed the request. The withdrawal is
+     * refused rather than ending the new friendship: the page says so, stays,
+     * and now shows her as a friend - ending that goes through the usual question.
+     */
+    it('says so when they accepted in the meantime, stays, and keeps the friendship', async () => {
+      const acceptedMeanwhile =
+        '@dora accepted your request in the meantime, so you are friends now.';
+      const accepted: Friendship = {
+        ...dora,
+        status: 'accepted',
+        acceptedAt: new Date(NOW),
+        friend: { ...dora.friend, displayName: 'Dora Lind' },
+      };
+      mockedWithdrawRequest.mockImplementation(async () => {
+        serve(() => [anna, ben, carla, accepted]);
+        throw new RpcError(acceptedMeanwhile, 'request_not_found');
+      });
+      await openPageOf(dora);
+
+      await fireEvent.press(button('Withdraw request'));
+
+      expect(await screen.findByText(acceptedMeanwhile)).toBeOnTheScreen();
+      expect(announced()).toEqual([acceptedMeanwhile]);
+      expect(await screen.findByText('Dora Lind')).toBeOnTheScreen();
+      expectStayed();
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
+
+      await fireEvent.press(button('Remove friend'));
+
+      expect(lastAlert().title).toBe('Stop being friends with Dora Lind?');
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
     });
   });
 

@@ -19,6 +19,7 @@ import {
   groupFriendships,
   removeFriend,
   requestFriend,
+  withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
 import { useProfile } from '@/features/profile/use-profile';
@@ -266,7 +267,11 @@ export default function FriendsScreen() {
                   variant="ghost"
                   loading={busyId === friendship.id}
                   disabled={busyId !== null}
-                  onPress={() => void act(friendship, removeFriend)}
+                  // Not removeFriend: if they said yes a moment ago, that would
+                  // end the new friendship without the usual question.
+                  onPress={() =>
+                    void act(friendship, (id) => withdrawRequest(id, friendship.friend.username))
+                  }
                 />
               }
             />

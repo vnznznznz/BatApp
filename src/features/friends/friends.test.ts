@@ -9,6 +9,7 @@ import {
   removeFriend,
   requestFriend,
   toFriendship,
+  withdrawRequest,
   type Friendship,
   type FriendshipRow,
   type RequestOutcome,
@@ -410,7 +411,7 @@ describe('acceptFriend', () => {
 });
 
 describe('removeFriend', () => {
-  it('declines, withdraws or ends a friendship by its id', async () => {
+  it('declines a request or ends a friendship by its id', async () => {
     mockRpc.mockResolvedValue({ data: null, error: null });
 
     await expect(removeFriend('friendship-anna')).resolves.toBeUndefined();
@@ -439,6 +440,64 @@ describe('removeFriend', () => {
     await expect(removeFriend('friendship-anna')).rejects.toMatchObject({
       message: 'No connection. Check your network and try again.',
     });
+  });
+});
+
+describe('withdrawRequest', () => {
+  const notWaiting = {
+    data: null,
+    error: { message: 'no such request', code: 'P0001', hint: 'request_not_found' },
+  };
+
+  /**
+   * Not remove_friend: that ends whatever the row has become, so a Withdraw
+   * tapped just after the other person said yes ended the new friendship
+   * without asking. withdraw_request takes back only a request still waiting.
+   */
+  it('takes back a request by its id, with the call that touches nothing but a waiting request', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+
+    await expect(withdrawRequest('friendship-ben', 'ben')).resolves.toBeUndefined();
+
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith('withdraw_request', { friendship_id: 'friendship-ben' });
+  });
+
+  it('says the other person accepted in the meantime when the two are friends now', async () => {
+    mockRpc.mockResolvedValueOnce(notWaiting).mockResolvedValueOnce({
+      data: [acceptedRow({ friendship_id: 'friendship-ben' })],
+      error: null,
+    });
+
+    await expect(withdrawRequest('friendship-ben', 'ben')).rejects.toMatchObject({
+      message: '@ben accepted your request in the meantime, so you are friends now.',
+      reason: 'request_not_found',
+    });
+    expect(mockRpc).toHaveBeenLastCalledWith('list_friends');
+  });
+
+  it.each([
+    ['the request is simply gone', { data: [incomingRow()], error: null }],
+    ['the list cannot be loaded to tell', { data: null, error: { message: 'internal error' } }],
+  ])('says only that the request is no longer waiting when %s', async (_, list) => {
+    mockRpc.mockResolvedValueOnce(notWaiting).mockResolvedValueOnce(list);
+
+    await expect(withdrawRequest('friendship-ben', 'ben')).rejects.toMatchObject({
+      message: 'Your request to @ben is no longer waiting for an answer.',
+      reason: 'request_not_found',
+    });
+  });
+
+  it('says the request could not be withdrawn when anything else goes wrong', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'internal error', code: 'XX000', hint: null },
+    });
+
+    await expect(withdrawRequest('friendship-ben', 'ben')).rejects.toMatchObject({
+      message: 'That request could not be withdrawn. Try again.',
+    });
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 });
 

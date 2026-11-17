@@ -1,7 +1,7 @@
 import { normaliseUsername } from '@/features/auth/validation';
 import { describeCity } from '@/features/cities/search';
 import { formatDay, formatFlightEstimate, formatOnDay } from '@/lib/format';
-import { toRpcError } from '@/lib/rpc-error';
+import { RpcError, toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -187,8 +187,48 @@ export async function acceptFriend(friendshipId: string): Promise<void> {
   if (error) throw toRpcError(error, 'That request could not be accepted. Try again.');
 }
 
-/** Declines a request, withdraws one, or ends a friendship - the same act. */
+/**
+ * Declines a request, or ends a friendship. Whatever the row is by the time the
+ * call arrives, it goes - which is why withdrawing has a call of its own.
+ */
 export async function removeFriend(friendshipId: string): Promise<void> {
   const { error } = await supabase.rpc('remove_friend', { friendship_id: friendshipId });
   if (error) throw toRpcError(error, 'That could not be done. Try again.');
+}
+
+/**
+ * Takes back a request you made, but only while it is still waiting. If the
+ * other person has answered in the meantime, the server refuses and nothing
+ * changes: a tap meant for a request never ends a friendship without the usual
+ * question first. The refusal then says which answer came first, read from the
+ * list as it is now.
+ */
+export async function withdrawRequest(friendshipId: string, username: string): Promise<void> {
+  const { error } = await supabase.rpc('withdraw_request', { friendship_id: friendshipId });
+  if (!error) return;
+
+  const refusal = toRpcError(error, 'That request could not be withdrawn. Try again.');
+  if (refusal.reason !== 'request_not_found') throw refusal;
+
+  const now = await fetchFriendships().catch(() => null);
+  throw new RpcError(describeWithdrawRefused(now, friendshipId, username), refusal.reason, {
+    cause: error,
+  });
+}
+
+/**
+ * Why a request could not be withdrawn: the two became friends in the
+ * meantime, or the request is simply gone. Without a list to tell by, only
+ * what is true either way.
+ */
+function describeWithdrawRefused(
+  now: readonly Friendship[] | null,
+  friendshipId: string,
+  username: string,
+): string {
+  const handle = `@${username}`;
+  const row = now?.find((entry) => entry.id === friendshipId);
+  return row?.status === 'accepted'
+    ? `${handle} accepted your request in the meantime, so you are friends now.`
+    : `Your request to ${handle} is no longer waiting for an answer.`;
 }

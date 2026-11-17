@@ -13,6 +13,7 @@ import {
   fetchFriendships,
   friendName,
   removeFriend,
+  withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
 import { blockCourier } from '@/features/safety/safety';
@@ -101,13 +102,19 @@ export default function CourierScreen() {
 
   function confirmEnd(current: Friendship) {
     if (current.status === 'pending') {
-      const declining = current.direction === 'incoming';
-      void run(
-        'end',
-        () => removeFriend(current.id),
-        declining ? `Declined ${handle}.` : `Withdrew your request to ${handle}.`,
-        true,
-      );
+      // Withdrawing has a call of its own: if they said yes a moment ago,
+      // removeFriend would end the new friendship without the question below.
+      // Refused instead, the page stays and shows them as the friend they are.
+      if (current.direction === 'incoming') {
+        void run('end', () => removeFriend(current.id), `Declined ${handle}.`, true);
+      } else {
+        void run(
+          'end',
+          () => withdrawRequest(current.id, friend.username),
+          `Withdrew your request to ${handle}.`,
+          true,
+        );
+      }
       return;
     }
     confirmAction({
