@@ -286,7 +286,7 @@ removed.
   exported copy once the police have theirs.
 
   If the threat proves unfounded within the week - a joke between friends, the wrong account -
-  lift the suspension instead, and write to both of them:
+  lift the suspension instead, and tell the reporter, who has been told the account would go:
 
   ```sql
   update auth.users set banned_until = null where id = '<reported_id>';

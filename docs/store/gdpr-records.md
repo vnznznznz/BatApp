@@ -1190,6 +1190,14 @@ Betreiber noch selbst tut:
     and exists (select 1 from public.profiles p where p.id = u.id);
   ```
 
+- **Erweist sich eine Drohung in der Woche als unbegründet**, wird das Konto nicht entfernt,
+  sondern die vorläufige Sperre aufgehoben, und die meldende Person erfährt es (GO-LIVE, „A
+  threat“). Nur bei einem Konto, das sein Profil noch hat – die Abfrage oben zeigt sie:
+
+  ```sql
+  update auth.users set banned_until = null where id = '<reported_id>';
+  ```
+
 - **Wahlweise beim Entfernen auch die Sitzungen löschen** (Lücke L7), bei einer Drohung erst nach
   dem Export. Sonst gehen sie mit `tidy_up` rund 91 Tage nach der Sperre. Vorher am lokalen Stack
   ausprobieren, dass die Sperre danach weiter greift (zu prüfen):
