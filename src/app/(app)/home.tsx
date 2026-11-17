@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Badge } from '@/components/badge';
@@ -41,10 +41,15 @@ export default function HomeScreen() {
   const { reload: reloadRoost, refresh: refreshRoost } = roost;
   const { reload: reloadBadges } = badges;
 
-  // The profile screen and the city picker change what this one shows.
+  // The profile screen and the city picker change what this one shows, so the
+  // profile is read again each time the roost comes back into view. Not as it
+  // opens: the hook has only just asked for it then, and asking here as well
+  // made two requests for the same row at every start. (Found in review.)
+  const opened = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      void reloadProfile();
+      if (opened.current) void reloadProfile();
+      opened.current = true;
     }, [reloadProfile]),
   );
 

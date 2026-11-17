@@ -12,13 +12,28 @@ import { RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
+/**
+ * Stands in for navigation focus. There is no navigator here, so mounting is
+ * the first focus, and `comeBackToRoost()` is the roost coming into view again
+ * from another screen - which is when `useFocusEffect` runs its effect again.
+ */
+const mockFocus = { returns: new Set<() => void>() };
+
 jest.mock('expo-router', () => {
-  const React = jest.requireActual('react');
+  const React = jest.requireActual<typeof import('react')>('react');
   return {
     useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
-    // There is no navigator here, so being mounted stands in for being focused.
-    useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      const [visit, setVisit] = React.useState(0);
+      React.useEffect(() => {
+        const comeBack = () => setVisit((count) => count + 1);
+        mockFocus.returns.add(comeBack);
+        return () => {
+          mockFocus.returns.delete(comeBack);
+        };
+      }, []);
+      React.useEffect(() => effect(), [effect, visit]);
+    },
   };
 });
 
@@ -134,6 +149,10 @@ async function letTimePass(ms: number) {
   for (let left = ms; left > 0; left -= SECOND) {
     await act(() => jest.advanceTimersByTimeAsync(Math.min(SECOND, left)));
   }
+}
+
+async function comeBackToRoost() {
+  await act(async () => mockFocus.returns.forEach((comeBack) => comeBack()));
 }
 
 /**
@@ -725,11 +744,32 @@ describe('HomeScreen', () => {
   describe('staying current', () => {
     // The profile screen and the city picker both change what the roost shows,
     // and the courier comes back here from each of them.
-    it('reloads the profile when the roost comes into view', async () => {
+    it('reloads the profile, the roost and the counts when the roost comes back into view', async () => {
       await renderScreen(<HomeScreen />);
       await roostLoaded();
 
-      expect(mockReloadProfile).toHaveBeenCalled();
+      await comeBackToRoost();
+
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+      expect(mockedFetchRoost).toHaveBeenCalledTimes(2);
+      expect(mockedFetchBadges).toHaveBeenCalledTimes(2);
+
+      await comeBackToRoost();
+
+      expect(mockReloadProfile).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * The hook that reads the profile asks for it itself when the screen
+     * opens. Asking here as well made two requests for the same row at every
+     * start. (Found in review; home-profile.test.tsx counts the requests with
+     * the real hook.)
+     */
+    it('does not ask for the profile a second time as it opens', async () => {
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(mockReloadProfile).not.toHaveBeenCalled();
     });
 
     /**
