@@ -377,7 +377,9 @@ describe('usePaged', () => {
 
     it('stops listening for the app once the list is gone', async () => {
       const { unmount } = await renderList(pages(page('a')));
-      expect(appStateListeners.size).toBeGreaterThan(0);
+      // Two: the list's own, which loads again on the app's return, and the
+      // one that stops the unasked attempts while the app is in the background.
+      expect(appStateListeners.size).toBe(2);
 
       await unmount();
 

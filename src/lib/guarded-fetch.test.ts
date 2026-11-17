@@ -166,6 +166,26 @@ describe('the time a request may take', () => {
 
       expect(network).not.toHaveBeenCalled();
     });
+
+    /**
+     * One signal can serve many requests, and outlive each of them. A request
+     * that is over lets go of it, or everything it held would be kept for as
+     * long as the signal is.
+     */
+    it('no longer listens to the caller once the request is over', async () => {
+      const { guarded, network } = setUp();
+      network
+        .mockResolvedValueOnce(json(200, []))
+        .mockRejectedValueOnce(new TypeError('Network request failed'));
+      const caller = new AbortController();
+      await guarded(ROOST, { ...call('token'), signal: caller.signal });
+      await guarded(ROOST, { ...call('token'), signal: caller.signal }).catch(() => {});
+
+      caller.abort();
+
+      // Giving up now reaches neither: not the one answered, not the one that failed.
+      expect(network.mock.calls.map(([, init]) => init?.signal?.aborted)).toEqual([false, false]);
+    });
   });
 });
 
@@ -822,6 +842,19 @@ describe('a request to the database', () => {
       const { guarded, network, renewSession } = setUp();
       network.mockResolvedValue(expired());
       renewSession.mockResolvedValue(null);
+
+      const answer = await guarded(ROOST, call('old-token'));
+
+      expect(answer.status).toBe(401);
+      expect((await answer.json()).message).toBe('JWT expired');
+      expect(network).toHaveBeenCalledTimes(1);
+    });
+
+    /** A renewal that hands back the token just refused has renewed nothing. */
+    it('is not repeated with the very token that was refused', async () => {
+      const { guarded, network, renewSession } = setUp();
+      network.mockImplementation(async () => expired());
+      renewSession.mockResolvedValue('old-token');
 
       const answer = await guarded(ROOST, call('old-token'));
 
