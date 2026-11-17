@@ -631,7 +631,7 @@ Two of them take years to spring, the third a quiet week.
 
   How to see it, whichever it is: `npx supabase@3.2.0 projects list --output-format json` gives
   the project's `"status"`. `ACTIVE_HEALTHY` is right; `INACTIVE` is what this CLI calls a paused
-  project, and its commands then stop with "project is paused" and send you to the dashboard
+  project, and its `link` then stops with "project is paused" and sends you to the dashboard
   (read in the CLI's own messages; no project existed to try it on). After a restore, run the
   checks of "Setting up the hosted project", step 4, again: the three jobs must still be there
   and active.
