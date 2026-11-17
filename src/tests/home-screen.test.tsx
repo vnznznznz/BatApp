@@ -795,6 +795,31 @@ describe('HomeScreen', () => {
     });
 
     /**
+     * The roost is where the courier waits. Whenever it asks the server for
+     * the bats it asks for the counts as well, so a letter that has landed here
+     * in the meantime, or a friend who has asked, is not left unannounced
+     * until the courier leaves the screen and comes back.
+     */
+    it('fetches the counts again too once the next bat is due', async () => {
+      serve(() => [batInFlight(1, 2 * MINUTE), batAtHome(2), batAtHome(3)]);
+      await renderScreen(<HomeScreen />);
+      expect(await screen.findByText('2 of 3 at home')).toBeOnTheScreen();
+      expect(screen.getByText('Received and sent')).toBeOnTheScreen();
+
+      // Meanwhile a letter has landed for the courier, and a friend has asked.
+      serve(everyBatHome);
+      mockedFetchBadges.mockResolvedValue({ unreadLetters: 1, friendRequests: 1 });
+      await letTimePass(MINUTE);
+      expect(mockedFetchBadges).toHaveBeenCalledTimes(1);
+
+      await letTimePass(MINUTE + 2 * SECOND);
+
+      expect(mockedFetchBadges).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('1 new')).toBeOnTheScreen();
+      expect(screen.getByText('1 waiting for your answer')).toBeOnTheScreen();
+    });
+
+    /**
      * The server lands a letter only once its own clock says it is due. A phone
      * running a few seconds fast asks too early and is told the bat is still
      * out; the screen has to ask again rather than leave it at "any moment now"
