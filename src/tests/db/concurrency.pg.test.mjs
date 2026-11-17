@@ -16,9 +16,11 @@ import { AUTH_STUB, migrationFiles } from './harness.mjs';
  * Postgres and make transactions collide on purpose: the bat reservation, the
  * delivery worker against itself, and two people asking each other at once.
  *
- * One test here is no race at all. What the city search costs only shows on
- * the Postgres the service runs on, and PGlite is a newer one that plans the
- * search differently; see "the city search" below.
+ * A few tests here are no races at all. What the city search costs only shows
+ * on the Postgres the service runs on, and PGlite is a newer one that plans the
+ * search differently; see "the city search" below. And what a trigger or a
+ * check may do depends on whose rights it runs with, which is worth seeing on a
+ * real server with real roles; see "written by the roles the platform uses".
  *
  * They need `DATABASE_URL`, pointing at a server where they may create and drop a
  * database, connecting as the `postgres` superuser (the migrations narrow that
@@ -1290,6 +1292,100 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
         assert.deepEqual(await untidied(), expected);
       });
     }
+  });
+
+  /**
+   * Not races either. A trigger and a check run with the rights of whoever
+   * writes the row: GoTrue's own role for a sign-in, the API's role for a
+   * courier changing their profile. Neither can use the private schema. A
+   * guard that reached into it without saying whose rights to use would turn
+   * every sign-up, or every change of name, into "permission denied" - on the
+   * platform, and not for a superuser. So these write as those two roles.
+   */
+  describe('written by the roles the platform uses', () => {
+    /** A connection that writes sign-ins the way GoTrue does. */
+    async function connectAsAuthServer() {
+      const client = await connect();
+      await client.query('set role supabase_auth_admin');
+      return client;
+    }
+
+    const signUp = (session, name, details = {}) =>
+      session.query(
+        `insert into auth.users (email, raw_user_meta_data) values ($1, $2::jsonb) returning id`,
+        [
+          `${name}@example.test`,
+          JSON.stringify({ username: name, display_name: name, ...details }),
+        ],
+      );
+
+    it('signs a courier up, with their profile and their bats', async () => {
+      const gotrue = await connectAsAuthServer();
+
+      const { rows } = await signUp(gotrue, 'anna');
+
+      const { rows: made } = await admin.query(
+        `select (select display_name from public.profiles where id = $1) as name,
+                (select count(*)::int from public.bats where owner_id = $1) as bats`,
+        [rows[0].id],
+      );
+      assert.deepEqual(made, [{ name: 'anna', bats: 3 }]);
+      // And the role really is as shut out as GoTrue's is on the platform.
+      await assert.rejects(
+        gotrue.query(`select private.sign_up_details_max_bytes()`),
+        /permission denied for schema private/,
+      );
+    });
+
+    it('refuses a sign-up that carries too much, and a change that adds too much', async () => {
+      const gotrue = await connectAsAuthServer();
+      const tooMuch = (error) => error.hint === 'sign_up_details_too_large';
+
+      await assert.rejects(signUp(gotrue, 'big', { junk: 'x'.repeat(100_000) }), tooMuch);
+      const { rows } = await signUp(gotrue, 'anna');
+      await assert.rejects(
+        gotrue.query(
+          `update auth.users set raw_user_meta_data = raw_user_meta_data || $2::jsonb where id = $1`,
+          [rows[0].id, JSON.stringify({ junk: 'x'.repeat(100_000) })],
+        ),
+        tooMuch,
+      );
+      await gotrue.query(
+        `update auth.users set raw_user_meta_data = raw_user_meta_data || '{"locale": "de"}'
+         where id = $1`,
+        [rows[0].id],
+      );
+
+      const { rows: kept } = await admin.query(
+        `select email, octet_length(raw_user_meta_data::text) < 200 as small from auth.users`,
+      );
+      assert.deepEqual(kept, [{ email: 'anna@example.test', small: true }]);
+    });
+
+    it('holds a display name to its rules at sign-up and when its owner changes it', async () => {
+      const gotrue = await connectAsAuthServer();
+      const refusedBy = (rule) => (error) =>
+        error.code === '23514' && error.constraint === `profiles_display_name_${rule}`;
+
+      await assert.rejects(
+        signUp(gotrue, 'reversed', { display_name: 'ab\u202Edetpecca' }),
+        refusedBy('no_controls'),
+      );
+      const { rows } = await signUp(gotrue, 'anna');
+      const anna = await connectAs(rows[0].id);
+      const rename = (name) =>
+        anna.query(`update public.profiles set display_name = $1 where id = $2`, [
+          name,
+          rows[0].id,
+        ]);
+
+      await assert.rejects(rename('\u200B'), refusedBy('visible'));
+      await assert.rejects(rename('An\nna'), refusedBy('no_controls'));
+      await rename('\u{1F469}\u200D\u{1F467}');
+
+      const { rows: names } = await admin.query(`select display_name from public.profiles`);
+      assert.deepEqual(names, [{ display_name: '\u{1F469}\u200D\u{1F467}' }]);
+    });
   });
 
   describe('the city search', () => {

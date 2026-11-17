@@ -4,6 +4,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import {
   applyMigrations,
   asAnon,
+  asAuthServer,
   asUser,
   createTestDatabase,
   createUser,
@@ -290,6 +291,167 @@ describe('profiles from before display names were checked', () => {
     } finally {
       await old.close();
     }
+  });
+});
+
+/**
+ * A sign-up sends a username and a display name along, and GoTrue stores
+ * whatever else is sent with them - any JSON, a megabyte a request - and lets
+ * a signed-in account add to it without end. Review did both against the real
+ * stack. The database now bounds what a sign-in can carry.
+ *
+ * Everything here is written as GoTrue's own role, which is who writes
+ * auth.users on the platform and can reach nothing the migrations made: a
+ * guard that only works for the superuser would stop every sign-up there.
+ */
+describe('the details kept with a sign-in', () => {
+  const junk = (bytes) => 'x'.repeat(bytes);
+
+  /** GoTrue changing what an account carries, as it does for PUT /auth/v1/user. */
+  const carry = (id, more) =>
+    asAuthServer(db, () =>
+      db.query(
+        `update auth.users set raw_user_meta_data = raw_user_meta_data || $2::jsonb where id = $1`,
+        [id, JSON.stringify(more)],
+      ),
+    );
+
+  const bytesCarried = async (id) =>
+    (
+      await db.query(
+        `select octet_length(raw_user_meta_data::text) as bytes from auth.users where id = $1`,
+        [id],
+      )
+    ).rows[0].bytes;
+
+  it('take everything the app sends, at its longest', async () => {
+    const id = await createUser(db, {
+      email: `${'a'.repeat(243)}@example.test`,
+      username: 'a'.repeat(20),
+      // Forty characters of four bytes each.
+      displayName: '\u{1D518}'.repeat(40),
+      // What GoTrue adds of its own.
+      metadata: {
+        sub: '00000000-0000-4000-8000-000000000000',
+        email: `${'a'.repeat(243)}@example.test`,
+        email_verified: false,
+        phone_verified: false,
+      },
+    });
+
+    assert.ok((await bytesCarried(id)) < 1024, `${await bytesCarried(id)} bytes`);
+  });
+
+  it('refuse a sign-up that carries a hundred kilobytes, and nothing of it is left', async () => {
+    await assert.rejects(
+      createUser(db, {
+        username: 'anna',
+        displayName: 'Anna',
+        metadata: { junk: junk(100_000) },
+      }),
+      (error) => error.hint === 'sign_up_details_too_large',
+    );
+
+    assert.equal(await count(`select count(*)::text as count from auth.users`), 0);
+    assert.equal(await count(`select count(*)::text as count from public.profiles`), 0);
+  });
+
+  it('refuse an account that tries to add a hundred kilobytes later, and take a small change', async () => {
+    const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
+
+    await assert.rejects(
+      carry(anna, { junk: junk(100_000) }),
+      (error) => error.hint === 'sign_up_details_too_large',
+    );
+    await carry(anna, { locale: 'de' });
+
+    const { rows } = await db.query(
+      `select raw_user_meta_data as details from auth.users where id = $1`,
+      [anna],
+    );
+    assert.deepEqual(rows[0].details, { username: 'anna', display_name: 'Anna', locale: 'de' });
+  });
+
+  it('do not have to be there at all', async () => {
+    const { rows } = await asAuthServer(db, () =>
+      db.query(
+        `insert into auth.users (email, raw_user_meta_data) values ('nobody@example.test', null)
+         returning id`,
+      ),
+    );
+
+    await asAuthServer(db, () =>
+      db.query(`update auth.users set raw_user_meta_data = null where id = $1`, [rows[0].id]),
+    );
+    assert.equal(
+      await count(`select count(*)::text as count from public.profiles where id = $1`, [
+        rows[0].id,
+      ]),
+      1,
+    );
+  });
+
+  /**
+   * An account that already carries more, from before the bound, must not be
+   * locked by it: every later change of its sign-in that touches the details
+   * would be refused, the nightly tidy-up's among them. Only growing is.
+   */
+  describe('on an account that carried too much before there was a bound', () => {
+    const tooMuch = async () => {
+      await db.exec(`alter table auth.users disable trigger users_limit_sign_up_details`);
+      try {
+        return await createUser(db, {
+          username: 'early',
+          displayName: 'Early',
+          metadata: { junk: junk(50_000) },
+        });
+      } finally {
+        await db.exec(`alter table auth.users enable trigger users_limit_sign_up_details`);
+      }
+    };
+
+    it('can stay as they are and can shrink, but cannot grow', async () => {
+      const early = await tooMuch();
+      const before = await bytesCarried(early);
+
+      // Written again as it is, which is what an update of the whole row does.
+      await asAuthServer(db, () =>
+        db.query(`update auth.users set raw_user_meta_data = raw_user_meta_data where id = $1`, [
+          early,
+        ]),
+      );
+      await assert.rejects(
+        carry(early, { more: 'x' }),
+        (error) => error.hint === 'sign_up_details_too_large',
+      );
+      await asAuthServer(db, () =>
+        db.query(
+          `update auth.users set raw_user_meta_data = raw_user_meta_data - 'display_name'
+           where id = $1`,
+          [early],
+        ),
+      );
+
+      assert.ok((await bytesCarried(early)) < before);
+    });
+
+    it('do not stop the nightly tidy-up, which removes the sign-up names from them too', async () => {
+      const early = await tooMuch();
+
+      const { rows } = await db.query(`select private.tidy_up() as skipped`);
+
+      assert.deepEqual(
+        rows[0].skipped.filter((step) => !step.startsWith('pg_cron run log: ')),
+        [],
+      );
+      const { rows: left } = await db.query(
+        `select raw_user_meta_data ?| array['username', 'display_name'] as names,
+                raw_user_meta_data ? 'junk' as rest
+         from auth.users where id = $1`,
+        [early],
+      );
+      assert.deepEqual(left, [{ names: false, rest: true }]);
+    });
   });
 });
 

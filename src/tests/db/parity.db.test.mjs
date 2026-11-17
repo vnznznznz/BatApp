@@ -43,6 +43,7 @@ const REPORTS_PER_DAY = constant('REPORTS_PER_DAY');
 const REPORT_RETENTION_DAYS = constant('REPORT_RETENTION_DAYS');
 const BAN_PERIOD_YEARS = constant('BAN_PERIOD_YEARS');
 const FRIEND_REQUESTS_PER_HOUR = constant('FRIEND_REQUESTS_PER_HOUR');
+const SIGN_UP_DETAILS_MAX_BYTES = constant('SIGN_UP_DETAILS_MAX_BYTES');
 
 /** A pattern config.ts exports, rebuilt from its source text. */
 function pattern(name) {
@@ -223,6 +224,26 @@ describe('the database agrees with src/constants/config.ts', () => {
     );
 
     assert.equal(rows[0].same, true);
+  });
+
+  /** The number, and that it is where the database draws the line: to the byte. */
+  it('on SIGN_UP_DETAILS_MAX_BYTES', async () => {
+    const { rows } = await db.query(`select private.sign_up_details_max_bytes() as bytes`);
+    assert.equal(rows[0].bytes, SIGN_UP_DETAILS_MAX_BYTES);
+
+    // As Postgres writes it out, {"junk": "..."} is twelve bytes around the dots.
+    const carrying = (bytes) => ({ metadata: { junk: 'x'.repeat(bytes - 12) } });
+    const atTheLimit = await createUser(db, carrying(SIGN_UP_DETAILS_MAX_BYTES));
+    const { rows: kept } = await db.query(
+      `select octet_length(raw_user_meta_data::text) as bytes from auth.users where id = $1`,
+      [atTheLimit],
+    );
+    assert.equal(kept[0].bytes, SIGN_UP_DETAILS_MAX_BYTES);
+
+    await rejectsWithHint(
+      createUser(db, carrying(SIGN_UP_DETAILS_MAX_BYTES + 1)),
+      'sign_up_details_too_large',
+    );
   });
 
   /**

@@ -133,6 +133,15 @@ export const BAN_PERIOD_YEARS = 2;
 export const FRIEND_REQUESTS_PER_HOUR = 20;
 
 /**
+ * The most a sign-in may carry in the details sent along at sign-up, in bytes,
+ * as the database writes them out: its private.sign_up_details_max_bytes(),
+ * which the parity test checks against this. The app sends a username and a
+ * display name, well under a kilobyte; the bound is for requests that are not
+ * the app's.
+ */
+export const SIGN_UP_DETAILS_MAX_BYTES = 4096;
+
+/**
  * Who may use Night Courier: no one younger than MINIMUM_AGE, and anyone younger
  * than PARENTAL_PERMISSION_UNDER only with a parent's or guardian's permission -
  * the operator's decision. 13 is Apple's lowest age rating above 12 and keeps
