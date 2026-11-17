@@ -2,6 +2,8 @@ import {
   countAtHome,
   fetchRoost,
   nextHomecoming,
+  onRoostChanged,
+  roostChanged,
   toBat,
   type Bat,
   type RoostRow,
@@ -239,5 +241,45 @@ describe('fetchRoost', () => {
       message: 'Your roost could not be loaded. Check your connection.',
       reason: null,
     });
+  });
+});
+
+/**
+ * A letter can leave after the screen that sent it has gone. Whoever is
+ * showing the roost by then has to hear of it, or goes on showing a bat at
+ * home that is in the air.
+ */
+describe('onRoostChanged', () => {
+  it('tells everyone listening when the roost has changed, each time', () => {
+    const home = jest.fn();
+    const letter = jest.fn();
+    const stopHome = onRoostChanged(home);
+    const stopLetter = onRoostChanged(letter);
+
+    roostChanged();
+    roostChanged();
+
+    expect(home).toHaveBeenCalledTimes(2);
+    expect(letter).toHaveBeenCalledTimes(2);
+    stopHome();
+    stopLetter();
+  });
+
+  it('tells nobody who has stopped listening, and still tells the others', () => {
+    const home = jest.fn();
+    const letter = jest.fn();
+    const stopHome = onRoostChanged(home);
+    const stopLetter = onRoostChanged(letter);
+
+    stopLetter();
+    roostChanged();
+
+    expect(letter).not.toHaveBeenCalled();
+    expect(home).toHaveBeenCalledTimes(1);
+    stopHome();
+  });
+
+  it('does nothing when nobody is listening', () => {
+    expect(() => roostChanged()).not.toThrow();
   });
 });

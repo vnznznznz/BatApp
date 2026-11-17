@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Badge } from '@/components/badge';
@@ -15,7 +15,7 @@ import { describeCity } from '@/features/cities/search';
 import { fetchBadges } from '@/features/messages/messages';
 import { useProfile } from '@/features/profile/use-profile';
 import { BatTile } from '@/features/roost/bat-tile';
-import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
+import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
 import { formatDuration } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
@@ -64,6 +64,11 @@ export default function HomeScreen() {
     void reloadBadges();
   }, [reloadRoost, reloadBadges]);
   useRefreshAt(nextHomeAt, roost.settledAt, reloadAll);
+
+  // And when a send settles. Its own screen may be gone by then, with this one
+  // in front again: it asked as it came into view, a moment before the letter
+  // was stored, and would go on showing that bat at home.
+  useEffect(() => onRoostChanged(reloadAll), [reloadAll]);
 
   const hasCity = Boolean(profile?.city);
   const canWrite = hasCity && atHome > 0;

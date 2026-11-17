@@ -86,6 +86,33 @@ export async function fetchRoost(): Promise<Bat[]> {
   return ((data ?? []) as RoostRow[]).map(toBat).sort((a, b) => a.slot - b.slot);
 }
 
+const watchers = new Set<() => void>();
+
+/**
+ * Calls `listener` whenever the app itself has changed the roost, until the
+ * returned function is called.
+ *
+ * A screen fetches the roost when it comes into view, and again when a bat it
+ * knows of is due. Neither covers a letter that leaves after the screen that
+ * sent it has gone: the courier went back while the button was still spinning,
+ * the roost asked a moment before the letter was stored, and then showed every
+ * bat at home for as long as it stayed in front. (Found in review.)
+ */
+export function onRoostChanged(listener: () => void): () => void {
+  watchers.add(listener);
+  return () => {
+    watchers.delete(listener);
+  };
+}
+
+/**
+ * Says that the roost is no longer what any screen last fetched: a send has
+ * settled, and a bat has left - or may have, or one that looked free was not.
+ */
+export function roostChanged(): void {
+  watchers.forEach((notify) => notify());
+}
+
 export function countAtHome(bats: readonly Bat[]): number {
   return bats.filter((bat) => bat.status === 'available').length;
 }

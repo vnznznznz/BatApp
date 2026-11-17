@@ -11,6 +11,7 @@ import {
   sendMessage,
   type Dispatch,
 } from '@/features/messages/messages';
+import { roostChanged } from '@/features/roost/roost';
 import { messageOf, RpcError } from '@/lib/rpc-error';
 import { randomUuid } from '@/lib/uuid';
 
@@ -139,6 +140,10 @@ export async function sendLetter(courierId: string, to: Addressee): Promise<void
     } else {
       noteSend(courierId, to.id, { busy: false, unanswered });
     }
+    // And the roost is told, however it ended: a bat has left, or may have,
+    // or one that looked free was not. The screen underneath has usually
+    // asked already, a moment too early.
+    roostChanged();
   }
   tell(courierId, to.id, outcome);
 }
@@ -277,6 +282,7 @@ export async function askAfterLetter(courierId: string, to: Addressee): Promise<
   } else {
     forgetDraft(courierId, to.id);
   }
+  roostChanged();
   tell(courierId, to.id, {
     kind: 'sent',
     to,

@@ -6,7 +6,7 @@ import HomeScreen from '@/app/(app)/home';
 import { BATS_PER_USER } from '@/constants/config';
 import { fetchBadges } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
-import { fetchRoost, type Bat, type Person } from '@/features/roost/roost';
+import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roost/roost';
 
 const mockPush = jest.fn();
 
@@ -521,6 +521,34 @@ describe('HomeScreen', () => {
       await roostLoaded();
 
       await letTimePass(5 * MINUTE);
+
+      expect(mockedFetchRoost).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A letter can leave after the screen that sent it has gone, when this one
+     * is in front again and has already asked. Told that the roost has changed,
+     * it asks once more. (Found in review.)
+     */
+    it('fetches the roost and the counts again when told that the roost has changed', async () => {
+      await renderScreen(<HomeScreen />);
+      expect(await screen.findByText('3 of 3 at home')).toBeOnTheScreen();
+
+      serve(() => [batInFlight(1, HOUR), batAtHome(2), batAtHome(3)]);
+      mockedFetchBadges.mockResolvedValue({ unreadLetters: 1, friendRequests: 0 });
+      await act(async () => roostChanged());
+
+      expect(await screen.findByText('2 of 3 at home')).toBeOnTheScreen();
+      expect(screen.getByText('1 new')).toBeOnTheScreen();
+      expect(mockedFetchRoost).toHaveBeenCalledTimes(2);
+    });
+
+    it('no longer asks once it is gone', async () => {
+      const view = await renderScreen(<HomeScreen />);
+      await roostLoaded();
+      await view.unmount();
+
+      roostChanged();
 
       expect(mockedFetchRoost).toHaveBeenCalledTimes(1);
     });
