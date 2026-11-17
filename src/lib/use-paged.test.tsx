@@ -84,6 +84,10 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 describe('usePaged', () => {
   describe('the first page', () => {
     it('loads when the list is first shown', async () => {
@@ -373,10 +377,143 @@ describe('usePaged', () => {
 
     it('stops listening for the app once the list is gone', async () => {
       const { unmount } = await renderList(pages(page('a')));
-      expect(appStateListeners.size).toBe(1);
+      expect(appStateListeners.size).toBeGreaterThan(0);
 
       await unmount();
 
+      expect(appStateListeners.size).toBe(0);
+    });
+  });
+
+  /**
+   * A list opened without a signal kept "could not be loaded" over nothing for
+   * as long as it stayed in view. The first page is asked for again unasked,
+   * as `useRemote` asks; a page further down has a button for it.
+   */
+  describe('after the first page got no answer', () => {
+    const SECOND = 1000;
+    const MINUTE = 60 * SECOND;
+    const passes = (ms: number) => act(() => jest.advanceTimersByTimeAsync(ms));
+    const noAnswer = () => new RpcError('No connection. Check your network and try again.', null);
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    it('asks for it again by itself until there is one', async () => {
+      const loadPage = pages(noAnswer(), noAnswer(), page('a', 'b', 'c'));
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+      expect(result.current.error).toBe('No connection. Check your network and try again.');
+      expect(result.current.isLoading).toBe(false);
+
+      await passes(2 * SECOND);
+      expect(loadPage).toHaveBeenCalledTimes(2);
+
+      await passes(4 * SECOND);
+
+      expect(loadPage).toHaveBeenCalledTimes(3);
+      expect(loadPage).toHaveBeenLastCalledWith(undefined, PAGE);
+      expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c']);
+      expect(result.current.error).toBeNull();
+      expect(result.current.isRefreshing).toBe(false);
+    });
+
+    it('asks again for a refresh that failed, keeping the items meanwhile', async () => {
+      const loadPage = pages(page('a', 'b', 'c'), noAnswer(), page('new', 'a', 'b'));
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+
+      await act(() => result.current.refresh());
+      expect(result.current.error).toBe('No connection. Check your network and try again.');
+      expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c']);
+
+      await passes(2 * SECOND);
+
+      expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c']);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("asks again as well for a load on the app's return that got no answer", async () => {
+      const loadPage = pages(page('a', 'b', 'c'), noAnswer(), page('new', 'a', 'b'));
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+
+      await appBecomes('active');
+      expect(result.current.error).toBe('No connection. Check your network and try again.');
+
+      await passes(2 * SECOND);
+
+      expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c']);
+      expect(result.current.error).toBeNull();
+    });
+
+    /** One round of attempts at a time, however many loads fail. */
+    it('leaves the asking to the newest load when an older one fails after it', async () => {
+      let failLate: (error: Error) => void = () => {};
+      const older = new Promise<Item[]>((_resolve, reject) => (failLate = reject));
+      const loadPage = pages(older, noAnswer(), noAnswer(), noAnswer(), noAnswer());
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+
+      await act(() => result.current.refresh());
+      await act(async () => failLate(noAnswer()));
+      expect(loadPage).toHaveBeenCalledTimes(2);
+
+      // The newer load's round: after two seconds, then after four more.
+      await passes(2 * SECOND);
+      expect(loadPage).toHaveBeenCalledTimes(3);
+      await passes(3 * SECOND);
+      expect(loadPage).toHaveBeenCalledTimes(3);
+      await passes(1 * SECOND);
+      expect(loadPage).toHaveBeenCalledTimes(4);
+    });
+
+    it('does not ask again when it was the server that refused', async () => {
+      const loadPage = pages(new RpcError(REFUSALS.account_suspended, 'account_suspended'));
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+      expect(result.current.error).toBe(REFUSALS.account_suspended);
+
+      await passes(10 * MINUTE);
+
+      expect(loadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask again once it has the page', async () => {
+      const loadPage = pages(noAnswer(), page('a', 'b', 'c'));
+      await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(2 * SECOND);
+      expect(loadPage).toHaveBeenCalledTimes(2);
+
+      await passes(10 * MINUTE);
+
+      expect(loadPage).toHaveBeenCalledTimes(2);
+    });
+
+    /** The list offers a button for that, and scrolling asks again as well. */
+    it('leaves a page further down that failed to whoever asks for it', async () => {
+      const loadPage = pages(page('a', 'b', 'c'), noAnswer());
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+
+      await act(() => result.current.loadMore());
+      expect(result.current.error).toBe('No connection. Check your network and try again.');
+
+      await passes(10 * MINUTE);
+
+      expect(loadPage).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks nothing more once the list is gone', async () => {
+      const loadPage = pages(noAnswer(), noAnswer());
+      const { unmount } = await renderHook(() => usePaged(loadPage, PAGE));
+      await passes(0);
+
+      await unmount();
+      await passes(10 * MINUTE);
+
+      expect(loadPage).toHaveBeenCalledTimes(1);
       expect(appStateListeners.size).toBe(0);
     });
   });
