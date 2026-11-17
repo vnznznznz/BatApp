@@ -13,7 +13,9 @@ const LONGEST_TIMER_MS = 2 ** 31 - 1;
  * so it changes on screen without anyone pulling to refresh. Fetching is what
  * lands it: the server delivers whatever is due before it answers.
  *
- * `at` is when that is due, or null if nothing is. `settledAt` must change after
+ * `at` is when that is due, or null if nothing is - and a time that is not a
+ * number, from a date that did not parse, is nothing too: a timer set for it
+ * would fire at once, after every answer. `settledAt` must change after
  * every fetch, success or failure (see `useRemote`), because that is what
  * re-arms the timer: if an answer still shows the bat in the air after its time,
  * or a fetch fails, this asks again - after a pause that grows with how overdue
@@ -22,7 +24,7 @@ const LONGEST_TIMER_MS = 2 ** 31 - 1;
  */
 export function useRefreshAt(at: number | null, settledAt: number, refresh: () => unknown): void {
   useEffect(() => {
-    if (at === null) return;
+    if (at === null || !Number.isFinite(at)) return;
 
     const now = Date.now();
     const wait =
