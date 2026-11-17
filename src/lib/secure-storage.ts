@@ -112,9 +112,16 @@ export const secureStorage = {
           chunkKey(key, manifest.generation, i),
           KEYCHAIN_OPTIONS,
         );
-        // A partially written value is unusable; treat it as absent so the user
-        // is asked to sign in again rather than handed a corrupt token.
-        if (part == null) return null;
+        if (part == null) {
+          // The chunk may be gone because a write has just switched to the
+          // other set and cleared this one away: the manifest has then changed
+          // too, and says where the value is now.
+          const now = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
+          if (now !== head) return await secureStorage.getItem(key);
+          // A partially written value is unusable; treat it as absent so the
+          // user is asked to sign in again rather than handed a corrupt token.
+          return null;
+        }
         parts.push(part);
       }
       return parts.join('');

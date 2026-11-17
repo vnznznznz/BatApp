@@ -300,6 +300,42 @@ describe('secureStorage', () => {
     });
   });
 
+  /**
+   * The client reads its session for every request, and a renewal does not wait
+   * for readers before it writes the new one. A read that has the old manifest
+   * in hand when the write switches sets finds that set cleared away.
+   */
+  describe('a read that a write overtakes', () => {
+    const older = 'a'.repeat(4_000);
+    const newer = 'b'.repeat(4_000);
+
+    /** Runs `meanwhile` once, between the read of the manifest and the read of the first chunk. */
+    async function overtakenBy(meanwhile: () => Promise<void>) {
+      await secureStorage.setItem('session', older);
+      const firstChunk = chunksOf('session')[0];
+      let overtaken = false;
+      mocked.getItemAsync.mockImplementation(async (key: string) => {
+        if (key === firstChunk && !overtaken) {
+          overtaken = true;
+          await meanwhile();
+        }
+        return store.get(key) ?? null;
+      });
+    }
+
+    it('finds the new value, whole', async () => {
+      await overtakenBy(() => secureStorage.setItem('session', newer));
+
+      expect(await secureStorage.getItem('session')).toBe(newer);
+    });
+
+    it('finds nothing when the value was removed meanwhile', async () => {
+      await overtakenBy(() => secureStorage.removeItem('session'));
+
+      expect(await secureStorage.getItem('session')).toBeNull();
+    });
+  });
+
   /** Written before chunks were kept apart by generation: numbered directly under the key. */
   describe('a value in the old layout', () => {
     const value = Array.from({ length: 4_000 }, (_, i) => String(i % 10)).join('');
