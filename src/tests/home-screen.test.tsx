@@ -10,6 +10,11 @@ import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roos
 import { formatTimestamp } from '@/lib/format';
 import { RpcError } from '@/lib/rpc-error';
 
+// React Native loads its components on first use, and with a cold transform
+// cache the first render compiles them: seconds of work, measured at over five
+// on four cores, that would otherwise count against whichever test runs first.
+jest.setTimeout(20_000);
+
 const mockPush = jest.fn();
 
 /**
