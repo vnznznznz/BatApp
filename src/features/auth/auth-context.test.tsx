@@ -955,6 +955,22 @@ describe('what the courier is told when the auth server says no', () => {
       expect(state()).toBe('signed out');
     });
 
+    it('signs in with the address as typed but for the spaces around it, and the password as it is', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      expect(
+        await outcomeOf(asked(() => auth.signIn(' anna@example.test ', ' night courier '))),
+      ).toBe('done');
+
+      const request = sent.find(({ url }) => url.includes('/auth/v1/token?grant_type=password'));
+      expect(request?.body).toMatchObject({
+        email: 'anna@example.test',
+        password: ' night courier ',
+      });
+      expect(state()).toBe('signed in');
+      expect((await kept())?.refresh_token).toBe('refresh-new');
+    });
+
     it('keeps what the server said, for whoever has to find out what went wrong', async () => {
       await opened(() => json(401, { message: 'Invalid API key' }));
 
