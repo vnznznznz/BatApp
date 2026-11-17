@@ -695,6 +695,29 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     });
   });
 
+  describe('the city search', () => {
+    /**
+     * Not a race, but only a real Postgres shows it. search_cities folded its
+     * query again for every city, so a long query cost seconds: 100,000
+     * characters ran into the API's eight-second timeout, and megabytes still
+     * would if the fold merely ran once. PGlite is Postgres 18, which plans
+     * the function differently and never showed any of it. (Found in review.)
+     */
+    it('answers megabytes of query at once instead of running into the timeout', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const session = await connectAs(anna);
+      await session.query(`set statement_timeout = '2s'`);
+
+      const { rows } = await session.query(`select * from public.search_cities($1, 20)`, [
+        'ber' + 'x'.repeat(16 * 1024 * 1024),
+      ]);
+
+      assert.deepEqual(rows, []);
+      const found = await session.query(`select name from public.search_cities('berlin', 1)`);
+      assert.deepEqual(found.rows, [{ name: 'Berlin' }]);
+    });
+  });
+
   describe('friend requests', () => {
     /**
      * Two people asking each other at the same moment must end up as one

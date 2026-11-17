@@ -104,6 +104,32 @@ describe('search_cities', () => {
     assert.ok(rows.length <= 50, `expected at most 50, got ${rows.length}`);
   });
 
+  /**
+   * The query used to be folded again for each of the 4,310 cities, so the
+   * cost of a search grew with the length of what was sent: 100,000
+   * characters held a database connection and a core until the API's
+   * eight-second timeout. (Found in review.)
+   *
+   * PGlite is PostgreSQL 18, which folds the query once whatever the function
+   * says, and answers in milliseconds either way. Forcing a generic plan gives
+   * it the plan Postgres 16 and 17 use; without that line this test passes on
+   * the function as it was. concurrency.pg.test.mjs runs the real thing.
+   */
+  it('answers a very long query as quickly as a short one', async () => {
+    await db.exec(`set plan_cache_mode = force_generic_plan`);
+    try {
+      const started = Date.now();
+      const rows = await search(anna, 'ber' + 'x'.repeat(100_000));
+      const took = Date.now() - started;
+
+      assert.deepEqual(rows, []);
+      assert.ok(took < 2000, `a 100,003-character query took ${took} ms`);
+      assert.equal((await search(anna, 'berlin'))[0].name, 'Berlin');
+    } finally {
+      await db.exec(`reset plan_cache_mode`);
+    }
+  });
+
   it('is not available to a signed-out visitor', async () => {
     await assert.rejects(() =>
       asAnon(db, () => db.query(`select * from public.search_cities('berlin', 20)`)),
