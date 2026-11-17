@@ -537,10 +537,13 @@ describe('signing out', () => {
     await launch();
     await passes(A_MOMENT);
 
+    const started = Date.now();
     expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
 
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
+    // Two attempts at renewing, twenty seconds each, before the client gives up.
+    expect(Date.now() - started).toBeLessThanOrEqual(45_000);
   });
 
   describe('when the server did not hear of it', () => {
