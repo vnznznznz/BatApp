@@ -4,9 +4,13 @@ import {
   forgetAllDrafts,
   forgetDraft,
   keepDraft,
+  noteSend,
   readDraft,
+  readSend,
   subscribeToDrafts,
   useDraft,
+  useSend,
+  type Unanswered,
 } from '@/features/messages/drafts';
 import { supabase } from '@/lib/supabase';
 
@@ -143,6 +147,119 @@ describe('whose letters they are', () => {
     keepDraft(NORA, ANNA, 'From Nora.');
 
     expect(listened).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A send can end without an answer, and the screen that started it can be gone
+ * by then. What is known about it is kept with the words, so that whichever
+ * screen shows the letter next does not send it a second time under a new name.
+ */
+describe('how the sending of an unsent letter stands', () => {
+  const unanswered: Unanswered = {
+    ref: '0f9e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f',
+    words: 'Dear Anna,',
+    unknown: true,
+    since: 1_000,
+    askAt: 3_000,
+  };
+
+  it('is nothing under way and nothing unanswered, to begin with', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+
+    expect(readSend(MARA, ANNA)).toEqual({ busy: false, unanswered: null });
+    expect(readSend(MARA, BEN)).toEqual({ busy: false, unanswered: null });
+  });
+
+  it('is kept beside the words, and leaves them as they are', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+
+    noteSend(MARA, ANNA, { busy: true });
+    expect(readSend(MARA, ANNA)).toEqual({ busy: true, unanswered: null });
+
+    noteSend(MARA, ANNA, { busy: false, unanswered });
+    expect(readSend(MARA, ANNA)).toEqual({ busy: false, unanswered });
+    expect(readDraft(MARA, ANNA)).toBe('Dear Anna,');
+  });
+
+  it('stays as it is while the words change', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    noteSend(MARA, ANNA, { unanswered });
+
+    keepDraft(MARA, ANNA, 'Dear Anna, one more thing.');
+
+    expect(readSend(MARA, ANNA).unanswered).toBe(unanswered);
+  });
+
+  // Whoever is waiting for an answer recognises it by this very record.
+  it('keeps the same record of an unanswered send until it is given another', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    noteSend(MARA, ANNA, { unanswered });
+
+    noteSend(MARA, ANNA, { busy: true });
+    noteSend(MARA, ANNA, { busy: false });
+
+    expect(readSend(MARA, ANNA).unanswered).toBe(unanswered);
+  });
+
+  it('is the same answer each time it is read, until it changes', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    noteSend(MARA, ANNA, { busy: true });
+
+    const before = readSend(MARA, ANNA);
+    keepDraft(MARA, ANNA, 'Dear Anna, one more thing.');
+
+    expect(readSend(MARA, ANNA)).toBe(before);
+    expect(readSend(MARA, BEN)).toBe(readSend(NORA, BEN));
+  });
+
+  it('is kept for each friend and each account apart', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    keepDraft(MARA, BEN, 'Dear Ben,');
+    keepDraft(NORA, ANNA, 'From Nora.');
+
+    noteSend(MARA, ANNA, { busy: true, unanswered });
+
+    expect(readSend(MARA, BEN)).toEqual({ busy: false, unanswered: null });
+    expect(readSend(NORA, ANNA)).toEqual({ busy: false, unanswered: null });
+  });
+
+  it('goes with the letter when the letter is forgotten', () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    noteSend(MARA, ANNA, { unanswered });
+
+    forgetDraft(MARA, ANNA);
+
+    expect(readSend(MARA, ANNA)).toEqual({ busy: false, unanswered: null });
+  });
+
+  /**
+   * An answer can come back after a sign-out has cleared everything. Noting it
+   * then must not bring a letter back for an account that has left.
+   */
+  it('is not noted for a letter that is no longer kept', async () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    await supabase.auth.signOut({ scope: 'local' });
+
+    noteSend(MARA, ANNA, { busy: false, unanswered });
+
+    expect(readSend(MARA, ANNA)).toEqual({ busy: false, unanswered: null });
+    expect(readDraft(MARA, ANNA)).toBe('');
+  });
+
+  it('is shown as it is now by whoever is showing the letter', async () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    const { result } = await renderHook(() => useSend(MARA, ANNA));
+    expect(result.current).toEqual({ busy: false, unanswered: null });
+
+    await act(async () => noteSend(MARA, ANNA, { busy: true }));
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => noteSend(MARA, ANNA, { busy: false, unanswered }));
+    expect(result.current).toEqual({ busy: false, unanswered });
+
+    await act(async () => forgetDraft(MARA, ANNA));
+    expect(result.current).toEqual({ busy: false, unanswered: null });
   });
 });
 

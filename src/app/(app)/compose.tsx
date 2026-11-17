@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -20,15 +20,14 @@ import {
   groupFriendships,
   type Friendship,
 } from '@/features/friends/friends';
-import { forgetDraft, keepDraft, useDraft } from '@/features/messages/drafts';
+import { keepDraft, useDraft, useSend } from '@/features/messages/drafts';
+import { letterLength, previewOf, validateBody } from '@/features/messages/messages';
 import {
-  letterLength,
-  prepareBody,
-  previewOf,
-  sendMessage,
-  validateBody,
-  type Dispatch,
-} from '@/features/messages/messages';
+  askAfterLetterAt,
+  onLetterOutcome,
+  sendLetter,
+  type Outcome,
+} from '@/features/messages/sending';
 import { useProfile } from '@/features/profile/use-profile';
 import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
 import { announce } from '@/lib/announce';
@@ -39,12 +38,18 @@ import {
   formatFlightEstimate,
   formatTimestamp,
 } from '@/lib/format';
-import { messageOf } from '@/lib/rpc-error';
-import { randomUuid } from '@/lib/uuid';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
 import { useScreenFocused } from '@/lib/use-screen-focused';
+
+/** A letter that went, as the server answered for it. */
+type Sent = Extract<Outcome, { kind: 'sent' }>;
+
+/** Shown with the letter for as long as it is not known whether it went. */
+const NOT_KNOWN =
+  'No answer came back, so your letter may or may not have gone. ' +
+  'Night Courier will check again by itself.';
 
 /**
  * Writing a letter: choosing a friend, writing, and sending it by bat.
@@ -52,6 +57,11 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
  * The flight time shown before sending is the server's estimate, and the
  * arrival shown after is the server's answer. Nothing on this screen decides
  * how long a bat flies; it only reports it.
+ *
+ * Nor does the screen hold the letter. Its words, and how the sending of them
+ * stands, are kept outside it (see drafts.ts and sending.ts), because both can
+ * outlast it: the courier may leave half-way through a letter, or while the
+ * button is still spinning.
  */
 export default function ComposeScreen() {
   const router = useRouter();
@@ -68,29 +78,21 @@ export default function ComposeScreen() {
   // so that leaving it - the back arrow, a swipe, going back to read again the
   // letter being answered - does not throw them away.
   const text = useDraft(courierId, to);
+  // So is how the sending of them stands. A screen opened onto a letter that
+  // is still on its way out shows it so, rather than offering to send it again.
+  const { busy: sending, unanswered } = useSend(courierId, to);
   const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
   // Who it went to is kept with the answer, so the confirmation stays on screen
-  // even if the friend list is fetched again behind it and has changed.
-  const [dispatched, setDispatched] = useState<{
-    dispatch: Dispatch;
-    name: string;
-    city: string | null;
-    /** Where it left from, and when, for drawing the flight. */
-    from: string | null;
-    sentAt: Date;
-  } | null>(null);
-  // The button disables itself while loading, but a second tap can land in the
-  // same frame as the first. A letter costs a bat; this makes sure it is one.
-  const inFlight = useRef(false);
-  // Names the letter being written, for the server to recognise a retry: kept
-  // while the words and the recipient stay the same - a send whose answer was
-  // lost is retried as the same letter - and replaced the moment either
-  // changes, since that is a different letter.
-  const attempt = useRef<{ ref: string; to: string; text: string } | null>(null);
+  // even if the friend list is fetched again behind it and has changed. `at` is
+  // when the answer came.
+  const [dispatched, setDispatched] = useState<{ sent: Sent; at: Date } | null>(null);
 
   const friends = groupFriendships(friendships.data ?? []).friends;
   const recipient = to ? (friends.find((f) => f.friend.id === to) ?? null) : null;
+  const name = recipient ? friendName(recipient.friend) : null;
+  const city = recipient?.friend.city?.name ?? null;
+  // While a move settles, letters still leave from the old city.
+  const from = (profile?.move?.from ?? profile?.city)?.name ?? null;
 
   const bats = roost.data ?? [];
   const atHome = countAtHome(bats);
@@ -101,85 +103,101 @@ export default function ComposeScreen() {
   // again is what lands it.
   useRefreshAt(nextHomeAt, roost.settledAt, roost.reload);
 
-  async function send(friendship: Friendship) {
-    if (inFlight.current) return;
+  const { reload: reloadRoost } = roost;
+
+  // What became of a send is told to every screen showing that letter: this
+  // one, whether it pressed the button itself or was opened while the letter
+  // was still on its way out.
+  useEffect(
+    () =>
+      onLetterOutcome((courier, recipientId, outcome) => {
+        if (courier !== courierId || recipientId !== to) return;
+        // The bat that left, with the server's own time of leaving - or, after
+        // a refusal for want of a bat, a roost that had been stale.
+        void reloadRoost();
+        if (outcome.kind === 'sent') {
+          setDispatched({ sent: outcome, at: new Date() });
+          announce(describeSent(outcome));
+        } else if (outcome.kind === 'held') {
+          setError(outcome.message);
+        }
+        // Not knowing needs no word here: the letter says so itself, below,
+        // for as long as it lasts and on whichever screen shows it.
+      }),
+    [courierId, to, reloadRoost],
+  );
+
+  // While it is not known whether the letter went, ask again without being
+  // asked to, for as long as the letter is on screen. Each asking in vain sets
+  // a later time to ask next, which is what keeps this going.
+  const askAt = unanswered?.unknown ? unanswered.askAt : null;
+  useEffect(() => {
+    if (askAt === null || !courierId || !to || name === null) return;
+    return askAfterLetterAt(askAt, courierId, { id: to, name, city, from });
+  }, [askAt, courierId, to, name, city, from]);
+
+  function send() {
     const problem = validateBody(text);
     setError(problem);
-    if (problem) return;
-
-    inFlight.current = true;
-    setSending(true);
-    const to = friendship.friend.id;
-    // Compared as it will be sent: a trailing space added after a failure is
-    // not a different letter, and must not cost a second bat if the first went.
-    const words = prepareBody(text);
-    if (attempt.current?.to !== to || attempt.current.text !== words) {
-      attempt.current = { ref: randomUuid(), to, text: words };
-    }
-    try {
-      const dispatch = await sendMessage(to, text, attempt.current.ref);
-      setDispatched({
-        dispatch,
-        name: friendName(friendship.friend),
-        city: friendship.friend.city?.name ?? null,
-        // While a move settles, letters still leave from the old city.
-        from: (profile?.move?.from ?? profile?.city)?.name ?? null,
-        sentAt: new Date(),
-      });
-      announce(
-        `Your bat is on its way to ${friendName(friendship.friend)}. ` +
-          `It lands in ${formatDuration(dispatch.deliverAt.getTime() - Date.now())}.`,
-      );
-      forgetDraft(courierId, to);
-      attempt.current = null;
-      // The bat that left, with the server's own time of leaving.
-      void roost.reload();
-    } catch (caught) {
-      setError(messageOf(caught));
-      // A refusal for want of a bat means the roost on screen was stale.
-      void roost.reload();
-    } finally {
-      inFlight.current = false;
-      setSending(false);
-    }
+    if (problem || !courierId || !to || name === null) return;
+    void sendLetter(courierId, { id: to, name, city, from });
   }
 
   if (dispatched) {
-    const { dispatch, name, city, from } = dispatched;
+    const { to: went, dispatch, arrived, changed } = dispatched.sent;
     // When the letter left by the server's clock, from the roost fetched again
     // after sending; until then, when the answer came. A retried send is
     // answered with a letter that left earlier, and the drawing should agree
     // with the roost's. (Found in review.)
     const sentAt =
       roost.data?.find((bat) => bat.flight?.messageId === dispatch.id)?.flight?.sentAt ??
-      dispatched.sentAt;
+      dispatched.at;
     const remaining = dispatch.deliverAt.getTime() - now;
-    const where = city ? ` in ${city}` : '';
+    const where = went.city ? ` in ${went.city}` : '';
     return (
       <Screen center scroll edges={['bottom']} style={styles.screen}>
-        <FlyingBat size={120} tint={Colors.batFlying} flying={focused} />
+        <FlyingBat
+          size={120}
+          tint={arrived ? Colors.batAvailable : Colors.batFlying}
+          flying={focused && !arrived}
+        />
         <Text variant="title" center style={styles.spaced}>
-          Your bat is on its way
+          {arrived ? 'Your letter has arrived' : 'Your bat is on its way'}
         </Text>
         <Text variant="body" tone="secondary" center style={styles.spaced}>
-          {remaining > 0
-            ? `It will reach ${name}${where} in ${formatDuration(remaining)}, at ${formatTimestamp(dispatch.deliverAt)}.`
-            : `It is reaching ${name}${where} any moment now.`}
+          {arrived
+            ? `It has reached ${went.name}${where}. Landed ${formatTimestamp(dispatch.deliverAt)}.`
+            : remaining > 0
+              ? `It will reach ${went.name}${where} in ${formatDuration(remaining)}, at ${formatTimestamp(dispatch.deliverAt)}.`
+              : `It is reaching ${went.name}${where} any moment now.`}
         </Text>
+        {changed ? (
+          <Text variant="body" tone="secondary" center style={styles.spaced}>
+            It went as you first wrote it. What you changed since has not been sent. It is kept, in
+            case you want to send it as a second letter.
+          </Text>
+        ) : null}
         <Text variant="caption" tone="muted" center style={styles.distance}>
           {formatDistance(dispatch.distanceKm)} as the bat flies.
         </Text>
-        {from && city ? (
+        {went.from && went.city && !arrived ? (
           <View style={styles.path}>
             <FlightPath
-              from={from}
-              to={city}
+              from={went.from}
+              to={went.city}
               progress={flightProgress(sentAt, dispatch.deliverAt, now)}
               active={focused}
             />
           </View>
         ) : null}
         <View style={styles.actions}>
+          {changed ? (
+            <Button
+              label="Back to what you wrote"
+              variant="secondary"
+              onPress={() => setDispatched(null)}
+            />
+          ) : null}
           <Button label="Back to the roost" onPress={() => router.dismissTo('/home')} />
         </View>
       </Screen>
@@ -295,7 +313,7 @@ export default function ComposeScreen() {
             keepDraft(courierId, to, value);
             if (error) setError(null);
           }}
-          error={error}
+          error={error ?? (unanswered?.unknown ? NOT_KNOWN : null)}
           placeholder={`Dear ${friendName(recipient.friend)},`}
           // The request carries the words as they were when Send was pressed.
           // Anything typed while it is out would be neither sent nor kept.
@@ -323,15 +341,21 @@ export default function ComposeScreen() {
           </Text>
         ) : null}
 
-        <Button
-          label="Send by bat"
-          loading={sending}
-          disabled={!canSend}
-          onPress={() => void send(recipient)}
-        />
+        <Button label="Send by bat" loading={sending} disabled={!canSend} onPress={send} />
       </View>
     </Screen>
   );
+}
+
+/** The confirmation in one breath, for someone listening rather than looking. */
+function describeSent({ to, dispatch, arrived, changed }: Sent): string {
+  const went = arrived
+    ? `Your letter to ${to.name} has arrived.`
+    : `Your bat is on its way to ${to.name}. ` +
+      `It lands in ${formatDuration(dispatch.deliverAt.getTime() - Date.now())}.`;
+  return changed
+    ? `${went} It went as you first wrote it; what you changed since has not been sent.`
+    : went;
 }
 
 /**

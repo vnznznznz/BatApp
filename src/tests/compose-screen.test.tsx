@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { AppState } from 'react-native';
+import { AccessibilityInfo, AppState } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ComposeScreen from '@/app/(app)/compose';
@@ -8,7 +8,7 @@ import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors } from '@/constants/theme';
 import { fetchFriendships, type Friendship } from '@/features/friends/friends';
 import { forgetAllDrafts } from '@/features/messages/drafts';
-import { sendMessage, type Dispatch } from '@/features/messages/messages';
+import { fetchSentLetter, sendMessage, type Dispatch } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, type Bat } from '@/features/roost/roost';
 import { formatTimestamp } from '@/lib/format';
@@ -53,6 +53,7 @@ jest.mock('@/features/friends/friends', () => ({
 jest.mock('@/features/messages/messages', () => ({
   ...jest.requireActual('@/features/messages/messages'),
   sendMessage: jest.fn(),
+  fetchSentLetter: jest.fn(),
 }));
 
 jest.mock('@/features/roost/roost', () => ({
@@ -82,6 +83,7 @@ jest.mock('@/features/auth/auth-context', () => ({
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedFetchRoost = jest.mocked(fetchRoost);
 const mockedSendMessage = jest.mocked(sendMessage);
+const mockedFetchSentLetter = jest.mocked(fetchSentLetter);
 
 /** A fixed moment, so every countdown on screen is exact. */
 const NOW = new Date('2026-10-31T21:00:00Z').getTime();
@@ -209,6 +211,29 @@ const dispatchToAnna = (): Dispatch => ({
   distanceKm: 504.6,
 });
 
+/**
+ * A request that ended without the server saying anything: the connection was
+ * lost, or the answer took too long. Not a refusal - so what became of whatever
+ * was asked for is not known.
+ */
+const noAnswer = () => new RpcError('No connection. Check your network and try again.', null);
+
+/** What the screen says while it is not known whether a letter went. */
+const NOT_KNOWN =
+  'No answer came back, so your letter may or may not have gone. ' +
+  'Night Courier will check again by itself.';
+
+/** What the confirmation adds when the words that went are not the ones now written. */
+const AS_FIRST_WRITTEN =
+  'It went as you first wrote it. What you changed since has not been sent. ' +
+  'It is kept, in case you want to send it as a second letter.';
+
+/** The reference each send so far went out under, in order. */
+const refsSent = () => mockedSendMessage.mock.calls.map(([, , ref]) => ref);
+
+/** The reference each question "what became of this letter?" was asked about, in order. */
+const refsAskedAfter = () => mockedFetchSentLetter.mock.calls.map(([ref]) => ref);
+
 /** A promise the test settles by hand, to look at the screen while a call is in flight. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -226,8 +251,11 @@ const metrics: Metrics = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-const renderScreen = (ui: ReactElement) =>
-  render(<SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>);
+const inSafeArea = (ui: ReactElement) => (
+  <SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>
+);
+
+const renderScreen = (ui: ReactElement) => render(inSafeArea(ui));
 
 const letterField = () => screen.getByLabelText('Your letter');
 const sendButton = () => screen.getByRole('button', { name: 'Send by bat' });
@@ -259,6 +287,11 @@ async function letTimePass(ms: number) {
   }
 }
 
+let announceSpy: jest.SpiedFunction<typeof AccessibilityInfo.announceForAccessibility>;
+
+/** Everything said aloud to a screen reader so far, in order. */
+const announced = () => announceSpy.mock.calls.map(([message]) => message);
+
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
@@ -277,9 +310,16 @@ beforeEach(() => {
   serveRoost(everyBatHome);
   mockedSendMessage.mockReset();
   mockedSendMessage.mockImplementation(async () => dispatchToAnna());
+  // Asked what became of a letter, the server knows of none - unless a test says otherwise.
+  mockedFetchSentLetter.mockReset();
+  mockedFetchSentLetter.mockResolvedValue(null);
+  announceSpy = jest
+    .spyOn(AccessibilityInfo, 'announceForAccessibility')
+    .mockImplementation(() => {});
 });
 
 afterEach(() => {
+  announceSpy.mockRestore();
   jest.useRealTimers();
 });
 
@@ -647,6 +687,74 @@ describe('ComposeScreen', () => {
     });
 
     /**
+     * The button shows itself busy only once the screen has drawn again. Two
+     * taps can land before that, and the second must not send anything.
+     */
+    it('sends once when the button is pressed twice in the same moment', async () => {
+      const sending = deferred<Dispatch>();
+      mockedSendMessage.mockReturnValue(sending.promise);
+      await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'See you at the lake.');
+      const button = sendButton();
+
+      // One act for both: nothing is drawn in between, as within one frame.
+      await act(async () => {
+        void fireEvent.press(button);
+        void fireEvent.press(button);
+      });
+
+      expect(sendButton()).toBeBusy();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * What became of a letter is told to every screen that shows that letter,
+     * and to no other: the courier may have gone on to write to someone else
+     * by the time the answer comes.
+     */
+    it('does not take the answer for another letter as its own', async () => {
+      serveFriends(() => [anna, eva]);
+      const toAnna = deferred<Dispatch>();
+      mockedSendMessage.mockReturnValueOnce(toAnna.promise);
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await first.unmount();
+      await openLetterTo('user-eva');
+      await fireEvent.changeText(letterField(), 'Dear Eva,');
+
+      await act(async () => toAnna.resolve(dispatchToAnna()));
+
+      expect(screen.queryByText('Your bat is on its way')).toBeNull();
+      expect(letterField()).toHaveDisplayValue('Dear Eva,');
+      expect(announced()).toEqual([]);
+    });
+
+    /**
+     * Nor the answer for another account's letter. One person signs out while
+     * a letter is still on its way out, the next signs in and writes to a
+     * friend they have in common: the first one's answer is not theirs to see.
+     */
+    it('does not take the answer for another account’s letter as its own', async () => {
+      const marasLetter = deferred<Dispatch>();
+      mockedSendMessage.mockReturnValueOnce(marasLetter.promise);
+      const mara = await openLetterTo('user-anna');
+      await writeAndSend('Dear Anna, this is between us.');
+      await mara.unmount();
+      await act(async () => {
+        await supabase.auth.signOut({ scope: 'local' });
+      });
+
+      mockSession.user = { id: 'user-nora' };
+      await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna, Nora here.');
+      await act(async () => marasLetter.resolve(dispatchToAnna()));
+
+      expect(screen.queryByText('Your bat is on its way')).toBeNull();
+      expect(letterField()).toHaveDisplayValue('Dear Anna, Nora here.');
+      expect(sendButton()).not.toBeBusy();
+    });
+
+    /**
      * The request carries the words as they were when the button was pressed,
      * and the confirmation then takes the place of the form. Anything typed in
      * between would be neither sent nor kept, so the letter holds still until
@@ -891,6 +999,568 @@ describe('ComposeScreen', () => {
 
       const [first, second] = mockedSendMessage.mock.calls;
       expect(second?.[2]).not.toBe(first?.[2]);
+    });
+  });
+
+  /**
+   * A send can reach the server, which stores the letter, while its answer is
+   * lost on the way back: the phone changes networks, or the answer takes too
+   * long. Told only "No connection", the courier corrected a word and sent
+   * again - and both versions went, on two bats. (Found in review.) So no
+   * answer means "not known", and the server is asked what became of the
+   * letter before anything else is done about it.
+   */
+  describe('a send that was never answered', () => {
+    it('shows the letter on its way, not an error, when it went and only the answer was lost', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      const first = await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(
+        screen.getByText(/^It will reach Anna Weber in Munich in 6h 20m, at /),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(AS_FIRST_WRITTEN)).toBeNull();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      // Asked after by the very reference it went out under.
+      expect(refsAskedAfter()).toEqual(refsSent());
+      expect(announced()).toEqual(['Your bat is on its way to Anna Weber. It lands in 6h 20m.']);
+
+      // And nothing of it is left to send.
+      await first.unmount();
+      await openLetterTo('user-anna');
+      expect(letterField()).toHaveDisplayValue('');
+    });
+
+    it('never showed the "No connection" it was about to, for a letter that went', async () => {
+      const asked = deferred<Dispatch | null>();
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockReturnValueOnce(asked.promise);
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      // Still finding out: the button spins, and nothing is claimed either way.
+      expect(sendButton()).toBeBusy();
+      expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
+
+      await act(async () => asked.resolve(dispatchToAnna()));
+
+      expect(screen.getByText('Your bat is on its way')).toBeOnTheScreen();
+    });
+
+    it('takes no changes to the letter while it is finding out', async () => {
+      const asked = deferred<Dispatch | null>();
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockReturnValueOnce(asked.promise);
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+
+      expect(letterField()).toHaveDisplayValue('See you on Fridya.');
+    });
+
+    /**
+     * The case from the review. The first send went; the app could not find
+     * that out at once; the courier corrects a word and sends. The correction
+     * must not go out as a second letter behind the first one's back.
+     */
+    it('does not send a second letter when the first went and only its answer was lost', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      // Still no connection when it first asks what became of the letter.
+      mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText(NOT_KNOWN);
+
+      // The connection is back, and the server has the letter: it went.
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(
+        screen.getByText(/^It will reach Anna Weber in Munich in 6h 20m, at /),
+      ).toBeOnTheScreen();
+      expect(screen.getByText(AS_FIRST_WRITTEN)).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockedSendMessage).toHaveBeenCalledWith(
+        'user-anna',
+        'See you on Fridya.',
+        expect.any(String),
+      );
+      expect(announced().at(-1)).toBe(
+        'Your bat is on its way to Anna Weber. It lands in 6h 20m. ' +
+          'It went as you first wrote it; what you changed since has not been sent.',
+      );
+    });
+
+    /**
+     * Asked straight after the failure, the server may not have the letter yet:
+     * the request can still be on its way in. "Nothing went" is therefore not
+     * taken as the last word; it is asked once more before other words go out
+     * under a reference of their own.
+     */
+    it('asks once more before a changed letter goes, even after being told that nothing went', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockResolvedValueOnce(null);
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText('No connection. Check your network and try again.');
+
+      // By now it has arrived after all.
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(screen.getByText(AS_FIRST_WRITTEN)).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      const [ref] = refsSent();
+      expect(refsAskedAfter()).toEqual([ref, ref]);
+    });
+
+    it('keeps what was changed since, and sends it as a second letter if the courier wants that', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText(NOT_KNOWN);
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+      await fireEvent.press(sendButton());
+      await screen.findByText(AS_FIRST_WRITTEN);
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Back to what you wrote' }));
+
+      expect(letterField()).toHaveDisplayValue('See you on Friday.');
+      expect(screen.queryByText(NOT_KNOWN)).toBeNull();
+
+      // Sending it now is the courier's own decision: a second letter, under
+      // a reference of its own, with nothing left to ask about the first.
+      mockedFetchSentLetter.mockClear();
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(screen.queryByText(AS_FIRST_WRITTEN)).toBeNull();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(2);
+      expect(mockedSendMessage).toHaveBeenLastCalledWith(
+        'user-anna',
+        'See you on Friday.',
+        expect.any(String),
+      );
+      const [first, second] = refsSent();
+      expect(second).not.toBe(first);
+      expect(mockedFetchSentLetter).not.toHaveBeenCalled();
+    });
+
+    it('offers no way back to changed words when the letter went as it stands', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+      await screen.findByText('Your bat is on its way');
+
+      expect(screen.queryByRole('button', { name: 'Back to what you wrote' })).toBeNull();
+    });
+
+    /**
+     * Asked, the server knew of no such letter: that much is known, so there is
+     * no "may or may not" about it, and nothing to keep asking.
+     */
+    it('says only that it did not go when the server, asked, has no such letter', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(
+        await screen.findByText('No connection. Check your network and try again.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(NOT_KNOWN)).toBeNull();
+
+      // Nor does the doubt come back once the letter is changed and the error clears.
+      await fireEvent.changeText(letterField(), 'See you at the lake at six.');
+      expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
+      expect(screen.queryByText(NOT_KNOWN)).toBeNull();
+
+      await letTimePass(5 * MINUTE);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A letter found this way left when it was first sent, not when the answer
+     * at last came. The roost, fetched again, has the server's own time of
+     * leaving, and the drawing goes by that.
+     */
+    it('draws a letter that left a while ago where it is by now, not at the start', async () => {
+      const { deliverAt } = dispatchToAnna();
+      // A quarter of the way: it has flown a third as long as it still has to.
+      const leftAt = new Date(NOW - (deliverAt.getTime() - NOW) / 3);
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+
+      // Sent again, the server answers with the letter that went the first time.
+      serveRoost(() => [
+        {
+          id: 'bat-1',
+          slot: 1,
+          status: 'flying',
+          flight: {
+            messageId: 'letter-to-anna',
+            recipient: { id: 'user-anna', username: 'anna', displayName: 'Anna Weber' },
+            sentAt: leftAt,
+            deliverAt,
+            distanceKm: 504.6,
+          },
+        },
+        batAtHome(2),
+        batAtHome(3),
+      ]);
+      await fireEvent.press(sendButton());
+
+      expect(
+        await screen.findByRole('image', { name: 'Bat 25% of the way from Berlin to Munich' }),
+      ).toBeOnTheScreen();
+    });
+
+    it('says so when it cannot find out whether the letter went, and keeps the letter', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(await screen.findByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(screen.queryByText('Your bat is on its way')).toBeNull();
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+      expect(sendButton()).not.toBeBusy();
+      // Said aloud too: it appears while focus is still on the button.
+      expect(announced()).toEqual([`Your letter: ${NOT_KNOWN}`]);
+    });
+
+    it('checks again by itself, and shows the letter on its way once it finds it', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      await letTimePass(3 * SECOND);
+
+      expect(screen.getByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(screen.queryByText(AS_FIRST_WRITTEN)).toBeNull();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('says which words went when it finds the letter while the courier is changing it', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText(NOT_KNOWN);
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      await letTimePass(3 * SECOND);
+
+      expect(screen.getByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(screen.getByText(AS_FIRST_WRITTEN)).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Back to what you wrote' }));
+      expect(letterField()).toHaveDisplayValue('See you on Friday.');
+    });
+
+    it('says the letter did not go once it finds that out, and sends it when asked again', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+
+      mockedFetchSentLetter.mockResolvedValue(null);
+      await letTimePass(3 * SECOND);
+
+      expect(
+        screen.getByText('Your letter did not go after all. It is still here to send.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(NOT_KNOWN)).toBeNull();
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+
+      // Knowing now, it does not keep asking - nor does the doubt come back
+      // when the letter is touched and that message clears.
+      const asked = mockedFetchSentLetter.mock.calls.length;
+      await letTimePass(5 * MINUTE);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(asked);
+      await fireEvent.changeText(letterField(), 'See you at the lake. ');
+      expect(screen.queryByText(/did not go after all/)).toBeNull();
+      expect(screen.queryByText(NOT_KNOWN)).toBeNull();
+
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      const [first, second] = refsSent();
+      expect(second).toBe(first);
+    });
+
+    /**
+     * Often enough to notice a connection that is back within seconds, and
+     * then less and less often: a phone left underground must not ask every
+     * two seconds for an hour.
+     */
+    it('checks again after two seconds, then less and less often, and once a minute at the least', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+      // Once already, straight after the send failed.
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(1);
+
+      await letTimePass(SECOND);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(1);
+      await letTimePass(SECOND);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(2);
+
+      // After 2, 4, 6 and 9 seconds; the next is not due until 13.5.
+      await letTimePass(10 * SECOND);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(5);
+
+      // From the fourth minute on the pause has reached a minute, and stays there.
+      await letTimePass(4 * MINUTE - 12 * SECOND);
+      const afterFourMinutes = mockedFetchSentLetter.mock.calls.length;
+      await letTimePass(5 * MINUTE);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(afterFourMinutes + 5);
+
+      expect(screen.getByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not let a changed letter go while it cannot find out what became of the first', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText(NOT_KNOWN);
+
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(sendButton()).not.toBeBusy();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      expect(letterField()).toHaveDisplayValue('See you on Friday.');
+      expect(screen.queryByText('Your bat is on its way')).toBeNull();
+    });
+
+    /**
+     * "Nothing went" was the answer to the first question. If the second one,
+     * before the corrected letter goes, cannot be asked, that answer no longer
+     * holds - and the doubt is back, with the asking that goes with it.
+     */
+    it('is in doubt again when it cannot ask once more before a changed letter goes', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText('No connection. Check your network and try again.');
+
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+
+      // And it goes on to find out by itself, after a pause: the first letter had gone.
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      const asked = mockedFetchSentLetter.mock.calls.length;
+      await letTimePass(SECOND);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(asked);
+      await letTimePass(2 * SECOND);
+
+      expect(screen.getByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(screen.getByText(AS_FIRST_WRITTEN)).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The same words can always go out again under the same reference: the
+     * server answers a reference it knows with the letter that went, so this
+     * is both the question and, if nothing went, the send.
+     */
+    it('sends the same words again under the same reference while it is not known', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      const [first, second] = refsSent();
+      expect(second).toBe(first);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(1);
+    });
+
+    it('still knows, when the screen is opened again, that the letter may have gone', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+      await first.unmount();
+
+      await openLetterTo('user-anna');
+
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+      expect(screen.getByText(NOT_KNOWN)).toBeOnTheScreen();
+
+      // The new screen sends the same words under the reference the old one used.
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      const [before, after] = refsSent();
+      expect(after).toBe(before);
+    });
+
+    it('asks at once when the screen is opened again after a while', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+      await first.unmount();
+
+      // Nobody is looking at the letter, so nobody asks.
+      const asked = mockedFetchSentLetter.mock.calls.length;
+      await letTimePass(10 * MINUTE);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(asked);
+
+      mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask after a letter the server refused: it said itself that none went', async () => {
+      mockedSendMessage.mockRejectedValueOnce(
+        new RpcError(REFUSALS.no_available_bat, 'no_available_bat'),
+      );
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(REFUSALS.no_available_bat);
+
+      expect(mockedFetchSentLetter).not.toHaveBeenCalled();
+      // And a changed letter is then simply another letter.
+      await fireEvent.changeText(letterField(), 'See you at the lake at six.');
+      await fireEvent.press(sendButton());
+      await screen.findByText('Your bat is on its way');
+      expect(mockedFetchSentLetter).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A letter found this way may have left hours ago. One whose landing time
+     * has passed is not "on its way".
+     */
+    it('calls a letter that has already landed arrived, not on its way', async () => {
+      const landedAt = new Date(NOW - 5 * MINUTE);
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockResolvedValue({ ...dispatchToAnna(), deliverAt: landedAt });
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(await screen.findByText('Your letter has arrived')).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          `It has reached Anna Weber in Munich. Landed ${formatTimestamp(landedAt)}.`,
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('505 km as the bat flies.')).toBeOnTheScreen();
+      expect(screen.queryByText('Your bat is on its way')).toBeNull();
+      expect(screen.queryByText(/any moment now/)).toBeNull();
+      // Nothing is drawn as still in the air.
+      expect(screen.queryByRole('image', { name: /^Bat / })).toBeNull();
+      expect(announced()).toEqual(['Your letter to Anna Weber has arrived.']);
+    });
+
+    it('calls it arrived when a send tried again is answered with a letter that landed long ago', async () => {
+      const landedAt = new Date(NOW + 20 * MINUTE);
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText('No connection. Check your network and try again.');
+
+      // The screen stays open while the letter, which did go, flies and lands.
+      await letTimePass(25 * MINUTE);
+      mockedSendMessage.mockResolvedValue({ ...dispatchToAnna(), deliverAt: landedAt });
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Your letter has arrived')).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          `It has reached Anna Weber in Munich. Landed ${formatTimestamp(landedAt)}.`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    /**
+     * Only a letter that may have left earlier can have landed already. One
+     * sent this moment is on its way whatever the phone's clock makes of its
+     * landing time - a clock running fast must not announce an arrival.
+     */
+    it('does not call a letter sent this moment arrived, even if the phone thinks its time has passed', async () => {
+      mockedSendMessage.mockResolvedValue({
+        ...dispatchToAnna(),
+        deliverAt: new Date(NOW - MINUTE),
+      });
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(
+        screen.getByText('It is reaching Anna Weber in Munich any moment now.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('Your letter has arrived')).toBeNull();
+    });
+
+    /**
+     * What is kept about a send that was never answered belongs to the letter
+     * it was a send of. The same words to someone else are another letter.
+     */
+    it('sends the same words to a different friend as a different letter', async () => {
+      serveFriends(() => [anna, eva]);
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      const view = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText('No connection. Check your network and try again.');
+
+      // The same screen, now with Eva in the route.
+      mockParams.to = 'user-eva';
+      await view.rerender(inSafeArea(<ComposeScreen />));
+      await writeAndSend('See you at the lake.');
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenLastCalledWith(
+        'user-eva',
+        'See you at the lake.',
+        expect.any(String),
+      );
+      const [toAnna, toEva] = refsSent();
+      expect(toEva).not.toBe(toAnna);
+      // Nor is Anna's letter asked after on the way: it is not Eva's business.
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(1);
     });
   });
 
