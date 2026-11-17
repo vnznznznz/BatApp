@@ -270,6 +270,57 @@ describe('sending', () => {
     await rejectsWithHint(send(anna, ben, '  \n\t  '), 'empty_message');
   });
 
+  /**
+   * "No words" used to mean nothing but white space, as the server's locale
+   * understands white space. A zero-width space is white space nowhere, so a
+   * letter of nothing else went out, cost a bat and arrived blank; a no-break
+   * space was white space on one server and a word on the next. (Found in
+   * review.) What shows nothing is now a list of characters, by number, and
+   * the same list a display name is held to.
+   */
+  it('refuses a letter with nothing in it to see', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const blank = {
+      'a zero-width space': '\u200B',
+      'a no-break space': '\u00A0',
+      'an ideographic space': '\u3000',
+      'a word joiner': '\u2060',
+      'a Hangul filler': '\u3164',
+      'a blank braille pattern': '\u2800',
+      'a byte order mark': '\uFEFF',
+      'a soft hyphen': '\u00AD',
+      'a variation selector': '\uFE0F',
+      'tag characters': '\u{E0061}\u{E007F}',
+      'a bell': '\x07',
+      'a file separator': '\u001C',
+      'a next-line control': '\u0085',
+      'a right-to-left override': '\u202E',
+      'several of them between line breaks': '\n\u200B \t\u2060\u00A0\n',
+    };
+
+    for (const [what, body] of Object.entries(blank)) {
+      await assert.rejects(
+        send(anna, ben, body),
+        (error) => error.hint === 'empty_message',
+        `a letter of ${what} was not refused as empty`,
+      );
+    }
+
+    assert.equal(await count(db, `select 1 from public.messages`), 0);
+    assert.deepEqual(await batStatuses(db, anna), ['available', 'available', 'available']);
+  });
+
+  /** Only a name has to be plain text. A letter needs one thing to see, and may hold anything. */
+  it('takes a letter with anything in it to see, whatever else it holds', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const letters = ['\n\u200B.\u2060\n', '\u{1F469}\u200D\u{1F467}', '\u202Eolleh\x07'];
+
+    for (const body of letters) {
+      const sent = await send(anna, ben, body);
+      assert.equal((await messageRow(sent.message_id)).body, body);
+    }
+  });
+
   it('accepts a letter of the maximum length, and not one character more', async () => {
     const { anna, ben } = await berlinAndMunich();
 

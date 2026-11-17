@@ -70,6 +70,32 @@ export const USERNAME_MAX_LENGTH = 20;
 export const USERNAME_PATTERN = /^[a-z0-9_]+$/;
 
 /**
+ * What a display name must not hold, and what gives a name or a letter
+ * something to see. These are the database's rules character for character -
+ * its two checks on a display name, and what send_message asks of a letter
+ * (see the visible names migration) - and the parity test compares the two for
+ * every character there is.
+ *
+ * DISPLAY_NAME_FORBIDDEN_PATTERN finds what makes a name other than plain
+ * text: control characters (a line break is one), line and paragraph
+ * separators, and the characters that embed, override or isolate the direction
+ * of text, with which a name can read as something it is not. The marks and
+ * joiners that scripts and emoji need, U+200C to U+200F, are not among them.
+ *
+ * VISIBLE_CHARACTER_PATTERN finds a character that is drawn as something:
+ * anything but white space, control characters and what Unicode says shows
+ * nothing - zero-width spaces and joiners, direction marks, fillers, variation
+ * selectors, tags. A name needs one, and so does a letter.
+ *
+ * Both count U+0000 with the control characters. The database cannot store it
+ * at all, so it refuses such a value before either rule is asked.
+ */
+export const DISPLAY_NAME_FORBIDDEN_PATTERN =
+  /[\u0000-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]/u;
+export const VISIBLE_CHARACTER_PATTERN =
+  /[^\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
+
+/**
  * What a report can say is wrong, as the database records it. The words shown
  * for each live with the report screen; the database refuses anything else.
  */

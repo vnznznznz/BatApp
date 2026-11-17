@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { asAnon, asUser, createTestDatabase, createUser } from './harness.mjs';
+import {
+  applyMigrations,
+  asAnon,
+  asUser,
+  createTestDatabase,
+  createUser,
+  migrationFiles,
+} from './harness.mjs';
 
 let db;
 
@@ -89,6 +96,200 @@ describe('profile creation', () => {
 
   it('rejects a username that is too short', async () => {
     await assert.rejects(() => createUser(db, { username: 'an' }));
+  });
+});
+
+/**
+ * What a display name may be. It is shown to friends, on letters, to a stranger
+ * the courier has asked to be friends and to the operator in a report, so it
+ * has to be something a person can see and read as it is written: no control
+ * characters, no line breaks, nothing that turns the direction of the text
+ * round, and at least one character that is not blank. The marks and joiners
+ * that scripts and emoji need stay allowed inside a name that has something
+ * to show.
+ *
+ * The first twenty are the names review settled the rule on. `refusedBy` is
+ * the check that refuses a name, by the end of its name.
+ */
+const NAMES = [
+  ['a plain name', 'Anna'],
+  ['a name with a space inside', 'Anna B.'],
+  ['umlauts', 'J\u00FCrgen \u00D6zt\u00FCrk'],
+  ['Chinese', '\u5F20\u4F1F'],
+  ['a family emoji, joined with U+200D', '\u{1F469}\u200D\u{1F467}'],
+  ['a rainbow flag, joined with U+200D', '\u{1F3F3}\uFE0F\u200D\u{1F308}'],
+  ['a Persian name with U+200C', '\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645'],
+  ['a Hebrew name with U+200F', '\u05D3\u05E0\u05D4\u200F'],
+  ['spaces only', '   ', 'visible'],
+  ['line breaks only', '\n\n\n', 'no_controls'],
+  ['a line break inside a name', 'An\nna', 'no_controls'],
+  ['a zero-width space', '\u200B', 'visible'],
+  ['a no-break space and a zero-width space', '\u00A0\u200B', 'visible'],
+  ['a right-to-left override', 'ab\u202Edetpecca', 'no_controls'],
+  ['control characters', '\x07\r\n\t', 'no_controls'],
+  ['an ideographic space', '\u3000', 'visible'],
+  ['a word joiner', '\u2060', 'visible'],
+  ['a Hangul filler', '\u3164', 'visible'],
+  ['a blank braille pattern', '\u2800', 'visible'],
+  ['a byte order mark', '\uFEFF', 'visible'],
+  // More of both kinds, beyond those twenty.
+  ['a heart with its variation selector', '\u2764\uFE0F'],
+  [
+    'the flag of England, spelt in tag characters',
+    '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
+  ],
+  ['a soft hyphen inside a word', 'Zucker\u00ADb\u00E4cker'],
+  ['a soft hyphen', '\u00AD', 'visible'],
+  ['a variation selector', '\uFE0F', 'visible'],
+  ['tag characters', '\u{E0061}\u{E007F}', 'visible'],
+  ['an Arabic letter mark', '\u061C', 'visible'],
+  ['a combining grapheme joiner', '\u034F', 'visible'],
+  ['a Mongolian variation selector', '\u180B', 'visible'],
+  ['marks and joiners with nothing to join', '\u200E\u200F\u200C\u200D', 'visible'],
+  ['a name inside direction isolates', '\u2066Anna\u2069', 'no_controls'],
+  ['a paragraph separator inside a name', 'An\u2029na', 'no_controls'],
+  ['a next-line control inside a name', 'An\u0085na', 'no_controls'],
+].map(([what, name, refusedBy]) => ({ what, name, refusedBy }));
+
+describe('a display name', () => {
+  const displayName = async (id) =>
+    (await db.query(`select display_name from public.profiles where id = $1`, [id])).rows[0]
+      ?.display_name;
+
+  const refusedBy = (rule) => (error) => {
+    assert.equal(error.code, '23514', error.message);
+    assert.match(error.message, new RegExp(`"profiles_display_name_${rule}"`));
+    return true;
+  };
+
+  describe('changed by its owner', () => {
+    for (const { what, name, refusedBy: rule } of NAMES) {
+      it(`${rule ? 'cannot' : 'can'} be ${what}`, async () => {
+        const anna = await createUser(db, { username: 'anna', displayName: 'Before' });
+        const change = asUser(db, anna, () =>
+          db.query(`update public.profiles set display_name = $1 where id = $2`, [name, anna]),
+        );
+
+        if (rule) {
+          await assert.rejects(change, refusedBy(rule));
+          assert.equal(await displayName(anna), 'Before');
+        } else {
+          await change;
+          assert.equal(await displayName(anna), name);
+        }
+      });
+    }
+  });
+
+  /**
+   * At sign-up the name arrives in the details GoTrue stores, and the profile
+   * is made from them inside the sign-up itself: a name that is refused refuses
+   * the sign-up, and nothing of it is left.
+   */
+  describe('given at sign-up', () => {
+    for (const { what, name, refusedBy: rule } of NAMES) {
+      // Spaces and nothing else are no name at all, as far as handle_new_user
+      // is concerned, and it has always answered that with "Courier".
+      const noName = /^ *$/.test(name);
+
+      it(`${rule && !noName ? 'cannot' : 'can'} be ${what}${noName ? ', which is no name: Courier' : ''}`, async () => {
+        const signUp = createUser(db, {
+          email: 'anna@example.test',
+          username: 'anna',
+          displayName: name,
+        });
+
+        if (rule && !noName) {
+          await assert.rejects(signUp, refusedBy(rule));
+          assert.equal(await count(`select count(*)::text as count from auth.users`), 0);
+          assert.equal(await count(`select count(*)::text as count from public.profiles`), 0);
+        } else {
+          assert.equal(await displayName(await signUp), noName ? 'Courier' : name);
+        }
+      });
+    }
+  });
+
+  it('is checked whoever writes it, the operator included', async () => {
+    const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
+
+    await assert.rejects(
+      db.query(`update public.profiles set display_name = $1 where id = $2`, ['\u200B', anna]),
+      refusedBy('visible'),
+    );
+  });
+});
+
+/**
+ * A database that already holds names the rule refuses must still take the
+ * migration, and afterwards hold none: adding a check that existing rows fail
+ * stops the migration, and a check left unproven for old rows would refuse
+ * every later change to them - a move to another city, the nightly tidy-up.
+ * So the migration puts such names right first: what must not be in a name is
+ * taken out of it, and a name with nothing left to see becomes "Courier", the
+ * name a sign-up without one gets.
+ */
+describe('profiles from before display names were checked', () => {
+  it('have what must not be in a name taken out, and are left alone otherwise', async () => {
+    const visibleNames = migrationFiles().find((f) => f.endsWith('_visible_names.sql'));
+    const before = migrationFiles()[migrationFiles().indexOf(visibleNames) - 1];
+    const old = await createTestDatabase({ until: before });
+    try {
+      const earlier = [
+        ['Anna', 'Anna'],
+        ['J\u00FCrgen \u00D6zt\u00FCrk', 'J\u00FCrgen \u00D6zt\u00FCrk'],
+        ['\u{1F469}\u200D\u{1F467}', '\u{1F469}\u200D\u{1F467}'],
+        ['ab\u202Edetpecca', 'abdetpecca'],
+        ['An\nna', 'Anna'],
+        ['\u2066Anna\u2069', 'Anna'],
+        ['\u200B', 'Courier'],
+        ['\u00A0\u200B', 'Courier'],
+        ['\x07\r\n\t', 'Courier'],
+        [' \u202E ', 'Courier'],
+        ['\n'.repeat(40), 'Courier'],
+      ];
+      const ids = [];
+      for (const [name] of earlier) {
+        const id = await createUser(old, { displayName: 'Courier' });
+        await old.query(`update public.profiles set display_name = $1 where id = $2`, [name, id]);
+        ids.push(id);
+      }
+      // A row's xmin changes whenever the row is written.
+      const versions = async () =>
+        Object.fromEntries(
+          (
+            await old.query(`select id, display_name, xmin::text as version from public.profiles`)
+          ).rows.map((row) => [row.id, row]),
+        );
+      const asItWas = await versions();
+
+      await applyMigrations(old, { after: before });
+
+      const after = await versions();
+      for (const [i, [name, expected]] of earlier.entries()) {
+        const id = ids[i];
+        assert.equal(after[id].display_name, expected, JSON.stringify(name));
+        assert.equal(
+          after[id].version === asItWas[id].version,
+          name === expected,
+          `${JSON.stringify(name)} was ${name === expected ? 'written again' : 'not written'}`,
+        );
+      }
+      // And the checks stand for every row, old ones included.
+      const { rows: checks } = await old.query(
+        `select conname, convalidated from pg_constraint
+         where conrelid = 'public.profiles'::regclass and contype = 'c'
+           and conname like 'profiles_display_name_%'
+         order by 1`,
+      );
+      assert.deepEqual(checks, [
+        { conname: 'profiles_display_name_length', convalidated: true },
+        { conname: 'profiles_display_name_no_controls', convalidated: true },
+        { conname: 'profiles_display_name_visible', convalidated: true },
+      ]);
+    } finally {
+      await old.close();
+    }
   });
 });
 

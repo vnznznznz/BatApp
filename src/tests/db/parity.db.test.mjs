@@ -44,6 +44,16 @@ const REPORT_RETENTION_DAYS = constant('REPORT_RETENTION_DAYS');
 const BAN_PERIOD_YEARS = constant('BAN_PERIOD_YEARS');
 const FRIEND_REQUESTS_PER_HOUR = constant('FRIEND_REQUESTS_PER_HOUR');
 
+/** A pattern config.ts exports, rebuilt from its source text. */
+function pattern(name) {
+  const match = CONFIG.match(new RegExp(`export const ${name} =\\s*/(.+)/([a-z]*);`));
+  assert.ok(match, `${name} not found in src/constants/config.ts`);
+  return new RegExp(match[1], match[2]);
+}
+
+const DISPLAY_NAME_FORBIDDEN_PATTERN = pattern('DISPLAY_NAME_FORBIDDEN_PATTERN');
+const VISIBLE_CHARACTER_PATTERN = pattern('VISIBLE_CHARACTER_PATTERN');
+
 const REPORT_REASONS = (() => {
   const match = CONFIG.match(/export const REPORT_REASONS = \[([^\]]*)\]/);
   assert.ok(match, 'REPORT_REASONS not found in src/constants/config.ts');
@@ -213,6 +223,99 @@ describe('the database agrees with src/constants/config.ts', () => {
     );
 
     assert.equal(rows[0].same, true);
+  });
+
+  /**
+   * Not numbers but lists of characters, and the app's copy is written in
+   * another language's notation. So they are compared the long way: every
+   * character Postgres can store - all of Unicode but U+0000 - is put to the
+   * database's rule and to the app's pattern, one at a time.
+   */
+  describe('on DISPLAY_NAME_FORBIDDEN_PATTERN and VISIBLE_CHARACTER_PATTERN', () => {
+    const isSurrogate = (code) => code >= 0xd800 && code <= 0xdfff;
+
+    /** The characters for which `condition` holds, asked of each one alone as `display_name`. */
+    const databaseSays = async (condition) => {
+      const { rows } = await db.query(
+        `select coalesce(array_agg(code order by code), '{}') as codes
+         from generate_series(1, 1114111) as code,
+              lateral (select chr(code) as display_name) as one
+         where code not between 55296 and 57343
+           and (${condition})`,
+      );
+      return ranges(rows[0].codes);
+    };
+
+    const appSays = (holds) => {
+      const codes = [];
+      for (let code = 1; code <= 0x10ffff; code++) {
+        if (!isSurrogate(code) && holds(String.fromCodePoint(code))) codes.push(code);
+      }
+      return ranges(codes);
+    };
+
+    /** 'U+0001-001F U+007F ...': short enough to read when two lists differ. */
+    const ranges = (codes) => {
+      const hex = (code) => code.toString(16).toUpperCase().padStart(4, '0');
+      const runs = [];
+      for (const code of codes) {
+        const last = runs.at(-1);
+        if (last && code === last[1] + 1) last[1] = code;
+        else runs.push([code, code]);
+      }
+      return runs
+        .map(([from, to]) => (from === to ? `U+${hex(from)}` : `U+${hex(from)}-${hex(to)}`))
+        .join(' ');
+    };
+
+    const check = async (name) => {
+      const { rows } = await db.query(
+        `select pg_get_expr(conbin, conrelid) as expression from pg_constraint
+         where conrelid = 'public.profiles'::regclass and conname = $1`,
+        [name],
+      );
+      assert.equal(rows.length, 1, `no check ${name} on public.profiles`);
+      return rows[0].expression;
+    };
+
+    it('as what a display name must not hold', async () => {
+      const refused = await databaseSays(
+        `not (${await check('profiles_display_name_no_controls')})`,
+      );
+
+      assert.ok(refused.startsWith('U+0001-001F'), refused);
+      assert.equal(
+        refused,
+        appSays((character) => DISPLAY_NAME_FORBIDDEN_PATTERN.test(character)),
+      );
+    });
+
+    it('as what does not make a display name something to see', async () => {
+      const blank = await databaseSays(`not (${await check('profiles_display_name_visible')})`);
+
+      assert.ok(blank.includes('U+2000-200F'), blank);
+      assert.equal(
+        blank,
+        appSays((character) => !VISIBLE_CHARACTER_PATTERN.test(character)),
+      );
+    });
+
+    it('as what does not make a letter something to see', async () => {
+      const blank = await databaseSays(`not private.has_visible_character(display_name)`);
+
+      assert.ok(blank.includes('U+2000-200F'), blank);
+      assert.equal(
+        blank,
+        appSays((character) => !VISIBLE_CHARACTER_PATTERN.test(character)),
+      );
+    });
+
+    /** The one character the two cannot be compared on. */
+    it('and both count U+0000, which the database cannot store, as neither plain nor visible', async () => {
+      assert.equal(DISPLAY_NAME_FORBIDDEN_PATTERN.test('\u0000'), true);
+      assert.equal(VISIBLE_CHARACTER_PATTERN.test('\u0000'), false);
+      await assert.rejects(db.query(`select chr(0)`), /null character not permitted/);
+    });
   });
 
   /** The number, and that it is the number the database acts on. */
