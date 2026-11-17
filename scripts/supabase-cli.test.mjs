@@ -63,6 +63,7 @@ describe('the Supabase commands in the documents', () => {
     for (const file of [
       'README.md',
       'docs/GO-LIVE.md',
+      'docs/store/gdpr-records.md',
       'supabase/config.toml',
       'supabase/seed.sql',
     ])

@@ -432,7 +432,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     `auth.audit_log_entries` (lokal hat sie es), überspringen beide Funktionen diesen Schritt ohne
     Fehler: `tidy_up` nennt ihn dann in seinem Ergebnis (`sign-in log: …`, 4.5),
     `delete_own_account()` meldet nichts. Auf dem gehosteten Projekt deshalb gleich nach dem
-    ersten `db push --remote` `select private.tidy_up();` ausführen; es muss eine leere Liste
+    ersten `npx supabase@3.2.0 db push --remote --yes` `select private.tidy_up();` ausführen
+    (GO-LIVE, „Setting up the hosted project“, Schritt 4, hat den Befehl); es muss eine leere Liste
     ergeben (`[]`; psql zeigt dieselbe leere Liste als `{}`; 5.2). Frühestens
     31 Tage nach dem Start, wenn es überhaupt ältere Einträge geben kann, zusätzlich prüfen, dass
     `select count(*) from auth.audit_log_entries where created_at < now() - interval '31 days'`
@@ -792,8 +793,9 @@ nutzt (4.4).
 - [ ] Eigenes SMTP und E-Mail-Bestätigung an, bevor eine zweite Person sich anmeldet (L3; GO-LIVE,
       „Before a second person can sign up“). Danach den Satz in Datenschutzerklärung 3.10 durch
       den aus ihrem PRÜFEN-Hinweis ersetzen.
-- [ ] Nach dem ersten `db push --remote` auf das gehostete Projekt (GO-LIVE, „Setting up the
-      hosted project“, Schritt 4, mit den Befehlen dort): `select jobname, schedule from cron.job`
+- [ ] Nach dem ersten `npx supabase@3.2.0 db push --remote --yes` auf das gehostete Projekt
+      (GO-LIVE, „Setting up the hosted project“, Schritt 4, mit den Befehlen für die Abfragen):
+      `select jobname, schedule from cron.job`
       zeigt `deliver-due-messages`, `forget-old-reports` und `tidy-up`, und
       `select private.tidy_up();` ergibt eine leere Liste (`[]`, in psql `{}`; 4.5, V8,
       L8). Der Aufruf löscht nichts, was der tägliche Auftrag nicht auch löschen würde. Nennt das
