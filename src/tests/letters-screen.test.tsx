@@ -259,6 +259,25 @@ describe('LettersScreen', () => {
       ).toBeOnTheScreen();
     });
 
+    /**
+     * In the first days of January every letter of the week before used to be
+     * listed by its day alone, "30 Dec 2026", where a letter three days old
+     * shows its time in any other week. (Found in review.) Local times
+     * throughout, so this holds in any time zone.
+     */
+    it('still lists a letter of last week with its time once the year has turned', async () => {
+      jest.setSystemTime(new Date(2027, 0, 2, 9, 0));
+      mockedFetchInbox.mockResolvedValue([
+        received({ arrivedAt: new Date(2026, 11, 30, 21, 4) }),
+        received({ id: 'last-winter', sender: ben, arrivedAt: new Date(2026, 1, 3, 8, 15) }),
+      ]);
+      await renderScreen(<LettersScreen />);
+
+      expect(await screen.findByText('From Hamburg · 255 km · 30 Dec 21:04')).toBeOnTheScreen();
+      // Long ago, the day says enough - with its year.
+      expect(screen.getByText('From Hamburg · 255 km · 3 Feb 2026')).toBeOnTheScreen();
+    });
+
     it('marks the letters that have not been opened, and only those', async () => {
       mockedFetchInbox.mockResolvedValue([
         received({ id: 'from-anna', sender: anna, openedAt: null }),
@@ -454,6 +473,21 @@ describe('LettersScreen', () => {
         await screen.findByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/^In the air/)).toBeNull();
+    });
+
+    it('still says at what time a letter of last week landed once the year has turned', async () => {
+      jest.setSystemTime(new Date(2027, 0, 2, 9, 0));
+      mockedFetchSent.mockResolvedValue([
+        sent({
+          delivered: true,
+          sentAt: new Date(2026, 11, 30, 14, 0),
+          deliverAt: new Date(2026, 11, 30, 21, 4),
+        }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(await screen.findByText('Landed in Vienna · 30 Dec 21:04')).toBeOnTheScreen();
     });
 
     it('calls a letter landed once the arrival time the server set has passed', async () => {

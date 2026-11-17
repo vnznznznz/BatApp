@@ -864,6 +864,29 @@ describe('ComposeScreen', () => {
       expect(screen.queryByLabelText('Your letter')).toBeNull();
     });
 
+    /**
+     * A landing on the other side of New Year used to lose its time of day:
+     * "It will reach Anna Weber in Munich in 6h 18m, at 1 Jan 2027." (Found in
+     * review.) Local times throughout, so this holds in any time zone.
+     */
+    it('says at what time the bat lands when that is in the new year', async () => {
+      jest.setSystemTime(new Date(2026, 11, 31, 22, 0));
+      mockedSendMessage.mockImplementation(async () => ({
+        id: 'letter-to-anna',
+        deliverAt: new Date(2027, 0, 1, 4, 18, 30),
+        distanceKm: 504.6,
+      }));
+      await openLetterTo('user-anna');
+
+      await writeAndSend('Happy New Year.');
+
+      expect(
+        await screen.findByText(
+          'It will reach Anna Weber in Munich in 6h 18m, at 1 Jan 2027 04:18.',
+        ),
+      ).toBeOnTheScreen();
+    });
+
     /** The bat takes off from the courier's city for the friend's, as the flight is drawn. */
     it('draws the flight that has just begun, from home to the friend', async () => {
       dispatchToAnna();
@@ -996,6 +1019,25 @@ describe('ComposeScreen', () => {
       expect(
         screen.getByText(
           `Your bats still leave from Berlin, DE until ${formatTimestamp(settlesAt)}, when your move settles.`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    it('says until what time letters leave from the old city when the move settles in the new year', async () => {
+      jest.setSystemTime(new Date(2026, 11, 31, 22, 0));
+      mockProfileState.profile = {
+        ...courier,
+        city: { id: 2911298, name: 'Hamburg', countryCode: 'DE' },
+        move: {
+          from: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+          settlesAt: new Date(2027, 0, 1, 9, 30),
+        },
+      };
+      await openLetterTo('user-anna');
+
+      expect(
+        screen.getByText(
+          'Your bats still leave from Berlin, DE until 1 Jan 2027 09:30, when your move settles.',
         ),
       ).toBeOnTheScreen();
     });

@@ -267,6 +267,24 @@ describe('LetterScreen', () => {
       ).toBeOnTheScreen();
     });
 
+    /**
+     * In the first days of January every letter of the week before used to
+     * lose its time of day: "Sent 30 Dec 2026. Landed 30 Dec 2026." (Found in
+     * review.) Local times throughout, so this holds in any time zone.
+     */
+    it('still says at what time a letter of last week landed once the year has turned', async () => {
+      jest.setSystemTime(new Date(2027, 0, 2, 9, 0));
+      mockedReadMessage.mockResolvedValue(
+        receivedLetter({
+          sentAt: new Date(2026, 11, 30, 17, 53),
+          deliverAt: new Date(2026, 11, 30, 21, 4),
+        }),
+      );
+      await renderScreen(<LetterScreen />);
+
+      expect(await screen.findByText('Sent 30 Dec 17:53. Landed 30 Dec 21:04.')).toBeOnTheScreen();
+    });
+
     it('offers to write back to whoever sent it', async () => {
       await renderScreen(<LetterScreen />);
 
@@ -291,6 +309,22 @@ describe('LetterScreen', () => {
         screen.getByText(
           `Sent ${formatTimestamp(letter.sentAt)}. Lands in 2h 30m, at ${formatTimestamp(letter.deliverAt)}.`,
         ),
+      ).toBeOnTheScreen();
+    });
+
+    // "Lands in 6h 18m, at 1 Jan 2027." said on which day, and not when.
+    it('says at what time a letter lands when that is in the new year', async () => {
+      jest.setSystemTime(new Date(2026, 11, 31, 22, 0));
+      mockedReadMessage.mockResolvedValue(
+        sentLetter({
+          sentAt: new Date(2026, 11, 31, 21, 30),
+          deliverAt: new Date(2027, 0, 1, 4, 18, 30),
+        }),
+      );
+      await renderScreen(<LetterScreen />);
+
+      expect(
+        await screen.findByText('Sent 21:30. Lands in 6h 18m, at 1 Jan 2027 04:18.'),
       ).toBeOnTheScreen();
     });
 
