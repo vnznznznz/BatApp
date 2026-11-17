@@ -937,11 +937,6 @@ describe('ComposeScreen', () => {
       );
     });
 
-    /**
-     * A failure may have been a lost answer to a send that went. Retrying the
-     * same letter under the same ref lets the server answer with that letter
-     * instead of sending a copy on a second bat.
-     */
     it('says, while a move settles, that letters still leave from the old city', async () => {
       const settlesAt = new Date(Date.now() + 20 * 3_600_000);
       mockProfileState.profile = {
@@ -957,6 +952,11 @@ describe('ComposeScreen', () => {
       ).toBeOnTheScreen();
     });
 
+    /**
+     * A failure may have been a lost answer to a send that went. Retrying the
+     * same letter under the same ref lets the server answer with that letter
+     * instead of sending a copy on a second bat.
+     */
     it('retries the same letter as the same letter', async () => {
       mockedSendMessage.mockRejectedValueOnce(
         new RpcError('No connection. Check your network and try again.', null),
@@ -1039,7 +1039,7 @@ describe('ComposeScreen', () => {
       expect(letterField()).toHaveDisplayValue('');
     });
 
-    it('never showed the "No connection" it was about to, for a letter that went', async () => {
+    it('shows no error while it is still finding out', async () => {
       const asked = deferred<Dispatch | null>();
       mockedSendMessage.mockRejectedValueOnce(noAnswer());
       mockedFetchSentLetter.mockReturnValueOnce(asked.promise);
