@@ -301,6 +301,120 @@ describe('secureStorage', () => {
   });
 
   /**
+   * Clearing away the set a write has replaced is the last thing the write
+   * does, and so the first to be cut short: the app is closed, or the keychain
+   * refuses a delete. No manifest names those chunks any more, and the next
+   * write to their set goes over only as many of them as its own value has.
+   * The rest stayed in the keychain through every later write and through
+   * signing out - the text of an earlier session, its tokens and the courier's
+   * email address in it.
+   */
+  describe('a clearing away that is cut short', () => {
+    // Five chunks, so that a later value of two or three does not cover them.
+    const older = 'OLDER-SECRET-'.repeat(500);
+    const newer = 'n'.repeat(4_000);
+
+    /** The entries that still hold a piece of the older value. */
+    const leftOfTheOlder = () =>
+      [...store.keys()].filter((entry) => store.get(entry)?.includes('OLDER-SECRET'));
+
+    /** Writes `value` while the keychain deletes nothing, as if closed right after the manifest. */
+    async function writeWithoutClearingAway(value: string) {
+      mocked.deleteItemAsync.mockRejectedValue(REFUSED);
+      await secureStorage.setItem('session', value);
+      mocked.deleteItemAsync.mockImplementation(async (key: string) => {
+        store.delete(valid(key));
+      });
+    }
+
+    /** The older value as an app from before there were sets of entries left it. */
+    function keepInTheOldLayout(value: string) {
+      const chunks = value.match(/.{1,1600}/gs) ?? [];
+      store.set('session', `ncchunks:${chunks.length}`);
+      chunks.forEach((chunk, index) => store.set(`session.${index}`, chunk));
+    }
+
+    describe.each<[string, () => Promise<void> | void]>([
+      ['a set of its own', () => secureStorage.setItem('session', older)],
+      ['the old layout', () => keepInTheOldLayout(older)],
+    ])('after a value in %s', (_, keepOlder) => {
+      beforeEach(async () => {
+        await keepOlder();
+        await writeWithoutClearingAway(newer);
+        // What this is about: the older value is still there, named by nothing.
+        expect(await secureStorage.getItem('session')).toBe(newer);
+        expect(leftOfTheOlder()).toHaveLength(5);
+      });
+
+      it('is made up for by signing out, which leaves nothing in the keychain', async () => {
+        await secureStorage.removeItem('session');
+
+        expect([...store.keys()]).toEqual([]);
+      });
+
+      it('is made up for by the next write, which leaves its own value and no other', async () => {
+        const next = 'x'.repeat(1_700);
+
+        await secureStorage.setItem('session', next);
+
+        expect(await secureStorage.getItem('session')).toBe(next);
+        expect(leftOfTheOlder()).toEqual([]);
+        expect(chunksOf('session')).toHaveLength(2);
+      });
+
+      it('is made up for by the next write of a short value as well', async () => {
+        await secureStorage.setItem('session', 'tiny');
+
+        expect([...store.entries()]).toEqual([['session', 'tiny']]);
+      });
+    });
+
+    /** The same of a write that stopped before its manifest: half a new session, named by nothing. */
+    it('leaves nothing of a write that never finished, either, once signed out', async () => {
+      await secureStorage.setItem('session', newer);
+      let writes = 0;
+      mocked.setItemAsync.mockImplementation(async (key: string, value: string) => {
+        writes += 1;
+        if (writes > 2) throw new Error('interrupted');
+        store.set(key, value);
+      });
+      await expect(secureStorage.setItem('session', older)).rejects.toThrow('interrupted');
+      expect(leftOfTheOlder()).toHaveLength(2);
+
+      await secureStorage.removeItem('session');
+
+      expect([...store.keys()]).toEqual([]);
+    });
+
+    it('goes no further than a session could reach, for a set no manifest names', async () => {
+      await secureStorage.setItem('session', newer);
+      jest.clearAllMocks();
+
+      await secureStorage.removeItem('session');
+
+      // The entry itself, and eight chunks of each of the three layouts.
+      expect(mocked.deleteItemAsync).toHaveBeenCalledTimes(1 + 3 * 8);
+    });
+
+    /** The set in use is cleared as far as its manifest says, however far that is. */
+    it('clears the whole of a value longer than any session', async () => {
+      const long = 'L'.repeat(20_000);
+      await secureStorage.setItem('session', long);
+      expect(chunksOf('session')).toHaveLength(13);
+
+      await secureStorage.setItem('session', newer);
+
+      expect(await secureStorage.getItem('session')).toBe(newer);
+      expect(chunksOf('session')).toHaveLength(3);
+
+      await secureStorage.setItem('session', long);
+      await secureStorage.removeItem('session');
+
+      expect([...store.keys()]).toEqual([]);
+    });
+  });
+
+  /**
    * The client reads its session for every request, and a renewal does not wait
    * for readers before it writes the new one. A read that has the old manifest
    * in hand when the write switches sets finds that set cleared away.
@@ -382,7 +496,8 @@ describe('secureStorage', () => {
     await secureStorage.removeItem('session');
 
     expect(store.size).toBe(0);
-    expect(mocked.deleteItemAsync).toHaveBeenCalledTimes(1);
+    // The entry, and no more of each set than is cleared whatever a manifest says.
+    expect(mocked.deleteItemAsync).toHaveBeenCalledTimes(1 + 3 * 8);
   });
 
   it('keeps every entry on this device only, never in a backup for another phone', async () => {

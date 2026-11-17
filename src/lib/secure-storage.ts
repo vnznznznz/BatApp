@@ -43,8 +43,8 @@ type Generation = (typeof GENERATIONS)[number];
 type Manifest = { count: number; generation: Generation | null };
 
 /**
- * How many chunks of each set to clear when the manifest that would say how
- * many there are cannot be read. Several times what a session needs.
+ * How many chunks of a set to clear when no manifest says how many it holds.
+ * Several times what a session needs.
  */
 const MAX_UNKNOWN_CHUNKS = 8;
 
@@ -60,28 +60,30 @@ function parseManifest(head: string): Manifest | null {
 }
 
 /**
- * The manifest now under `key`: null when the entry is empty or holds a small
- * value, undefined when the keychain would not say.
+ * The manifest now under `key`, or null: the entry is empty, it holds a small
+ * value, or the keychain would not say.
  */
-async function readManifest(key: string): Promise<Manifest | null | undefined> {
+async function readManifest(key: string): Promise<Manifest | null> {
   try {
     const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
     return head == null ? null : parseManifest(head);
   } catch {
-    return undefined;
+    return null;
   }
 }
 
-/** The chunk entries `manifest` names; every one there could be when it is unknown. */
-function chunkKeys(key: string, manifest: Manifest | null | undefined): string[] {
-  if (manifest === null) return [];
-  if (manifest === undefined) {
-    return [null, ...GENERATIONS].flatMap((generation) =>
-      Array.from({ length: MAX_UNKNOWN_CHUNKS }, (_, index) => chunkKey(key, generation, index)),
-    );
-  }
-  return Array.from({ length: manifest.count }, (_, index) =>
-    chunkKey(key, manifest.generation, index),
+/**
+ * Every entry that may hold a chunk of a value under `key`, which is more than
+ * `manifest` names. Clearing away the set a write has replaced is the last
+ * thing the write does, so where one was cut short that set is still there,
+ * named by nothing - an older session, in a keychain that signing out is said
+ * to empty. Every set is therefore cleared each time: as far as the manifest
+ * says its own goes, and no less far than a session reaches.
+ */
+function chunkKeys(key: string, manifest: Manifest | null): string[] {
+  const reach = Math.max(manifest?.count ?? 0, MAX_UNKNOWN_CHUNKS);
+  return [null, ...GENERATIONS].flatMap((generation) =>
+    Array.from({ length: reach }, (_, index) => chunkKey(key, generation, index)),
   );
 }
 
@@ -135,7 +137,7 @@ export const secureStorage = {
   },
 
   async setItem(key: string, value: string): Promise<void> {
-    // Unknown when the read is refused. The write goes ahead all the same, so
+    // Null when the read is refused, too. The write goes ahead all the same, so
     // that signing in again can replace an entry that can no longer be read.
     const previous = await readManifest(key);
 
