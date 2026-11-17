@@ -22,24 +22,56 @@ const row = (overrides: Partial<Row> = {}): Row => ({
 
 type Answer = { data: Row | null; error: { message: string } | null };
 
-/** The database, as far as this hook asks it: one row read, and one row changed. */
+/** Which rows a request is about: the table, and the column and value they are picked by. */
+type Asked = { table: string; where: [column: string, value: unknown] };
+
+/**
+ * The database, as far as this hook asks it: one row read, and one row changed.
+ * Each is handed what was asked for, so that a test can say whose row it was -
+ * a save that names another row changes nothing, and the database calls that
+ * no error.
+ */
 const mockDatabase = {
-  read: jest.fn<Promise<Answer>, []>(),
-  change: jest.fn<Promise<{ error: { message: string } | null }>, [values: object]>(),
+  read: jest.fn<Promise<Answer>, [asked: Asked & { columns: string }]>(),
+  change: jest.fn<
+    Promise<{ error: { message: string } | null }>,
+    [asked: Asked & { values: object }]
+  >(),
 };
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
-    from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: () => mockDatabase.read() }) }),
-      update: (values: object) => ({ eq: () => mockDatabase.change(values) }),
+    from: (table: string) => ({
+      select: (columns: string) => ({
+        eq: (...where: Asked['where']) => ({
+          maybeSingle: () => mockDatabase.read({ table, columns, where }),
+        }),
+      }),
+      update: (values: object) => ({
+        eq: (...where: Asked['where']) => mockDatabase.change({ table, values, where }),
+      }),
     }),
   },
 }));
 
+/** Who is signed in. Anna, unless a test says otherwise. */
+const mockSignedIn = { userId: 'user-anna' };
+
 jest.mock('@/features/auth/auth-context', () => ({
-  useAuth: () => ({ session: { user: { id: 'user-anna' } } }),
+  useAuth: () => ({ session: { user: { id: mockSignedIn.userId } } }),
 }));
+
+/** The signed-in courier's own row, and no other. */
+const ownRow = (userId = 'user-anna'): Asked => ({ table: 'profiles', where: ['id', userId] });
+
+/**
+ * What a profile is made of: its own columns and both of its cities, each by
+ * the foreign key that says which of the two it is.
+ */
+const COLUMNS =
+  'id, username, display_name, avatar_url, city_changed_at, ' +
+  'cities!profiles_city_id_fkey(id, name, country_code), ' +
+  'settled:cities!profiles_settled_city_id_fkey(id, name, country_code)';
 
 /**
  * Stands in for navigation focus: an effect that runs while the screen is in
@@ -91,6 +123,7 @@ const COULD_NOT_LOAD = 'Your profile could not be loaded. Check your connection.
 beforeEach(() => {
   mockDatabase.read.mockReset();
   mockDatabase.change.mockReset().mockResolvedValue({ error: null });
+  mockSignedIn.userId = 'user-anna';
   mockScreen.inFront = true;
   jest.mocked(AppState.addEventListener).mockImplementation((_type, listener) => {
     appStateListeners.add(listener);
@@ -161,6 +194,17 @@ describe('useProfile', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.isGone).toBe(false);
+    expect(mockDatabase.read.mock.calls).toEqual([[{ ...ownRow(), columns: COLUMNS }]]);
+  });
+
+  it('asks for the row of the courier who is signed in, whoever that is', async () => {
+    mockSignedIn.userId = 'user-ben';
+    mockDatabase.read.mockResolvedValue(found({ id: 'user-ben', username: 'ben' }));
+
+    const { result } = await renderHook(() => useProfile());
+
+    await waitFor(() => expect(result.current.profile?.username).toBe('ben'));
+    expect(mockDatabase.read.mock.calls).toEqual([[{ ...ownRow('user-ben'), columns: COLUMNS }]]);
   });
 
   it('says when the profile could not be loaded', async () => {
@@ -285,7 +329,12 @@ describe('useProfile', () => {
 
       await act(() => result.current.updateDisplayName('  Anna B. '));
 
-      expect(mockDatabase.change).toHaveBeenCalledWith({ display_name: 'Anna B.' });
+      // Their own row and no other: a save that names another row changes
+      // nothing, and comes back without an error all the same.
+      expect(mockDatabase.change.mock.calls).toEqual([
+        [{ ...ownRow(), values: { display_name: 'Anna B.' } }],
+      ]);
+      expect(mockDatabase.read).toHaveBeenLastCalledWith({ ...ownRow(), columns: COLUMNS });
       expect(result.current.profile?.displayName).toBe('Anna B.');
     });
 
@@ -298,8 +347,26 @@ describe('useProfile', () => {
 
       await act(() => result.current.updateCity(2911298));
 
-      expect(mockDatabase.change).toHaveBeenCalledWith({ city_id: 2911298 });
+      expect(mockDatabase.change.mock.calls).toEqual([
+        [{ ...ownRow(), values: { city_id: 2911298 } }],
+      ]);
+      expect(mockDatabase.read).toHaveBeenLastCalledWith({ ...ownRow(), columns: COLUMNS });
       expect(result.current.profile?.city?.name).toBe('Hamburg');
+    });
+
+    it('saves to the row of the courier who is signed in, whoever that is', async () => {
+      mockSignedIn.userId = 'user-ben';
+      mockDatabase.read.mockResolvedValue(found({ id: 'user-ben', username: 'ben' }));
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.username).toBe('ben'));
+
+      await act(() => result.current.updateDisplayName('Ben'));
+      await act(() => result.current.updateCity(2911298));
+
+      expect(mockDatabase.change.mock.calls).toEqual([
+        [{ ...ownRow('user-ben'), values: { display_name: 'Ben' } }],
+        [{ ...ownRow('user-ben'), values: { city_id: 2911298 } }],
+      ]);
     });
 
     it.each([
