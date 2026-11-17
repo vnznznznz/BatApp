@@ -52,7 +52,9 @@ const chunkKey = (key: string, generation: Generation | null, index: number) =>
   generation === null ? `${key}.${index}` : `${key}.${generation}.${index}`;
 
 function parseManifest(head: string): Manifest | null {
-  const match = /^ncchunks:(\d+)(?::([ab]))?$/.exec(head);
+  // Three digits at most: far more chunks than any value has, and few enough
+  // that an entry gone wrong cannot send a write or a removal after millions.
+  const match = /^ncchunks:(\d{1,3})(?::([ab]))?$/.exec(head);
   if (!match) return null;
   return { count: Number(match[1]), generation: (match[2] as Generation | undefined) ?? null };
 }

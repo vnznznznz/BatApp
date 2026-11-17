@@ -338,6 +338,17 @@ describe('secureStorage', () => {
     }
   });
 
+  /** No value has chunks by the thousand; an entry that says so is not a manifest. */
+  it('does not go looking for the chunks of a manifest gone wrong', async () => {
+    store.set('session', 'ncchunks:5000');
+    jest.clearAllMocks();
+
+    await secureStorage.removeItem('session');
+
+    expect(store.size).toBe(0);
+    expect(mocked.deleteItemAsync).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps every entry on this device only, never in a backup for another phone', async () => {
     expect(KEYCHAIN_OPTIONS).toEqual({
       keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
