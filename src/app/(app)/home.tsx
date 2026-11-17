@@ -31,12 +31,7 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const {
-    profile,
-    isLoading: profileLoading,
-    error: profileError,
-    reload: reloadProfile,
-  } = useProfile();
+  const { profile, error: profileError, reload: reloadProfile } = useProfile();
   const roost = useRemote(fetchRoost);
   const badges = useRemote(fetchBadges);
   const now = useNow(1000);
@@ -70,11 +65,15 @@ export default function HomeScreen() {
   // was stored, and would go on showing that bat at home.
   useEffect(() => onRoostChanged(reloadAll), [reloadAll]);
 
-  const hasCity = Boolean(profile?.city);
-  const canWrite = hasCity && atHome > 0;
+  // Only a courier known to have no city is kept from writing. One whose
+  // profile could not be loaded is not: the server knows where home is, and
+  // refuses a sender without a city itself. (Found in review: a profile that
+  // failed once left "Write a letter" disabled under bats that were all home.)
+  const needsCity = profile !== null && !profile.city;
+  const canWrite = atHome > 0 && !needsCity && Boolean(profile || profileError);
 
   let writeHint: string | null = null;
-  if (profile && !hasCity) {
+  if (needsCity) {
     writeHint = 'Choose your city before sending a letter.';
   } else if (roost.data && atHome === 0 && nextHomeAt !== null) {
     const remaining = nextHomeAt - now;
@@ -86,12 +85,29 @@ export default function HomeScreen() {
 
   const unread = badges.data?.unreadLetters ?? 0;
   const requests = badges.data?.friendRequests ?? 0;
+  // Never counted, which is not the same as nothing waiting.
+  const uncounted = Boolean(badges.error) && !badges.data;
 
+  // Everything on this screen, asked for again: by a pull, and by "Try again".
   const refreshAll = () => {
     void refreshRoost();
     void reloadBadges();
     void reloadProfile();
   };
+
+  // Shown where there is nothing to show instead. The screen asks again by
+  // itself as well, but an error that says "try again" has to come with a way
+  // to do it. One button, wherever the bats would be, or else the name: with
+  // no connection everything fails at once.
+  const roostMissing = Boolean(roost.error) && !roost.data;
+  const tryAgain = (
+    <Button
+      label="Try again"
+      variant="secondary"
+      loading={roost.isRefreshing}
+      onPress={refreshAll}
+    />
+  );
 
   return (
     <Screen
@@ -117,17 +133,20 @@ export default function HomeScreen() {
               {profile.city ? ` · ${describeCity(profile.city)}` : ''}
             </Text>
           </>
-        ) : profileLoading ? (
-          <ActivityIndicator color={Colors.textMuted} />
-        ) : (
+        ) : profileError ? (
           // Without this, a failed load rendered a placeholder name over a bare "@".
-          <Text variant="caption" tone="danger" center>
-            {profileError ?? 'Your profile could not be loaded. Pull down to try again.'}
-          </Text>
+          <>
+            <Text variant="caption" tone="danger" center>
+              {profileError}
+            </Text>
+            {roostMissing ? null : tryAgain}
+          </>
+        ) : (
+          <ActivityIndicator color={Colors.textMuted} />
         )}
       </View>
 
-      {profile && !hasCity ? (
+      {needsCity ? (
         <Card raised style={styles.card}>
           <Text variant="heading">Choose your city</Text>
           <Text variant="caption" tone="secondary" style={styles.note}>
@@ -178,6 +197,7 @@ export default function HomeScreen() {
             {roost.error}
           </Text>
         ) : null}
+        {roostMissing ? tryAgain : null}
       </Card>
 
       <View style={styles.write}>
@@ -196,7 +216,13 @@ export default function HomeScreen() {
       <Card style={[styles.card, styles.menu]}>
         <ListRow
           title="Letters"
-          subtitle={unread > 0 ? `${unread} new` : 'Received and sent'}
+          subtitle={
+            unread > 0
+              ? `${unread} new`
+              : uncounted
+                ? 'Could not check for new letters'
+                : 'Received and sent'
+          }
           emphasised={unread > 0}
           trailing={
             <>
@@ -209,7 +235,11 @@ export default function HomeScreen() {
         <ListRow
           title="Friends"
           subtitle={
-            requests > 0 ? `${requests} waiting for your answer` : 'Add friends by their username'
+            requests > 0
+              ? `${requests} waiting for your answer`
+              : uncounted
+                ? 'Could not check for friend requests'
+                : 'Add friends by their username'
           }
           emphasised={requests > 0}
           trailing={

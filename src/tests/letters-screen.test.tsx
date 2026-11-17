@@ -160,6 +160,21 @@ async function pullToRefresh() {
 
 const spinners = () => screen.container.queryAll((node) => node.type === 'ActivityIndicator');
 
+const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
+
+const NOT_LOADED = 'Your letters could not be loaded. Check your connection.';
+
+/** A promise the test settles by hand, to look at the screen while a call is in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * Lets time pass as it does on a phone: a second at a time, with the screen
  * rendering in between.
@@ -293,15 +308,60 @@ describe('LettersScreen', () => {
     });
 
     it('says so when the letters cannot be loaded, rather than that there are none', async () => {
-      mockedFetchInbox.mockRejectedValue(
-        new Error('Your letters could not be loaded. Check your connection.'),
-      );
+      mockedFetchInbox.mockRejectedValue(new Error(NOT_LOADED));
       await renderScreen(<LettersScreen />);
 
-      expect(
-        await screen.findByText('Your letters could not be loaded. Check your connection.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(NOT_LOADED)).toBeOnTheScreen();
       expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+    });
+
+    /**
+     * An empty list gives no sign that it can be pulled down, and the error
+     * said "check your connection" with nothing to try it with afterwards.
+     * (Found in review.)
+     */
+    it('offers to try again when the first letters cannot be loaded, and shows them when they can', async () => {
+      mockedFetchInbox.mockRejectedValueOnce(new Error(NOT_LOADED)).mockResolvedValue([received()]);
+      await renderScreen(<LettersScreen />);
+      await screen.findByText(NOT_LOADED);
+
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
+      expect(screen.queryByText(NOT_LOADED)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
+      expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, PAGE_SIZE);
+    });
+
+    it('shows that it is trying again, and offers it once more if that fails too', async () => {
+      mockedFetchInbox.mockRejectedValueOnce(new Error(NOT_LOADED));
+      await renderScreen(<LettersScreen />);
+      await screen.findByText(NOT_LOADED);
+
+      const secondTry = deferred<ReceivedLetter[]>();
+      mockedFetchInbox.mockReturnValueOnce(secondTry.promise);
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).toBeBusy();
+
+      await act(async () => secondTry.reject(new Error(NOT_LOADED)));
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(screen.getByText(NOT_LOADED)).toBeOnTheScreen();
+    });
+
+    it('offers nothing to try again while the first letters are loading, or when there are none', async () => {
+      const first = deferred<ReceivedLetter[]>();
+      mockedFetchInbox.mockReturnValueOnce(first.promise);
+      await renderScreen(<LettersScreen />);
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+      await act(async () => first.resolve([]));
+
+      expect(screen.getByText(/^Nothing has landed yet/)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
   });
 
@@ -439,16 +499,25 @@ describe('LettersScreen', () => {
     });
 
     it('says so when the letters sent cannot be loaded, rather than that there are none', async () => {
-      mockedFetchSent.mockRejectedValue(
-        new Error('Your letters could not be loaded. Check your connection.'),
-      );
+      mockedFetchSent.mockRejectedValue(new Error(NOT_LOADED));
       await renderScreen(<LettersScreen />);
       await showSent();
 
-      expect(
-        await screen.findByText('Your letters could not be loaded. Check your connection.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(NOT_LOADED)).toBeOnTheScreen();
       expect(screen.queryByText('You have not sent a letter yet.')).toBeNull();
+    });
+
+    it('offers to try again when the letters sent cannot be loaded', async () => {
+      mockedFetchSent.mockRejectedValueOnce(new Error(NOT_LOADED)).mockResolvedValue([sent()]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText(NOT_LOADED);
+
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText('To Ben Okafor')).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -625,6 +694,8 @@ describe('LettersScreen', () => {
         await screen.findByText('No connection. Check your network and try again.'),
       ).toBeOnTheScreen();
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
+      // The list is there to pull down; the button is for when there is none.
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
   });
 });

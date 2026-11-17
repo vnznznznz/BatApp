@@ -68,7 +68,7 @@ export default function ComposeScreen() {
   const { to } = useLocalSearchParams<{ to?: string }>();
   const { session } = useAuth();
   const courierId = session?.user.id;
-  const { profile, error: profileError } = useProfile();
+  const { profile, error: profileError, reload: reloadProfile } = useProfile();
   const friendships = useRemote(fetchFriendships);
   const roost = useRemote(fetchRoost);
   const now = useNow(1000);
@@ -86,6 +86,8 @@ export default function ComposeScreen() {
   // even if the friend list is fetched again behind it and has changed. `at` is
   // when the answer came.
   const [dispatched, setDispatched] = useState<{ sent: Sent; at: Date } | null>(null);
+  // True while the profile is being loaded again because the courier asked.
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   const friends = groupFriendships(friendships.data ?? []).friends;
   const recipient = to ? (friends.find((f) => f.friend.id === to) ?? null) : null;
@@ -107,7 +109,7 @@ export default function ComposeScreen() {
   // server's own time of leaving - or, after a refusal for want of a bat, a
   // roost that had been stale. Whichever letter it was: the courier may have
   // gone on to this one while the last was still on its way out.
-  const { reload: reloadRoost } = roost;
+  const { reload: reloadRoost, refresh: refreshRoost } = roost;
   useEffect(() => onRoostChanged(() => void reloadRoost()), [reloadRoost]);
 
   // What became of a send is told to every screen showing that letter: this
@@ -137,6 +139,20 @@ export default function ComposeScreen() {
     if (askAt === null || !courierId || !to || name === null) return;
     return askAfterLetterAt(askAt, courierId, { id: to, name, city, from });
   }, [askAt, courierId, to, name, city, from]);
+
+  // Asks again for what this letter waits on, the bats and the profile, and
+  // shows that it is asking. The screen has nothing to pull down, so without
+  // this an error saying "try again" left only one way to do it: going back.
+  // (Found in review.)
+  async function loadAgain() {
+    void refreshRoost();
+    setLoadingProfile(true);
+    try {
+      await reloadProfile();
+    } finally {
+      setLoadingProfile(false);
+    }
+  }
 
   function send() {
     const problem = validateBody(text);
@@ -229,9 +245,17 @@ export default function ComposeScreen() {
         ) : null}
 
         {friendships.error && !friendships.data ? (
-          <Text variant="caption" tone="danger" style={styles.spaced}>
-            {friendships.error}
-          </Text>
+          <View style={styles.failed}>
+            <Text variant="caption" tone="danger">
+              {friendships.error}
+            </Text>
+            <Button
+              label="Try again"
+              variant="secondary"
+              loading={friendships.isRefreshing}
+              onPress={() => void friendships.refresh()}
+            />
+          </View>
         ) : null}
 
         {friendships.data && friends.length === 0 ? (
@@ -262,11 +286,30 @@ export default function ComposeScreen() {
   const route = recipient.route;
   const length = letterLength(text);
   const tooLong = length > MESSAGE_MAX_LENGTH;
-  const canSend = Boolean(route) && Boolean(profile?.city) && atHome > 0;
+  // Only a courier known to have no city is held back here. A profile that
+  // could not be loaded holds no letter back: the server knows where home is,
+  // and refuses a sender without a city itself. (Found in review: one failed
+  // request as the screen opened left "Send by bat" disabled until the screen
+  // was left, and the letter with it.)
+  const needsCity = profile !== null && !profile.city;
+  const canSend = Boolean(route) && atHome > 0 && !needsCity && Boolean(profile || profileError);
+
+  // One way out is enough when both the bats and the profile are missing. It
+  // stands by the bats then, next to the button it is in the way of.
+  const roostMissing = Boolean(roost.error) && !roost.data;
+  const tryAgain = (
+    <Button
+      label="Try again"
+      variant="secondary"
+      loading={roost.isRefreshing || loadingProfile}
+      onPress={() => void loadAgain()}
+    />
+  );
 
   // The only place that says why "Send by bat" might be disabled, so it must
-  // say something in every state - including when the bats could not be counted.
-  let batLine: string | null = null;
+  // say something in every state - while the bats are still being counted, and
+  // when they could not be.
+  let batLine: string;
   if (roost.data) {
     const remaining = nextHomeAt === null ? null : nextHomeAt - now;
     batLine =
@@ -277,8 +320,8 @@ export default function ComposeScreen() {
           : remaining > 0
             ? `All your bats are out. The next one is home in ${formatDuration(remaining)}.`
             : 'All your bats are out. The next one is landing any moment now.';
-  } else if (roost.error) {
-    batLine = roost.error;
+  } else {
+    batLine = roost.error ?? 'Counting your bats…';
   }
 
   return (
@@ -297,14 +340,17 @@ export default function ComposeScreen() {
         </Text>
       ) : null}
 
-      {profile && !profile.city ? (
+      {needsCity ? (
         <Text variant="caption" tone="danger" style={styles.spaced}>
           Choose your city first. Your bats need to know where home is.
         </Text>
       ) : !profile && profileError ? (
-        <Text variant="caption" tone="danger" style={styles.spaced}>
-          {profileError}
-        </Text>
+        <View style={styles.failed}>
+          <Text variant="caption" tone="danger">
+            {profileError}
+          </Text>
+          {roostMissing ? null : tryAgain}
+        </View>
       ) : null}
 
       <View style={styles.form}>
@@ -333,15 +379,14 @@ export default function ComposeScreen() {
           {length} / {MESSAGE_MAX_LENGTH}
         </Text>
 
-        {batLine ? (
-          <Text
-            variant="caption"
-            tone={!roost.data ? 'danger' : atHome > 0 ? 'muted' : 'flying'}
-            style={styles.note}
-          >
-            {batLine}
-          </Text>
-        ) : null}
+        <Text
+          variant="caption"
+          tone={roost.data ? (atHome > 0 ? 'muted' : 'flying') : roost.error ? 'danger' : 'muted'}
+          style={styles.note}
+        >
+          {batLine}
+        </Text>
+        {roostMissing ? tryAgain : null}
 
         <Button label="Send by bat" loading={sending} disabled={!canSend} onPress={send} />
       </View>
@@ -409,6 +454,7 @@ const styles = StyleSheet.create({
   screen: { paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   lead: { marginTop: Spacing.xs, lineHeight: 19 },
   spaced: { marginTop: Spacing.md },
+  failed: { marginTop: Spacing.md, gap: Spacing.sm },
   list: { marginTop: Spacing.lg, paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   form: { gap: Spacing.sm, marginTop: Spacing.lg },
   counter: { alignSelf: 'flex-end' },

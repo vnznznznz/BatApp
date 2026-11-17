@@ -147,9 +147,22 @@ function LetterList<T extends { id: string }>({
       }
       ListHeaderComponent={
         paged.error ? (
-          <Text variant="caption" tone="danger" style={styles.message}>
-            {paged.error}
-          </Text>
+          <View style={styles.failed}>
+            <Text variant="caption" tone="danger" style={styles.line}>
+              {paged.error}
+            </Text>
+            {/* With letters on screen there is a list to pull down. With none,
+                nothing shows that it can be pulled, and the error would say
+                "try again" with no way to. (Found in review.) */}
+            {paged.items.length === 0 ? (
+              <Button
+                label="Try again"
+                variant="secondary"
+                loading={paged.isRefreshing}
+                onPress={() => void paged.refresh()}
+              />
+            ) : null}
+          </View>
         ) : null
       }
       ListEmptyComponent={
@@ -198,5 +211,7 @@ const styles = StyleSheet.create({
   list: { paddingBottom: Spacing.xl, flexGrow: 1 },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
   message: { marginTop: Spacing.lg, lineHeight: 19 },
+  failed: { marginTop: Spacing.lg, gap: Spacing.sm },
+  line: { lineHeight: 19 },
   retry: { marginTop: Spacing.lg, alignItems: 'center' },
 });

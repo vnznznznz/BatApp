@@ -7,6 +7,7 @@ import { BATS_PER_USER } from '@/constants/config';
 import { fetchBadges } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roost/roost';
+import { RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
@@ -104,6 +105,25 @@ const roostLoaded = () => screen.findByText(/^\d+ of \d+ at home$/);
 
 const writeButton = () => screen.getByRole('button', { name: 'Write a letter' });
 
+const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
+
+/** What every request ends with while there is no connection: no answer, and no refusal. */
+const NO_CONNECTION = 'No connection. Check your network and try again.';
+const noConnection = () => new RpcError(NO_CONNECTION, null);
+
+const PROFILE_NOT_LOADED = 'Your profile could not be loaded. Check your connection.';
+
+/** A promise the test settles by hand, to look at the screen while a call is in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * Lets time pass as it does on a phone: a second at a time, with the screen
  * rendering in between. One long act() would hold every update until its end,
@@ -128,7 +148,8 @@ async function pullToRefresh() {
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
-  mockReloadProfile.mockClear();
+  mockReloadProfile.mockReset();
+  mockReloadProfile.mockImplementation(() => Promise.resolve());
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
   mockProfileState.error = null;
@@ -445,6 +466,203 @@ describe('HomeScreen', () => {
 
       expect(screen.queryByText('Sign out')).toBeNull();
       expect(screen.queryAllByText(/delete/i)).toHaveLength(0);
+    });
+  });
+
+  /**
+   * Opened with no signal, the roost used to say "try again" with nothing on
+   * screen to try it with, and stayed that way until the courier thought to
+   * pull down, which nothing said to do. (Found in review.)
+   */
+  describe('when something could not be loaded', () => {
+    it('offers to try again when the roost cannot be loaded, and then loads the roost, the counts and the profile', async () => {
+      mockedFetchRoost.mockRejectedValueOnce(noConnection());
+      mockedFetchBadges.mockRejectedValueOnce(noConnection());
+      await renderScreen(<HomeScreen />);
+      expect(await screen.findByText(NO_CONNECTION)).toBeOnTheScreen();
+      mockReloadProfile.mockClear();
+
+      // The connection is back.
+      mockedFetchBadges.mockResolvedValue({ unreadLetters: 2, friendRequests: 0 });
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText('3 of 3 at home')).toBeOnTheScreen();
+      expect(screen.getByText('2 new')).toBeOnTheScreen();
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(NO_CONNECTION)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    it('shows that it is trying again, and offers it once more if that fails too', async () => {
+      mockedFetchRoost.mockRejectedValueOnce(noConnection());
+      await renderScreen(<HomeScreen />);
+      await screen.findByText(NO_CONNECTION);
+
+      const secondTry = deferred<Bat[]>();
+      mockedFetchRoost.mockReturnValueOnce(secondTry.promise);
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).toBeBusy();
+      expect(tryAgainButton()).toBeDisabled();
+
+      await act(async () => secondTry.reject(noConnection()));
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(tryAgainButton()).toBeEnabled();
+      expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+    });
+
+    it('offers to try again when only the profile could not be loaded', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+      expect(screen.getByText(PROFILE_NOT_LOADED)).toBeOnTheScreen();
+
+      // The connection is back: the next load of the profile succeeds.
+      mockReloadProfile.mockClear();
+      mockReloadProfile.mockImplementation(async () => {
+        mockProfileState.profile = courier;
+        mockProfileState.error = null;
+      });
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText('Mara Lind')).toBeOnTheScreen();
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(PROFILE_NOT_LOADED)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    // Without a connection all of it fails at once. One way out is enough.
+    it('offers it once when neither the roost nor the profile could be loaded', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      mockedFetchRoost.mockRejectedValue(noConnection());
+      mockedFetchBadges.mockRejectedValue(noConnection());
+      await renderScreen(<HomeScreen />);
+
+      expect(await screen.findByText(NO_CONNECTION)).toBeOnTheScreen();
+      expect(screen.getByText(PROFILE_NOT_LOADED)).toBeOnTheScreen();
+      expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    });
+
+    it('offers nothing to try again while everything is there', async () => {
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    it('offers nothing to try again while the roost is still loading for the first time', async () => {
+      mockedFetchRoost.mockReturnValue(new Promise<Bat[]>(() => {}));
+      await renderScreen(<HomeScreen />);
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    /**
+     * A roost that is on screen stays there when a later fetch fails; the
+     * failure is said beneath it, and the screen asks again by itself. The
+     * button is for when there is nothing to show.
+     */
+    it('keeps the bats it has, without the button, when a later fetch fails', async () => {
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      mockedFetchRoost.mockRejectedValue(noConnection());
+      await pullToRefresh();
+
+      expect(await screen.findByText(NO_CONNECTION)).toBeOnTheScreen();
+      expect(screen.getByText('3 of 3 at home')).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    /**
+     * "Received and sent" and "Add friends by their username" are what the two
+     * rows say when nothing is waiting. Said when nobody could check, they
+     * would be read as "nothing new". (Found in review.)
+     */
+    it('does not say that nothing is new when the counts could not be checked', async () => {
+      mockedFetchBadges.mockRejectedValue(new RpcError('Could not check for new letters.', null));
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(await screen.findByText('Could not check for new letters')).toBeOnTheScreen();
+      expect(screen.getByText('Could not check for friend requests')).toBeOnTheScreen();
+      expect(screen.queryByText('Received and sent')).toBeNull();
+      expect(screen.queryByText('Add friends by their username')).toBeNull();
+      // The rows still lead where they lead.
+      await fireEvent.press(screen.getByText('Letters'));
+      expect(mockPush).toHaveBeenLastCalledWith('/letters');
+    });
+
+    it('says what is waiting again once the counts can be checked', async () => {
+      mockedFetchBadges.mockRejectedValueOnce(noConnection());
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+      expect(await screen.findByText('Could not check for new letters')).toBeOnTheScreen();
+
+      mockedFetchBadges.mockResolvedValue({ unreadLetters: 0, friendRequests: 1 });
+      await pullToRefresh();
+
+      expect(await screen.findByText('1 waiting for your answer')).toBeOnTheScreen();
+      expect(screen.getByText('Received and sent')).toBeOnTheScreen();
+      expect(screen.queryByText(/^Could not check/)).toBeNull();
+    });
+
+    // The last counts known are better than none, as with the bats above.
+    it('keeps the counts it had when a later check fails', async () => {
+      mockedFetchBadges.mockResolvedValue({ unreadLetters: 3, friendRequests: 0 });
+      await renderScreen(<HomeScreen />);
+      expect(await screen.findByText('3 new')).toBeOnTheScreen();
+
+      mockedFetchBadges.mockRejectedValue(noConnection());
+      await pullToRefresh();
+      await roostLoaded();
+
+      expect(screen.getByText('3 new')).toBeOnTheScreen();
+      expect(screen.getByText('Add friends by their username')).toBeOnTheScreen();
+      expect(screen.queryByText(/^Could not check/)).toBeNull();
+    });
+
+    /**
+     * Only a courier known to have no city is kept from writing. One whose
+     * profile could not be loaded is not: the server knows where home is, and
+     * refuses a sender without a city itself.
+     */
+    it('can start a letter although the profile could not be loaded', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(writeButton()).toBeEnabled();
+      await fireEvent.press(writeButton());
+      expect(mockPush).toHaveBeenLastCalledWith('/compose');
+
+      mockPush.mockClear();
+      await fireEvent.press(screen.getByRole('button', { name: 'Bat 1, at home' }));
+      expect(mockPush).toHaveBeenLastCalledWith('/compose');
+    });
+
+    it('still waits for a profile that is on its way before offering to write', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isLoading = true;
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(writeButton()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Bat 1, at home' })).toBeDisabled();
+    });
+
+    it('cannot start a letter with no bat at home, whatever became of the profile', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      serve(() => [batInFlight(1, HOUR), batInFlight(2, 2 * HOUR), batInFlight(3, 3 * HOUR)]);
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(writeButton()).toBeDisabled();
     });
   });
 

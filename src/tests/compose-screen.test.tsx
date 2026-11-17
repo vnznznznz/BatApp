@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { AccessibilityInfo, AppState } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { fetchFriendships, type Friendship } from '@/features/friends/friends';
 import { forgetAllDrafts } from '@/features/messages/drafts';
 import { fetchSentLetter, sendMessage, type Dispatch } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
-import { fetchRoost, type Bat } from '@/features/roost/roost';
+import { fetchRoost, roostChanged, type Bat } from '@/features/roost/roost';
 import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
@@ -67,8 +67,11 @@ const mockProfileState: { profile: Profile | null; isLoading: boolean; error: st
   error: null,
 };
 
+// Stable, as the real hook's is.
+const mockReloadProfile = jest.fn(() => Promise.resolve());
+
 jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({ ...mockProfileState }),
+  useProfile: () => ({ ...mockProfileState, reload: mockReloadProfile }),
 }));
 
 /** Who is signed in on this phone. */
@@ -259,6 +262,11 @@ const renderScreen = (ui: ReactElement) => render(inSafeArea(ui));
 
 const letterField = () => screen.getByLabelText('Your letter');
 const sendButton = () => screen.getByRole('button', { name: 'Send by bat' });
+const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
+
+const ROOST_NOT_LOADED = 'Your roost could not be loaded. Check your connection.';
+const PROFILE_NOT_LOADED = 'Your profile could not be loaded. Check your connection.';
+const FRIENDS_NOT_LOADED = 'Your friends could not be loaded. Check your connection.';
 
 /**
  * Opens the screen with a letter addressed to `friendId`, once the bats are
@@ -304,6 +312,8 @@ beforeEach(() => {
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
   mockProfileState.error = null;
+  mockReloadProfile.mockReset();
+  mockReloadProfile.mockImplementation(() => Promise.resolve());
   mockedFetchFriendships.mockReset();
   serveFriends(() => [anna, ben, carla, dora]);
   mockedFetchRoost.mockReset();
@@ -386,18 +396,56 @@ describe('ComposeScreen', () => {
     });
 
     it('says so when friends cannot be loaded', async () => {
-      mockedFetchFriendships.mockRejectedValue(
-        new Error('Your friends could not be loaded. Check your connection.'),
-      );
+      mockedFetchFriendships.mockRejectedValue(new Error(FRIENDS_NOT_LOADED));
       mockParams.to = 'user-anna';
       await renderScreen(<ComposeScreen />);
 
-      expect(
-        await screen.findByText('Your friends could not be loaded. Check your connection.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(FRIENDS_NOT_LOADED)).toBeOnTheScreen();
       // Not knowing is not the same as knowing they are not a friend.
       expect(screen.queryByText('You can only write to friends. Choose one below.')).toBeNull();
       expect(screen.queryByText('You have no friends to write to yet.')).toBeNull();
+    });
+
+    /**
+     * This screen has nothing to pull down, so its errors said "try again" with
+     * no way to do it but leaving and coming back. (Found in review.)
+     */
+    it('offers to try again when friends cannot be loaded, and goes on to the letter when they can', async () => {
+      mockedFetchFriendships.mockRejectedValueOnce(new Error(FRIENDS_NOT_LOADED));
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText(FRIENDS_NOT_LOADED);
+
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByLabelText('Your letter')).toBeOnTheScreen();
+      expect(screen.queryByText(FRIENDS_NOT_LOADED)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows that it is asking for the friends again', async () => {
+      mockedFetchFriendships.mockRejectedValueOnce(new Error(FRIENDS_NOT_LOADED));
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText(FRIENDS_NOT_LOADED);
+
+      const secondTry = deferred<Friendship[]>();
+      mockedFetchFriendships.mockReturnValueOnce(secondTry.promise);
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).toBeBusy();
+
+      await act(async () => secondTry.reject(new Error(FRIENDS_NOT_LOADED)));
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(screen.getByText(FRIENDS_NOT_LOADED)).toBeOnTheScreen();
+    });
+
+    it('offers nothing to try again once the friends are listed', async () => {
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText('Who is it for?');
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
   });
 
@@ -1624,6 +1672,25 @@ describe('ComposeScreen', () => {
       expect(screen.queryByText(/bats at home|bats are out/)).toBeNull();
     });
 
+    // Until the roost answers the button is disabled, and a disabled button
+    // with nothing beside it to say why looks broken. (Found in review.)
+    it('says that it is counting the bats until it has', async () => {
+      const roost = deferred<Bat[]>();
+      mockedFetchRoost.mockReturnValue(roost.promise);
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+      await screen.findByLabelText('Your letter');
+
+      // Said quietly: nothing is wrong yet.
+      expect(screen.getByText('Counting your bats…')).toHaveStyle({ color: Colors.textMuted });
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+      await act(async () => roost.resolve(everyBatHome()));
+
+      expect(screen.queryByText('Counting your bats…')).toBeNull();
+      expect(screen.getByText(/^3 of 3 bats at home\./)).toBeOnTheScreen();
+    });
+
     it('does not offer to send until it knows where home is', async () => {
       mockProfileState.profile = null;
       mockProfileState.isLoading = true;
@@ -1639,31 +1706,167 @@ describe('ComposeScreen', () => {
     // With no roost, no bat counts as home and "Send by bat" is disabled. A
     // courier holding a letter that will not go needs to be told why.
     it('says why a letter cannot go when the bats could not be counted', async () => {
-      mockedFetchRoost.mockRejectedValue(
-        new Error('Your roost could not be loaded. Check your connection.'),
-      );
+      mockedFetchRoost.mockRejectedValue(new Error(ROOST_NOT_LOADED));
       mockParams.to = 'user-anna';
       await renderScreen(<ComposeScreen />);
       expect(await screen.findByLabelText('Your letter')).toBeOnTheScreen();
 
-      expect(
-        await screen.findByText('Your roost could not be loaded. Check your connection.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(ROOST_NOT_LOADED)).toHaveStyle({ color: Colors.danger });
+      expect(screen.queryByText('Counting your bats…')).toBeNull();
       expect(sendButton()).toBeDisabled();
     });
 
-    // Without a profile no city is known, so "Send by bat" is disabled, and the
-    // city prompt cannot appear either: it needs a profile to know the city is
-    // missing. Only the load error can explain the button.
-    it('says why a letter cannot go when the profile could not be loaded', async () => {
+    /**
+     * One failed request as the screen opened used to leave "Send by bat"
+     * disabled for good, under an error that said "try again" with nothing to
+     * try it with. Leaving was the only way out. (Found in review.)
+     */
+    it('offers to count the bats again, and lets the letter go once they are counted', async () => {
+      mockedFetchRoost.mockRejectedValueOnce(new Error(ROOST_NOT_LOADED));
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText(ROOST_NOT_LOADED);
+      await fireEvent.changeText(letterField(), 'See you at the lake.');
+
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText(/^3 of 3 bats at home\./)).toBeOnTheScreen();
+      expect(screen.queryByText(ROOST_NOT_LOADED)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(sendButton()).toBeEnabled();
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+      expect(mockedFetchRoost).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows that it is counting the bats again', async () => {
+      mockedFetchRoost.mockRejectedValueOnce(new Error(ROOST_NOT_LOADED));
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText(ROOST_NOT_LOADED);
+
+      const secondTry = deferred<Bat[]>();
+      mockedFetchRoost.mockReturnValueOnce(secondTry.promise);
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).toBeBusy();
+
+      await act(async () => secondTry.reject(new Error(ROOST_NOT_LOADED)));
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(screen.getByText(ROOST_NOT_LOADED)).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('offers nothing to try again while the bats are counted', async () => {
+      await openLetterTo('user-anna');
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    // A count that is on screen stays there when a later one fails: the last
+    // one known still says whether a letter can go.
+    it('keeps the count it has, without the button, when a later count fails', async () => {
+      await openLetterTo('user-anna');
+
+      mockedFetchRoost.mockRejectedValue(new Error(ROOST_NOT_LOADED));
+      await act(async () => roostChanged());
+
+      expect(mockedFetchRoost).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/^3 of 3 bats at home\./)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(sendButton()).toBeEnabled();
+    });
+
+    /**
+     * The profile is not needed to send: the server knows where home is, and
+     * refuses a sender without a city itself. A profile that failed to load
+     * used to keep "Send by bat" disabled until the screen was left - with the
+     * letter. (Found in review.)
+     */
+    it('does not hold a letter back because the profile could not be loaded', async () => {
       mockProfileState.profile = null;
-      mockProfileState.error = 'Your profile could not be loaded. Check your connection.';
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      await openLetterTo('user-anna');
+
+      expect(sendButton()).toBeEnabled();
+      await writeAndSend('See you at the lake.');
+
+      expect(mockedSendMessage).toHaveBeenCalledWith(
+        'user-anna',
+        'See you at the lake.',
+        expect.any(String),
+      );
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+    });
+
+    it('says that the profile could not be loaded, and loads it again when asked', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      await openLetterTo('user-anna');
+      expect(screen.getByText(PROFILE_NOT_LOADED)).toBeOnTheScreen();
+      await fireEvent.changeText(letterField(), 'See you at the lake.');
+
+      // The connection is back: the next load of the profile succeeds.
+      mockReloadProfile.mockClear();
+      mockReloadProfile.mockImplementation(async () => {
+        mockProfileState.profile = courier;
+        mockProfileState.error = null;
+      });
+      await fireEvent.press(tryAgainButton());
+
+      await waitFor(() => expect(screen.queryByText(PROFILE_NOT_LOADED)).toBeNull());
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+    });
+
+    it('shows that it is loading the profile again', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      await openLetterTo('user-anna');
+
+      const secondTry = deferred<void>();
+      mockReloadProfile.mockReturnValueOnce(secondTry.promise);
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).toBeBusy();
+
+      await act(async () => secondTry.resolve());
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(screen.getByText(PROFILE_NOT_LOADED)).toBeOnTheScreen();
+    });
+
+    // With no connection as the friends came through, both are missing. One
+    // way out is enough, and it asks for both.
+    it('offers to try again once when neither the bats nor the profile could be loaded', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      mockedFetchRoost.mockRejectedValueOnce(new Error(ROOST_NOT_LOADED));
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText(ROOST_NOT_LOADED);
+      expect(screen.getByText(PROFILE_NOT_LOADED)).toBeOnTheScreen();
+      expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+
+      mockReloadProfile.mockClear();
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText(/^3 of 3 bats at home\./)).toBeOnTheScreen();
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+    });
+
+    // A way to the friend cannot be there without a city, as the server works
+    // routes out; if one ever were, the letter would still be held back here.
+    it('holds a letter back for a courier known to have no city, whatever else is known', async () => {
+      mockProfileState.profile = { ...courier, city: null };
       await openLetterTo('user-anna');
 
       expect(
-        screen.getByText('Your profile could not be loaded. Check your connection.'),
+        screen.getByText('Choose your city first. Your bats need to know where home is.'),
       ).toBeOnTheScreen();
       expect(sendButton()).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
 
     /**
