@@ -509,6 +509,14 @@ export type Database = {
           message_id: string;
         }[];
       };
+      sent_letter: {
+        Args: { client_ref: string };
+        Returns: {
+          deliver_at: string;
+          distance_km: number;
+          message_id: string;
+        }[];
+      };
       unblock_courier: { Args: { courier_id: string }; Returns: undefined };
       withdraw_request: { Args: { friendship_id: string }; Returns: undefined };
     };

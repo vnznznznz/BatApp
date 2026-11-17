@@ -243,6 +243,150 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.equal(await flyingBats(anna), 1);
     });
 
+    /**
+     * The same, on the courier's last bat. The retry could not see the
+     * original's letter and could not have its bat either - locked, and so
+     * passed over - and was told every bat was out, while the letter went. It
+     * now waits for the original and answers with its letter. (Found in review.)
+     */
+    it('answers a retry on the last bat with the letter its original sent', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const ref = '88888888-8888-4888-8888-888888888888';
+      const original = await connectAs(anna);
+      const retry = await connectAs(anna);
+      await original.query(`select * from public.send_message($1, 'one')`, [ben]);
+      await original.query(`select * from public.send_message($1, 'two')`, [ben]);
+
+      await original.query('begin');
+      const first = await original.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      const repeating = retry.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      assert.equal(await settlesWithin(repeating, 300), false, 'the retry did not wait');
+      await original.query('commit');
+      const second = await repeating;
+
+      assert.deepEqual(second.rows, first.rows);
+      const { rows } = await admin.query(
+        `select count(*)::int as letters from public.messages where sender_id = $1`,
+        [anna],
+      );
+      assert.equal(rows[0].letters, 3);
+      assert.equal(await flyingBats(anna), 3);
+    });
+
+    it('lets the retry send the letter itself when its original came to nothing', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const ref = '99999999-9999-4999-8999-999999999999';
+      const original = await connectAs(anna);
+      const retry = await connectAs(anna);
+
+      await original.query('begin');
+      const first = await original.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      const repeating = retry.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      assert.equal(await settlesWithin(repeating, 300), false, 'the retry did not wait');
+      await original.query('rollback');
+      const second = await repeating;
+
+      assert.notEqual(second.rows[0].message_id, first.rows[0].message_id);
+      const { rows } = await admin.query(
+        `select id from public.messages where sender_id = $1 and client_ref = $2`,
+        [anna, ref],
+      );
+      assert.deepEqual(rows, [{ id: second.rows[0].message_id }]);
+      assert.equal(await flyingBats(anna), 1);
+    });
+
+    /**
+     * What waits is one letter's own repeats. Another letter of the same
+     * courier's goes side by side with it, as before, and so does another
+     * courier's letter that happens to carry the same reference.
+     */
+    it('does not make one letter wait for another', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const ref = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const held = await connectAs(anna);
+      const annaAgain = await connectAs(anna);
+      const benSession = await connectAs(ben);
+
+      await held.query('begin');
+      await held.query(`select * from public.send_message($1, 'held open', $2)`, [ben, ref]);
+      await annaAgain.query(`set statement_timeout = '5s'`);
+      await annaAgain.query(`select * from public.send_message($1, 'another letter', $2)`, [
+        ben,
+        'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      ]);
+      await benSession.query(`set statement_timeout = '5s'`);
+      await benSession.query(`select * from public.send_message($1, 'same reference', $2)`, [
+        anna,
+        ref,
+      ]);
+      await held.query('commit');
+
+      assert.equal(await flyingBats(anna), 2);
+      assert.equal(await flyingBats(ben), 1);
+    });
+
+    /**
+     * The app asks whether a send went when it got no answer. While that send
+     * is still running, "no" is an answer that turns false a moment later, and
+     * on it the app would let the same letter go out again under a new
+     * reference. The question waits for the send it is about.
+     */
+    it('makes the question whether a letter went wait for a send still running', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const ref = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      const sending = await connectAs(anna);
+      const asking = await connectAs(anna);
+
+      await sending.query('begin');
+      const sent = await sending.query(`select * from public.send_message($1, 'Once.', $2)`, [
+        ben,
+        ref,
+      ]);
+      const answer = asking.query(`select * from public.sent_letter($1)`, [ref]);
+      assert.equal(await settlesWithin(answer, 300), false, 'the question did not wait');
+      await sending.query('commit');
+
+      assert.deepEqual((await answer).rows, sent.rows);
+    });
+
+    it('answers that no letter went when the send it waited for came to nothing', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const ref = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+      const sending = await connectAs(anna);
+      const asking = await connectAs(anna);
+
+      await sending.query('begin');
+      await sending.query(`select * from public.send_message($1, 'Once.', $2)`, [ben, ref]);
+      const answer = asking.query(`select * from public.sent_letter($1)`, [ref]);
+      assert.equal(await settlesWithin(answer, 300), false, 'the question did not wait');
+      await sending.query('rollback');
+
+      assert.deepEqual((await answer).rows, []);
+      assert.equal(await flyingBats(anna), 0);
+    });
+
     it('does not let one courier’s sends wait on another’s', async () => {
       const anna = await createCourier('anna', ['Berlin', 'DE']);
       const ben = await createCourier('ben', ['Munich', 'DE']);
@@ -370,6 +514,36 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
         rows.map((row) => row.status),
         ['available', 'available', 'available'],
       );
+    });
+
+    /**
+     * A letter is stamped opened by the clock of the request that reads it,
+     * and landed by the clock of whatever landed it. A request that began
+     * before the landing and reads the letter after it stamped the letter
+     * opened before it had arrived, which the table refuses: the read failed.
+     * The letter is now opened no earlier than it landed. (Found in review.)
+     */
+    it('opens a letter that landed after the request reading it began', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      await makeFriends(anna, ben);
+      const letter = await dueLetterFrom(anna, ben);
+      const reading = await connectAs(ben);
+
+      // The request's clock starts here, and stands still until it ends.
+      await reading.query('begin');
+      await reading.query('select now()');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await admin.query(`select private.deliver_due_messages()`);
+      const { rows } = await reading.query(`select body from public.read_message($1)`, [letter]);
+      await reading.query('commit');
+
+      assert.deepEqual(rows, [{ body: 'due now' }]);
+      const { rows: stamps } = await admin.query(
+        `select opened_at = delivered_at as opened_as_it_landed from public.messages where id = $1`,
+        [letter],
+      );
+      assert.deepEqual(stamps, [{ opened_as_it_landed: true }]);
     });
 
     /** Sender and recipient landing the same letters at once: no deadlock, no double landing. */

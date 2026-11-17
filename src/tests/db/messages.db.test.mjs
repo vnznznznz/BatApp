@@ -48,6 +48,8 @@ async function berlinAndMunich() {
 const send = async (from, to, body = 'Good evening.') =>
   (await rpc(db, from, 'send_message', { recipient_id: to, body }))[0];
 
+const sentLetter = (who, ref) => rpc(db, who, 'sent_letter', { client_ref: ref });
+
 const messageRow = async (id) =>
   (await db.query(`select * from public.messages where id = $1`, [id])).rows[0];
 
@@ -188,6 +190,73 @@ describe('sending', () => {
     assert.equal(await count(db, `select 1 from public.messages`), 2);
   });
 
+  /**
+   * When a send gets no answer at all, the app cannot tell "did not go" from
+   * "went, and the answer was lost". Before it lets the courier send changed
+   * words - which would be a second letter - it asks, by the reference the
+   * first attempt carried.
+   */
+  it('tells the sender whether a letter went, by the reference it was sent under', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const ref = '55555555-5555-4555-8555-555555555555';
+    assert.deepEqual(await sentLetter(anna, ref), []);
+
+    const [sent] = await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'Once.',
+      client_ref: ref,
+    });
+
+    assert.deepEqual(await sentLetter(anna, ref), [sent]);
+    assert.deepEqual(Object.keys(sent).sort(), ['deliver_at', 'distance_km', 'message_id']);
+  });
+
+  it('still says so once the letter has landed', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const ref = '66666666-6666-4666-8666-666666666666';
+    const [sent] = await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'Once.',
+      client_ref: ref,
+    });
+    await fastForward(db, sent.message_id);
+    await runWorker(db);
+
+    const [found] = await sentLetter(anna, ref);
+
+    assert.equal(found.message_id, sent.message_id);
+  });
+
+  it('answers that question for the caller’s own letters only', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
+    const ref = '77777777-7777-4777-8777-777777777777';
+    const [annas] = await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'From Anna.',
+      client_ref: ref,
+    });
+
+    // Neither the recipient nor a stranger learns that the reference is in use.
+    assert.deepEqual(await sentLetter(ben, ref), []);
+    assert.deepEqual(await sentLetter(cara, ref), []);
+
+    const [bens] = await rpc(db, ben, 'send_message', {
+      recipient_id: anna,
+      body: 'From Ben.',
+      client_ref: ref,
+    });
+    assert.equal((await sentLetter(ben, ref))[0].message_id, bens.message_id);
+    assert.equal((await sentLetter(anna, ref))[0].message_id, annas.message_id);
+  });
+
+  it('has no letter to name for no reference', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    await send(anna, ben);
+
+    assert.deepEqual(await sentLetter(anna, null), []);
+  });
+
   it('refuses a letter to yourself', async () => {
     const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
 
@@ -242,6 +311,11 @@ describe('sending', () => {
 
     await assert.rejects(() =>
       asAnon(db, () => db.query(`select * from public.send_message($1, 'hello')`, [ben])),
+    );
+    await assert.rejects(() =>
+      asAnon(db, () =>
+        db.query(`select * from public.sent_letter('55555555-5555-4555-8555-555555555555')`),
+      ),
     );
   });
 });
@@ -657,6 +731,46 @@ describe('reading', () => {
     assert.ok(letter.opened_at);
     assert.equal((await rpc(db, ben, 'get_badges'))[0].unread_messages, 0);
     assert.ok((await rpc(db, ben, 'list_inbox'))[0].opened_at);
+  });
+
+  it('stamps a letter with the time it was read, not the time it landed', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const sent = await send(anna, ben);
+    await db.query(
+      `update public.messages
+       set sent_at = now() - interval '3 hours', deliver_at = now() - interval '2 hours',
+           delivered_at = now() - interval '1 hour'
+       where id = $1`,
+      [sent.message_id],
+    );
+
+    const [letter] = await rpc(db, ben, 'read_message', { message_id: sent.message_id });
+
+    assert.ok(Date.now() - letter.opened_at.getTime() < 60_000, `opened at ${letter.opened_at}`);
+  });
+
+  /**
+   * A letter is stamped opened by the clock of the request that reads it, and
+   * landed by the clock of whatever landed it. A request that began a moment
+   * before the landing and read the letter a moment after stamped it opened
+   * before it had arrived, which the table refuses - so the read failed.
+   * (Found in review; concurrency.pg.test.mjs makes it happen with two
+   * connections. Here the landing's clock is simply set ahead.)
+   */
+  it('opens a letter that landed after the request reading it began', async () => {
+    const { anna, ben } = await berlinAndMunich();
+    const sent = await send(anna, ben);
+    await fastForward(db, sent.message_id);
+    await runWorker(db);
+    await db.query(
+      `update public.messages set delivered_at = now() + interval '5 seconds' where id = $1`,
+      [sent.message_id],
+    );
+
+    const [letter] = await rpc(db, ben, 'read_message', { message_id: sent.message_id });
+
+    assert.equal(letter.body, 'Good evening.');
+    assert.deepEqual(letter.opened_at, (await messageRow(sent.message_id)).delivered_at);
   });
 
   it('keeps the first opening time when a letter is read again', async () => {

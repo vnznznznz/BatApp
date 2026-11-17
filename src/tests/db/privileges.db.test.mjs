@@ -140,6 +140,7 @@ describe('function privileges', () => {
       'request_friend',
       'search_cities',
       'send_message',
+      'sent_letter',
       'unblock_courier',
       'withdraw_request',
     ]);
