@@ -12,8 +12,9 @@ Notes for the operator - remove before publishing, like every comment in this fi
    ended after 90 days unused, the sign-in log kept 30 days and deleted with the account, the names
    from sign-up, the old city, private.remove_account with a ban of two years from the removal. If
    that changes, update sections 3.1, 3.2, 3.8, 3.9, 5, 6, 9 and 11 and "In short". On the hosted
-   project, "select private.tidy_up();" must return {} (docs/GO-LIVE.md, "Setting up the hosted
-   project", step 4). Otherwise the list names every step the job skips for want of a privilege,
+   project, "select private.tidy_up();" must return an empty list (docs/GO-LIVE.md, "Setting up the
+   hosted project", step 4). Otherwise the list names every step the job skips for want of a
+   privilege,
    and what this policy says about it is wrong.
 5. Section 5 (iPhone) describes the keychain with WHEN_UNLOCKED_THIS_DEVICE_ONLY (KEYCHAIN_OPTIONS
    in src/lib/secure-storage.ts, commit 3a343b0). If that is reverted, put the old sentence back:
@@ -358,8 +359,8 @@ system (the so-called user agent).
   20261104120000_privacy_housekeeping.sql (tidy_up, delete_own_account), checked against the local
   stack's real GoTrue on 4 November 2026. If the postgres role lacks the privilege on the hosted
   project, both skip the step without an error; tidy_up then names it in what it returns. The
-  check: "select private.tidy_up();" must return {} (docs/GO-LIVE.md, "Setting up the hosted
-  project", step 4; locally: {}). delete_own_account finds the entries
+  check: "select private.tidy_up();" must return an empty list (docs/GO-LIVE.md, "Setting up the
+  hosted project", step 4; locally it is empty). delete_own_account finds the entries
   by payload->>'actor_id'; entries without an actor_id that still hold the email address go only
   after 30 days. ip_address is empty locally, hence "where recorded".
 - Server logs: look up the retention of the chosen Supabase plan and write it in (e.g. "after one

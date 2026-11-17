@@ -49,7 +49,7 @@ updates. Not done yet: the hosted Supabase project (see
 - An iOS or Android device with [Expo Go](https://expo.dev/go), or a simulator
 - macOS with Xcode is only required for local native iOS builds; cloud builds via EAS do not
   need it
-- Docker, only to run the backend locally with `npx supabase start`
+- Docker, only to run the backend locally with `npx supabase@3.2.0 start`
 
 ## Getting started
 
@@ -67,26 +67,41 @@ Privacy policy buttons are hidden.
 
 ### The Supabase project
 
-The app needs its schema in your Supabase project. Once, after creating the project:
+The app needs its settings and its schema in your Supabase project. Once, after creating the
+project, with a personal access token in `SUPABASE_ACCESS_TOKEN`:
 
 ```bash
-npx supabase link --project-ref <your-project-ref>
-npx supabase config push
-npx supabase db push
+npx supabase@3.2.0 link --project-ref <your-project-ref>
+npx supabase@3.2.0 config diff                  # read what the next command will change
+npx supabase@3.2.0 config push --yes
+npx supabase@3.2.0 db push --remote --dry-run   # which migrations, and into which database
+npx supabase@3.2.0 db push --remote --yes
 ```
 
-`db push` applies everything in `supabase/migrations`: the tables, the row level security, the
-functions the app calls, the 4,310 cities, and the delivery job (pg_cron is enabled by the
-migration). Run it again whenever a migration is added. `config push` applies
-`supabase/config.toml`, which **replaces** dashboard auth settings - read the warning at its top
-first.
+Every command names the CLI version, on purpose: `npx supabase` alone runs whatever is newest, and
+the versions differ in what the same words do. With this one:
+
+- A command changes the hosted project only when it is given `--yes`. Without it the command asks,
+  and where nobody can answer - a script, a session - it stops and changes nothing.
+- `db push` goes to the **local** stack unless it is given `--remote`, even in a linked directory.
+- Each command first prints where it is going: `Target: project <name> (<ref>)`. Read that line.
+
+`db push --remote` applies everything in `supabase/migrations`: the tables, the row level security,
+the functions the app calls, the 4,310 cities, and the delivery job (pg_cron is enabled by the
+migration). Run it again whenever a migration is added. It does not run `supabase/seed.sql`.
+`config push` sends the settings that `supabase/config.toml` declares and leaves everything else on
+the project as it is - read the note at the top of that file first.
+
+For the real project, follow "Setting up the hosted project" in
+[`docs/GO-LIVE.md`](docs/GO-LIVE.md): the same commands, with a check after each one that shows it
+arrived.
 
 ### Running everything locally
 
 With Docker, the whole backend runs on your machine and nothing touches the hosted project:
 
 ```bash
-npx supabase start
+npx supabase@3.2.0 start
 ```
 
 Put the printed API URL and publishable key into `.env` (`http://127.0.0.1:54321` - plain http is

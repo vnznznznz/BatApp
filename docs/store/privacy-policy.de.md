@@ -12,8 +12,9 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    "tidy-up", Sitzungen nach 90 Tagen ohne Benutzung, Anmeldeprotokoll 30 Tage und Löschen mit dem
    Konto, Namen von der Registrierung, alte Stadt, private.remove_account mit einer Sperre von zwei
    Jahren ab dem Entfernen. Ändert sich daran etwas, die Abschnitte 3.1, 3.2, 3.8, 3.9, 5, 6, 9 und
-   11 und "Kurz gesagt" anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" {}
-   ergeben (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt die Liste
+   11 und "Kurz gesagt" anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" eine
+   leere Liste ergeben (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt
+   die Liste
    jeden Schritt, den der Auftrag mangels Recht überspringt, und was diese Erklärung dazu sagt,
    stimmt nicht.
 5. Abschnitt 5 (iPhone) beschreibt den Schlüsselbund mit WHEN_UNLOCKED_THIS_DEVICE_ONLY
@@ -389,8 +390,8 @@ oder Betriebssystems (den sogenannten User-Agent).
   20261104120000_privacy_housekeeping.sql (tidy_up, delete_own_account), am 4. November 2026 gegen
   das echte GoTrue des lokalen Stacks geprüft. Fehlt der Rolle postgres auf dem gehosteten Projekt
   das Recht, überspringen beide den Schritt ohne Fehler; tidy_up nennt ihn dann in seiner Rückgabe.
-  Die Prüfung: "select private.tidy_up();" muss {} ergeben (docs/GO-LIVE.md, "Setting up the hosted
-  project", Schritt 4; lokal: {}).
+  Die Prüfung: "select private.tidy_up();" muss eine leere Liste ergeben (docs/GO-LIVE.md, "Setting
+  up the hosted project", Schritt 4; lokal ist sie leer).
   delete_own_account erkennt die Einträge an payload->>'actor_id'; Einträge ohne actor_id, die
   trotzdem die E-Mail-Adresse enthalten, gehen erst nach 30 Tagen. ip_address ist lokal leer, darum
   "gegebenenfalls IP-Adresse".

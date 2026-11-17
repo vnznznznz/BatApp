@@ -52,7 +52,7 @@ describe('readSupabaseConfig', () => {
   });
 
   /**
-   * `npx supabase start` serves plain http, and a phone in Expo Go reaches it
+   * `npx supabase@3.2.0 start` serves plain http, and a phone in Expo Go reaches it
    * over the local network. Refusing those made local development impossible.
    */
   it.each([

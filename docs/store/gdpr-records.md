@@ -432,7 +432,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     `auth.audit_log_entries` (lokal hat sie es), überspringen beide Funktionen diesen Schritt ohne
     Fehler: `tidy_up` nennt ihn dann in seinem Ergebnis (`sign-in log: …`, 4.5),
     `delete_own_account()` meldet nichts. Auf dem gehosteten Projekt deshalb gleich nach dem
-    ersten `db push` `select private.tidy_up();` ausführen; es muss `{}` ergeben (5.2). Frühestens
+    ersten `db push --remote` `select private.tidy_up();` ausführen; es muss eine leere Liste
+    ergeben (`[]`; psql zeigt dieselbe leere Liste als `{}`; 5.2). Frühestens
     31 Tage nach dem Start, wenn es überhaupt ältere Einträge geben kann, zusätzlich prüfen, dass
     `select count(*) from auth.audit_log_entries where created_at < now() - interval '31 days'`
     nichts findet, der Auftrag also auch täglich läuft (Lücke L8).
@@ -657,7 +658,8 @@ fehlt, steht in 4.8.
   (`auth.audit_log_entries`, `auth.users`, `auth.identities`, `auth.sessions`,
   `cron.job_run_details`) steht für sich: Fehlt das Recht oder die Tabelle, wird er übersprungen,
   die anderen laufen weiter, und `tidy_up` gibt die übersprungenen Schritte mit Grund zurück, etwa
-  `sign-in log: permission denied for table audit_log_entries`. Ein leeres Ergebnis, `{}`, heißt:
+  `sign-in log: permission denied for table audit_log_entries`. Ein leeres Ergebnis – eine leere
+  Liste, `[]`, in psql `{}` – heißt:
   Jeder Schritt lief. Jeder andere Fehler bricht den ganzen Lauf ab. Ein übersprungener Schritt ist
   kein Fehler; der Lauf steht in `cron.job_run_details` deshalb trotzdem auf `succeeded`, und was
   fehlt, zeigt nur der Aufruf von Hand (5.2, 5.7). Geprüft in den Datenbanktests
@@ -783,9 +785,10 @@ nutzt (4.4).
 - [ ] Eigenes SMTP und E-Mail-Bestätigung an, bevor eine zweite Person sich anmeldet (L3; GO-LIVE,
       „Before a second person can sign up“). Danach den Satz in Datenschutzerklärung 3.10 durch
       den aus ihrem PRÜFEN-Hinweis ersetzen.
-- [ ] Nach dem ersten `db push` auf das gehostete Projekt (GO-LIVE, „Setting up the hosted
-      project“, Schritt 4): `select jobname, schedule from cron.job` zeigt `deliver-due-messages`,
-      `forget-old-reports` und `tidy-up`, und `select private.tidy_up();` ergibt `{}` (4.5, V8,
+- [ ] Nach dem ersten `db push --remote` auf das gehostete Projekt (GO-LIVE, „Setting up the
+      hosted project“, Schritt 4, mit den Befehlen dort): `select jobname, schedule from cron.job`
+      zeigt `deliver-due-messages`, `forget-old-reports` und `tidy-up`, und
+      `select private.tidy_up();` ergibt eine leere Liste (`[]`, in psql `{}`; 4.5, V8,
       L8). Der Aufruf löscht nichts, was der tägliche Auftrag nicht auch löschen würde. Nennt das
       Ergebnis einen Schritt, stimmt die Datenschutzerklärung (3.1, 3.8, 3.9, 9) an dieser Stelle
       nicht: Supabase-Support fragen oder die Erklärung anpassen, bis es gelöst ist. Frühestens 31
@@ -1115,7 +1118,8 @@ Betreiber noch selbst tut:
 
 - **Einmal im Monat** (Kalendererinnerung) nachsehen, dass der Auftrag läuft (`succeeded`), dass
   er keinen Schritt überspringt und dass keine abgelaufene Sperre übrig ist. Die zweite Abfrage muss
-  `{}` ergeben, die dritte 0; dazu die Abfrage oben nach gesperrten Konten mit Profil. `succeeded`
+  eine leere Liste ergeben (`[]`, in psql `{}`), die dritte 0; dazu die Abfrage oben nach
+  gesperrten Konten mit Profil. `succeeded`
   allein genügt nicht: Ein übersprungener Schritt ist kein Fehler (4.5).
 
   ```sql
@@ -1140,8 +1144,8 @@ Betreiber noch selbst tut:
 
 - **Täglich:** neue Meldungen ansehen (GO-LIVE).
 - **Monatlich:** nachsehen, dass `tidy-up` läuft (Status `succeeded` in `cron.job_run_details`)
-  und `select private.tidy_up();` `{}` ergibt, dass keine abgelaufene Sperre übrig ist und kein
-  gesperrtes Konto länger als eine Woche ein Profil hat (5.6); Testerlisten aufräumen; das
+  und `select private.tidy_up();` eine leere Liste ergibt, dass keine abgelaufene Sperre übrig ist
+  und kein gesperrtes Konto länger als eine Woche ein Profil hat (5.6); Testerlisten aufräumen; das
   Postfach nach der festgelegten Frist aufräumen; prüfen, dass keine Exporte (Auskunft, Polizei)
   mehr herumliegen.
 - **Jährlich:** dieses Verzeichnis, die TOM und die Datenschutzerklärung durchgehen; Supabases
@@ -1181,9 +1185,9 @@ Betreiber noch selbst tut:
    Data Privacy Framework greift; die Verschlüsselung gespeicherter Daten.
 9. Supabase-Tarif: Aufbewahrung der Protokolle (kostenlos vermutlich ein Tag), Sicherungen und ihre
    Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind.
-10. GoTrue und Postgres gehostet: ob `select private.tidy_up();` `{}` ergibt, die Rolle `postgres`
-    also jeden Schritt an den Tabellen von Supabase ausführen darf (sonst überspringt `tidy_up`
-    diesen Schritt und nennt ihn, und `delete_own_account` überspringt das Löschen im
+10. GoTrue und Postgres gehostet: ob `select private.tidy_up();` eine leere Liste ergibt, die Rolle
+    `postgres` also jeden Schritt an den Tabellen von Supabase ausführen darf (sonst überspringt
+    `tidy_up` diesen Schritt und nennt ihn, und `delete_own_account` überspringt das Löschen im
     Anmeldeprotokoll still, 4.5); ob `tidy-up` in `cron.job` steht; ob `ip_address` im
     Anmeldeprotokoll gefüllt wird; dass Abmelden die Sitzungen löscht; dass eine abgelehnte
     Erneuerung eines gesperrten Kontos `updated_at` der Sitzung nicht setzt; ob

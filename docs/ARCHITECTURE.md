@@ -581,7 +581,7 @@ literally; at run time `process.env` itself is empty. `src/lib/supabase.ts` had 
 since Phase 2, so every real build threw at launch while every test passed. `supabase.test.ts`
 now runs the file through `babel-preset-expo` and asserts both values are inlined and no read of
 `process.env` remains. The URL check also accepts plain http for loopback and private-network
-addresses, so the app can run against `npx supabase start` - from a phone too.
+addresses, so the app can run against a local Supabase stack - from a phone too.
 
 ## Phase 12 - the flight, drawn
 
@@ -828,9 +828,9 @@ Supabase owns stands alone: where the platform withholds the privilege, that ste
 the others still run, so one missing grant cannot stop the rest, and deleting an account cannot
 fail for it either. Skipping silently would leave the privacy policy wrong without anyone knowing,
 so the job returns what it skipped, with the reason; the hosted setup runs it once by hand and
-expects `{}`. (A first version left the steps on `auth.users` unshielded, so one missing grant
-there rolled the whole run back - found in review, and tested now with a role that lacks it.) Any
-other error is a fault and fails the run. Verified against the local
+expects an empty list. (A first version left the steps on `auth.users` unshielded, so one missing
+grant there rolled the whole run back - found in review, and tested now with a role that lacks
+it.) Any other error is a fault and fails the run. Verified against the local
 stack's real GoTrue: the records it writes, the copy in the identity, a banned account refused at
 sign-in, at token refresh and at sign-up, its sign-in deleted with its identities once the ban has
 run out, and a session left unused for 91 days ended while one in use renews as before.

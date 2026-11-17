@@ -83,15 +83,16 @@ Both recorded where the work is, not only here:
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
-- **The migrations must be pushed to the hosted project.** `npx supabase db push` after linking —
-  see the README. Until then the app signs in and then fails on every screen that reads a bat.
+- **The migrations must be pushed to the hosted project.**
+  `npx supabase@3.2.0 db push --remote --yes` after linking — see "Setting up the hosted project",
+  step 3. Until then the app signs in and then fails on every screen that reads a bat.
 
 ### The shortest path to friends using it
 
 1. Create the Supabase project in Zurich, link it, push config and migrations. _(unblocks everything)_
 2. Start Apple enrolment. _(long lead time, gates TestFlight)_
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
-   Phase 11. Push the migrations to the hosted project (`npx supabase db push`).
+   Phase 11. Push the migrations to the hosted project (`npx supabase@3.2.0 db push --remote --yes`).
 4. Custom SMTP, then email confirmation on, then finish password reset.
 5. ~~Phase 10 push.~~ Dropped.
 6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
@@ -249,39 +250,184 @@ privacy policy has to name the police as a possible recipient.
 
 ## Setting up the hosted project
 
-What a session with access does, so the steps do not depend on anyone remembering them. It needs a
-Supabase personal access token (dashboard → Account → Access Tokens) stored in the cloud
-environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and network access to
-`api.supabase.com` and `*.supabase.co`. Revoke the token afterwards.
+What a session with access does, so the steps do not depend on anyone remembering them. It needs:
 
-1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan,
-   in the operator's organisation (`npx supabase orgs list`), with a generated database password
-   that goes to the operator, not into the repository:
-   `npx supabase projects create night-courier --org-id <org> --region eu-central-2 --db-password <password>`.
-2. **Link and push the auth settings:** `npx supabase link --project-ref <ref>`, then
-   `npx supabase config push`. This applies `supabase/config.toml`, including **email confirmation
-   off** — until custom SMTP exists, Supabase's own mailer reaches nobody but the operator, so with
-   confirmation on a friend's sign-up would never complete (see "Before a second person can sign up"
-   above).
-3. **Apply the migrations:** `npx supabase db push`. It needs a direct Postgres connection; where
-   the network allows only HTTPS, run each file in `supabase/migrations` in order through the
-   Management API instead (`POST /v1/projects/<ref>/database/query`) and record each version in
-   `supabase_migrations.schema_migrations`, so that a later `db push` skips them. The seed file is
-   for the local stack only — never run it here.
-4. **Check it:** `select jobname, schedule from cron.job` shows `deliver-due-messages`,
-   `forget-old-reports` and `tidy-up`; `select count(*) from public.cities` is 4,310; and
-   `select time_multiplier from private.flight_settings` is 1. Then check that the tidy-up can do
-   everything the privacy policy says it does. Whatever it is not allowed to touch, it skips without
-   an error, and it returns what it skipped - so run it once by hand:
+- a Supabase personal access token (dashboard → Account → Access Tokens) stored in the cloud
+  environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat. Revoke the token afterwards.
+- network access to `api.supabase.com`, which every command talks to, and to `<ref>.supabase.co`,
+  the project itself, for the check in step 2 and for the app.
+- for `db push` in step 3, a connection to the project's Postgres: port 5432, which is not HTTPS
+  and which many cloud environments do not let out. Step 3 says what to do then.
 
-   ```sql
-   select private.tidy_up();
+Every command below names version 3.2.0 of the Supabase CLI. `npx supabase` alone runs whatever is
+newest that day, and versions differ in what the same words do (`scripts/supabase-cli.mjs` has the
+short story). Three things about this version that the steps rely on:
+
+- A command changes the hosted project only when it is given `--yes`. Without it the command asks;
+  where nobody can answer it stops with `Confirmation required` and changes nothing. The steps
+  carry `--yes` where a change is the point of the step, and only there.
+- `db push`, `db query` and `migration list` go to the **local** stack unless they are given
+  `--remote`, even in a linked directory. Each command prints where it is going before it does
+  anything: `Target: project night-courier (<ref>)` is right, `Target: local stack` is not.
+- Run by a session, the CLI answers in JSON; the checks below quote the fields to look for.
+  `--output-format json` asks for that form whoever runs it.
+
+The commands were tried on 17 November 2026 with exactly this version: against a stand-in for
+Supabase's API, against scratch Postgres databases, and, read-only, against the local stack. No
+hosted project existed then. What that could not show is marked **not yet tried on a real
+project**; go slowly there, and correct this page when you know more.
+
+1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan, in
+   the operator's organisation, with a generated database password that is written neither into
+   the repository nor into a chat:
+
+   ```bash
+   npx supabase@3.2.0 orgs list
+   export SUPABASE_DB_PASSWORD="$(openssl rand -hex 24)"
+   npx supabase@3.2.0 projects create night-courier --org-id <org> --region eu-central-2 \
+     --db-password "$SUPABASE_DB_PASSWORD" --yes
    ```
 
-   It must return `{}`, an empty list. Anything else names the step and the reason, such as
+   Keep `SUPABASE_DB_PASSWORD` exported for the rest of the session: step 3 reads it from there.
+   Nothing else needs it - the app never does - and the operator can set a new one in the dashboard
+   on the day one is wanted (Project Settings → Database; **to check** where exactly).
+
+   **Check:** `npx supabase@3.2.0 projects list --output-format json` shows a project named
+   `night-courier` with `"region":"eu-central-2"` and, a minute or two after it was created,
+   `"status":"ACTIVE_HEALTHY"`. Its `"ref"` is the `<ref>` of every later step. The region cannot be
+   changed afterwards: if it is not `eu-central-2`, stop here and say so.
+
+2. **Link and push the auth settings:**
+
+   ```bash
+   npx supabase@3.2.0 link --project-ref <ref>
+   npx supabase@3.2.0 config diff
+   npx supabase@3.2.0 config push --yes
+   ```
+
+   `config diff` changes nothing; read it. Against a new project it lists a handful of settings as
+   `update` - the site URL and the redirect addresses, the minimum password length, and **email
+   confirmation off**: until custom SMTP exists, Supabase's own mailer reaches nobody but the
+   operator, so with confirmation on a friend's sign-up would never complete (see "Before a second
+   person can sign up" below). Those are what `config push` then sends, from `supabase/config.toml`.
+   Settings it lists as `remote_only` are ones the file does not declare; the push leaves them alone.
+
+   **Check,** twice: these settings decide whether a friend can sign up at all, and nothing in
+   step 4 looks at them.
+
+   - `npx supabase@3.2.0 config diff --output-format json` now ends in a line whose `"counts"` has
+     `"update":0` and `"local_only":0`. (Not `--exit-code`: that also counts the `remote_only`
+     settings, which are meant to stay.)
+   - The project itself says so, whatever the CLI believes:
+
+     ```bash
+     curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <publishable key>"
+     ```
+
+     must contain `"mailer_autoconfirm":true` and `"disable_signup":false`. On a project the push
+     did not reach, `mailer_autoconfirm` is `false`. The key is in
+     `npx supabase@3.2.0 projects api-keys --output-format json`: the entry whose `"type"` is
+     `"publishable"` (it starts `sb_publishable_`), or else the legacy one named `anon`. Never use
+     `--reveal`, and never the `secret` or `service_role` entries.
+
+   **Not yet tried on a real project:** what a real project's settings look like to `config diff`
+   (the list above comes from a stand-in holding Supabase's defaults as far as they are known), and
+   the settings endpoint on a hosted project (it was read on the local stack).
+
+3. **Apply the migrations:**
+
+   ```bash
+   npx supabase@3.2.0 db push --remote --dry-run
+   npx supabase@3.2.0 db push --remote --yes
+   ```
+
+   The dry run changes nothing. It must print `Target: project night-courier (<ref>)` and then
+   every file in `supabase/migrations` under "Would push these migrations". The second command
+   applies them in order and records each one in `supabase_migrations.schema_migrations`, so that a
+   later push sends only what is new. It never runs `supabase/seed.sql`, which is for the local
+   stack only: do not add `--include-seed`, and never aim a `db reset` at this project.
+
+   **Check:** `npx supabase@3.2.0 db push --remote --dry-run --output-format json` now ends in
+   `"upToDate":true` with `"target":{"kind":"linked","project_ref":"<ref>"` in the same line.
+   `"kind":"local"` means the check looked at the wrong database.
+
+   **Where no Postgres connection gets out.** `db push` connects to `db.<ref>.supabase.co` (IPv6
+   only) or to the project's pooler (IPv4; `link` has saved its address in
+   `supabase/.temp/pooler-url`), port 5432, with `SUPABASE_DB_PASSWORD` (without one it makes
+   itself a short-lived database role through the API - **not yet tried on a real project**). If
+   it fails with `IPv6 is not supported on your current network`, run `link` again; if it still
+   cannot connect, the network lets only HTTPS out. `db query --remote` does not need the
+   connection: it sends the SQL through Supabase's API. Send each file that way, in order, and
+   record it as `db push` would have, so that a later `db push` skips it:
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --yes "create schema if not exists supabase_migrations" &&
+     npx supabase@3.2.0 db query --remote --yes "create table if not exists supabase_migrations.schema_migrations (version text not null primary key, statements text[], name text)" &&
+     for f in supabase/migrations/*.sql; do
+       v="$(basename "$f" .sql)"
+       npx supabase@3.2.0 db query --remote --yes --file "$f" &&
+         npx supabase@3.2.0 db query --remote --yes "insert into supabase_migrations.schema_migrations (version, name) values ('${v%%_*}', '${v#*_}')" ||
+         break
+     done
+   ```
+
+   The loop stops at the first command that fails, and its own exit status does not say whether
+   it did. Afterwards
+   `npx supabase@3.2.0 db query --remote --read-only "select version from supabase_migrations.schema_migrations order by 1"`
+   must list one version for every file in `supabase/migrations`. If some are missing, find out why
+   the first missing file failed and carry on from that file. Do not start again from the top: the
+   files are not written to run twice.
+
+   **Not yet tried on a real project:** this whole way round. What was tried: the table is the one
+   `db push` makes, and after files applied as plain SQL and recorded by this loop, `db push` finds
+   nothing left to do. What is not known: whether the API takes the city file (772 KB) in one
+   request, and whether a file that fails half-way leaves nothing behind. If the city file is
+   refused for its size, send its nine `insert` statements one at a time - blank lines separate
+   them, and each can be sent again safely.
+
+4. **Check it,** through the same API (`--read-only` cannot change anything):
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --read-only \
+     "select jobname, schedule, command, active from cron.job order by jobname"
+   npx supabase@3.2.0 db query --remote --read-only "select count(*) from public.cities"
+   npx supabase@3.2.0 db query --remote --read-only \
+     "select time_multiplier from private.flight_settings"
+   ```
+
+   The first must show three rows, all with `"active": true`: `deliver-due-messages` every minute
+   (`* * * * *`, `select private.deliver_due_messages()`), `forget-old-reports` hourly
+   (`17 * * * *`, `select private.forget_old_reports()`) and `tidy-up` daily (`43 4 * * *`,
+   `select private.tidy_up()`). The second is 4,310 and the third is 1.
+
+   Then check that the tidy-up can do everything the privacy policy says it does. Whatever it is
+   not allowed to touch, it skips without an error, and it returns what it skipped - so run it once
+   by hand. It deletes what is due, so it needs `--yes`:
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --yes "select private.tidy_up()"
+   ```
+
+   It must return an empty list, which this command prints as `"tidy_up": []` (psql prints the same
+   empty list as `{}`). Anything else names the step and the reason, such as
    `sign-in log: permission denied for table audit_log_entries`; until that is fixed, the policy's
    sections on sessions, the sign-in log and banned accounts are wrong: ask Supabase support, or
    change the policy. (Running it deletes nothing that the daily job would not.)
+
+   A day later, look at whether the jobs really ran:
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --read-only "
+     select j.jobname, d.status, d.return_message, d.start_time
+     from cron.job j
+     left join lateral (
+       select * from cron.job_run_details d
+       where d.jobid = j.jobid order by d.start_time desc limit 1
+     ) d on true
+     order by j.jobname"
+   ```
+
+   Each of the three must have a `status` of `succeeded` and a `start_time` within its schedule.
 
 5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
    `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
@@ -438,8 +584,9 @@ Configure a provider under Authentication → Emails → SMTP Settings (Resend, 
 have free tiers large enough for this app), which also lifts the cap to 30 messages per hour, and
 then turn email confirmation on. Set `enable_confirmations = true` under `[auth.email]` in
 `supabase/config.toml` in the same change, as its comment says: otherwise the next
-`npx supabase config push` switches confirmation off again, and section 3.10 of the privacy policy
-stops being true.
+`npx supabase@3.2.0 config push --yes` switches confirmation off again, and section 3.10 of the
+privacy policy stops being true. The SMTP settings themselves can stay in the dashboard: the file
+does not declare them, so a push leaves them alone.
 
 ### Push notifications: none
 

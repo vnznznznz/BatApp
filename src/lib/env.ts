@@ -48,7 +48,7 @@ export function readSupabaseConfig(env: Record<string, string | undefined>): Sup
 }
 
 /**
- * A local Supabase stack (`npx supabase start`) serves plain http on
+ * A local Supabase stack (`npx supabase@3.2.0 start`) serves plain http on
  * 127.0.0.1, and a phone running Expo Go reaches it at the computer's address
  * on the local network. Those are the only places http is accepted: anywhere
  * else, a session token would cross the internet unencrypted.

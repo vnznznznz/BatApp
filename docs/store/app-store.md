@@ -627,7 +627,8 @@ it again from step 1, because Apple wants a demo account that does not expire.
       no Paid Apps agreement and no banking or tax forms (**to check** on the Agreements page).
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project"), step 4
       included: `cron.job` lists `deliver-due-messages`, `forget-old-reports` and `tidy-up`, and
-      `select private.tidy_up();` returns `{}`. Anything else names a step the job skips for want of
+      `select private.tidy_up();` returns an empty list (`[]`; psql prints `{}`). Anything else
+      names a step the job skips for want of
       a privilege; until that is fixed, what section 3 and the privacy policy say about the sign-in
       log (30 days), sessions (90 days unused), the names from sign-up and removed accounts is
       wrong.
@@ -751,7 +752,8 @@ Collected from above, so none is lost:
 10. The trader declaration at the time of any App Store release (non-trader expected), and whether
     App Store Connect asks for it before external TestFlight testing.
 11. That a password stored only as a bcrypt hash needs no entry under Other Data Types.
-12. That `select private.tidy_up();` returns `{}` on the hosted project (GO-LIVE, "Setting up the
+12. That `select private.tidy_up();` returns an empty list on the hosted project (GO-LIVE,
+    "Setting up the
     hosted project", step 4), which the 30 days and the 90 days in section 3 rest on, and how long
     Supabase's plan keeps its logs.
 13. What App Store Connect shows about a tester who joined through the public link (section 6,
