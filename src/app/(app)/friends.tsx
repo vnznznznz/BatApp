@@ -24,9 +24,9 @@ import {
 } from '@/features/friends/friends';
 import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
-import { confirmAction } from '@/lib/confirm';
+import { confirmAction, notify } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
-import { messageOf } from '@/lib/rpc-error';
+import { messageOf, RpcError } from '@/lib/rpc-error';
 import { useRemote } from '@/lib/use-remote';
 
 /**
@@ -90,7 +90,7 @@ export default function FriendsScreen() {
     }
   }
 
-  async function act(friendship: Friendship, action: FriendAction) {
+  async function act(friendship: Friendship, action: FriendAction, withdrawing = false) {
     setBusy({ id: friendship.id, action });
     setActionError(null);
     // Likewise a request's "sent" left beside this action's refusal.
@@ -100,8 +100,16 @@ export default function FriendsScreen() {
       await reload();
     } catch (caught) {
       const problem = messageOf(caught);
-      setActionError(problem);
-      announce(problem);
+      if (withdrawing && caught instanceof RpcError && caught.reason === 'request_not_found') {
+        // Withdraw is in the last section, and with a few friends above it the
+        // top of the screen, where a row's refusal goes, is out of sight. The
+        // request leaves the list as if withdrawn, though the two may be
+        // friends now: a dialog makes sure that is read. It is read out, too.
+        notify('Nothing to withdraw', problem);
+      } else {
+        setActionError(problem);
+        announce(problem);
+      }
       // Whatever went wrong, the list on screen may be out of date now.
       await reload();
     } finally {
@@ -310,7 +318,11 @@ export default function FriendsScreen() {
                   // Not removeFriend: if they said yes a moment ago, that would
                   // end the new friendship without the usual question.
                   onPress={() =>
-                    void act(friendship, (id) => withdrawRequest(id, friendship.friend.username))
+                    void act(
+                      friendship,
+                      (id) => withdrawRequest(id, friendship.friend.username),
+                      true,
+                    )
                   }
                 />
               }

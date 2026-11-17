@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { Alert, Dimensions, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Alert, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import FriendsScreen from '@/app/(app)/friends';
@@ -191,6 +191,10 @@ const comeBack = () =>
   });
 
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
+let announceSpy: jest.SpiedFunction<typeof AccessibilityInfo.announceForAccessibility>;
+
+/** Everything said aloud to a screen reader so far, in order. */
+const announced = () => announceSpy.mock.calls.map(([message]) => message);
 
 /** The alert the screen raised most recently: its title, its message and its buttons. */
 function lastAlert() {
@@ -219,11 +223,15 @@ beforeEach(() => {
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
   mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  announceSpy = jest
+    .spyOn(AccessibilityInfo, 'announceForAccessibility')
+    .mockImplementation(() => {});
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
   alertSpy.mockRestore();
+  announceSpy.mockRestore();
   jest.useRealTimers();
 });
 
@@ -441,6 +449,8 @@ describe('FriendsScreen', () => {
       await fireEvent.press(await screen.findByRole('button', { name: 'Accept' }));
 
       expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+      // Heard as well: focus stays on the button, far from the words.
+      expect(announced()).toEqual([REFUSALS.request_not_found]);
       await waitFor(() => expect(screen.queryByText('Carla Ruiz')).toBeNull());
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
     });
@@ -751,6 +761,12 @@ describe('FriendsScreen', () => {
      * Dora said yes while the list still showed her request. The withdrawal is
      * refused rather than ending the new friendship; the courier is told what
      * happened, and ending it now goes through the usual question.
+     *
+     * Told in a dialog, not at the top of the screen with a row's other
+     * refusals: Withdraw is in the last section, and with a few friends above
+     * it the top is out of sight. The request would leave the list as if
+     * withdrawn, and the courier would be friends with someone they meant to
+     * un-ask without having read a word of it. (Found in review.)
      */
     it('says so when the other person accepted in the meantime, and keeps the friendship', async () => {
       const acceptedMeanwhile =
@@ -770,7 +786,14 @@ describe('FriendsScreen', () => {
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
 
-      expect(await screen.findByText(acceptedMeanwhile)).toBeOnTheScreen();
+      await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+      expect(lastAlert()).toEqual({
+        title: 'Nothing to withdraw',
+        message: acceptedMeanwhile,
+        buttons: [],
+      });
+      // The dialog is read out as it opens; said aloud as well, it would be heard twice.
+      expect(announced()).toEqual([]);
       expect(mockedRemoveFriend).not.toHaveBeenCalled();
       await waitFor(() =>
         expect(screen.queryByRole('header', { name: 'Waiting for an answer' })).toBeNull(),
@@ -781,6 +804,38 @@ describe('FriendsScreen', () => {
 
       expect(lastAlert().title).toBe('Stop being friends with Dora Lind?');
       expect(mockedRemoveFriend).not.toHaveBeenCalled();
+    });
+
+    it('says so in a dialog when the request was gone already', async () => {
+      const gone = 'Your request to @dora is no longer waiting for an answer.';
+      serve(() => [anna, ben, dora]);
+      mockedWithdrawRequest.mockImplementation(async () => {
+        serve(() => [anna, ben]);
+        throw new RpcError(gone, 'request_not_found');
+      });
+      await renderScreen(<FriendsScreen />);
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+      expect(lastAlert()).toEqual({ title: 'Nothing to withdraw', message: gone, buttons: [] });
+      expect(announced()).toEqual([]);
+      await waitFor(() => expect(screen.queryByText('@dora')).toBeNull());
+    });
+
+    /** Anything else is a row's refusal like any other, and the request is still listed. */
+    it('says why a withdrawal failed otherwise, aloud as well', async () => {
+      const failed = 'That request could not be withdrawn. Try again.';
+      serve(() => [dora]);
+      mockedWithdrawRequest.mockRejectedValue(new RpcError(failed, null));
+      await renderScreen(<FriendsScreen />);
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
+
+      expect(await screen.findByText(failed)).toBeOnTheScreen();
+      expect(announced()).toEqual([failed]);
+      expect(alertSpy).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled();
     });
   });
 

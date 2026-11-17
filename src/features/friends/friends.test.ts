@@ -477,7 +477,9 @@ describe('withdrawRequest', () => {
   });
 
   it.each([
-    ['the request is simply gone', { data: [incomingRow()], error: null }],
+    // With friends of their own in the list, as there usually are: only this
+    // request's row can say the two are friends now.
+    ['the request is simply gone', { data: [acceptedRow(), incomingRow()], error: null }],
     ['the list cannot be loaded to tell', { data: null, error: { message: 'internal error' } }],
   ])('says only that the request is no longer waiting when %s', async (_, list) => {
     mockRpc.mockResolvedValueOnce(notWaiting).mockResolvedValueOnce(list);
