@@ -1054,6 +1054,9 @@ Anmeldeprotokoll weiter, aber kein Profil mehr.
    lassen, ohne es zu melden, und `select private.tidy_up();` nennt den Schritt `sign-in log`
    (5.2; V8): Die Einträge bleiben, bis das mit Supabase geklärt ist.
 
+   Die Anweisungen der Schritte 2 und 3 laufen so, wie sie hier stehen, bei jedem
+   `npm run verify` auf der Testdatenbank (`scripts/runbooks.test.mjs`).
+
 4. **Sagen, was bleibt und warum** (Art. 17 Abs. 3): Meldungen bis zu 180 Tage (V6); Server-
    Protokolle und Sicherungen, bis sie automatisch gelöscht oder überschrieben werden; der
    E-Mail-Verkehr zur Anfrage als Nachweis. Im Anmeldeprotokoll nennt nach den Schritten 2 und 3

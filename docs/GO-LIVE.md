@@ -188,6 +188,10 @@ content-free - "a new report is waiting", nothing more: the webhook hands the fu
 row, letter text and note included, and an email with those would put them in a mailbox that keeps
 them as long as you do, beyond the 180 days the privacy policy promises.
 
+The SQL in this section is run as it stands here, in this order, on the test database by
+`scripts/runbooks.test.mjs` with every `npm run verify` - all but the export of sign-in records,
+which needs Supabase's real tables. Whoever changes a statement here changes what that test runs.
+
 **Where:** Supabase dashboard → Table Editor → schema `public` → `reports`. The open ones, oldest
 first, in the SQL editor:
 
