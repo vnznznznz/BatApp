@@ -209,6 +209,34 @@ describe('renewing a session whose hour has run out', () => {
     expect(events).not.toContain('SIGNED_OUT');
   });
 
+  /**
+   * auth-js tries a failed renewal again at once, eight times in half a minute,
+   * and the same again a minute later. An answer made to look like a request
+   * that did not get through is one it tries again like that: to a server that
+   * was limiting requests, every open app sent sixteen renewals in two minutes.
+   */
+  it('asks an auth server that is limiting requests once in each round of attempts, not eight times', async () => {
+    const session = sessionOf(OLD_TOKEN, 'refresh-old', -600);
+    await keep(session);
+    network = (request) =>
+      isRenewal(request)
+        ? authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached')
+        : json(200, []);
+    const { client } = launch();
+
+    // A screen asks for its data every ten seconds or so, for two minutes.
+    const started = Date.now();
+    while (Date.now() - started < 120_000) {
+      const { error } = await settled(client.rpc('get_roost'));
+      expect(shown(error)).toBe(NO_CONNECTION);
+      await jest.advanceTimersByTimeAsync(10_000);
+    }
+
+    expect(sent.filter(isRenewal)).toHaveLength(2);
+    expect(sent.filter(isRest)).toEqual([]);
+    expect(await kept()).toEqual(session);
+  });
+
   it('ends the session when the auth server says it is over', async () => {
     await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
     network = (request) =>

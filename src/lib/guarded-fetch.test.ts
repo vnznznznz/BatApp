@@ -1,4 +1,4 @@
-import { createGuardedFetch, REQUEST_TIMEOUT_MS } from '@/lib/guarded-fetch';
+import { createGuardedFetch, RENEWAL_PAUSE_MS, REQUEST_TIMEOUT_MS } from '@/lib/guarded-fetch';
 
 const ANON_KEY = 'sb_publishable_test_key';
 const PROJECT = 'https://test-project.supabase.co';
@@ -426,6 +426,265 @@ describe('the answer to a renewal of the session', () => {
     await expect(guarded(new Request(RENEWAL, { method: 'POST' }))).rejects.toThrow(
       /^Network request/,
     );
+  });
+});
+
+/**
+ * auth-js tries a renewal that failed again at once: after 200 ms, then after
+ * twice as long each time, eight attempts in the half minute it allows itself,
+ * and the same again a minute later. That suits a network that drops. A rate
+ * limit, or a project that is paused, answers the eighth as it answered the
+ * first - and every open app sent eight renewals where it had sent one.
+ */
+describe('after an answer to a renewal that neither renews the session nor ends it', () => {
+  /** When auth-js tries a renewal again, counted from its first attempt. */
+  const RETRIES_MS = [200, 600, 1400, 3000, 6200, 12_600, 25_400];
+
+  const limited = (headers: Record<string, string> = {}) =>
+    json(
+      429,
+      { code: 'over_request_rate_limit', message: 'Request rate limit reached' },
+      { 'X-Supabase-Api-Version': '2024-01-01', ...headers },
+    );
+
+  const renewal: RequestInit = { method: 'POST', body: '{"refresh_token":"r"}' };
+  const FIVE_MINUTES = 5 * 60_000;
+
+  /** Lets time pass; nothing is waiting for it but the clock. */
+  const passes = (ms: number) => jest.advanceTimersByTimeAsync(ms);
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('sends one renewal where auth-js asks for eight, and fails the others as the first failed', async () => {
+    const { guarded, network } = setUp();
+    network.mockImplementation(async () => limited());
+
+    const failures: unknown[] = [await guarded(RENEWAL, renewal).catch((error: unknown) => error)];
+    let waited = 0;
+    for (const at of RETRIES_MS) {
+      await passes(at - waited);
+      waited = at;
+      failures.push(await guarded(RENEWAL, renewal).catch((error: unknown) => error));
+    }
+
+    expect(network).toHaveBeenCalledTimes(1);
+    expect(failures).toHaveLength(8);
+    for (const failure of failures) {
+      // What auth-js keeps the session after, and the app words as "No connection".
+      expect(failure).toBeInstanceOf(TypeError);
+      expect((failure as Error).message).toMatch(/^Network request/);
+      // What the auth server answered stays in the words, for whoever looks into it.
+      expect((failure as Error).message).toContain('429');
+    }
+  });
+
+  it('asks again once half a minute is over', async () => {
+    const { guarded, network } = setUp();
+    network
+      .mockResolvedValueOnce(limited())
+      .mockResolvedValueOnce(json(200, { access_token: 'a', refresh_token: 'r2' }));
+    await guarded(RENEWAL, renewal).catch(() => {});
+
+    await passes(RENEWAL_PAUSE_MS - 1);
+    await expect(guarded(RENEWAL, renewal)).rejects.toThrow(/^Network request/);
+    expect(network).toHaveBeenCalledTimes(1);
+    await passes(1);
+    const answer = await guarded(RENEWAL, renewal);
+
+    expect(await answer.json()).toEqual({ access_token: 'a', refresh_token: 'r2' });
+    expect(network).toHaveBeenCalledTimes(2);
+  });
+
+  it('is about half a minute, which is how long auth-js goes on trying', () => {
+    expect(RENEWAL_PAUSE_MS).toBeGreaterThan(RETRIES_MS.at(-1)!);
+    expect(RENEWAL_PAUSE_MS).toBeLessThanOrEqual(60_000);
+  });
+
+  it('starts the wait again with each answer of that kind', async () => {
+    const { guarded, network } = setUp();
+    network.mockImplementation(async () => limited());
+    await guarded(RENEWAL, renewal).catch(() => {});
+    await passes(RENEWAL_PAUSE_MS);
+    await guarded(RENEWAL, renewal).catch(() => {});
+    expect(network).toHaveBeenCalledTimes(2);
+
+    await passes(RENEWAL_PAUSE_MS - 1);
+    await guarded(RENEWAL, renewal).catch(() => {});
+
+    expect(network).toHaveBeenCalledTimes(2);
+  });
+
+  it.each<[string, () => Response]>([
+    ['a paused project', () => json(540, { message: 'Project paused' })],
+    [
+      'a gateway that cannot reach the auth server',
+      () => new Response('<html>502</html>', { status: 502 }),
+    ],
+    [
+      'a page from a filter in between',
+      () => new Response('<html>blocked</html>', { status: 403 }),
+    ],
+  ])('waits after %s as after a rate limit', async (_, respond) => {
+    const { guarded, network } = setUp();
+    network.mockImplementation(async () => respond());
+    await guarded(RENEWAL, renewal).catch(() => {});
+
+    await passes(RENEWAL_PAUSE_MS - 1);
+    await guarded(RENEWAL, renewal).catch(() => {});
+
+    expect(network).toHaveBeenCalledTimes(1);
+  });
+
+  /** A rate limit that says when it ends: `Retry-After`, in seconds or as a date. */
+  describe('when the answer says how long to wait', () => {
+    it.each([
+      ['longer than half a minute', '120', 120_000],
+      ['shorter than half a minute', '5', 5000],
+    ])('waits that long: %s', async (_, retryAfter, ms) => {
+      const { guarded, network } = setUp();
+      network.mockImplementation(async () => limited({ 'Retry-After': retryAfter }));
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      await passes(ms - 1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+      expect(network).toHaveBeenCalledTimes(1);
+      await passes(1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      expect(network).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits until the time of day it names', async () => {
+      const { guarded, network } = setUp();
+      // To the second, which is as fine as an HTTP date is.
+      jest.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+      network.mockImplementation(async () =>
+        limited({ 'Retry-After': 'Tue, 17 Nov 2026 12:01:30 GMT' }),
+      );
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      await passes(90_000 - 1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+      expect(network).toHaveBeenCalledTimes(1);
+      await passes(1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      expect(network).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Nothing renews the session while renewals wait, so a wait is taken at
+     * its word only so far: an answer that says a day would sign nobody out,
+     * but would leave the app without its server until it was closed.
+     */
+    it.each([
+      ['a day', '86400'],
+      ['a date a year off', 'Wed, 17 Nov 2027 12:00:00 GMT'],
+    ])('waits no longer than five minutes when it says %s', async (_, retryAfter) => {
+      const { guarded, network } = setUp();
+      jest.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+      network.mockImplementation(async () => limited({ 'Retry-After': retryAfter }));
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      await passes(FIVE_MINUTES - 1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+      expect(network).toHaveBeenCalledTimes(1);
+      await passes(1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      expect(network).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['words that are no time', 'soon'],
+      ['nothing', ''],
+      ['a number that is no count of seconds', '1.5e3'],
+      ['a time that is past', 'Mon, 16 Nov 2026 12:00:00 GMT'],
+      ['no time at all', '0'],
+    ])('waits half a minute when it says %s', async (_, retryAfter) => {
+      const { guarded, network } = setUp();
+      jest.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+      network.mockImplementation(async () => limited({ 'Retry-After': retryAfter }));
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      await passes(RENEWAL_PAUSE_MS - 1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+      expect(network).toHaveBeenCalledTimes(1);
+      await passes(1);
+      await guarded(RENEWAL, renewal).catch(() => {});
+
+      expect(network).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  /**
+   * Only an answer starts the wait. A request that did not get through is what
+   * auth-js's eight attempts are for: the network may be back for the second.
+   */
+  it('does not wait after a renewal that did not get through', async () => {
+    const { guarded, network } = setUp();
+    network
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(json(200, { access_token: 'a', refresh_token: 'r2' }));
+    await expect(guarded(RENEWAL, renewal)).rejects.toThrow('Network request failed');
+
+    await passes(RETRIES_MS[0]!);
+    const answer = await guarded(RENEWAL, renewal);
+
+    expect(answer.status).toBe(200);
+    expect(network).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not wait after a renewal that timed out', async () => {
+    const { guarded, network } = setUp();
+    network.mockReturnValueOnce(new Promise(() => {})).mockResolvedValueOnce(json(200, {}));
+    const timedOut = watch(guarded(RENEWAL, renewal));
+    await passes(REQUEST_TIMEOUT_MS);
+    expect(timedOut.outcome).toBe('rejected');
+
+    const answer = await guarded(RENEWAL, renewal);
+
+    expect(answer.status).toBe(200);
+  });
+
+  it.each<[string, () => Response]>([
+    ['renewed', () => json(200, { access_token: 'a', refresh_token: 'r2' })],
+    [
+      'over',
+      () =>
+        authRefusal(
+          400,
+          'refresh_token_not_found',
+          'Invalid Refresh Token: Refresh Token Not Found',
+        ),
+    ],
+  ])('does not wait once the session is %s', async (_, respond) => {
+    const { guarded, network } = setUp();
+    network.mockImplementation(async () => respond());
+    await guarded(RENEWAL, renewal);
+
+    await guarded(RENEWAL, renewal);
+
+    expect(network).toHaveBeenCalledTimes(2);
+  });
+
+  /** A sign-in is the person's own doing, and the database has limits of its own. */
+  it('holds back renewals only', async () => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValueOnce(limited()).mockImplementation(async () => json(200, []));
+    await guarded(RENEWAL, renewal).catch(() => {});
+
+    const signIn = await guarded(SIGN_IN, { method: 'POST', body: '{}' });
+    const roost = await guarded(ROOST, call('token'));
+
+    expect([signIn.status, roost.status]).toEqual([200, 200]);
+    expect(network).toHaveBeenCalledTimes(3);
   });
 });
 

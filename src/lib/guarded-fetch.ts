@@ -42,6 +42,24 @@ export type GuardedFetchOptions = {
 export const REQUEST_TIMEOUT_MS = 20_000;
 
 /**
+ * How long no renewal is sent after one that was answered with neither a
+ * session nor the end of one, unless the answer says how long itself.
+ *
+ * auth-js tries a failed renewal again at once - after 200 ms, then after
+ * twice as long each time - for the half minute it allows itself, and whatever
+ * answered the first that way answers the other seven the same: a rate limit
+ * counts each of them, a paused project stays paused. Half a minute makes one
+ * request of the eight.
+ */
+export const RENEWAL_PAUSE_MS = 30_000;
+
+/**
+ * The longest an answer is taken at its word about waiting. Nothing renews the
+ * session meanwhile, and what is held here lasts until the app is closed.
+ */
+const LONGEST_RENEWAL_PAUSE_MS = 5 * 60_000;
+
+/**
  * What React Native's fetch throws for a request that never arrived. Both
  * halves of the client read it the right way: auth-js takes any thrown error
  * for a failure worth retrying, and postgrest-js hands the message on.
@@ -148,6 +166,17 @@ function endsTheSession(body: string): boolean {
   );
 }
 
+/**
+ * How long an answer asks to be left alone: its `Retry-After`, which counts in
+ * seconds or names a time of day. The usual pause when it does not say, or
+ * says nothing that lies ahead.
+ */
+function pauseAfter(response: Response): number {
+  const asked = response.headers.get('Retry-After') ?? '';
+  const ms = /^\d+$/.test(asked) ? Number(asked) * 1000 : Date.parse(asked) - Date.now();
+  return ms > 0 ? Math.min(ms, LONGEST_RENEWAL_PAUSE_MS) : RENEWAL_PAUSE_MS;
+}
+
 /** PostgREST's two refusals of a token: it cannot be verified, or it has expired. */
 const refusesTheToken = ({ response, body }: Answer) =>
   response.status === 401 && ['PGRST301', 'PGRST303'].includes(textOf(fieldsOf(body).code));
@@ -178,6 +207,9 @@ export function createGuardedFetch({
   fetch: send = (input, init) => fetch(input, init),
 }: GuardedFetchOptions): typeof fetch {
   let renewal: Promise<string | null> | null = null;
+  // The latest answer to a renewal that left the session as it was, and until
+  // when no other renewal is sent because of it.
+  let unrenewed = { status: 0, until: 0 };
 
   /** One renewal for all the requests that were refused together. */
   function renewOnce(staleToken: string): Promise<string | null> {
@@ -191,11 +223,17 @@ export function createGuardedFetch({
     const address = addressOf(input);
 
     if (isRenewal(address)) {
+      if (Date.now() < unrenewed.until) {
+        throw networkError(`not sent: the auth server answered ${unrenewed.status} a moment ago`);
+      }
       const answer = await exchange(send, input, init);
       // Anything but a new session, or the auth server's own word that this
-      // one is over, is a renewal that has not happened yet.
+      // one is over, is a renewal that has not happened yet - and one that
+      // asking again at once would not make happen.
       if (!answer.response.ok && !endsTheSession(answer.body)) {
-        throw networkError(`failed: the auth server answered ${answer.response.status}`);
+        const { status } = answer.response;
+        unrenewed = { status, until: Date.now() + pauseAfter(answer.response) };
+        throw networkError(`failed: the auth server answered ${status}`);
       }
       return answer.response;
     }
