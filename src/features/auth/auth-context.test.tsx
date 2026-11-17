@@ -116,9 +116,13 @@ let shown: string[];
  *
  * `store` replaces parts of the app's own dealings with the keychain, for the
  * few cases that need to say when a read comes back, or what the device
- * believes is stored.
+ * believes is stored. `beforeOpening` is handed the client before the provider
+ * has asked anything of it.
  */
-async function launch({ store }: { store?: Partial<Store> } = {}) {
+async function launch({
+  store,
+  beforeOpening,
+}: { store?: Partial<Store>; beforeOpening?: (client: Client) => void } = {}) {
   jest.resetModules();
   jest.doMock('react', () => React);
   jest.doMock('react-native', () => ReactNative);
@@ -136,6 +140,7 @@ async function launch({ store }: { store?: Partial<Store> } = {}) {
   );
   const client = jest.requireActual<typeof import('@/lib/supabase')>('@/lib/supabase').supabase;
   supabase = client;
+  beforeOpening?.(client);
   shown = [];
 
   function Probe() {
@@ -436,6 +441,36 @@ describe('while the app is open', () => {
   });
 
   /**
+   * The client goes on announcing to whoever has asked it to, for as long as
+   * it lives. A provider that is gone has to say that it no longer wants to
+   * hear: once it has, the client cannot reach it - auth-js looks its
+   * listeners up anew for every announcement.
+   */
+  it('stops listening to the client once it is gone', async () => {
+    const stopped = jest.fn();
+    await launch({
+      beforeOpening: (client) => {
+        const listen = client.auth.onAuthStateChange.bind(client.auth);
+        jest.spyOn(client.auth, 'onAuthStateChange').mockImplementation((listener) => {
+          const { data } = listen(listener);
+          const stop = data.subscription.unsubscribe;
+          data.subscription.unsubscribe = () => {
+            stopped();
+            stop();
+          };
+          return { data };
+        });
+      },
+    });
+    await passes(A_MOMENT);
+    expect(stopped).not.toHaveBeenCalled();
+
+    await screen.unmount();
+
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
+
+  /**
    * On the web build a sign-out can come from another tab, which removes the
    * session without this tab's knowing. What the client announces as a
    * sign-out is one, whatever this device still believes is stored.
@@ -590,7 +625,32 @@ describe('signing out', () => {
 
       expect(sent.filter(isRenewal).at(-1)?.body).toEqual({ refresh_token: 'refresh-old' });
       expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
-      expect(sent.filter(isLogout).map((request) => request.bearer)).toEqual([NEW_TOKEN]);
+      // Everywhere, as the sign-out it finishes was meant: on the other devices too.
+      expect(sent.filter(isLogout).map(({ url, bearer }) => [url.split('?')[1], bearer])).toEqual([
+        ['scope=global', NEW_TOKEN],
+      ]);
+      expect(mockKeychain.size).toBe(0);
+    });
+
+    /**
+     * Telling the server takes a moment, and on a slow connection a long one.
+     * Nobody has signed in: the roost is not to be shown for that moment.
+     */
+    it('shows nothing of the account while the server is being told', async () => {
+      const { client } = await signOutUnheard();
+      online();
+      const answer = network;
+      network = (request) =>
+        isLogout(request)
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 3000))
+          : answer(request);
+
+      await aLateRenewalArrives(client);
+      expect(sent.filter(isLogout)).toHaveLength(1);
+      expect(state()).toBe('signed out');
+      await passes(5000);
+
+      expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
       expect(mockKeychain.size).toBe(0);
     });
 
@@ -714,6 +774,41 @@ describe('deleting the account', () => {
     ]);
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
+  });
+
+  /**
+   * Once the account is gone the device is signed out by the app's own
+   * signing out, which does not depend on the server hearing of it, and has
+   * words of its own for a keychain that will not let go.
+   */
+  it('signs out of the device when the server cannot be told of it after the deletion', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return new Response(null, { status: 204 });
+      return isLogout(request) ? offline() : json(200, []);
+    };
+    await signedIn();
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
+
+    expect(sent.filter(isLogout)).toHaveLength(1);
+    expect(state()).toBe('signed out');
+    expect(mockKeychain.size).toBe(0);
+  });
+
+  it('says so when the device cannot be signed out after the deletion', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return new Response(null, { status: 204 });
+      return isLogout(request) ? noSuchUser() : json(200, []);
+    };
+    await signedIn();
+    mockRefusal.deletes = true;
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
+      'This device could not be signed out. Try again.',
+    );
+
+    expect(sent.filter(isDeletion)).toHaveLength(1);
+    expect(state()).toBe('signed in');
   });
 
   /**
@@ -841,13 +936,28 @@ describe('deleting the account', () => {
   /**
    * Only the auth server's word that the user does not exist counts as gone. A
    * gateway that knows no such address answers 404 too, about nothing at all.
+   * And those words in a failure are not that word: an error on the way, or a
+   * page that is no answer of the auth server's, says nothing about anyone's
+   * account, whatever it reads like.
    */
-  it('does not take any refusal of the question for the account being gone', async () => {
+  it.each<[string, () => Response]>([
+    [
+      'a gateway that knows no such address',
+      () => json(404, { message: 'no Route matched with those values' }),
+    ],
+    [
+      'an error on the way that reads like it',
+      () => json(502, { message: 'upstream error: user not found' }),
+    ],
+    [
+      'a page that reads like it, from something that is not the auth server',
+      () =>
+        new Response('User not found', { status: 404, headers: { 'content-type': 'text/plain' } }),
+    ],
+  ])('does not take %s for the account being gone', async (_, respond) => {
     network = (request) => {
       if (isDeletion(request)) return offline();
-      return isWhoAmI(request)
-        ? json(404, { message: 'no Route matched with those values' })
-        : json(200, []);
+      return isWhoAmI(request) ? respond() : json(200, []);
     };
     const session = await signedIn();
 
