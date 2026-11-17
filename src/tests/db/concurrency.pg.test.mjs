@@ -16,6 +16,10 @@ import { AUTH_STUB, migrationFiles } from './harness.mjs';
  * Postgres and make transactions collide on purpose: the bat reservation, the
  * delivery worker against itself, and two people asking each other at once.
  *
+ * One test here is no race at all. What the city search costs only shows on
+ * the Postgres the service runs on, and PGlite is a newer one that plans the
+ * search differently; see "the city search" below.
+ *
  * They need `DATABASE_URL`, pointing at a server where they may create and drop a
  * database, connecting as the `postgres` superuser (the migrations narrow that
  * role's default privileges by name). CI provides one; locally:

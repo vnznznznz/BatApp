@@ -3,13 +3,13 @@
 -- The operator stops an account by banning its sign-in: for a week after a
 -- threat, while nothing is deleted yet, and for two years after a removal
 -- (docs/GO-LIVE.md, "Handling a report"). Supabase Auth honours the ban - no
--- sign-in, no renewal - but the access token an app already holds is checked by
--- nobody but the database, and stays good for up to an hour. The database never
--- looked. In that hour a suspended account could go on writing to people, and
--- it could delete itself: the letters the reporter was promised a week to copy,
--- the sign-in records kept for the police, and the banned sign-in itself, so
--- that the same email address signed up again at once. (Found in review,
--- against the real stack.)
+-- sign-in, no renewal - but the access token an app already holds stays good at
+-- the API for up to an hour, where nothing asks about a ban, and the database
+-- never looked either. In that hour a suspended account could go on writing to
+-- people, and it could delete itself: the letters the reporter was promised a
+-- week to copy, the sign-in records kept for the police, and the banned sign-in
+-- itself, so that the same email address signed up again at once. (Found in
+-- review, against the real stack.)
 --
 -- Now the database looks: in the one place every function a client can reach
 -- starts from, and again inside the deletion itself. What a suspended account
@@ -272,7 +272,7 @@ grant execute on function public.delete_own_account() to authenticated;
 --     there is none.
 --   * Run a second time on an account already removed, it set the ban again:
 --     two years from the second run, where the privacy policy says two years
---     from the removal. It now refuses, and says until when the ban stands.
+--     from the removal. It now refuses, and says when the ban ends.
 --
 -- Removing an account that was suspended first still sets the ban afresh, as
 -- the runbook describes: that account has its profile, and its two years count
@@ -303,7 +303,7 @@ begin
   -- A removed account is a sign-in without a profile, kept banned.
   if banned is not null
      and not exists (select 1 from public.profiles p where p.id = courier) then
-    raise exception 'account % has already been removed: its sign-in stays banned until %',
+    raise exception 'account % has already been removed: the ban on its sign-in ends %',
       courier, banned;
   end if;
 
