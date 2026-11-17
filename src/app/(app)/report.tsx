@@ -10,6 +10,7 @@ import { TextField } from '@/components/text-field';
 import { ToggleRow } from '@/components/toggle-row';
 import { REPORT_NOTE_MAX_LENGTH, REPORT_REASONS, REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-context';
 import {
   blockChoiceFor,
   noteLength,
@@ -47,10 +48,12 @@ const CHOICES = REPORT_REASONS.map((value) => ({ value, label: REASON_LABELS[val
  * Reporting a letter, or a courier, to the person who runs the service - and
  * blocking them in the same step, which is what someone reporting usually
  * wants and so is the default, unless the courier chose otherwise the last time
- * they reported the same person.
+ * they reported the same letter, or the same courier without a letter.
  */
 export default function ReportScreen() {
   const router = useRouter();
+  const { session } = useAuth();
+  const reporterId = session?.user.id;
   const { courier, username, letter, blocked } = useLocalSearchParams<Params>();
   const alreadyBlocked = blocked === '1';
   const handle = `@${username}`;
@@ -58,9 +61,9 @@ export default function ReportScreen() {
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [note, setNote] = useState('');
   // On, unless they are blocked already - or the courier turned it off the
-  // last time they reported the same person, and so meant to keep them.
+  // last time they reported the same thing, and so meant to keep them.
   const [alsoBlock, setAlsoBlock] = useState(
-    () => !alreadyBlocked && (courier ? blockChoiceFor(courier) : true),
+    () => !alreadyBlocked && (courier ? blockChoiceFor(reporterId, { courier, letter }) : true),
   );
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -154,7 +157,11 @@ export default function ReportScreen() {
         ? await reportLetter(letter, report)
         : await reportCourier(courierId, report);
       const done = { outcome, blockedNow: blocking };
-      if (!alreadyBlocked) rememberBlockChoice(courierId, blocking);
+      // Only a choice that went with a recorded report: from the blocked list
+      // there was no choice to make, and over the limit nothing was recorded.
+      if (!alreadyBlocked && outcome === 'reported') {
+        rememberBlockChoice(reporterId, { courier: courierId, letter }, blocking);
+      }
       setSent(done);
       if (Platform.OS === 'web') {
         const lines = describeSent(done, alreadyBlocked, handle, Boolean(letter));

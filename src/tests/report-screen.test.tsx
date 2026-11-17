@@ -77,6 +77,13 @@ jest.mock('@/features/safety/safety', () => ({
   reportCourier: jest.fn(),
 }));
 
+/** Who is signed in: whose report this is. */
+const mockAuth: { userId: string | undefined } = { userId: 'user-mara' };
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ session: mockAuth.userId ? { user: { id: mockAuth.userId } } : null }),
+}));
+
 // A phone hears what the screen says through VoiceOver or TalkBack, and the web
 // build through a live region on the page - which this environment does not
 // have. So what the screen hands announce() is recorded, the same way on every
@@ -291,6 +298,7 @@ beforeEach(() => {
   mockedReportCourier.mockReset().mockResolvedValue('reported');
   // Each test starts as a courier who has reported nobody yet.
   forgetBlockChoices();
+  mockAuth.userId = 'user-mara';
   focusSpy = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
   backListeners = [];
   backSpy = jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
@@ -714,34 +722,63 @@ describe('ReportScreen', () => {
     });
 
     /**
-     * Someone who reported a letter but kept the friend did so on purpose. A
-     * second report - another letter of theirs, or the same one again - starts
-     * from that choice, rather than blocking them by default this time.
+     * Someone who reported a letter but kept the friend did so on purpose.
+     * Reporting the same letter again starts from that choice, rather than
+     * blocking them by default this time.
      */
-    it('starts where the courier left it the last time they reported the same person', async () => {
+    it('starts where the courier left it the last time they reported the same letter', async () => {
       await reportingTheLetter();
       await sendReport(false);
       await screen.unmount();
 
-      Object.assign(mockParams, { letter: 'another-letter-from-anna' });
-      await renderScreen(<ReportScreen />);
+      await reportingTheLetter();
 
       expect(blockSwitch()).not.toBeChecked();
     });
 
-    it('starts with the block on again for someone else', async () => {
+    it('starts where the courier left it the last time they reported the same courier', async () => {
+      await reportingTheCourier();
+      await sendReport(false);
+      await screen.unmount();
+
+      await reportingTheCourier();
+
+      expect(blockSwitch()).not.toBeChecked();
+    });
+
+    /**
+     * Another letter is a new event, often a worse one, and a report that
+     * leaves its sender free to write should be chosen, not fallen into: the
+     * reason the switch is on by default holds again.
+     */
+    it.each<[string, Partial<typeof mockParams>]>([
+      ['another letter from the same person', { letter: 'another-letter-from-anna' }],
+      ['the same person, without a letter', { letter: undefined }],
+      ['someone else', { letter: 'letter-from-ben', courier: 'user-ben', username: 'ben' }],
+    ])('starts with the block on again for %s', async (_, next) => {
       await reportingTheLetter();
       await sendReport(false);
       await screen.unmount();
 
-      Object.assign(mockParams, {
-        letter: 'letter-from-ben',
-        courier: 'user-ben',
-        username: 'ben',
-      });
+      Object.assign(mockParams, next);
       await renderScreen(<ReportScreen />);
 
-      expect(screen.getByRole('switch', { name: 'Also block @ben' })).toBeChecked();
+      expect(screen.getByRole('switch', { name: /^Also block @/ })).toBeChecked();
+    });
+
+    /**
+     * Signing out does not restart the app: the next person to sign in on the
+     * same phone has made no choice about anyone. (Found in review.)
+     */
+    it('starts with the block on again for whoever signs in next', async () => {
+      await reportingTheLetter();
+      await sendReport(false);
+      await screen.unmount();
+
+      mockAuth.userId = 'user-noor';
+      await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
     });
 
     it('remembers nothing of a report that did not go', async () => {
@@ -754,6 +791,35 @@ describe('ReportScreen', () => {
       await screen.unmount();
 
       await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
+    });
+
+    /** Over the day's limit nothing was recorded, the choice least of all. (Found in review.) */
+    it('remembers nothing of a report that was not recorded', async () => {
+      mockedReportLetter.mockResolvedValue('limit_reached');
+      await reportingTheLetter();
+      await sendReport(false);
+      expect(screen.getByText('Not recorded')).toBeOnTheScreen();
+      await screen.unmount();
+
+      await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
+    });
+
+    /**
+     * From the blocked list there is no block to choose: the report goes
+     * without one because the courier is blocked already, not because anyone
+     * chose to keep them. Once unblocked, a report about them blocks by default.
+     */
+    it('takes a report from the blocked list for no choice at all', async () => {
+      await reportingFromTheBlockedList();
+      await sendReport();
+      await screen.unmount();
+
+      delete mockParams.blocked;
+      await reportingTheCourier();
 
       expect(blockSwitch()).toBeChecked();
     });
