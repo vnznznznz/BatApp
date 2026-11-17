@@ -224,7 +224,7 @@ export default function CourierScreen() {
         <Text variant="caption" tone="muted" style={styles.line}>
           Blocking ends any friendship or request between you, hides their letters from you and
           stops them asking again; {handle} is not told. Reporting tells the person who runs Night
-          Courier, who never tells {handle} who reported them.
+          Courier, who does not tell {handle} who reported them, unless the law requires it.
         </Text>
         <Button
           label={`Block ${handle}`}

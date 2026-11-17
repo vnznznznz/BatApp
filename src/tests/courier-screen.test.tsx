@@ -561,7 +561,7 @@ describe('CourierScreen', () => {
   });
 
   describe('safety', () => {
-    it('sets blocking and reporting apart, and says the other courier learns of neither a block nor who reported them', async () => {
+    it('sets blocking and reporting apart, and promises about a report only what the report form and the house rules promise', async () => {
       await openPageOf(anna);
 
       expect(screen.getByRole('header', { name: 'Safety' })).toBeOnTheScreen();
@@ -569,7 +569,8 @@ describe('CourierScreen', () => {
         screen.getByText(
           'Blocking ends any friendship or request between you, hides their letters from you ' +
             'and stops them asking again; @anna is not told. Reporting tells the person who ' +
-            'runs Night Courier, who never tells @anna who reported them.',
+            'runs Night Courier, who does not tell @anna who reported them, unless the law ' +
+            'requires it.',
         ),
       ).toBeOnTheScreen();
       expect(button('Block @anna')).toBeEnabled();
