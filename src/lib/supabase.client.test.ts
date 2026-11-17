@@ -16,6 +16,7 @@ import { SESSION_KEY } from '@/lib/session-store';
  */
 
 const mockKeychain = new Map<string, string>();
+const mockRefusal = { reads: false };
 
 jest.mock('expo-secure-store', () => {
   const valid = (key: string) => {
@@ -24,7 +25,10 @@ jest.mock('expo-secure-store', () => {
   };
   return {
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
-    getItemAsync: jest.fn(async (key: string) => mockKeychain.get(valid(key)) ?? null),
+    getItemAsync: jest.fn(async (key: string) => {
+      if (mockRefusal.reads) throw new Error('Could not decrypt the value for SecureStore');
+      return mockKeychain.get(valid(key)) ?? null;
+    }),
     setItemAsync: jest.fn(async (key: string, value: string) => {
       if (value.length > 2048) throw new Error('value too large for the keychain');
       mockKeychain.set(valid(key), value);
@@ -142,6 +146,7 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
   mockKeychain.clear();
+  mockRefusal.reads = false;
   sent = [];
   network = () => json(200, []);
   jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -391,6 +396,44 @@ describe('a request to the database', () => {
       expect(error).toBeNull();
       expect(sent.filter(isRenewal)).toHaveLength(1);
     });
+  });
+});
+
+/**
+ * Android's keystore and the iOS keychain can both refuse a read. The client's
+ * first act is to read its session, and a read that threw left it - and with it
+ * the app, behind its splash screen - waiting for good.
+ */
+describe('a keychain that refuses to be read', () => {
+  it('does not keep the client from starting', async () => {
+    const session = sessionOf(OLD_TOKEN, 'refresh-old', 3000);
+    await keep(session);
+    mockRefusal.reads = true;
+
+    const { client, events } = launch();
+    const { data, error } = await settled(client.auth.getSession());
+
+    expect(data.session).toBeNull();
+    expect(error).toBeNull();
+    expect(events).toContain('INITIAL_SESSION');
+    // What could not be read was left alone; it may be readable the next time.
+    mockRefusal.reads = false;
+    expect(await kept()).toEqual(session);
+  });
+
+  it('lets a new sign-in take the place of what could not be read', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+    mockRefusal.reads = true;
+    network = () => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+    const { client } = launch();
+
+    const { error } = await settled(
+      client.auth.signInWithPassword({ email: 'mara@example.test', password: 'night-courier' }),
+    );
+
+    expect(error).toBeNull();
+    mockRefusal.reads = false;
+    expect((await kept())?.refresh_token).toBe('refresh-new');
   });
 });
 
