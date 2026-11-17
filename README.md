@@ -65,6 +65,13 @@ A build anyone else will use also needs `EXPO_PUBLIC_CONTACT_URL` and
 `EXPO_PUBLIC_PRIVACY_POLICY_URL` in `.env` (see `.env.example`); without them the Contact and
 Privacy policy buttons are hidden.
 
+A production bundle (`npx expo export`, an EAS build) has these values written into it while it is
+built. Without the Supabase URL and key, or with the placeholders of `.env.example`, it is not
+built at all: `metro.config.js` stops it with a message, rather than letting an app through that
+fails on its first screen. `node scripts/check-build-env.js --for-others` says beforehand whether
+the values are complete, the two links included. An EAS build never sees `.env`, which is not in
+git: set all four values in the EAS environment.
+
 ### The Supabase project
 
 The app needs its settings and its schema in your Supabase project. Once, after creating the
@@ -141,6 +148,7 @@ should ever have.
 | `npm test`                | Jest                                                        |
 | `npm run test:db`         | The database tests: migrations replayed in PGlite           |
 | `npm run verify`          | typecheck + lint + format check + tests (what CI runs)      |
+| `npm run check:build-env` | Say whether `.env` has what a production build needs        |
 | `npm run generate:assets` | Redraw the app artwork from source                          |
 | `npm run generate:types`  | Regenerate `src/lib/database.types.ts` from the local stack |
 

@@ -433,13 +433,28 @@ project**; go slowly there, and correct this page when you know more.
 
    Each of the three must have a `status` of `succeeded` and a `start_time` within its schedule.
 
-5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
-   `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
-   key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git. Add
+5. **Configure the app:** the project URL, `https://<ref>.supabase.co`, and its publishable (anon)
+   key - the one from the check in step 2 - go into `.env` as `EXPO_PUBLIC_SUPABASE_URL` and
+   `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret key, which `src/lib/env.ts`
+   refuses to start with. `.env` stays out of git. Add
    `EXPO_PUBLIC_CONTACT_URL=https://vnznznznz.github.io/night-courier/` and
    `EXPO_PUBLIC_PRIVACY_POLICY_URL=https://vnznznznz.github.io/night-courier/privacy-policy.de.html`,
    the pages on the GitHub Pages site (see "Where the web pages live", under "Before first
    submission"). The help page carries the contact address, so the app bundle needs none.
+
+   **An EAS build needs all four values in its own environment** - the Supabase URL and key as
+   much as the two links. `.env` is not in git, so EAS never receives it; the values go into the
+   EAS project's environment variables (or `env` in the build profile, once `eas.json` exists). All
+   four are public by design; none of them is a secret.
+
+   **Check:** `node scripts/check-build-env.js --for-others` reads the files a build reads and must
+   end with "These values are complete for a build that other people will use." The build checks
+   again by itself: a production bundle (`npx expo export`, or the bundling step of an EAS build)
+   without the Supabase URL and key, or with the placeholders of `.env.example`, stops with "Night
+   Courier cannot be bundled with these values" (`metro.config.js`) instead of producing an app
+   that fails on its first screen. **Not yet tried on EAS**, where it should show in the build log;
+   tried with `npx expo export` for iOS, Android and the web.
+
 6. **Try it:** sign up two accounts, choose cities, become friends, send a letter, watch it land;
    report it and check the row in `public.reports`; then delete both test accounts.
 

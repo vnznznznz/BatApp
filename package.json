@@ -17,6 +17,7 @@
     "test:watch": "jest --watch",
     "test:db": "node --test src/tests/db/*.test.mjs",
     "build:pages": "node scripts/build-store-pages.mjs",
+    "check:build-env": "node scripts/check-build-env.js",
     "test:scripts": "node --test scripts/*.test.mjs",
     "generate:assets": "node scripts/generate-assets.mjs",
     "generate:types": "node scripts/generate-types.mjs",

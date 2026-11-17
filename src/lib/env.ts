@@ -35,6 +35,17 @@ export function readSupabaseConfig(env: Record<string, string | undefined>): Sup
     throw new SupabaseConfigError(`Missing ${missing.join(' and ')}. ${SETUP_HINT}`);
   }
 
+  if (PLACEHOLDER_URL.test(url!)) {
+    throw new SupabaseConfigError(
+      `EXPO_PUBLIC_SUPABASE_URL is still the placeholder from .env.example. ${SETUP_HINT}`,
+    );
+  }
+  if (anonKey === PLACEHOLDER_KEY) {
+    throw new SupabaseConfigError(
+      `EXPO_PUBLIC_SUPABASE_ANON_KEY is still the placeholder from .env.example. ${SETUP_HINT}`,
+    );
+  }
+
   if (!isAcceptableUrl(url!)) {
     throw new SupabaseConfigError(
       `EXPO_PUBLIC_SUPABASE_URL must be an https URL, got "${url}". Plain http is accepted ` +
@@ -46,6 +57,19 @@ export function readSupabaseConfig(env: Record<string, string | undefined>): Sup
 
   return { url: url!, anonKey: anonKey! };
 }
+
+/**
+ * What `.env.example` ships with. Copied to `.env` and never filled in, these
+ * pass every other check here - an https URL, a key that is not a secret one -
+ * and the app would start and answer every sign-in with "No connection". The
+ * test reads `.env.example` itself, so the two cannot drift apart.
+ *
+ * The same rules, all of this file's, are checked once more when a production
+ * bundle is built: scripts/check-build-env.js. Change them together; the test
+ * says when they disagree.
+ */
+const PLACEHOLDER_URL = /^https:\/\/your-project-ref\.supabase\.co\/?$/i;
+const PLACEHOLDER_KEY = 'your-anon-key';
 
 /**
  * A local Supabase stack (`npx supabase@3.2.0 start`) serves plain http on
