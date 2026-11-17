@@ -309,12 +309,14 @@ project**; go slowly there, and correct this page when you know more.
    npx supabase@3.2.0 config push --yes
    ```
 
-   `config diff` changes nothing; read it. Against a new project it lists a handful of settings as
-   `update` - the site URL and the redirect addresses, the minimum password length, and **email
-   confirmation off**: until custom SMTP exists, Supabase's own mailer reaches nobody but the
-   operator, so with confirmation on a friend's sign-up would never complete (see "Before a second
-   person can sign up" below). Those are what `config push` then sends, from `supabase/config.toml`.
-   Settings it lists as `remote_only` are ones the file does not declare; the push leaves them alone.
+   `link` must answer with `"project_ref":"<ref>"`; from then on every command names this project
+   as its target. `config diff` changes nothing; read it. Against a new project it lists a handful
+   of settings as `update` - the site URL and the redirect addresses, the minimum password length,
+   and **email confirmation off**: until custom SMTP exists, Supabase's own mailer reaches nobody
+   but the operator, so with confirmation on a friend's sign-up would never complete (see "Before a
+   second person can sign up" below). Those are what `config push` then sends, from
+   `supabase/config.toml`. Settings it lists as `remote_only` are ones the file does not declare;
+   the push leaves them alone.
 
    **Check,** twice: these settings decide whether a friend can sign up at all, and nothing in
    step 4 looks at them.
