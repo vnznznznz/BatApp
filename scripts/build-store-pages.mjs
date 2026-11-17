@@ -18,9 +18,12 @@
  * loaded from anywhere else. Then commit and push there. docs/GO-LIVE.md,
  * "The web pages", has the whole procedure.
  *
- * Refuses to build when a value is missing, a placeholder is left over, or a
- * page would load anything from another site - the privacy policy promises it
- * does not.
+ * Refuses to build when a value is missing, the date does not exist, a
+ * placeholder is left over, a link within a page leads nowhere, or a page would
+ * load anything from another site - the privacy policy promises it does not.
+ *
+ * --sources <folder> builds from another folder than docs/store/. The tests use
+ * it to show what a careless edit to a document would do.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -30,7 +33,6 @@ import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCES = join(ROOT, 'docs', 'store');
 
 const REQUIRED = [
   'OPERATOR_NAME',
@@ -46,10 +48,15 @@ function fail(message) {
   process.exit(1);
 }
 
-const outIndex = process.argv.indexOf('--out');
-const outArg = outIndex === -1 ? undefined : process.argv[outIndex + 1];
+const option = (name) => {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
+};
+
+const outArg = option('--out');
 if (!outArg) fail('pass --out <the site repository checkout>');
 const OUT = resolve(outArg);
+const SOURCES = resolve(option('--sources') ?? join(ROOT, 'docs', 'store'));
 
 const missing = REQUIRED.filter((name) => !process.env[name]?.trim());
 if (missing.length) fail(`set ${missing.join(', ')} (see the comment at the top of this file)`);
@@ -58,7 +65,13 @@ const env = Object.fromEntries(REQUIRED.map((name) => [name, process.env[name].t
 if (!/^https:\/\/.+\/$/.test(env.SITE_URL)) fail('SITE_URL must be an https URL ending in /');
 if (!/^\d{4}-\d{2}-\d{2}$/.test(env.EFFECTIVE_DATE)) fail('EFFECTIVE_DATE must be YYYY-MM-DD');
 
+// JavaScript rolls a day the month does not have into the next month: 30
+// February becomes 2 March, and the binding policy would carry a date nobody
+// typed. So the date has to come back out as it went in. (An impossible month
+// gives no date at all, and toISOString would throw on it: hence the first test.)
 const date = new Date(`${env.EFFECTIVE_DATE}T12:00:00Z`);
+if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== env.EFFECTIVE_DATE)
+  fail('EFFECTIVE_DATE is not a date that exists');
 const longDate = (locale) =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',
@@ -175,12 +188,37 @@ for (const [lang, policy] of Object.entries(POLICIES)) {
     },
     'support-page.md',
   );
-  // The German half's heading is the target of "Deutsch weiter unten".
-  const body = render(markdown).replace(
-    '<h1>Night Courier – Hilfe und Kontakt</h1>',
-    '<h1 id="night-courier--hilfe-und-kontakt" lang="de">Night Courier – Hilfe und Kontakt</h1>',
-  );
+  // The page is English first, then a line, then the same in German. The
+  // German half is wrapped so that a screen reader changes its voice for all of
+  // it, not for the heading alone.
+  const halves = markdown.split(/^---$/m);
+  if (halves.length !== 2)
+    fail('support-page.md: expected one line of --- between the English and the German half');
+  const [english, german] = halves.map(render);
+
+  // "Deutsch weiter unten" links to the German heading the way GitHub names a
+  // heading, so that it also works where the Markdown itself is shown. The same
+  // name goes on the German half here; the check below then catches a heading
+  // reworded without its link.
+  const heading = german.match(/<h1>(.*?)<\/h1>/)?.[1];
+  if (!heading) fail('support-page.md: the German half has no heading');
+  const body = `${english}<hr>\n<div lang="de" id="${anchor(heading)}">\n${german}</div>`;
   pages['index.html'] = page({ lang: 'en', title: 'Night Courier – help and contact', body });
+}
+
+/** A heading's name in a link, as GitHub derives it: "A – b" becomes "a--b". */
+function anchor(heading) {
+  return heading
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-');
+}
+
+for (const [name, html] of Object.entries(pages)) {
+  for (const [, target] of html.matchAll(/href="#([^"]*)"/g)) {
+    if (!html.includes(` id="${target}"`))
+      fail(`${name} links to #${target}, which is nowhere on the page`);
+  }
 }
 
 for (const [name, html] of Object.entries(pages)) {

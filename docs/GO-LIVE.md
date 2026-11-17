@@ -705,9 +705,10 @@ transits it, so a content-free push keeps message text out of a US processor.
   then commit and push there; GitHub publishes within a minute or two. The site repository's
   README has the command with the values filled in. `EFFECTIVE_DATE` is the policy's "Stand": move
   it on whenever the policy's content changes, and tell users of an important change (policy
-  section 15). `scripts/build-store-pages.mjs` refuses to build while a value is missing, a
-  placeholder is left over, or a page would load anything from another site, and its test builds
-  the pages with made-up details on every `npm run verify`.
+  section 15). `scripts/build-store-pages.mjs` refuses to build while a value is missing, the
+  date is not one that exists (30 February), a placeholder is left over, a link within a page leads
+  nowhere, or a page would load anything from another site, and its test builds the pages with
+  made-up details on every `npm run verify`.
 
   The Markdown sources here keep their placeholders; the filled-in pages, with the operator's name
   and postal address, live only in the site repository, never in this one. That repository is
