@@ -283,6 +283,31 @@ describe('what is kept after an account is deleted', () => {
 
     if (unknown) assert.deepEqual(pointers, []);
   });
+
+  // The same in the page's last section, which sends the reader to the policy
+  // for everything: "what, why, and for how long" was said flatly there, a few
+  // lines below the admission that two periods are not known (found in review).
+  it('does not say flatly that the policy gives every period while it does not', () => {
+    const page = readFileSync(join(SOURCES, 'support-page.md'), 'utf8');
+    /** The first paragraph under a heading, as one line. */
+    const section = (heading) =>
+      plain(page.split(`\n## ${heading}\n\n`)[1]?.split('\n\n')[0] ?? '');
+    const english = section('Privacy');
+    const german = section('Datenschutz');
+    assert.match(english, /^The privacy policy says what Night Courier stores/);
+    assert.match(german, /^Was Night Courier speichert/);
+
+    const unknown = ['privacy-policy.en.md', 'privacy-policy.de.md']
+      .map((file) => readFileSync(join(SOURCES, file), 'utf8'))
+      .some((text) => /a short time|nach kurzer Zeit/.test(text));
+    if (unknown) {
+      assert.match(english, /as far as it is known today – for how long:/);
+      assert.match(
+        german,
+        /soweit es heute feststeht – wie lange, steht in der Datenschutzerklärung:/,
+      );
+    }
+  });
 });
 
 /**

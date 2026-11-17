@@ -26,7 +26,9 @@ Notes for the operator - remove before publishing, like every comment in this fi
    server logs and backups names no period, because the policy has none yet (its TO CHECK notes
    in sections 3.9 and 9): once the hosted plan's periods are written into the policy, replace
    the line's second sentence with "The privacy policy says how long." ("Wie lange, steht in der
-   Datenschutzerklärung."), here and in google-play.md.
+   Datenschutzerklärung."), here and in google-play.md. For the same reason "Privacy" says that
+   the policy gives the periods "as far as it is known today" ("soweit es heute feststeht"): take
+   those words out, dashes included, in the same change.
 5. Forgotten password: the app sends the reset email, but cannot yet finish the reset (GO-LIVE,
    "Password reset cannot be completed in-app"), and no email leaves the hosted project before a
    custom SMTP provider is set up. Until both are done, this page sends people to the contact
@@ -111,10 +113,10 @@ Once I am sure the request comes from you, I delete the account.
 
 ## Privacy
 
-The privacy policy says what Night Courier stores, why, and for how long: {{PRIVACY_POLICY_URL}}.
-There are no ads, no tracking and nothing to buy. This page is published with GitHub Pages: GitHub,
-Inc. (USA) receives your IP address when you open it and logs it for security and operation. The
-page itself sets no cookies and loads nothing from other sites.
+The privacy policy says what Night Courier stores, why, and – as far as it is known today – for
+how long: {{PRIVACY_POLICY_URL}}. There are no ads, no tracking and nothing to buy. This page is
+published with GitHub Pages: GitHub, Inc. (USA) receives your IP address when you open it and logs
+it for security and operation. The page itself sets no cookies and loads nothing from other sites.
 
 ---
 
@@ -201,8 +203,8 @@ das Konto.
 
 ## Datenschutz
 
-Was Night Courier speichert, wozu und wie lange, steht in der Datenschutzerklärung:
-{{PRIVACY_POLICY_URL}}. Es gibt keine Werbung, kein Tracking und nichts zu kaufen. Diese Seite
-liegt bei GitHub Pages: GitHub, Inc. (USA) erhält beim Aufruf deine IP-Adresse und protokolliert
-sie für Sicherheit und Betrieb. Die Seite selbst setzt keine Cookies und lädt nichts von anderen
-Websites.
+Was Night Courier speichert, wozu und – soweit es heute feststeht – wie lange, steht in der
+Datenschutzerklärung: {{PRIVACY_POLICY_URL}}. Es gibt keine Werbung, kein Tracking und nichts zu
+kaufen. Diese Seite liegt bei GitHub Pages: GitHub, Inc. (USA) erhält beim Aufruf deine IP-Adresse
+und protokolliert sie für Sicherheit und Betrieb. Die Seite selbst setzt keine Cookies und lädt
+nichts von anderen Websites.

@@ -655,7 +655,10 @@ it again from step 1, because Apple wants a demo account that does not expire.
       notes were still open when it went up. Until they are worked through and the next item is
       done, every rebuild uses `LAUNCH_STATE=before-launch` (GO-LIVE, "Where the web pages live").
       Among them: read Supabase's sub-processor list before the policy says "hosted in
-      Switzerland" without that qualification.
+      Switzerland" without that qualification. And the two periods the policy does not give yet,
+      for Supabase's server logs and for backups (its sections 3.9 and 9): the description's last
+      line under YOUR DATA says the policy tells how long everything is kept, so both have to
+      stand in the policy before the description is used, here and in `google-play.md`.
 - [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the web pages are rebuilt with
       `LAUNCH_STATE=live` (GO-LIVE, "Where the web pages live"): sections 7 and 8 of the privacy
       policy say the agreement exists, and until then every page carries the notice that Night
