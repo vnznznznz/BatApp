@@ -122,3 +122,26 @@ export function validateNote(text: string): string | null {
     ? `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`
     : null;
 }
+
+/**
+ * Whether "Also block" was on the last time each courier was reported, for as
+ * long as the app runs. Someone who reported a letter but kept the friend did
+ * so on purpose; their next report about the same person starts from that,
+ * rather than blocking by default. Kept in memory only: it says whom the
+ * courier chose not to block, which is nobody else's business.
+ */
+const blockChoices = new Map<string, boolean>();
+
+/** On by default: someone reporting usually wants to hear no more from them. */
+export function blockChoiceFor(courierId: string): boolean {
+  return blockChoices.get(courierId) ?? true;
+}
+
+export function rememberBlockChoice(courierId: string, block: boolean): void {
+  blockChoices.set(courierId, block);
+}
+
+/** Back to the default for everyone - for whoever uses the app next. */
+export function forgetBlockChoices(): void {
+  blockChoices.clear();
+}

@@ -5,7 +5,13 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ReportScreen from '@/app/(app)/report';
 import { REPORT_NOTE_MAX_LENGTH, REPORT_RETENTION_DAYS } from '@/constants/config';
-import { reportCourier, reportLetter, type ReportOutcome } from '@/features/safety/safety';
+import { Colors } from '@/constants/theme';
+import {
+  forgetBlockChoices,
+  reportCourier,
+  reportLetter,
+  type ReportOutcome,
+} from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
 import { RpcError } from '@/lib/rpc-error';
 
@@ -189,6 +195,7 @@ const reasonChoice = (label: string) => screen.getByRole('radio', { name: label 
 const noteField = () => screen.getByLabelText('Anything else we should know?');
 const blockSwitch = () => screen.getByRole('switch', { name: 'Also block @anna' });
 const sendButton = () => screen.getByRole('button', { name: 'Send report' });
+const noteCounter = () => screen.getByLabelText(/ of \d+ characters$/);
 const doneButton = () => screen.getByRole('button', { name: 'Done' });
 
 /** Flips "Also block" as a tap on the switch does. */
@@ -277,6 +284,8 @@ beforeEach(() => {
   delete mockParams.blocked;
   mockedReportLetter.mockReset().mockResolvedValue('reported');
   mockedReportCourier.mockReset().mockResolvedValue('reported');
+  // Each test starts as a courier who has reported nobody yet.
+  forgetBlockChoices();
   focusSpy = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
   backListeners = [];
   backSpy = jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
@@ -571,6 +580,39 @@ describe('ReportScreen', () => {
 
       expect(noteField()).toHaveDisplayValue('');
       expect(screen.getByText(NOTE_HINT)).toBeOnTheScreen();
+      expect(noteCounter()).toHaveTextContent(`0 / ${REPORT_NOTE_MAX_LENGTH}`);
+    });
+
+    /**
+     * As the letter field does: a count as the note is written, so that the
+     * limit is seen coming rather than met as a refusal - counted as the
+     * database counts, an emoji as one, and spaces at either end not at all.
+     */
+    it('counts the note as it is written, the way the limit counts it', async () => {
+      await reportingTheLetter();
+
+      await fireEvent.changeText(noteField(), '  He says 🦇 knows  ');
+
+      expect(noteCounter()).toHaveTextContent(`15 / ${REPORT_NOTE_MAX_LENGTH}`);
+      expect(noteCounter()).toHaveProp(
+        'accessibilityLabel',
+        `15 of ${REPORT_NOTE_MAX_LENGTH} characters`,
+      );
+    });
+
+    it('shows the count over the limit before anything is sent', async () => {
+      await reportingTheLetter();
+
+      await fireEvent.changeText(noteField(), 'a'.repeat(REPORT_NOTE_MAX_LENGTH + 1));
+
+      expect(noteCounter()).toHaveTextContent(
+        `${REPORT_NOTE_MAX_LENGTH + 1} / ${REPORT_NOTE_MAX_LENGTH}`,
+      );
+      expect(noteCounter()).toHaveStyle({ color: Colors.danger });
+
+      await fireEvent.changeText(noteField(), 'a'.repeat(REPORT_NOTE_MAX_LENGTH));
+
+      expect(noteCounter()).not.toHaveStyle({ color: Colors.danger });
     });
 
     it('will not send a note over the limit, and says why in place of the hint', async () => {
@@ -664,6 +706,51 @@ describe('ReportScreen', () => {
         alsoBlock: false,
       });
       expect(await screen.findByText('Thank you')).toBeOnTheScreen();
+    });
+
+    /**
+     * Someone who reported a letter but kept the friend did so on purpose. A
+     * second report - another letter of theirs, or the same one again - starts
+     * from that choice, rather than blocking them by default this time.
+     */
+    it('starts where the courier left it the last time they reported the same person', async () => {
+      await reportingTheLetter();
+      await sendReport(false);
+      await screen.unmount();
+
+      Object.assign(mockParams, { letter: 'another-letter-from-anna' });
+      await renderScreen(<ReportScreen />);
+
+      expect(blockSwitch()).not.toBeChecked();
+    });
+
+    it('starts with the block on again for someone else', async () => {
+      await reportingTheLetter();
+      await sendReport(false);
+      await screen.unmount();
+
+      Object.assign(mockParams, {
+        letter: 'letter-from-ben',
+        courier: 'user-ben',
+        username: 'ben',
+      });
+      await renderScreen(<ReportScreen />);
+
+      expect(screen.getByRole('switch', { name: 'Also block @ben' })).toBeChecked();
+    });
+
+    it('remembers nothing of a report that did not go', async () => {
+      mockedReportLetter.mockRejectedValue(new RpcError(NOT_SENT, null));
+      await reportingTheLetter();
+      await setBlocking(false);
+      await fireEvent.press(reasonChoice('Spam or a scam'));
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText(NOT_SENT)).toBeOnTheScreen();
+      await screen.unmount();
+
+      await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
     });
 
     it('can be turned off when reporting a courier, too', async () => {

@@ -11,9 +11,12 @@ import { ToggleRow } from '@/components/toggle-row';
 import { REPORT_NOTE_MAX_LENGTH, REPORT_REASONS, REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import {
-  REASON_LABELS,
-  reportCourier,
+  blockChoiceFor,
+  noteLength,
   prepareNote,
+  REASON_LABELS,
+  rememberBlockChoice,
+  reportCourier,
   reportLetter,
   validateNote,
   type ReportOutcome,
@@ -43,7 +46,8 @@ const CHOICES = REPORT_REASONS.map((value) => ({ value, label: REASON_LABELS[val
 /**
  * Reporting a letter, or a courier, to the person who runs the service - and
  * blocking them in the same step, which is what someone reporting usually
- * wants and so is the default.
+ * wants and so is the default, unless the courier chose otherwise the last time
+ * they reported the same person.
  */
 export default function ReportScreen() {
   const router = useRouter();
@@ -53,7 +57,11 @@ export default function ReportScreen() {
 
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [note, setNote] = useState('');
-  const [alsoBlock, setAlsoBlock] = useState(!alreadyBlocked);
+  // On, unless they are blocked already - or the courier turned it off the
+  // last time they reported the same person, and so meant to keep them.
+  const [alsoBlock, setAlsoBlock] = useState(
+    () => !alreadyBlocked && (courier ? blockChoiceFor(courier) : true),
+  );
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -122,6 +130,7 @@ export default function ReportScreen() {
 
   // Narrowed by the guard above, for the function below.
   const courierId = courier;
+  const noteCount = noteLength(note);
 
   async function send() {
     if (inFlight.current) return;
@@ -145,6 +154,7 @@ export default function ReportScreen() {
         ? await reportLetter(letter, report)
         : await reportCourier(courierId, report);
       const done = { outcome, blockedNow: blocking };
+      if (!alreadyBlocked) rememberBlockChoice(courierId, blocking);
       setSent(done);
       if (Platform.OS === 'web') {
         const lines = describeSent(done, alreadyBlocked, handle, Boolean(letter));
@@ -248,6 +258,16 @@ export default function ReportScreen() {
           multiline
           autoCapitalize="sentences"
         />
+        {/* As the letter field has: the limit seen coming, counted as the
+            database counts it, rather than met as a refusal. */}
+        <Text
+          variant="caption"
+          tone={noteCount > REPORT_NOTE_MAX_LENGTH ? 'danger' : 'muted'}
+          style={styles.counter}
+          accessibilityLabel={`${noteCount} of ${REPORT_NOTE_MAX_LENGTH} characters`}
+        >
+          {noteCount} / {REPORT_NOTE_MAX_LENGTH}
+        </Text>
       </View>
 
       {alreadyBlocked ? null : (
@@ -334,4 +354,5 @@ const styles = StyleSheet.create({
   section: { marginTop: Spacing.xl },
   notes: { gap: Spacing.sm },
   actions: { alignSelf: 'stretch', marginTop: Spacing.xl },
+  counter: { alignSelf: 'flex-end', marginTop: Spacing.xs },
 });

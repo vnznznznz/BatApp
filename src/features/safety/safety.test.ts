@@ -1,10 +1,13 @@
 import { REPORT_NOTE_MAX_LENGTH, REPORT_REASONS } from '@/constants/config';
 import {
+  blockChoiceFor,
   blockCourier,
   fetchBlocked,
+  forgetBlockChoices,
   noteLength,
   prepareNote,
   REASON_LABELS,
+  rememberBlockChoice,
   reportCourier,
   reportLetter,
   toBlockedCourier,
@@ -419,5 +422,34 @@ describe('validateNote', () => {
 
   it('uses the same words as the database when it refuses', () => {
     expect(validateNote('a'.repeat(REPORT_NOTE_MAX_LENGTH + 1))).toBe(REFUSALS.note_too_long);
+  });
+});
+
+describe('the block chosen last time', () => {
+  beforeEach(() => {
+    forgetBlockChoices();
+  });
+
+  it('blocks as well by default, for someone not reported before', () => {
+    expect(blockChoiceFor('user-anna')).toBe(true);
+  });
+
+  it('starts from what was chosen when the same courier was last reported', () => {
+    rememberBlockChoice('user-anna', false);
+
+    expect(blockChoiceFor('user-anna')).toBe(false);
+    expect(blockChoiceFor('user-ben')).toBe(true);
+
+    rememberBlockChoice('user-anna', true);
+
+    expect(blockChoiceFor('user-anna')).toBe(true);
+  });
+
+  it('forgets every choice when asked to', () => {
+    rememberBlockChoice('user-anna', false);
+
+    forgetBlockChoices();
+
+    expect(blockChoiceFor('user-anna')).toBe(true);
   });
 });
