@@ -29,6 +29,17 @@ enabled = true
 
 # The app is a native one and has no website. These are what a link in an auth
 # email is allowed to return to.
+#
+# Each entry stands for itself and nothing longer. Review asked the local stack
+# for links back to nightcourier://reset and to an Expo Go address, and both
+# came back as plain nightcourier://. So the screen that one day finishes a
+# password reset needs "nightcourier://**" here, or its link will quietly land
+# somewhere else. "exp://" is for Expo Go in development and harmless as it
+# stands; with a wildcard it would let a link open any Expo Go project, so it
+# must never be given one on the hosted project.
+#
+# What such a link carries today is a whole session: docs/GO-LIVE.md, "Known
+# gaps already logged".
 site_url = "nightcourier://"
 additional_redirect_urls = ["nightcourier://", "exp://"]
 

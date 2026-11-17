@@ -75,11 +75,22 @@ rather than paperwork.
 
 ### Known gaps already logged
 
-Both recorded where the work is, not only here:
+Recorded where the work is, not only here:
 
 - **Password reset cannot be completed in-app.** The email sends; there is no deep-link handler to
   catch the return and present a new-password screen. Parked until custom SMTP exists, because
   until then the mail cannot reach anyone anyway.
+- **The link in an auth email hands a whole sign-in to the URL scheme.** The app asks Supabase
+  Auth for its default way of answering such a link (`src/lib/supabase.ts` sets no `flowType`, and
+  the library's default is `implicit`). Review followed a reset link on the local stack: it ends
+  in a redirect to `nightcourier://#access_token=…&refresh_token=…`, a complete session.
+  Night Courier ignores it - that is the gap above - so it is of use only to whichever other app
+  on the phone answers to `nightcourier://`, and in Expo Go or a browser the link ends on an
+  error although it worked. Once confirmation is on, every sign-up email carries the same. Not
+  fixed here, because the fix is in the app: either ask for the code flow (`flowType: 'pkce'`),
+  where the link carries a one-time code only the device that asked can use, or have people type
+  a code from the email instead of following a link. **Do it before custom SMTP is switched on,**
+  which is the moment these emails start reaching people.
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
@@ -93,7 +104,8 @@ Both recorded where the work is, not only here:
 2. Start Apple enrolment. _(long lead time, gates TestFlight)_
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
    Phase 11. Push the migrations to the hosted project (`npx supabase@3.2.0 db push --remote --yes`).
-4. Custom SMTP, then email confirmation on, then finish password reset.
+4. Custom SMTP, then email confirmation on, then finish password reset - and before the first of
+   these, change what an email's link hands over ("Known gaps", above).
 5. ~~Phase 10 push.~~ Dropped.
 6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
 7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026, to
@@ -707,6 +719,10 @@ then turn email confirmation on. Set `enable_confirmations = true` under `[auth.
 `npx supabase@3.2.0 config push --yes` switches confirmation off again, and section 3.10 of the
 privacy policy stops being true. The SMTP settings themselves can stay in the dashboard: the file
 does not declare them, so a push leaves them alone.
+
+One thing in the app comes first: what the link in such an email hands over ("Known gaps already
+logged", near the top). From the day a provider is configured, these emails reach everyone who
+signs up or asks for a reset.
 
 ### Push notifications: none
 
