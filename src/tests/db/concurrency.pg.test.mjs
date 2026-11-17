@@ -112,6 +112,65 @@ const settlesWithin = (promise, ms) =>
     new Promise((resolve) => setTimeout(() => resolve(false), ms)),
   ]);
 
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Waits until `sql`, asked of the test database every few milliseconds, finds a row. */
+async function until(sql, params = []) {
+  for (let asked = 0; asked < 400; asked++) {
+    if ((await admin.query(sql, params)).rows.length > 0) return;
+    await pause(25);
+  }
+  assert.fail(`still nothing after ten seconds: ${sql}`);
+}
+
+/**
+ * Makes one kind of change to one table take a moment while `run` runs, so
+ * that two transactions really overlap there. `when` is a trigger's timing and
+ * event, such as 'before delete'; a row is held from before a `before` pause.
+ * `each` is 'row' or 'statement': a statement's pause comes before any of its
+ * rows is taken.
+ */
+async function slowly(when, table, run, { seconds = 0.3, each = 'row' } = {}) {
+  await admin.query(`
+    create function public._slowly() returns trigger language plpgsql as $$
+    begin
+      perform pg_sleep(${seconds});
+      return case when tg_op = 'DELETE' then old else new end;
+    end $$;
+    create trigger _slowly ${when} on ${table}
+      for each ${each} execute function public._slowly();
+  `);
+  try {
+    return await run();
+  } finally {
+    await admin.query(`
+      drop trigger _slowly on ${table};
+      drop function public._slowly();
+    `);
+  }
+}
+
+/** A sign-up whose address was never confirmed, old enough for the tidy-up to delete. */
+async function unconfirmedSignUp(name) {
+  const id = await createCourier(name, ['Munich', 'DE']);
+  await admin.query(
+    `update auth.users set email_confirmed_at = null, created_at = now() - interval '8 days'
+     where id = $1`,
+    [id],
+  );
+  return id;
+}
+
+const accountsLeft = async (ids) =>
+  (await admin.query(`select count(*)::int as count from auth.users where id = any($1)`, [ids]))
+    .rows[0].count;
+
+const allFulfilled = (outcomes) => {
+  for (const outcome of outcomes) {
+    assert.equal(outcome.status, 'fulfilled', outcome.reason?.message);
+  }
+};
+
 describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
   before(async () => {
     databaseName = `night_courier_test_${process.pid}_${Date.now()}`;
@@ -148,6 +207,9 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     // ever instead of the next test starting.
     await Promise.allSettled(opened.splice(0).map((client) => client.end()));
     await admin.query(`truncate auth.users cascade`);
+    // GoTrue's log names its user only inside each entry, so it does not go
+    // with the accounts.
+    await admin.query(`truncate auth.audit_log_entries`);
   });
 
   describe('the bat reservation', () => {
@@ -754,6 +816,96 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       );
       assert.equal(left[0].count, 0);
     });
+
+    /**
+     * What keeps all of the above from deadlocking is one habit: whatever ends
+     * an account first takes every row it will reach, in one order. This looks
+     * at what is then held, from a second connection: every row of each table,
+     * and not yet the account itself, which is taken last.
+     */
+    it('takes every row the end of an account will reach, friendships included, and the sign-in last', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const cara = await createCourier('cara', ['Hamburg', 'DE']);
+      await makeFriends(anna, ben);
+      const annaSession = await connectAs(anna);
+      const caraSession = await connectAs(cara);
+      await annaSession.query(`select * from public.send_message($1, 'to ben')`, [ben]);
+      await caraSession.query(`select public.request_friend('anna')`);
+      await caraSession.query(`select public.report_courier($1, 'spam')`, [anna]);
+      await annaSession.query(`select public.block_courier($1)`, [cara]);
+      await caraSession.query(`select public.request_friend('ben')`);
+      const holder = await connect();
+      const probe = await connect();
+
+      /** How many of the rows `where` names are free for somebody else to take. */
+      const free = async (table, where) =>
+        (
+          await probe.query(
+            `select count(*)::int as count
+             from (select 1 from ${table} where ${where} for update skip locked) as taken`,
+            [anna],
+          )
+        ).rows[0].count;
+      const annasRows = async () => ({
+        letters: await free('public.messages', '$1 in (sender_id, recipient_id)'),
+        bats: await free('public.bats', 'owner_id = $1'),
+        friendships: await free('public.friendships', '$1 in (requester_id, addressee_id)'),
+        blocks: await free('public.blocks', '$1 in (blocker_id, blocked_id)'),
+        reports: await free('public.reports', '$1 in (reporter_id, reported_id)'),
+      });
+      assert.deepEqual(await annasRows(), {
+        letters: 1,
+        bats: 3,
+        friendships: 1,
+        blocks: 1,
+        reports: 1,
+      });
+
+      await holder.query('begin');
+      await holder.query('select private.lock_courier_rows($1)', [anna]);
+      const stillFree = await annasRows();
+      const notYetTaken = {
+        profile: await free('public.profiles', 'id = $1'),
+        signIn: await free('auth.users', 'id = $1'),
+        // Cara's request to Ben is no part of Anna's account.
+        othersFriendships: await free(
+          'public.friendships',
+          '$1 not in (requester_id, addressee_id)',
+        ),
+      };
+      await holder.query('rollback');
+
+      assert.deepEqual(stillFree, { letters: 0, bats: 0, friendships: 0, blocks: 0, reports: 0 });
+      assert.deepEqual(notYetTaken, { profile: 1, signIn: 1, othersFriendships: 1 });
+    });
+
+    /**
+     * Three couriers, each a friend of the other two, all leaving at once.
+     * Each deletion's cascade came to its two friendships one after the other,
+     * and held the first while it waited for the second - which the next
+     * courier's deletion was holding, waiting in turn. Friendships are now
+     * taken up front with everything else, in one order.
+     */
+    it('lets three couriers who are all friends delete their accounts at once', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const cara = await createCourier('cara', ['Hamburg', 'DE']);
+      // Round the ring: each asked the next.
+      await makeFriends(anna, ben);
+      await makeFriends(ben, cara);
+      await makeFriends(cara, anna);
+      const sessions = await Promise.all([anna, ben, cara].map((who) => connectAs(who)));
+
+      const outcomes = await slowly('before delete', 'public.friendships', () =>
+        Promise.allSettled(
+          sessions.map((session) => session.query('select public.delete_own_account()')),
+        ),
+      );
+
+      allFulfilled(outcomes);
+      assert.equal(await accountsLeft([anna, ben, cara]), 0);
+    });
   });
 
   describe('an account the operator stops', () => {
@@ -871,6 +1023,273 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
         await Promise.all([annaLeaving.end(), operator.end()]);
       }
     });
+  });
+
+  describe('the daily tidy-up', () => {
+    const tidyUp = (session) => session.query('select private.tidy_up() as skipped');
+
+    /** One of everything the tidy-up has a step for. */
+    async function everythingToTidy() {
+      const unconfirmed = await unconfirmedSignUp('unconfirmed');
+      const removed = await createCourier('removed', ['Munich', 'DE']);
+      const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+      await admin.query(`update auth.users set raw_user_meta_data = '{}' where id = any($1)`, [
+        [unconfirmed, removed],
+      ]);
+      // A removed account whose ban has run out: a sign-in without a profile.
+      await admin.query(
+        `update auth.users set banned_until = now() - interval '1 day' where id = $1`,
+        [removed],
+      );
+      await admin.query(`delete from public.profiles where id = $1`, [removed]);
+      await admin.query(
+        `insert into auth.audit_log_entries (payload, created_at)
+         values ($1::json, now() - interval '31 days')`,
+        [JSON.stringify({ actor_id: xavier, action: 'login' })],
+      );
+      await admin.query(
+        `insert into auth.sessions (user_id, created_at, updated_at)
+         values ($1, now() - interval '200 days', now() - interval '91 days')`,
+        [xavier],
+      );
+      await admin.query(
+        `insert into auth.identities (user_id, identity_data)
+         values ($1, '{"username": "xavier", "display_name": "xavier"}')`,
+        [xavier],
+      );
+      // A move that settled an hour ago.
+      await admin.query(
+        `update public.profiles
+         set city_id = (select id from public.cities where name = 'Hamburg' and country_code = 'DE')
+         where id = $1`,
+        [xavier],
+      );
+      await admin.query(
+        `update public.profiles set city_changed_at = now() - interval '25 hours' where id = $1`,
+        [xavier],
+      );
+      return { unconfirmed, removed, xavier };
+    }
+
+    const inProfiles = `select 1 from public.profiles where id = $1 for update`;
+    const inSignIns = `select 1 from auth.users where id = $1 for update`;
+    const inSessions = `select 1 from auth.sessions where user_id = $1 for update`;
+    const inIdentities = `select 1 from auth.identities where user_id = $1 for update`;
+    const inSignInLog = `select 1 from auth.audit_log_entries for update`;
+
+    /**
+     * It deletes sign-ups whose address was never confirmed, and used to go
+     * straight into the cascade, which reaches a request before a report. A
+     * courier who had asked such a sign-up to be friends and reported it, and
+     * was deleting their own account, held the report and wanted the request.
+     * (Found in review: 30 rounds in 150 ended with one of the two stopped.)
+     */
+    it('waits for a courier deleting their account, and is waited for, instead of deadlocking', async () => {
+      const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+      const unconfirmed = await unconfirmedSignUp('unconfirmed');
+      const xavierSession = await connectAs(xavier);
+      await xavierSession.query(`select public.request_friend('unconfirmed')`);
+      await xavierSession.query(`select public.report_courier($1, 'spam')`, [unconfirmed]);
+      const tidier = await connect();
+
+      const outcomes = await slowly(
+        'before delete',
+        'public.friendships',
+        async () => {
+          const tidying = tidyUp(tidier);
+          await pause(150);
+          const deleting = xavierSession.query('select public.delete_own_account()');
+          return Promise.allSettled([tidying, deleting]);
+        },
+        { seconds: 0.5 },
+      );
+
+      allFulfilled(outcomes);
+      assert.equal(await accountsLeft([xavier, unconfirmed]), 0);
+      const { rows } = await admin.query(
+        `select reporter_id, reported_id, reported_username from public.reports`,
+      );
+      assert.deepEqual(rows, [
+        { reporter_id: null, reported_id: null, reported_username: 'unconfirmed' },
+      ]);
+    });
+
+    /**
+     * The other way round: the courier's deletion has taken its rows and is
+     * about to take its sign-in when the tidy-up starts. The tidy-up used to
+     * do its other work first and keep hold of it - this courier's sign-in
+     * (they joined today, and their sign-up names are still to be removed),
+     * their sign-in record from a month ago, a session they have not used for
+     * three months - and then ask for a row the deletion held, while the
+     * deletion asked for one of those. It now deletes first, holding nothing.
+     */
+    it('holds nothing of anyone else’s when it comes to delete', async () => {
+      const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+      const unconfirmed = await unconfirmedSignUp('unconfirmed');
+      const xavierSession = await connectAs(xavier);
+      await xavierSession.query(`select public.block_courier($1)`, [unconfirmed]);
+      await admin.query(
+        `insert into auth.audit_log_entries (payload, created_at)
+         values ($1::json, now() - interval '31 days')`,
+        [JSON.stringify({ actor_id: xavier, action: 'login' })],
+      );
+      await admin.query(
+        `insert into auth.sessions (user_id, created_at, updated_at)
+         values ($1, now() - interval '200 days', now() - interval '91 days')`,
+        [xavier],
+      );
+      const tidier = await connect();
+
+      // The deletion pauses with its rows taken and its sign-in still to come.
+      const outcomes = await slowly(
+        'before delete',
+        'auth.users',
+        async () => {
+          const deleting = xavierSession.query('select public.delete_own_account()');
+          await pause(150);
+          const tidying = tidyUp(tidier);
+          return Promise.allSettled([deleting, tidying]);
+        },
+        { seconds: 0.5, each: 'statement' },
+      );
+
+      allFulfilled(outcomes);
+      assert.equal(await accountsLeft([xavier, unconfirmed]), 0);
+    });
+
+    /**
+     * Two such sign-ups in one night, and two couriers who each reported one
+     * and blocked the other. A deletion takes blocks before reports. Deleted
+     * one after the other, the first sign-up's reports would be held while the
+     * second one's blocks were still to come - whichever of the two came
+     * first, one of these couriers would be holding exactly the wrong pair.
+     */
+    it('takes the rows of every sign-up it deletes together, table by table', async () => {
+      const first = await unconfirmedSignUp('first');
+      const second = await unconfirmedSignUp('second');
+      const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+      const yara = await createCourier('yara', ['Berlin', 'DE']);
+      const xavierSession = await connectAs(xavier);
+      const yaraSession = await connectAs(yara);
+      await xavierSession.query(`select public.report_courier($1, 'spam')`, [first]);
+      await xavierSession.query(`select public.block_courier($1)`, [second]);
+      await yaraSession.query(`select public.report_courier($1, 'spam')`, [second]);
+      await yaraSession.query(`select public.block_courier($1)`, [first]);
+      const tidier = await connect();
+
+      // The tidy-up pauses on the first of the two reports it reaches,
+      // whichever that is, holding it.
+      const outcomes = await slowly(
+        'before update',
+        'public.reports',
+        async () => {
+          const tidying = tidyUp(tidier);
+          await pause(150);
+          return Promise.allSettled([
+            tidying,
+            xavierSession.query('select public.delete_own_account()'),
+            yaraSession.query('select public.delete_own_account()'),
+          ]);
+        },
+        { seconds: 0.5 },
+      );
+
+      allFulfilled(outcomes);
+      assert.equal(await accountsLeft([first, second, xavier, yara]), 0);
+    });
+
+    /**
+     * If Postgres does stop the tidy-up, only the step it was in is undone. The
+     * whole night's run used to go with it - old sign-in records, idle
+     * sessions, sign-up names all stayed another day - and nothing said so.
+     *
+     * Each step is stopped here in turn, on purpose: a connection holds a row
+     * that step needs, and then asks for a row the tidy-up has held since its
+     * first step. The tidy-up is the one that notices, so it is the one
+     * Postgres stops. Everything there is to tidy is in place every time, and
+     * afterwards all of it must be done except the one step.
+     */
+    for (const [step, event, table, held] of [
+      ['unconfirmed sign-ups', 'delete', 'auth.users', (c) => [inProfiles, c.unconfirmed]],
+      ['expired bans', 'delete', 'auth.users', (c) => [inSignIns, c.removed]],
+      ['sign-in log', 'delete', 'auth.audit_log_entries', () => [inSignInLog, null]],
+      ['idle sessions', 'delete', 'auth.sessions', (c) => [inSessions, c.xavier]],
+      ['sign-up names', 'update', 'auth.users', (c) => [inSignIns, c.xavier]],
+      ['sign-up names in identities', 'update', 'auth.identities', (c) => [inIdentities, c.xavier]],
+      ['settled moves', 'update', 'public.profiles', (c) => [inProfiles, c.xavier]],
+    ]) {
+      it(`undoes only the step that was stopped: ${step}`, async () => {
+        const couriers = await everythingToTidy();
+        const untidied = async () => {
+          const { rows } = await admin.query(
+            `select
+               (select count(*)::int from auth.users where id = $1) as "unconfirmed sign-ups",
+               (select count(*)::int from auth.users where id = $2) as "expired bans",
+               (select count(*)::int from auth.audit_log_entries
+                where created_at < now() - interval '30 days') as "sign-in log",
+               (select count(*)::int from auth.sessions) as "idle sessions",
+               (select count(*)::int from auth.users
+                where id = $3 and raw_user_meta_data ? 'username') as "sign-up names",
+               (select count(*)::int from auth.identities
+                where identity_data ? 'username') as "sign-up names in identities",
+               (select count(*)::int from public.profiles
+                where settled_city_id is not null) as "settled moves"`,
+            [couriers.unconfirmed, couriers.removed, couriers.xavier],
+          );
+          return rows[0];
+        };
+        const everything = await untidied();
+        assert.ok(
+          Object.values(everything).every((waiting) => waiting === 1),
+          JSON.stringify(everything),
+        );
+        const inTheWay = await connect();
+        const tidier = await connect();
+        // Whichever of two that wait for each other looks first is stopped.
+        await inTheWay.query(`set deadlock_timeout = '60s'`);
+        await tidier.query(`set deadlock_timeout = '100ms'`);
+        const tidierPid = (await tidier.query('select pg_backend_pid() as pid')).rows[0].pid;
+
+        const [sql, id] = held(couriers);
+        await inTheWay.query('begin');
+        await inTheWay.query(sql, id ? [id] : []);
+        const skipped = await slowly(
+          `before ${event}`,
+          table,
+          async () => {
+            const tidying = tidyUp(tidier);
+            // By its first pause the tidy-up holds the unconfirmed sign-up's bats.
+            await until(
+              `select 1 from pg_stat_activity where pid = $1 and wait_event = 'PgSleep'`,
+              [tidierPid],
+            );
+            const asking = inTheWay.query(
+              `select 1 from public.bats where owner_id = $1 for update`,
+              [couriers.unconfirmed],
+            );
+            // Whatever happens, let go before the pause is taken away again:
+            // that waits for every open transaction that touched the table.
+            try {
+              const { rows } = await tidying;
+              await asking;
+              return rows[0].skipped;
+            } finally {
+              await inTheWay.query('rollback');
+            }
+          },
+          { seconds: 0.4, each: 'statement' },
+        );
+
+        assert.deepEqual(
+          skipped.filter((entry) => !entry.startsWith('pg_cron run log: ')),
+          [`${step}: deadlock detected`],
+        );
+        const expected = Object.fromEntries(
+          Object.keys(everything).map((name) => [name, name === step ? 1 : 0]),
+        );
+        assert.deepEqual(await untidied(), expected);
+      });
+    }
   });
 
   describe('the city search', () => {
@@ -1053,25 +1472,64 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       assert.equal(await friendshipsLeft(), 0);
     });
 
-    /** Makes every row `event`ed on `table` take a moment, so that two transactions overlap. */
-    async function slowly(table, event, run) {
-      await admin.query(`
-        create function public._slowly() returns trigger language plpgsql as $$
-        begin
-          perform pg_sleep(0.3);
-          return case when tg_op = 'DELETE' then old else new end;
-        end $$;
-        create trigger _slowly before ${event} on public.${table}
-          for each row execute function public._slowly();
-      `);
-      try {
-        return await run();
-      } finally {
-        await admin.query(`
-          drop trigger _slowly on public.${table};
-          drop function public._slowly();
-        `);
-      }
+    /**
+     * A block names the courier it blocks, and from the moment it is written
+     * that courier's profile cannot be deleted until the request ends. Their
+     * own deletion, meanwhile, has taken the friendship between the two. A
+     * block that wrote its row first and ended the friendship second would
+     * wait for the deletion, which is waiting for it. So the friendship goes
+     * first - and with a report that also blocks, the block goes first.
+     */
+    for (const [label, written, call] of [
+      ['a block', 'public.blocks', (anna) => [`select public.block_courier($1)`, [anna]]],
+      [
+        'a report that also blocks',
+        'public.reports',
+        (anna) => [`select public.report_courier($1, 'spam', null, true)`, [anna]],
+      ],
+      [
+        'a report of a letter that also blocks',
+        'public.reports',
+        (anna, letter) => [`select public.report_letter($1, 'harassment', null, true)`, [letter]],
+      ],
+    ]) {
+      it(`lets ${label} and the blocked friend’s own deletion happen at once`, async () => {
+        const anna = await createCourier('anna', ['Berlin', 'DE']);
+        const ben = await createCourier('ben', ['Munich', 'DE']);
+        await makeFriends(anna, ben);
+        const benSession = await connectAs(ben);
+        const annaSession = await connectAs(anna);
+        const { rows } = await annaSession.query(
+          `select message_id from public.send_message($1, 'Unkind.')`,
+          [ben],
+        );
+        const letter = rows[0].message_id;
+        await admin.query(
+          `update public.messages
+           set sent_at = now() - interval '2 hours', deliver_at = now() - interval '1 minute'
+           where id = $1`,
+          [letter],
+        );
+        await admin.query(`select private.deliver_due_messages()`);
+
+        // The pause comes once the first row that names Anna is written, with
+        // the rest still to do.
+        const outcomes = await slowly(
+          'after insert',
+          written,
+          async () => {
+            const blocking = benSession.query(...call(anna, letter));
+            await pause(200);
+            const deleting = annaSession.query('select public.delete_own_account()');
+            return Promise.allSettled([blocking, deleting]);
+          },
+          { seconds: 0.6 },
+        );
+
+        allFulfilled(outcomes);
+        assert.equal(await accountsLeft([anna]), 0);
+        assert.equal(await friendshipsLeft(), 0);
+      });
     }
 
     /**
@@ -1103,7 +1561,7 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
         const annaSession = await connectAs(anna);
         const benSession = await connectAs(ben);
 
-        const outcomes = await slowly(table, event, () =>
+        const outcomes = await slowly(`before ${event}`, `public.${table}`, () =>
           Promise.allSettled([
             annaSession.query('select public.delete_own_account()'),
             benSession.query('select public.delete_own_account()'),

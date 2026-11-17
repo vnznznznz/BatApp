@@ -221,6 +221,38 @@ describe('the daily tidy-up', () => {
     assert.equal(await signInExists(confirmedLongAgo), true);
   });
 
+  /**
+   * Such a sign-up cannot sign in, but it has a profile, and couriers can have
+   * asked it to be friends, blocked it and reported it. Several can be due in
+   * one night. What others hold of them goes; a report stays, as it does when
+   * any account goes.
+   */
+  it('deletes every such sign-up of the night, with what couriers hold of them, but not a report', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const forgotten = [
+      await createCourier(db, { name: 'first' }),
+      await createCourier(db, { name: 'second' }),
+    ];
+    await db.query(
+      `update auth.users set email_confirmed_at = null, created_at = now() - interval '8 days'
+       where id = any($1::uuid[])`,
+      [forgotten],
+    );
+    await rpc(db, anna, 'request_friend', { username: 'first' });
+    await rpc(db, anna, 'report_courier', { courier_id: forgotten[0], reason: 'spam' });
+    await rpc(db, anna, 'block_courier', { courier_id: forgotten[1] });
+
+    await tidyUp();
+
+    for (const id of forgotten) assert.equal(await signInExists(id), false);
+    assert.equal(await count(db, `select 1 from public.friendships`), 0);
+    assert.equal(await count(db, `select 1 from public.blocks`), 0);
+    const { rows } = await db.query(
+      `select reporter_id, reported_id, reported_username from public.reports`,
+    );
+    assert.deepEqual(rows, [{ reporter_id: anna, reported_id: null, reported_username: 'first' }]);
+  });
+
   it('forgets the city a courier moved away from once the move has settled', async () => {
     const settled = await createCourier(db, { city: ['Berlin', 'DE'] });
     const moving = await createCourier(db, { city: ['Berlin', 'DE'] });
