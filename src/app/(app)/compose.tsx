@@ -12,6 +12,7 @@ import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-context';
 import { describeCity } from '@/features/cities/search';
 import {
   fetchFriendships,
@@ -19,9 +20,11 @@ import {
   groupFriendships,
   type Friendship,
 } from '@/features/friends/friends';
+import { forgetDraft, keepDraft, useDraft } from '@/features/messages/drafts';
 import {
   letterLength,
   prepareBody,
+  previewOf,
   sendMessage,
   validateBody,
   type Dispatch,
@@ -53,13 +56,18 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
 export default function ComposeScreen() {
   const router = useRouter();
   const { to } = useLocalSearchParams<{ to?: string }>();
+  const { session } = useAuth();
+  const courierId = session?.user.id;
   const { profile, error: profileError } = useProfile();
   const friendships = useRemote(fetchFriendships);
   const roost = useRemote(fetchRoost);
   const now = useNow(1000);
   const focused = useScreenFocused();
 
-  const [text, setText] = useState('');
+  // The words are kept outside this screen, one unsent letter for each friend,
+  // so that leaving it - the back arrow, a swipe, going back to read again the
+  // letter being answered - does not throw them away.
+  const text = useDraft(courierId, to);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   // Who it went to is kept with the answer, so the confirmation stays on screen
@@ -122,7 +130,7 @@ export default function ComposeScreen() {
         `Your bat is on its way to ${friendName(friendship.friend)}. ` +
           `It lands in ${formatDuration(dispatch.deliverAt.getTime() - Date.now())}.`,
       );
-      setText('');
+      forgetDraft(courierId, to);
       attempt.current = null;
       // The bat that left, with the server's own time of leaving.
       void roost.reload();
@@ -218,11 +226,10 @@ export default function ComposeScreen() {
         {friends.length > 0 ? (
           <Card style={styles.list}>
             {friends.map((friendship) => (
-              <ListRow
+              <FriendRow
                 key={friendship.id}
-                title={friendName(friendship.friend)}
-                subtitle={describeRoute(friendship)}
-                disabled={!friendship.route}
+                friendship={friendship}
+                courierId={courierId}
                 onPress={() => router.setParams({ to: friendship.friend.id })}
               />
             ))}
@@ -285,7 +292,7 @@ export default function ComposeScreen() {
           label="Your letter"
           value={text}
           onChangeText={(value) => {
-            setText(value);
+            keepDraft(courierId, to, value);
             if (error) setError(null);
           }}
           error={error}
@@ -325,6 +332,39 @@ export default function ComposeScreen() {
       </View>
     </Screen>
   );
+}
+
+/**
+ * A friend to choose, with the way there - and, if a letter to them was started
+ * and not sent, how it begins. Opened with nobody chosen, the screen does not
+ * go straight into such a letter, even when it is the only one: from there,
+ * there would be no way to write to anyone else. It says where the words are
+ * and leaves the choice to the courier.
+ */
+function FriendRow({
+  friendship,
+  courierId,
+  onPress,
+}: {
+  friendship: Friendship;
+  courierId: string | undefined;
+  onPress: () => void;
+}) {
+  const started = previewOf(useDraft(courierId, friendship.friend.id));
+  return (
+    <ListRow
+      title={friendName(friendship.friend)}
+      subtitle={describeRoute(friendship)}
+      detail={started ? `A letter you started: ${asOneLine(started)}` : undefined}
+      disabled={!friendship.route}
+      onPress={onPress}
+    />
+  );
+}
+
+/** A letter's opening run together, as the lists of letters show one. */
+function asOneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 /** "Munich, DE · 505 km · about 6h 18m", or why no bat can go there. */

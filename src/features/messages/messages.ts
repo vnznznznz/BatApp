@@ -74,6 +74,9 @@ export const PAGE_SIZE = 30;
 /** The most letters one request returns: `max_results` is capped at this in SQL. */
 export const MAX_PAGE_SIZE = 100;
 
+/** How much of a letter a list shows: the lists cut `preview` here in SQL. */
+export const PREVIEW_LENGTH = 200;
+
 /* -------------------------------------------------------------------------- */
 /* Rows, with the nullability the SQL actually has                             */
 /* -------------------------------------------------------------------------- */
@@ -196,6 +199,15 @@ export function letterLength(text: string): number {
 /** Leading and trailing blank space is dropped; everything between is kept as written. */
 export function prepareBody(text: string): string {
   return text.trim();
+}
+
+/**
+ * The opening of a letter not sent yet, cut as the server cuts the preview of
+ * one that was - by characters as the database counts them, so never through
+ * the middle of an emoji.
+ */
+export function previewOf(text: string): string {
+  return Array.from(prepareBody(text)).slice(0, PREVIEW_LENGTH).join('');
 }
 
 /** Mirrors the database's checks, so a mistake is caught before a round trip. */

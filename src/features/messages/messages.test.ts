@@ -7,6 +7,8 @@ import {
   letterLength,
   PAGE_SIZE,
   prepareBody,
+  PREVIEW_LENGTH,
+  previewOf,
   readMessage,
   sendMessage,
   toLetter,
@@ -159,6 +161,28 @@ describe('prepareBody', () => {
     const letter = 'Dear Anna,\n\n   a poem:\n\troses   are red\n\nBen';
 
     expect(prepareBody(`   ${letter}   `)).toBe(letter);
+  });
+});
+
+describe('previewOf', () => {
+  it('is the whole of a short letter, without the blank space around it', () => {
+    expect(previewOf('  \nDear Anna,\n\nSee you soon.\n ')).toBe('Dear Anna,\n\nSee you soon.');
+  });
+
+  it('is nothing for a letter of nothing but blank space', () => {
+    expect(previewOf('  \n\t ')).toBe('');
+  });
+
+  /** `list_inbox` and `list_sent` cut theirs with left(body, 200). */
+  it('is cut where the server cuts the preview of a letter that was sent', () => {
+    expect(PREVIEW_LENGTH).toBe(200);
+    expect(previewOf('a'.repeat(PREVIEW_LENGTH))).toBe('a'.repeat(PREVIEW_LENGTH));
+    expect(previewOf('a'.repeat(PREVIEW_LENGTH + 1))).toBe('a'.repeat(PREVIEW_LENGTH));
+  });
+
+  /** Cut by UTF-16 units, the two hundredth bat would be half a bat. */
+  it('counts characters as the database does, never cutting one in half', () => {
+    expect(previewOf('🦇'.repeat(PREVIEW_LENGTH + 50))).toBe('🦇'.repeat(PREVIEW_LENGTH));
   });
 });
 

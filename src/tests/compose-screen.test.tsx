@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { AppState } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
@@ -7,11 +7,13 @@ import ComposeScreen from '@/app/(app)/compose';
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors } from '@/constants/theme';
 import { fetchFriendships, type Friendship } from '@/features/friends/friends';
+import { forgetAllDrafts } from '@/features/messages/drafts';
 import { sendMessage, type Dispatch } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, type Bat } from '@/features/roost/roost';
 import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
+import { supabase } from '@/lib/supabase';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -68,6 +70,15 @@ jest.mock('@/features/profile/use-profile', () => ({
   useProfile: () => ({ ...mockProfileState }),
 }));
 
+/** Who is signed in on this phone. */
+const mockSession = { user: { id: 'user-mara' } };
+
+// Only the id of whoever is signed in is read from the session: an unsent
+// letter is kept under it, apart from any other account's.
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ session: mockSession }),
+}));
+
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedFetchRoost = jest.mocked(fetchRoost);
 const mockedSendMessage = jest.mocked(sendMessage);
@@ -113,6 +124,22 @@ const ben: Friendship = {
   route: null,
   requestedAt: new Date(NOW - 5 * DAY),
   acceptedAt: new Date(NOW - 4 * DAY),
+};
+
+/** A second friend a bat can reach, in Vienna. */
+const eva: Friendship = {
+  id: 'friendship-eva',
+  status: 'accepted',
+  direction: 'outgoing',
+  friend: {
+    id: 'user-eva',
+    username: 'eva',
+    displayName: 'Eva Novak',
+    city: { name: 'Vienna', countryCode: 'AT' },
+  },
+  route: { distanceKm: 523.7, flightSeconds: 23_566 },
+  requestedAt: new Date(NOW - 8 * DAY),
+  acceptedAt: new Date(NOW - 7 * DAY),
 };
 
 /** Asked the courier, who has not answered: not a friend yet. */
@@ -205,11 +232,15 @@ const renderScreen = (ui: ReactElement) =>
 const letterField = () => screen.getByLabelText('Your letter');
 const sendButton = () => screen.getByRole('button', { name: 'Send by bat' });
 
-/** Opens the screen with a letter addressed to `friendId`, once the bats are counted. */
+/**
+ * Opens the screen with a letter addressed to `friendId`, once the bats are
+ * counted - as "Write back" on a letter and "Write" beside a friend open it.
+ */
 async function openLetterTo(friendId: string) {
   mockParams.to = friendId;
-  await renderScreen(<ComposeScreen />);
+  const view = await renderScreen(<ComposeScreen />);
   await screen.findByText(/^(\d+ of \d+ bats at home|All your bats are out)\./);
+  return view;
 }
 
 async function writeAndSend(text: string) {
@@ -235,6 +266,8 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockSetParams.mockClear();
   delete mockParams.to;
+  mockSession.user = { id: 'user-mara' };
+  forgetAllDrafts();
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
   mockProfileState.error = null;
@@ -417,6 +450,171 @@ describe('ComposeScreen', () => {
       await fireEvent.changeText(letterField(), 'Dear Anna,');
 
       expect(screen.queryByText('Write something first.')).toBeNull();
+    });
+  });
+
+  /**
+   * The words of a letter used to live in this screen alone, and every way out
+   * of it - the header's arrow, a swipe from the edge, Android's back button -
+   * threw them away without a question. (Found in review.) Leaving is modelled
+   * here as the navigator does it: the screen is removed, and a new one is made
+   * the next time.
+   */
+  describe('an unsent letter', () => {
+    it('is still there when the screen is left and opened again', async () => {
+      const first = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna,\n\nThe chestnuts are out again.');
+      await first.unmount();
+
+      await openLetterTo('user-anna');
+
+      expect(letterField()).toHaveDisplayValue('Dear Anna,\n\nThe chestnuts are out again.');
+      expect(screen.getByText(`40 / ${MESSAGE_MAX_LENGTH}`)).toBeOnTheScreen();
+    });
+
+    it('can be sent after coming back to it', async () => {
+      const first = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'See you at the lake.');
+      await first.unmount();
+      await openLetterTo('user-anna');
+
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledWith(
+        'user-anna',
+        'See you at the lake.',
+        expect.any(String),
+      );
+    });
+
+    it('is kept for each friend apart', async () => {
+      serveFriends(() => [anna, eva]);
+      const toAnna = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna,');
+      await toAnna.unmount();
+
+      const toEva = await openLetterTo('user-eva');
+      expect(letterField()).toHaveDisplayValue('');
+      await fireEvent.changeText(letterField(), 'Dear Eva,');
+      await toEva.unmount();
+
+      await openLetterTo('user-anna');
+      expect(letterField()).toHaveDisplayValue('Dear Anna,');
+    });
+
+    /**
+     * "Write a letter" on the roost opens this screen with nobody chosen. Even
+     * with a single letter started, it does not jump into that letter: from
+     * there, there would be no way to write to anyone else. It asks who the
+     * letter is for as always, and says which friend has one started.
+     */
+    it('is pointed out in the list of friends, which still asks who the letter is for', async () => {
+      serveFriends(() => [anna, eva]);
+      const toAnna = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna,\n\nThe chestnuts are out again.');
+      await toAnna.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText('Who is it for?')).toBeOnTheScreen();
+      expect(screen.queryByLabelText('Your letter')).toBeNull();
+      const annaRow = screen.getByRole('button', { name: /^Anna Weber/ });
+      expect(
+        within(annaRow).getByText('A letter you started: Dear Anna, The chestnuts are out again.'),
+      ).toBeOnTheScreen();
+      expect(screen.getAllByText(/^A letter you started/)).toHaveLength(1);
+
+      await fireEvent.press(annaRow);
+
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+    });
+
+    /**
+     * A letter can be two thousand characters, and a row's text is what a
+     * screen reader reads out. The row shows as much as the lists of letters
+     * show of one that was sent.
+     */
+    it('is pointed out by its opening only, however long it is', async () => {
+      const toAnna = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), `Dear Anna, ${'🦇'.repeat(1500)}`);
+      await toAnna.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText('Who is it for?');
+
+      expect(
+        screen.getByText(`A letter you started: Dear Anna, ${'🦇'.repeat(189)}`),
+      ).toBeOnTheScreen();
+    });
+
+    it('is not pointed out when nothing but blank space was typed', async () => {
+      const toAnna = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), '  \n ');
+      await toAnna.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText('Who is it for?');
+
+      expect(screen.queryByText(/^A letter you started/)).toBeNull();
+    });
+
+    it('is gone once it has been sent', async () => {
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText('Your bat is on its way');
+      await first.unmount();
+
+      await openLetterTo('user-anna');
+
+      expect(letterField()).toHaveDisplayValue('');
+    });
+
+    it('is still there after a send that was refused', async () => {
+      mockedSendMessage.mockRejectedValue(
+        new RpcError(REFUSALS.no_available_bat, 'no_available_bat'),
+      );
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText(REFUSALS.no_available_bat);
+      await first.unmount();
+
+      await openLetterTo('user-anna');
+
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+    });
+
+    /** Two people can share a phone; one must never be shown what the other wrote. */
+    it('is never shown to another account on the same phone', async () => {
+      const mara = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna, this is between us.');
+      await mara.unmount();
+
+      mockSession.user = { id: 'user-nora' };
+      const nora = await openLetterTo('user-anna');
+      expect(letterField()).toHaveDisplayValue('');
+      await nora.unmount();
+
+      mockSession.user = { id: 'user-mara' };
+      await openLetterTo('user-anna');
+      expect(letterField()).toHaveDisplayValue('Dear Anna, this is between us.');
+    });
+
+    it('is forgotten when the courier signs out', async () => {
+      const first = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna, this is between us.');
+      await first.unmount();
+
+      // The client's own sign-out. With no session in these tests it makes no request.
+      await act(async () => {
+        await supabase.auth.signOut({ scope: 'local' });
+      });
+      await openLetterTo('user-anna');
+
+      expect(letterField()).toHaveDisplayValue('');
     });
   });
 
