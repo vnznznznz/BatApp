@@ -150,14 +150,15 @@ export default function ComposeScreen() {
   // shows that it is asking. The screen has nothing to pull down, so without
   // this an error saying "try again" left only one way to do it: going back.
   // (Found in review.)
-  async function loadAgain() {
+  //
+  // Written with `then` rather than try and finally on purpose: the React
+  // Compiler leaves out a whole component that has a `finally` in it, without
+  // a word, and this is the screen that draws again on every keystroke.
+  function loadAgain() {
     void refreshRoost();
     setLoadingProfile(true);
-    try {
-      await reloadProfile();
-    } finally {
-      setLoadingProfile(false);
-    }
+    const done = () => setLoadingProfile(false);
+    void reloadProfile().then(done, done);
   }
 
   function send() {
@@ -312,7 +313,7 @@ export default function ComposeScreen() {
       label="Try again"
       variant="secondary"
       loading={roost.isRefreshing || loadingProfile}
-      onPress={() => void loadAgain()}
+      onPress={loadAgain}
     />
   );
 

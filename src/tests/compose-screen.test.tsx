@@ -2007,6 +2007,20 @@ describe('ComposeScreen', () => {
       expect(screen.getByText(PROFILE_NOT_LOADED)).toBeOnTheScreen();
     });
 
+    // The hook says what became of a load and does not throw; if it ever did,
+    // the button must not be left spinning for good.
+    it('is not left busy if loading the profile again fails outright', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.error = PROFILE_NOT_LOADED;
+      await openLetterTo('user-anna');
+
+      mockReloadProfile.mockRejectedValueOnce(new Error('unexpected'));
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(tryAgainButton()).toBeEnabled();
+    });
+
     // With no connection as the friends came through, both are missing. One
     // way out is enough, and it asks for both.
     it('offers to try again once when neither the bats nor the profile could be loaded', async () => {
