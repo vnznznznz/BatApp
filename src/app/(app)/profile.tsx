@@ -21,7 +21,7 @@ import { CONTACT_URL, openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 export default function ProfileScreen() {
   const router = useRouter();
   const { signOut, deleteAccount } = useAuth();
-  const { profile, isLoading, error, reload, updateDisplayName } = useProfile();
+  const { profile, isLoading, isGone, error, reload, updateDisplayName } = useProfile();
   const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -134,7 +134,8 @@ export default function ProfileScreen() {
 
       {/* Without a profile there is nothing true to show here - not an empty
           username, and not "no city chosen" for a courier who has one. What
-          stays is the way out: the error above may say to sign out and in. */}
+          stays is the way out: the error above may say that the account is
+          gone, and signing out is then all there is to do. */}
       {profile ? (
         <>
           <Card style={styles.card}>
@@ -203,11 +204,13 @@ export default function ProfileScreen() {
         <Text variant="caption" tone="secondary" accessibilityRole="header">
           Safety
         </Text>
-        <Button
-          label="Blocked couriers"
-          variant="secondary"
-          onPress={() => router.push('/blocked')}
-        />
+        {isGone ? null : (
+          <Button
+            label="Blocked couriers"
+            variant="secondary"
+            onPress={() => router.push('/blocked')}
+          />
+        )}
         <Button label="House rules" variant="ghost" onPress={() => router.push('/rules')} />
         {CONTACT_URL ? (
           <Button label="Contact" variant="ghost" onPress={() => void openLink(CONTACT_URL)} />
@@ -226,12 +229,16 @@ export default function ProfileScreen() {
           Account
         </Text>
         <Button label="Sign out" variant="secondary" loading={signingOut} onPress={leave} />
-        <Button
-          label="Delete my account"
-          variant="danger"
-          loading={deleting}
-          onPress={confirmDelete}
-        />
+        {/* Nothing is left to delete of an account that is gone - and for one
+            that was removed, deleting would take away what the removal kept. */}
+        {isGone ? null : (
+          <Button
+            label="Delete my account"
+            variant="danger"
+            loading={deleting}
+            onPress={confirmDelete}
+          />
+        )}
       </View>
 
       <Text variant="caption" tone="muted" style={[styles.credit, styles.hint]}>

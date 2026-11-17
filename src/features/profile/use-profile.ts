@@ -88,6 +88,7 @@ export function useProfile() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGone, setIsGone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -105,11 +106,19 @@ export function useProfile() {
       setError('Your profile could not be loaded. Check your connection.');
     } else if (data) {
       setProfile(toProfile(data));
+      setIsGone(false);
       setError(null);
     } else {
-      // The trigger creates a profile alongside the auth user, so this means the
-      // row was removed underneath us rather than never created.
-      setError('Your profile is missing. Signing out and in again may recover it.');
+      // The trigger creates a profile alongside the auth user, so no row means
+      // the account has gone since: deleted on another device, or removed.
+      // This device's sign-in goes on working for up to an hour all the same,
+      // and what it showed of the profile is no longer true.
+      setProfile(null);
+      setIsGone(true);
+      setError(
+        'This account no longer exists: it has been deleted or removed. ' +
+          'All that is left to do is to sign out.',
+      );
     }
     setIsLoading(false);
   }, [userId]);
@@ -154,5 +163,5 @@ export function useProfile() {
     [userId, load],
   );
 
-  return { profile, isLoading, error, reload: load, updateDisplayName, updateCity };
+  return { profile, isLoading, isGone, error, reload: load, updateDisplayName, updateCity };
 }

@@ -35,9 +35,15 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => ({ signOut: mockSignOut, deleteAccount: mockDeleteAccount }),
 }));
 
-const mockProfileState: { profile: Profile | null; isLoading: boolean; error: string | null } = {
+const mockProfileState: {
+  profile: Profile | null;
+  isLoading: boolean;
+  isGone: boolean;
+  error: string | null;
+} = {
   profile: null,
   isLoading: false,
+  isGone: false,
   error: null,
 };
 // Stable, as the real hook's are: the screen reloads the profile on focus, and a
@@ -133,6 +139,7 @@ beforeEach(() => {
   mockReloadProfile.mockClear();
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
+  mockProfileState.isGone = false;
   mockProfileState.error = null;
   mockSignOut.mockReset();
   mockSignOut.mockResolvedValue(undefined);
@@ -188,22 +195,75 @@ describe('ProfileScreen', () => {
     });
 
     // Not loading is not the same as loaded. When the profile cannot be loaded
-    // at all - offline on opening the screen, or the row missing - there is no
-    // username to show, and a courier who chose a city long ago must not be
-    // told they have none. Signing out has to stay: the missing-profile error
-    // tells the courier to do exactly that.
+    // at all - offline on opening the screen - there is no username to show,
+    // and a courier who chose a city long ago must not be told they have none.
+    // The account is still theirs to sign out of, or to delete.
     it('does not show an empty username, or say no city is chosen, when the profile could not be loaded', async () => {
       mockProfileState.profile = null;
       mockProfileState.isLoading = false;
-      mockProfileState.error = 'Your profile is missing. Signing out and in again may recover it.';
+      mockProfileState.error = 'Your profile could not be loaded. Check your connection.';
       await renderScreen(<ProfileScreen />);
 
       expect(
-        screen.getByText('Your profile is missing. Signing out and in again may recover it.'),
+        screen.getByText('Your profile could not be loaded. Check your connection.'),
       ).toBeOnTheScreen();
       expect(screen.queryByText('@')).toBeNull();
       expect(screen.queryByText('Not chosen yet')).toBeNull();
       expect(button('Sign out')).toBeEnabled();
+      expect(button('Delete my account')).toBeEnabled();
+    });
+  });
+
+  /**
+   * Deleted on another device, or removed: this device stays signed in for up
+   * to an hour, to an account that is not there. The screen used to advise
+   * signing out and in again - which cannot bring it back - above a button to
+   * delete what is already gone, which for a removed account undid the removal.
+   */
+  describe('an account that no longer exists', () => {
+    const GONE =
+      'This account no longer exists: it has been deleted or removed. ' +
+      'All that is left to do is to sign out.';
+
+    beforeEach(() => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = GONE;
+    });
+
+    it('says so, and shows nothing of a profile', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.getByText(GONE)).toBeOnTheScreen();
+      expect(screen.queryByText(/recover/i)).toBeNull();
+      expect(screen.queryByLabelText('Your name')).toBeNull();
+      expect(screen.queryByText('Not chosen yet')).toBeNull();
+    });
+
+    it('offers to sign out, and nothing else to do with an account', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.queryByRole('button', { name: 'Delete my account' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Blocked couriers' })).toBeNull();
+
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+      expect(mockDeleteAccount).not.toHaveBeenCalled();
+    });
+
+    /** Whoever had their account removed may want to read why, or to ask. */
+    it('still shows the house rules and the way to get in touch', async () => {
+      mockLinks.contact = CONTACT;
+      mockLinks.privacyPolicy = PRIVACY_POLICY;
+      await renderScreen(<ProfileScreen />);
+
+      expect(button('House rules')).toBeEnabled();
+      expect(button('Privacy policy')).toBeEnabled();
+
+      await fireEvent.press(button('Contact'));
+
+      expect(mockedOpenLink).toHaveBeenCalledWith(CONTACT);
     });
   });
 
@@ -381,12 +441,11 @@ describe('ProfileScreen', () => {
 
     /**
      * Nothing here depends on the profile. A courier whose profile will not
-     * load can still unblock someone, read the rules, and get in touch - which,
-     * with their profile gone missing, they may well need to.
+     * load can still unblock someone, read the rules, and get in touch.
      */
     it('is all still there when the profile could not be loaded', async () => {
       mockProfileState.profile = null;
-      mockProfileState.error = 'Your profile is missing. Signing out and in again may recover it.';
+      mockProfileState.error = 'Your profile could not be loaded. Check your connection.';
       mockLinks.contact = CONTACT;
       await renderScreen(<ProfileScreen />);
 
