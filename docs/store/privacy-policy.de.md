@@ -285,10 +285,9 @@ soll vorher Kopien machen können. Hast du die Person beim Melden blockiert – 
 es nicht ausschaltest –, sind ihre Briefe für dich ausgeblendet (Abschnitt 3.6). Um Kopien zu
 machen, hebst du die Blockierung zuerst auf: „Your profile“ → „Blocked couriers“ → „Unblock“.
 Danach kannst du die Person wieder blockieren, über einen ihrer Briefe. Bei Drohungen oder
-möglichen Straftaten kann ich eine Meldung an
-die Polizei weitergeben, zusammen mit den Anmeldedaten des gemeldeten Kontos, soweit sie dann noch
-gespeichert sind: seinen Sitzungen und seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse
-(Abschnitt 3.9).
+möglichen Straftaten kann ich eine Meldung an die Polizei weitergeben, zusammen mit den
+Anmeldedaten des gemeldeten Kontos, soweit sie dann noch gespeichert sind: seinen Sitzungen und
+seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse (Abschnitt 3.9).
 
 **Wie lange:** Eine Meldung wird 180 Tage, nachdem sie gemacht wurde, automatisch gelöscht – egal,
 ob sie erledigt ist oder nicht. Löscht eine der beiden Personen vorher ihr Konto, bleibt die Meldung
