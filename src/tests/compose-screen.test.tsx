@@ -724,11 +724,14 @@ describe('ComposeScreen', () => {
       await openLetterTo('user-eva');
       await fireEvent.changeText(letterField(), 'Dear Eva,');
 
+      serveRoost(() => [batInFlight(1, 6 * HOUR), batAtHome(2), batAtHome(3)]);
       await act(async () => toAnna.resolve(dispatchToAnna()));
 
       expect(screen.queryByText('Your bat is on its way')).toBeNull();
       expect(letterField()).toHaveDisplayValue('Dear Eva,');
       expect(announced()).toEqual([]);
+      // What it does take from it: a bat has left, so the bats are counted again.
+      expect(await screen.findByText(/^2 of 3 bats at home\./)).toBeOnTheScreen();
     });
 
     /**

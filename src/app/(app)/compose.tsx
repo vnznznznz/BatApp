@@ -29,7 +29,7 @@ import {
   type Outcome,
 } from '@/features/messages/sending';
 import { useProfile } from '@/features/profile/use-profile';
-import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
+import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
 import { announce } from '@/lib/announce';
 import { flightProgress } from '@/lib/flight';
 import {
@@ -103,7 +103,12 @@ export default function ComposeScreen() {
   // again is what lands it.
   useRefreshAt(nextHomeAt, roost.settledAt, roost.reload);
 
+  // And count them again whenever a send settles: the bat that left, with the
+  // server's own time of leaving - or, after a refusal for want of a bat, a
+  // roost that had been stale. Whichever letter it was: the courier may have
+  // gone on to this one while the last was still on its way out.
   const { reload: reloadRoost } = roost;
+  useEffect(() => onRoostChanged(() => void reloadRoost()), [reloadRoost]);
 
   // What became of a send is told to every screen showing that letter: this
   // one, whether it pressed the button itself or was opened while the letter
@@ -112,9 +117,6 @@ export default function ComposeScreen() {
     () =>
       onLetterOutcome((courier, recipientId, outcome) => {
         if (courier !== courierId || recipientId !== to) return;
-        // The bat that left, with the server's own time of leaving - or, after
-        // a refusal for want of a bat, a roost that had been stale.
-        void reloadRoost();
         if (outcome.kind === 'sent') {
           setDispatched({ sent: outcome, at: new Date() });
           announce(describeSent(outcome));
@@ -124,7 +126,7 @@ export default function ComposeScreen() {
         // Not knowing needs no word here: the letter says so itself, below,
         // for as long as it lasts and on whichever screen shows it.
       }),
-    [courierId, to, reloadRoost],
+    [courierId, to],
   );
 
   // While it is not known whether the letter went, ask again without being
