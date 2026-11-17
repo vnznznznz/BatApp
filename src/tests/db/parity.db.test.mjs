@@ -281,9 +281,9 @@ describe('the database agrees with src/constants/config.ts', () => {
     );
     assert.equal(kept[0].bytes, SIGN_UP_DETAILS_MAX_BYTES);
 
-    await rejectsWithHint(
+    await assert.rejects(
       createUser(db, carrying(SIGN_UP_DETAILS_MAX_BYTES + 1)),
-      'sign_up_details_too_large',
+      new RegExp(`can be at most ${SIGN_UP_DETAILS_MAX_BYTES} bytes: these are`),
     );
   });
 

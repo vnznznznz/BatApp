@@ -75,10 +75,14 @@ begin
     bytes_before := coalesce(pg_catalog.octet_length(old.raw_user_meta_data::text), 0);
   end if;
 
+  -- No hint: a hint is how these functions tell the app why they refused
+  -- (see src/lib/rpc-error.ts), and this never reaches the app. Supabase Auth
+  -- answers a failed sign-up with words of its own; this message is for
+  -- whoever reads the server's log.
   if bytes > private.sign_up_details_max_bytes() and bytes > bytes_before then
     raise exception 'the details kept with a sign-in can be at most % bytes: these are %',
       private.sign_up_details_max_bytes(), bytes
-      using errcode = '22001', hint = 'sign_up_details_too_large';
+      using errcode = '22001';
   end if;
 
   return new;

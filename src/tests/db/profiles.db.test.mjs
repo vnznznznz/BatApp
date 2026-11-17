@@ -364,6 +364,12 @@ describe('profiles from before display names were checked', () => {
 describe('the details kept with a sign-in', () => {
   const junk = (bytes) => 'x'.repeat(bytes);
 
+  const overTheBound = (error) => {
+    assert.equal(error.code, '22001', error.message);
+    assert.match(error.message, /details kept with a sign-in can be at most 4096 bytes/);
+    return true;
+  };
+
   /** GoTrue changing what an account carries, as it does for PUT /auth/v1/user. */
   const carry = (id, more) =>
     asAuthServer(db, () =>
@@ -406,7 +412,7 @@ describe('the details kept with a sign-in', () => {
         displayName: 'Anna',
         metadata: { junk: junk(100_000) },
       }),
-      (error) => error.hint === 'sign_up_details_too_large',
+      overTheBound,
     );
 
     assert.equal(await count(`select count(*)::text as count from auth.users`), 0);
@@ -416,10 +422,7 @@ describe('the details kept with a sign-in', () => {
   it('refuse an account that tries to add a hundred kilobytes later, and take a small change', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(
-      carry(anna, { junk: junk(100_000) }),
-      (error) => error.hint === 'sign_up_details_too_large',
-    );
+    await assert.rejects(carry(anna, { junk: junk(100_000) }), overTheBound);
     await carry(anna, { locale: 'de' });
 
     const { rows } = await db.query(
@@ -477,10 +480,7 @@ describe('the details kept with a sign-in', () => {
           early,
         ]),
       );
-      await assert.rejects(
-        carry(early, { more: 'x' }),
-        (error) => error.hint === 'sign_up_details_too_large',
-      );
+      await assert.rejects(carry(early, { more: 'x' }), overTheBound);
       await asAuthServer(db, () =>
         db.query(
           `update auth.users set raw_user_meta_data = raw_user_meta_data - 'display_name'

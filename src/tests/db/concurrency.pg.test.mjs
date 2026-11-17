@@ -1435,7 +1435,8 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
 
     it('refuses a sign-up that carries too much, and a change that adds too much', async () => {
       const gotrue = await connectAsAuthServer();
-      const tooMuch = (error) => error.hint === 'sign_up_details_too_large';
+      const tooMuch = (error) =>
+        error.code === '22001' && /details kept with a sign-in can be at most/.test(error.message);
 
       await assert.rejects(signUp(gotrue, 'big', { junk: 'x'.repeat(100_000) }), tooMuch);
       const { rows } = await signUp(gotrue, 'anna');
