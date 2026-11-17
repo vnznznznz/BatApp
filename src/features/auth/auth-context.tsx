@@ -1,8 +1,14 @@
-import { isAuthApiError, type AuthError, type Session } from '@supabase/supabase-js';
+import {
+  AuthUnknownError,
+  isAuthApiError,
+  isAuthRetryableFetchError,
+  type AuthError,
+  type Session,
+} from '@supabase/supabase-js';
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { normaliseUsername } from '@/features/auth/validation';
-import { toRpcError } from '@/lib/rpc-error';
+import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
 
@@ -130,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: email.trim(),
           password,
         });
-        if (error) throw new Error(describeAuthError(error.message));
+        if (error) throw explained(error);
       },
 
       async signUp({ email, password, username, displayName }) {
@@ -146,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
           },
         });
-        if (error) throw new Error(describeAuthError(error.message));
+        if (error) throw explained(error);
 
         // With email confirmation enabled, Supabase creates the user but hands
         // back no session. With it disabled, the session arrives immediately and
@@ -158,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       async sendPasswordReset(email) {
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
-        if (error) throw new Error(describeAuthError(error.message));
+        if (error) throw explained(error);
       },
 
       async deleteAccount() {
@@ -213,30 +219,79 @@ const isAccountGone = (error: AuthError | null) =>
   (error.code === 'user_not_found' || /user (not found|.* does not exist)/i.test(error.message));
 
 /**
- * Supabase's messages are written for developers. These are the ones a user can
- * actually act on; anything else is passed through rather than swallowed, so an
- * unexpected failure stays diagnosable.
+ * The one failure of signing up that belongs to a field. The form looks for
+ * these words, to show them where the username is typed.
  */
-function describeAuthError(message: string): string {
-  const normalised = message.toLowerCase();
+export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try another.';
 
-  if (normalised.includes('invalid login credentials')) {
+const NO_CONNECTION = 'No connection. Check your network and try again.';
+const NOT_ANSWERING = 'The server is not answering as it should. Try again in a little while.';
+
+/**
+ * What went wrong, in words the person can act on.
+ *
+ * The auth server's messages are written for developers. These go by what it
+ * says - its real answers, each as it comes, are in the test beside this file.
+ * Whatever has no words here is kept in brackets behind a plain sentence, and
+ * the callers keep the error itself as the cause, so that a failure nobody
+ * foresaw stays diagnosable.
+ */
+function describeAuthError(error: AuthError): string {
+  const said = error.message.toLowerCase();
+
+  if (said.includes('invalid login credentials')) {
     return 'That email and password do not match an account.';
   }
-  if (normalised.includes('email not confirmed')) {
+  if (said.includes('email not confirmed')) {
     return 'Check your email and confirm your address first.';
   }
-  if (normalised.includes('user already registered')) {
+  if (said.includes('user already registered')) {
     return 'There is already an account with that email address.';
   }
-  if (normalised.includes('duplicate key') && normalised.includes('username')) {
-    return 'That username is taken. Try another.';
+  // The profile is made by a trigger as the account is saved, and whatever
+  // the trigger refuses, the auth server reports as this, with no reason. The
+  // form checks all the trigger checks but one: whether the username is free.
+  // So that is the likely cause - likely, which is all that can be said.
+  if (said.includes('database error saving new user')) return USERNAME_MAY_BE_TAKEN;
+  if (said.includes('user is banned')) return REFUSALS.account_suspended;
+  if (said.includes('unable to validate email address')) {
+    return (
+      'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
+      'cannot be used.'
+    );
   }
-  if (normalised.includes('rate limit') || normalised.includes('too many requests')) {
+  if (said.includes('error sending')) return 'The email could not be sent. Try again later.';
+
+  // Two limits on emails. One is per address, a minute or so apart; the other
+  // is the whole project's allowance, counted by the hour, which no minute's
+  // wait - and nothing the person does - brings back.
+  const wait = /only request this after (\d+) seconds/.exec(said);
+  if (wait) return `An email was sent a moment ago. Ask for another in ${wait[1]} seconds.`;
+  if (said.includes('email rate limit')) {
+    return 'Too many emails have been sent for now. Try again in an hour.';
+  }
+  if (said.includes('rate limit') || error.status === 429) {
     return 'Too many attempts. Wait a minute and try again.';
   }
-  if (normalised.includes('network') || normalised.includes('fetch')) {
-    return 'No connection. Check your network and try again.';
+
+  if (said.includes('signups not allowed')) return 'New accounts cannot be created at the moment.';
+  const shortest = /password should be at least (\d+) characters/.exec(said);
+  if (shortest) return `Passwords need at least ${shortest[1]} characters.`;
+  const longest = /password cannot be longer than (\d+) characters/.exec(said);
+  if (longest) return `Passwords can be at most ${longest[1]} characters.`;
+  if (said.includes('different from the old password')) {
+    return 'The new password has to differ from the old one.';
   }
-  return message;
+
+  // Not the auth server's answer at all. Either the request never arrived -
+  // status 0, and a page put in its place by the network counts as that - or
+  // what came back was a gateway's error, or something that is not an answer.
+  if (isAuthRetryableFetchError(error)) return error.status === 0 ? NO_CONNECTION : NOT_ANSWERING;
+  if (error instanceof AuthUnknownError) return NOT_ANSWERING;
+
+  const unexplained = 'That did not work. Try again.';
+  return error.message ? `${unexplained} (${error.message})` : unexplained;
 }
+
+/** The error to throw for a refusal of the auth server's: the app's words, over the server's own. */
+const explained = (error: AuthError) => new Error(describeAuthError(error), { cause: error });

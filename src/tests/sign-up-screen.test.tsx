@@ -1,9 +1,11 @@
+import { AuthRetryableFetchError } from '@supabase/supabase-js';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
 import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
+import { AuthProvider } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
 import { openLink } from '@/lib/links';
 
@@ -15,8 +17,36 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: jest.fn(), replace: mockReplace }),
 }));
 
-jest.mock('@/features/auth/auth-context', () => ({
-  useAuth: () => ({ signUp: mockSignUp }),
+/**
+ * Whether the form is given the app's own auth context, over an auth server
+ * whose answers the test writes, in place of the stand-in the other tests use.
+ */
+const mockAuth = { real: false, serverSignUp: jest.fn() };
+
+jest.mock('@/features/auth/auth-context', () => {
+  const actual = jest.requireActual<typeof import('@/features/auth/auth-context')>(
+    '@/features/auth/auth-context',
+  );
+  return {
+    ...actual,
+    useAuth: () => (mockAuth.real ? actual.useAuth() : { signUp: mockSignUp }),
+  };
+});
+
+// The client, as far as signing up asks it. Nobody is signed in, and nothing
+// is stored.
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      signUp: (...credentials: unknown[]) => mockAuth.serverSignUp(...credentials),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    },
+  },
+}));
+
+jest.mock('@/lib/session-store', () => ({
+  readStoredSession: () => Promise.resolve(null),
+  isSessionStored: () => false,
 }));
 
 /** The privacy policy's address, as this build is configured. Unset in the environment, it is null. */
@@ -89,6 +119,8 @@ function placeOf(element: Element): number {
 }
 
 beforeEach(() => {
+  mockAuth.real = false;
+  mockAuth.serverSignUp.mockReset();
   mockSignUp.mockReset();
   mockPush.mockReset();
   mockReplace.mockReset();
@@ -219,6 +251,61 @@ describe('SignUpScreen', () => {
       screen.getByText('There is already an account with that email address.'),
     ).toBeOnTheScreen();
     expect(screen.getByLabelText('Email').props.value).toBe('anna@example.com');
+  });
+
+  /**
+   * The test above hands the form words the app has already made its own,
+   * which is how this stayed hidden: what the auth server really answers to a
+   * taken username is a 500, "Database error saving new user", and that is
+   * what the form showed. Here the server's own answer goes in at the bottom,
+   * under the app's real auth context, and the form has to say something a
+   * newcomer can act on - at the field it is about.
+   */
+  it('says at the username that it may be taken, when the auth server refuses it as it really does', async () => {
+    const TAKEN = 'That username may already be taken. Try another.';
+    mockAuth.real = true;
+    mockAuth.serverSignUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: new AuthRetryableFetchError('Database error saving new user', 500),
+    });
+    await renderScreen(
+      <AuthProvider>
+        <SignUpScreen />
+      </AuthProvider>,
+    );
+
+    await fillForm();
+    await fireEvent.press(button('Create account'));
+
+    expect(mockAuth.serverSignUp).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/database error/i)).toBeNull();
+    expect(screen.getAllByText(TAKEN)).toHaveLength(1);
+    expect(screen.getByLabelText('Username')).toHaveProp('accessibilityHint', TAKEN);
+    expect(screen.getByLabelText('Email')).not.toHaveProp('accessibilityHint', TAKEN);
+    expect(screen.getByLabelText('Username').props.value).toBe('AnnaWeber');
+  });
+
+  it('lets go of that once the username is changed and the form sent again', async () => {
+    mockAuth.real = true;
+    mockAuth.serverSignUp
+      .mockResolvedValueOnce({
+        data: { user: null, session: null },
+        error: new AuthRetryableFetchError('Database error saving new user', 500),
+      })
+      .mockResolvedValue({ data: { user: { id: 'user-anna' }, session: null }, error: null });
+    await renderScreen(
+      <AuthProvider>
+        <SignUpScreen />
+      </AuthProvider>,
+    );
+    await fillForm();
+    await fireEvent.press(button('Create account'));
+
+    await fireEvent.changeText(screen.getByLabelText('Username'), 'anna_w');
+    await fireEvent.press(button('Create account'));
+
+    expect(screen.queryByText('That username may already be taken. Try another.')).toBeNull();
+    expect(screen.getByText('Check your email')).toBeOnTheScreen();
   });
 
   /**

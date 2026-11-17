@@ -857,3 +857,259 @@ describe('deleting the account', () => {
     expect(await kept()).toEqual(session);
   });
 });
+
+/**
+ * The auth server's answers are written for developers, and until now most of
+ * them reached the form as they came: "Database error saving new user" for a
+ * username that was taken, "User is banned", "Unexpected token '<'". These are
+ * its real answers, status and body, as it gives them to supabase-js.
+ */
+describe('what the courier is told when the auth server says no', () => {
+  const NO_CONNECTION = 'No connection. Check your network and try again.';
+  const NOT_ANSWERING = 'The server is not answering as it should. Try again in a little while.';
+  const EMAIL_NOT_SENT = 'The email could not be sent. Try again later.';
+  const TOO_MANY_EMAILS = 'Too many emails have been sent for now. Try again in an hour.';
+  const EMAIL_JUST_SENT = 'An email was sent a moment ago. Ask for another in 43 seconds.';
+
+  const html = (status: number, page: string) =>
+    new Response(page, { status, headers: { 'content-type': 'text/html' } });
+  const details = {
+    email: 'anna@example.test',
+    password: 'night-courier',
+    username: 'Anna',
+    displayName: 'Anna',
+  };
+
+  async function opened(answer: () => Response | Promise<Response>) {
+    network = answer;
+    await launch();
+    await passes(A_MOMENT);
+  }
+
+  describe('on signing in', () => {
+    it.each<[string, () => Response | Promise<Response>, string]>([
+      [
+        'the password is wrong, or the address unknown',
+        () => authRefusal(400, 'invalid_credentials', 'Invalid login credentials'),
+        'That email and password do not match an account.',
+      ],
+      [
+        'the address has not been confirmed',
+        () => authRefusal(400, 'email_not_confirmed', 'Email not confirmed'),
+        'Check your email and confirm your address first.',
+      ],
+      [
+        'the account is suspended',
+        () => authRefusal(400, 'user_banned', 'User is banned'),
+        'This account has been suspended. Write to the contact address on the help page.',
+      ],
+      [
+        'there were too many attempts',
+        () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached'),
+        'Too many attempts. Wait a minute and try again.',
+      ],
+      [
+        'a gateway on the way counts too many requests',
+        () => json(429, { message: 'Slow down' }),
+        'Too many attempts. Wait a minute and try again.',
+      ],
+      ['there is no network', offline, NO_CONNECTION],
+      ['the connection never answers', () => new Promise<Response>(() => {}), NO_CONNECTION],
+      [
+        'a sign-in page of the network answers instead',
+        () => html(200, '<html>Sign in to Wi-Fi</html>'),
+        NO_CONNECTION,
+      ],
+      [
+        'a gateway answers with its error page',
+        () => html(502, '<html>Bad Gateway</html>'),
+        NOT_ANSWERING,
+      ],
+      ['the server fails with nothing to say', () => json(500, {}), NOT_ANSWERING],
+      [
+        'the server behind the gateway is timing out',
+        () => json(504, { message: 'The upstream server is timing out' }),
+        NOT_ANSWERING,
+      ],
+      [
+        'a filter in between refuses with a page',
+        () => html(403, '<html>blocked</html>'),
+        NOT_ANSWERING,
+      ],
+      [
+        'the answer is one nobody has words for',
+        () => json(401, { message: 'Invalid API key' }),
+        'That did not work. Try again. (Invalid API key)',
+      ],
+      [
+        'the answer has no words at all',
+        () => json(418, { message: '' }),
+        'That did not work. Try again.',
+      ],
+    ])('says so plainly when %s', async (_, answer, words) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.signIn('anna@example.test', 'night-courier')))).toBe(
+        words,
+      );
+      expect(state()).toBe('signed out');
+    });
+
+    it('keeps what the server said, for whoever has to find out what went wrong', async () => {
+      await opened(() => json(401, { message: 'Invalid API key' }));
+
+      const failure = await asked(() => auth.signIn('anna@example.test', 'night-courier')).catch(
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).cause).toMatchObject({
+        name: 'AuthApiError',
+        status: 401,
+        message: 'Invalid API key',
+      });
+    });
+  });
+
+  describe('on signing up', () => {
+    it.each<[string, () => Response, string]>([
+      [
+        // The profile's trigger failed on the unique username. The auth server
+        // keeps the reason to itself, and answers 500 with no code of its own.
+        'the username is taken',
+        () => authRefusal(500, 'unexpected_failure', 'Database error saving new user'),
+        'That username may already be taken. Try another.',
+      ],
+      [
+        'the address has an account',
+        () => authRefusal(422, 'user_already_exists', 'User already registered'),
+        'There is already an account with that email address.',
+      ],
+      [
+        'the address is one the server does not take',
+        () =>
+          authRefusal(400, 'validation_failed', 'Unable to validate email address: invalid format'),
+        'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
+          'cannot be used.',
+      ],
+      [
+        'the password is shorter than the server allows',
+        () =>
+          json(
+            422,
+            {
+              code: 'weak_password',
+              message: 'Password should be at least 10 characters.',
+              weak_password: { reasons: ['length'] },
+            },
+            { 'X-Supabase-Api-Version': '2024-01-01' },
+          ),
+        'Passwords need at least 10 characters.',
+      ],
+      [
+        'the password is longer than the server allows',
+        () => authRefusal(400, 'validation_failed', 'Password cannot be longer than 72 characters'),
+        'Passwords can be at most 72 characters.',
+      ],
+      [
+        'new accounts are switched off',
+        () => authRefusal(422, 'signup_disabled', 'Signups not allowed for this instance'),
+        'New accounts cannot be created at the moment.',
+      ],
+      [
+        'the confirmation email could not be sent',
+        () => authRefusal(500, 'unexpected_failure', 'Error sending confirmation email'),
+        EMAIL_NOT_SENT,
+      ],
+      [
+        // Counted for the whole project, by the hour: a minute's wait does not help.
+        'the server has sent all the emails it may',
+        () => authRefusal(429, 'over_email_send_rate_limit', 'email rate limit exceeded'),
+        TOO_MANY_EMAILS,
+      ],
+    ])('says so plainly when %s', async (_, answer, words) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.signUp(details)))).toBe(words);
+      expect(state()).toBe('signed out');
+    });
+
+    it('sends the username as the database stores it, with the name', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      const { needsEmailConfirmation } = await asked(() =>
+        auth.signUp({ ...details, email: ' anna@example.test ', displayName: ' Anna ' }),
+      );
+
+      expect(needsEmailConfirmation).toBe(false);
+      expect(sent.find((request) => request.url.includes('/auth/v1/signup'))?.body).toMatchObject({
+        email: 'anna@example.test',
+        data: { username: 'anna', display_name: 'Anna' },
+      });
+      expect(state()).toBe('signed in');
+    });
+
+    it('says that a confirmation is still needed when no session comes with the account', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user));
+
+      const { needsEmailConfirmation } = await asked(() => auth.signUp(details));
+
+      expect(needsEmailConfirmation).toBe(true);
+      expect(state()).toBe('signed out');
+    });
+  });
+
+  describe('on asking for a new password', () => {
+    it.each<[string, () => Response, string]>([
+      [
+        'the email could not be sent',
+        () => authRefusal(500, 'unexpected_failure', 'Error sending recovery email'),
+        EMAIL_NOT_SENT,
+      ],
+      [
+        'the server has sent all the emails it may',
+        () => authRefusal(429, 'over_email_send_rate_limit', 'email rate limit exceeded'),
+        TOO_MANY_EMAILS,
+      ],
+      [
+        'one was asked for a moment ago',
+        () =>
+          authRefusal(
+            429,
+            'over_email_send_rate_limit',
+            'For security purposes, you can only request this after 43 seconds.',
+          ),
+        EMAIL_JUST_SENT,
+      ],
+      [
+        // What changing a password answers; said here in the server's place.
+        'the new password is the old one',
+        () =>
+          authRefusal(
+            422,
+            'same_password',
+            'New password should be different from the old password.',
+          ),
+        'The new password has to differ from the old one.',
+      ],
+    ])('says so plainly when %s', async (_, answer, words) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.sendPasswordReset(' anna@example.test ')))).toBe(
+        words,
+      );
+    });
+
+    it('asks for the link, for the address as typed but for the spaces around it', async () => {
+      await opened(() => json(200, {}));
+
+      expect(await outcomeOf(asked(() => auth.sendPasswordReset(' anna@example.test ')))).toBe(
+        'done',
+      );
+
+      expect(sent.find((request) => request.url.includes('/auth/v1/recover'))?.body).toMatchObject({
+        email: 'anna@example.test',
+      });
+    });
+  });
+});
