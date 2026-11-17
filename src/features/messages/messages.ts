@@ -210,6 +210,15 @@ export function previewOf(text: string): string {
   return Array.from(prepareBody(text)).slice(0, PREVIEW_LENGTH).join('');
 }
 
+/**
+ * A letter's opening, run together for a two-line preview. Letters start with
+ * "Dear Ben," and a blank line; kept as written, the preview would show the
+ * greeting and then nothing.
+ */
+export function asOneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 /** Mirrors the database's checks, so a mistake is caught before a round trip. */
 export function validateBody(text: string): string | null {
   const body = prepareBody(text);

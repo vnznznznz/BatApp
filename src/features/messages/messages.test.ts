@@ -1,5 +1,6 @@
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import {
+  asOneLine,
   correspondentName,
   fetchBadges,
   fetchInbox,
@@ -186,6 +187,23 @@ describe('previewOf', () => {
   /** Cut by UTF-16 units, the two hundredth bat would be half a bat. */
   it('counts characters as the database does, never cutting one in half', () => {
     expect(previewOf('🦇'.repeat(PREVIEW_LENGTH + 50))).toBe('🦇'.repeat(PREVIEW_LENGTH));
+  });
+});
+
+describe('asOneLine', () => {
+  /** Kept as written, a two-line preview would show the greeting and then nothing. */
+  it('runs the greeting, the blank line and what follows together', () => {
+    expect(asOneLine('Dear Ben,\n\nthe chestnuts are out again.')).toBe(
+      'Dear Ben, the chestnuts are out again.',
+    );
+  });
+
+  it('makes one space of any run of blank space, and none at either end', () => {
+    expect(asOneLine('  Dear Ben, \t\n  how   are you?\n')).toBe('Dear Ben, how are you?');
+  });
+
+  it('is nothing for nothing but blank space', () => {
+    expect(asOneLine(' \n\t ')).toBe('');
   });
 });
 

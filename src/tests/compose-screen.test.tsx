@@ -260,6 +260,9 @@ const inSafeArea = (ui: ReactElement) => (
 
 const renderScreen = (ui: ReactElement) => render(inSafeArea(ui));
 
+/** Matches text exactly as rendered; the default matcher collapses whitespace itself. */
+const asRendered = (text: string) => text;
+
 const letterField = () => screen.getByLabelText('Your letter');
 const sendButton = () => screen.getByRole('button', { name: 'Send by bat' });
 const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
@@ -649,8 +652,11 @@ describe('ComposeScreen', () => {
       expect(await screen.findByText('Who is it for?')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Your letter')).toBeNull();
       const annaRow = screen.getByRole('button', { name: /^Anna Weber/ });
+      // Run together into one line, as the lists of letters show an opening.
       expect(
-        within(annaRow).getByText('A letter you started: Dear Anna, The chestnuts are out again.'),
+        within(annaRow).getByText('A letter you started: Dear Anna, The chestnuts are out again.', {
+          normalizer: asRendered,
+        }),
       ).toBeOnTheScreen();
       expect(screen.getAllByText(/^A letter you started/)).toHaveLength(1);
 
@@ -1584,6 +1590,83 @@ describe('ComposeScreen', () => {
 
       expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
       expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Left while it is not known whether it went, the letter is still pointed
+     * out in the list of friends - but as what it is. "A letter you started"
+     * said of a letter that may be on its way was not the whole truth, and
+     * opening the letter is what finds out.
+     */
+    it('is pointed out in the list of friends as a letter that may have gone', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('Dear Anna,\n\nSee you at the lake.');
+      await screen.findByText(NOT_KNOWN);
+      await first.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+
+      const annaRow = await screen.findByRole('button', { name: /^Anna Weber/ });
+      expect(
+        within(annaRow).getByText(
+          'A letter that may or may not have gone: Dear Anna, See you at the lake.',
+          { normalizer: asRendered },
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^A letter you started/)).toBeNull();
+      // Nobody is looking at the letter itself, so nobody asks after it from here.
+      const asked = mockedFetchSentLetter.mock.calls.length;
+      await letTimePass(MINUTE);
+      expect(mockedFetchSentLetter).toHaveBeenCalledTimes(asked);
+
+      await fireEvent.press(annaRow);
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+    });
+
+    // What may have gone is what was sent, whatever has been written over it
+    // since - even nothing.
+    it.each([
+      ['changed', 'See you at the lake at six.'],
+      ['taken out', ''],
+    ])(
+      'is pointed out by the words that may have gone when they were %s since',
+      async (_, since) => {
+        mockedSendMessage.mockRejectedValueOnce(noAnswer());
+        mockedFetchSentLetter.mockRejectedValue(noAnswer());
+        const first = await openLetterTo('user-anna');
+        await writeAndSend('See you at the lake.');
+        await screen.findByText(NOT_KNOWN);
+        await fireEvent.changeText(letterField(), since);
+        await first.unmount();
+        delete mockParams.to;
+
+        await renderScreen(<ComposeScreen />);
+        await screen.findByText('Who is it for?');
+
+        expect(
+          screen.getByText('A letter that may or may not have gone: See you at the lake.'),
+        ).toBeOnTheScreen();
+        expect(screen.queryByText(/^A letter you started/)).toBeNull();
+      },
+    );
+
+    it('is a letter merely started again once it is known not to have gone', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      // Asked what became of it, the server knows of no such letter.
+      const first = await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+      await screen.findByText('No connection. Check your network and try again.');
+      await first.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+      await screen.findByText('Who is it for?');
+
+      expect(screen.getByText('A letter you started: See you at the lake.')).toBeOnTheScreen();
+      expect(screen.queryByText(/may or may not have gone/)).toBeNull();
     });
 
     it('does not ask after a letter the server refused: it said itself that none went', async () => {

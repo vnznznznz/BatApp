@@ -21,7 +21,13 @@ import {
   type Friendship,
 } from '@/features/friends/friends';
 import { keepDraft, useDraft, useSend } from '@/features/messages/drafts';
-import { letterLength, prepareBody, previewOf, validateBody } from '@/features/messages/messages';
+import {
+  asOneLine,
+  letterLength,
+  prepareBody,
+  previewOf,
+  validateBody,
+} from '@/features/messages/messages';
 import {
   askAfterLetterAt,
   onLetterOutcome,
@@ -415,6 +421,10 @@ function describeSent({ to, dispatch, arrived, changed }: Sent): string {
  * go straight into such a letter, even when it is the only one: from there,
  * there would be no way to write to anyone else. It says where the words are
  * and leaves the choice to the courier.
+ *
+ * A letter whose send was never answered is pointed out as that, by the words
+ * that may have gone: it is not merely started, and opening it is what finds
+ * out what became of it.
  */
 function FriendRow({
   friendship,
@@ -426,20 +436,23 @@ function FriendRow({
   onPress: () => void;
 }) {
   const started = previewOf(useDraft(courierId, friendship.friend.id));
+  const { unanswered } = useSend(courierId, friendship.friend.id);
+  const inDoubt = unanswered?.unknown ? previewOf(unanswered.words) : '';
   return (
     <ListRow
       title={friendName(friendship.friend)}
       subtitle={describeRoute(friendship)}
-      detail={started ? `A letter you started: ${asOneLine(started)}` : undefined}
+      detail={
+        inDoubt
+          ? `A letter that may or may not have gone: ${asOneLine(inDoubt)}`
+          : started
+            ? `A letter you started: ${asOneLine(started)}`
+            : undefined
+      }
       disabled={!friendship.route}
       onPress={onPress}
     />
   );
-}
-
-/** A letter's opening run together, as the lists of letters show one. */
-function asOneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
 }
 
 /** "Munich, DE · 505 km · about 6h 18m", or why no bat can go there. */

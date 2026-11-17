@@ -10,6 +10,7 @@ import { SegmentedControl } from '@/components/segmented-control';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import {
+  asOneLine,
   correspondentName,
   fetchInbox,
   fetchSent,
@@ -220,15 +221,6 @@ function soonestLanding(letters: readonly SentLetter[]): number | null {
     if (!letter.delivered && (soonest === null || landing < soonest)) soonest = landing;
   }
   return soonest;
-}
-
-/**
- * A letter's opening, run together for a two-line preview. Letters start with
- * "Dear Ben," and a blank line; kept as written, the preview would show the
- * greeting and then nothing.
- */
-function asOneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
 }
 
 function Separator() {
