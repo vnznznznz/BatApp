@@ -11,6 +11,7 @@ import {
   withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import type { Profile } from '@/features/profile/use-profile';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
@@ -60,6 +61,26 @@ jest.mock('@/features/safety/safety', () => ({
   ...jest.requireActual('@/features/safety/safety'),
   blockCourier: jest.fn(),
 }));
+
+const mockProfileState: { profile: Profile | null } = { profile: null };
+
+jest.mock('@/features/profile/use-profile', () => ({
+  useProfile: () => ({ profile: mockProfileState.profile, isLoading: false, error: null }),
+}));
+
+/** The courier whose app this is: in Berlin, unless a test says otherwise. */
+const courier: Profile = {
+  id: 'user-mara',
+  username: 'mara',
+  displayName: 'Mara Lind',
+  avatarUrl: null,
+  move: null,
+  city: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+};
+
+const NO_CITY_OF_YOUR_OWN =
+  'You have not chosen your city yet, so your bats cannot carry a letter anywhere. ' +
+  'Choose it here, or in your profile.';
 
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
@@ -235,6 +256,7 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockParams.id = 'user-anna';
   mockFocus.focused = true;
+  mockProfileState.profile = courier;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
@@ -328,6 +350,39 @@ describe('CourierScreen', () => {
       expect(button('Write a letter')).toBeDisabled();
       await fireEvent.press(button('Write a letter'));
       expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Without a city of their own, no bat can leave: Write a letter is off,
+     * beside the friend's city, which looks like a reason but is not. The page
+     * says the real one, and where to put it right.
+     */
+    it('says why no letter can be written while the courier has no city, and offers to choose one', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      const friendship: Friendship = { ...anna, route: null };
+      serve(() => [friendship]);
+      await openPageOf(friendship);
+
+      expect(button('Write a letter')).toBeDisabled();
+      expect(screen.getByText(NO_CITY_OF_YOUR_OWN)).toBeOnTheScreen();
+
+      await fireEvent.press(button('Choose your city'));
+
+      expect(mockPush).toHaveBeenCalledWith('/city-picker');
+    });
+
+    it.each<[string, Profile, Friendship]>([
+      ['the courier has a city', courier, anna],
+      ['only the friend has none', courier, ben],
+      // The list is read again as the page comes back into view; the profile is not.
+      ['the list shows a route, the city chosen in the meantime', { ...courier, city: null }, anna],
+    ])('says nothing of a city of their own when %s', async (_, profile, friendship) => {
+      mockProfileState.profile = profile;
+      serve(() => [friendship]);
+      await openPageOf(friendship);
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
     });
 
     it('asks before removing a friend, and keeps them if the courier thinks better of it', async () => {

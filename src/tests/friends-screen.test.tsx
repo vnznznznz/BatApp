@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import FriendsScreen from '@/app/(app)/friends';
@@ -138,6 +138,10 @@ const metrics: Metrics = {
 const renderScreen = (ui: ReactElement) =>
   render(<SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>);
 
+const NO_CITY_OF_YOUR_OWN =
+  'You have not chosen your city yet, so your bats cannot carry a letter anywhere. ' +
+  'Choose it here, or in your profile.';
+
 /** Resolves once the list has loaded. The section is there even when it is empty. */
 const listLoaded = () => screen.findByRole('header', { name: 'Your friends' });
 
@@ -147,6 +151,18 @@ const sendRequestButton = () => screen.getByRole('button', { name: 'Send request
 async function ask(username: string) {
   await fireEvent.changeText(usernameField(), username);
   await fireEvent.press(sendRequestButton());
+}
+
+/**
+ * The views that lay `element` out in a row with whatever stands beside it:
+ * every ancestor whose children run side by side.
+ */
+function rowsAround(element: ReturnType<typeof screen.getByText>) {
+  const rows = [];
+  for (let node = element.parent; node; node = node.parent) {
+    if (StyleSheet.flatten(node.props.style)?.flexDirection === 'row') rows.push(node);
+  }
+  return rows;
 }
 
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
@@ -180,6 +196,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
   alertSpy.mockRestore();
   jest.useRealTimers();
 });
@@ -287,9 +304,35 @@ describe('FriendsScreen', () => {
 
       expect(await screen.findByRole('header', { name: 'Asking you' })).toBeOnTheScreen();
       expect(screen.getByText('Carla Ruiz')).toBeOnTheScreen();
-      expect(
-        screen.getByText(`@carla · asked ${formatTimestamp(carla.requestedAt)}`),
-      ).toBeOnTheScreen();
+      expect(screen.getByText('@carla')).toBeOnTheScreen();
+      expect(screen.getByText(`Asked ${formatTimestamp(carla.requestedAt)}`)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
+    });
+
+    /**
+     * Beside Accept and Decline, a 20-character username was cut to about 11
+     * on a 360dp phone, and when they asked fell off the line altogether - and
+     * the username is how the courier knows who this is. The answers sit
+     * under the name instead, so the name has the row's whole width.
+     */
+    it('gives the name of someone asking the whole width, with the answers beneath it', async () => {
+      const longName = 'carla_from_the_coast';
+      // At the text size most people read at: from 1.2 up, every row puts its
+      // buttons under its text anyway.
+      jest
+        .spyOn(Dimensions, 'get')
+        .mockReturnValue({ width: 360, height: 740, scale: 3, fontScale: 1 });
+      serve(() => [{ ...carla, friend: { ...carla.friend, username: longName } }]);
+      await renderScreen(<FriendsScreen />);
+
+      const username = await screen.findByText(new RegExp(`^@${longName}`));
+      const rows = rowsAround(username);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(within(row).queryByRole('button', { name: 'Accept' })).toBeNull();
+        expect(within(row).queryByRole('button', { name: 'Decline' })).toBeNull();
+      }
       expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
     });
@@ -377,6 +420,49 @@ describe('FriendsScreen', () => {
     });
   });
 
+  describe('one answer at a time', () => {
+    /**
+     * What the screen says belongs to what was done last. A refusal on a row
+     * left on screen through a later request reads as that request's answer;
+     * a request's "sent" left beside a later refusal reads as if all went well.
+     */
+    it("lets go of a row's refusal once someone new is asked", async () => {
+      serve(() => [carla]);
+      mockedAcceptFriend.mockRejectedValue(
+        new RpcError(REFUSALS.request_not_found, 'request_not_found'),
+      );
+      mockedRequestFriend.mockResolvedValue('requested');
+      await renderScreen(<FriendsScreen />);
+      await fireEvent.press(await screen.findByRole('button', { name: 'Accept' }));
+      expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+
+      await ask('anna');
+
+      expect(
+        await screen.findByText('Request sent. Once @anna accepts, you can write to each other.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(REFUSALS.request_not_found)).toBeNull();
+    });
+
+    it('lets go of what a request came to once a row is acted on', async () => {
+      serve(() => [carla]);
+      mockedRequestFriend.mockResolvedValue('requested');
+      mockedAcceptFriend.mockRejectedValue(
+        new RpcError(REFUSALS.request_not_found, 'request_not_found'),
+      );
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+      await ask('anna');
+      const sent = 'Request sent. Once @anna accepts, you can write to each other.';
+      expect(await screen.findByText(sent)).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Accept' }));
+
+      expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+      expect(screen.queryByText(sent)).toBeNull();
+    });
+  });
+
   describe('friends', () => {
     it('lists each friend with their city and how long a bat takes to reach them', async () => {
       serve(() => [ben, anna]);
@@ -400,6 +486,58 @@ describe('FriendsScreen', () => {
 
       expect(screen.getByText('Munich, DE')).toBeOnTheScreen();
       expect(screen.queryByText(/by bat$/)).toBeNull();
+    });
+
+    /**
+     * Without a city of their own, no bat can leave, so Write is off on every
+     * row - with only the friend's city beside it, which looks like a reason
+     * it is not. The screen says the real one, and where to put it right.
+     */
+    it('says why no letter can be written while the courier has no city, and offers to choose one', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [{ ...anna, route: null }]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.getByRole('button', { name: 'Write to Anna Weber' })).toBeDisabled();
+      expect(screen.getByText(NO_CITY_OF_YOUR_OWN)).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Choose your city' }));
+
+      expect(mockPush).toHaveBeenCalledWith('/city-picker');
+    });
+
+    it('says nothing of a city of their own once the courier has one', async () => {
+      serve(() => [anna, ben]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
+    });
+
+    /**
+     * The profile is read once, as the screen opens; the list again each time
+     * it comes back into view. A route on the list means the courier has a
+     * city by now - chosen from here, say - whatever the profile last said.
+     */
+    it('lets go of it once the list shows a route, the city chosen in the meantime', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [anna]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Write to Anna Weber' })).toBeEnabled();
+    });
+
+    it('says nothing of a city while there is no friend to write to', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [carla]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
     });
 
     it('says when there are no friends yet', async () => {

@@ -60,7 +60,10 @@ export default function FriendsScreen() {
   async function ask() {
     const problem = validateUsername(username);
     setFieldError(problem);
+    // What the screen says belongs to what was done last: a refusal from a row
+    // left up beside this request would read as its answer.
     setOutcome(null);
+    setActionError(null);
     if (problem) return;
 
     setAsking(true);
@@ -81,6 +84,8 @@ export default function FriendsScreen() {
   async function act(friendship: Friendship, action: FriendAction) {
     setBusy({ id: friendship.id, action });
     setActionError(null);
+    // Likewise a request's "sent" left beside this action's refusal.
+    setOutcome(null);
     try {
       await action(friendship.id);
       await reload();
@@ -178,35 +183,61 @@ export default function FriendsScreen() {
 
       {groups.incoming.length > 0 ? (
         <Section title="Asking you">
+          {/* The answers sit under the name rather than beside it: beside them, on a
+              360dp phone, a 20-character username was cut to about 11 and when
+              they asked fell off the line - and the username is how the courier
+              knows who is asking. */}
           {groups.incoming.map((friendship) => (
-            <ListRow
-              key={friendship.id}
-              title={friendName(friendship.friend)}
-              subtitle={`@${friendship.friend.username} · asked ${formatTimestamp(friendship.requestedAt)}`}
-              onPress={() => open(friendship)}
-              accessibilityHint={OPEN_HINT}
-              actions={
-                <>
-                  <Button
-                    label="Accept"
-                    size="compact"
-                    loading={busyId === friendship.id && busy?.action === acceptFriend}
-                    disabled={busyId !== null}
-                    onPress={() => void act(friendship, acceptFriend)}
-                  />
-                  <Button
-                    label="Decline"
-                    size="compact"
-                    variant="ghost"
-                    loading={busyId === friendship.id && busy?.action === removeFriend}
-                    disabled={busyId !== null}
-                    onPress={() => void act(friendship, removeFriend)}
-                  />
-                </>
-              }
-            />
+            <View key={friendship.id}>
+              <ListRow
+                title={friendName(friendship.friend)}
+                subtitle={`@${friendship.friend.username}`}
+                detail={`Asked ${formatTimestamp(friendship.requestedAt)}`}
+                onPress={() => open(friendship)}
+                accessibilityHint={OPEN_HINT}
+              />
+              <View style={styles.answers}>
+                <Button
+                  label="Accept"
+                  size="compact"
+                  loading={busyId === friendship.id && busy?.action === acceptFriend}
+                  disabled={busyId !== null}
+                  onPress={() => void act(friendship, acceptFriend)}
+                />
+                <Button
+                  label="Decline"
+                  size="compact"
+                  variant="ghost"
+                  loading={busyId === friendship.id && busy?.action === removeFriend}
+                  disabled={busyId !== null}
+                  onPress={() => void act(friendship, removeFriend)}
+                />
+              </View>
+            </View>
           ))}
         </Section>
+      ) : null}
+
+      {/* Without a city of their own no bat can leave, so every Write is off -
+          beside the friend's city, which looks like the reason but is not. The
+          profile is read only as the screen opens, so a route on the list, read
+          each time it comes back into view, is the surer sign of a city chosen
+          since. */}
+      {profile &&
+      !profile.city &&
+      groups.friends.length > 0 &&
+      !groups.friends.some((friendship) => friendship.route) ? (
+        <View style={styles.section}>
+          <Text variant="caption" tone="secondary" style={styles.lead}>
+            You have not chosen your city yet, so your bats cannot carry a letter anywhere. Choose
+            it here, or in your profile.
+          </Text>
+          <Button
+            label="Choose your city"
+            variant="secondary"
+            onPress={() => router.push('/city-picker')}
+          />
+        </View>
       ) : null}
 
       {list.data ? (
@@ -314,4 +345,11 @@ const styles = StyleSheet.create({
   section: { marginTop: Spacing.xl, gap: Spacing.sm },
   card: { paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   empty: { padding: Spacing.md, lineHeight: 19 },
+  answers: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.sm,
+  },
 });

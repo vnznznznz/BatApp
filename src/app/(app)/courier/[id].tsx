@@ -16,6 +16,7 @@ import {
   withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import { useProfile } from '@/features/profile/use-profile';
 import { blockCourier } from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
 import { confirmAction } from '@/lib/confirm';
@@ -37,6 +38,7 @@ export default function CourierScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
   const { reload } = list;
+  const { profile } = useProfile();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,6 +154,13 @@ export default function CourierScreen() {
     });
   }
 
+  // Without a city of their own no bat can leave, so Write a letter is off -
+  // beside the friend's city, which looks like the reason but is not. The
+  // profile is read only as the page opens; a route, read again each time it
+  // comes back into view, is the surer sign of a city chosen since.
+  const noCityOfYourOwn =
+    friendship.status === 'accepted' && profile !== null && !profile.city && !friendship.route;
+
   const endLabel =
     friendship.status === 'accepted'
       ? 'Remove friend'
@@ -186,6 +195,20 @@ export default function CourierScreen() {
             disabled={busy !== null || !friendship.route}
             onPress={() => router.push({ pathname: '/compose', params: { to: friend.id } })}
           />
+        ) : null}
+        {noCityOfYourOwn ? (
+          <>
+            <Text variant="caption" tone="secondary" style={styles.line}>
+              You have not chosen your city yet, so your bats cannot carry a letter anywhere. Choose
+              it here, or in your profile.
+            </Text>
+            <Button
+              label="Choose your city"
+              variant="secondary"
+              disabled={busy !== null}
+              onPress={() => router.push('/city-picker')}
+            />
+          </>
         ) : null}
         {friendship.status === 'pending' && friendship.direction === 'incoming' ? (
           <Button
