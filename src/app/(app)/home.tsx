@@ -16,7 +16,7 @@ import { fetchBadges } from '@/features/messages/messages';
 import { useProfile } from '@/features/profile/use-profile';
 import { BatTile } from '@/features/roost/bat-tile';
 import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
@@ -71,6 +71,12 @@ export default function HomeScreen() {
   // failed once left "Write a letter" disabled under bats that were all home.)
   const needsCity = profile !== null && !profile.city;
   const canWrite = atHome > 0 && !needsCity && Boolean(profile || profileError);
+
+  // A new city takes a day to count, and until then the bats still leave from
+  // the old one. Read against this screen's own clock: the roost stays open
+  // under every other screen, and a move that has settled must not go on being
+  // announced until the profile happens to be read again.
+  const move = profile?.move && profile.move.settlesAt.getTime() > now ? profile.move : null;
 
   let writeHint: string | null = null;
   if (needsCity) {
@@ -132,6 +138,14 @@ export default function HomeScreen() {
               @{profile.username}
               {profile.city ? ` · ${describeCity(profile.city)}` : ''}
             </Text>
+            {/* The line above names the new city; the profile and the compose
+                screen say the same of a move. (Found in review.) */}
+            {move ? (
+              <Text variant="caption" tone="muted" center style={styles.note}>
+                Your bats still leave from {describeCity(move.from)} until{' '}
+                {formatTimestamp(move.settlesAt, new Date(now))}, when your move settles.
+              </Text>
+            ) : null}
           </>
         ) : profileError ? (
           // Without this, a failed load rendered a placeholder name over a bare "@".

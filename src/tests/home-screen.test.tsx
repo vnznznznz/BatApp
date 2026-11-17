@@ -7,6 +7,7 @@ import { BATS_PER_USER } from '@/constants/config';
 import { fetchBadges } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roost/roost';
+import { formatTimestamp } from '@/lib/format';
 import { RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
@@ -179,6 +180,61 @@ describe('HomeScreen', () => {
       await roostLoaded();
 
       expect(screen.getByText('@mara')).toBeOnTheScreen();
+    });
+
+    /**
+     * A new city takes a day to count. Until then the header named the new
+     * city and said nothing of the old one, which the bats still leave from;
+     * the profile and the compose screen both say it. (Found in review.)
+     */
+    it('says, while a move settles, that the bats still leave from the old city', async () => {
+      const settlesAt = new Date(NOW + 20 * HOUR);
+      mockProfileState.profile = {
+        ...courier,
+        city: { id: 2911298, name: 'Hamburg', countryCode: 'DE' },
+        move: { from: { id: 2950159, name: 'Berlin', countryCode: 'DE' }, settlesAt },
+      };
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(screen.getByText('@mara · Hamburg, DE')).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          `Your bats still leave from Berlin, DE until ${formatTimestamp(settlesAt, new Date(NOW))}, when your move settles.`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    it('says nothing of a move when none is settling', async () => {
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(screen.queryByText(/still leave from/)).toBeNull();
+    });
+
+    /**
+     * The roost stays open under every other screen, for hours. A move that
+     * has settled must not go on being announced until the profile happens to
+     * be read again.
+     */
+    it('stops saying so the moment the move has settled', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        city: { id: 2911298, name: 'Hamburg', countryCode: 'DE' },
+        move: {
+          from: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+          settlesAt: new Date(NOW + 2 * MINUTE),
+        },
+      };
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      await letTimePass(2 * MINUTE - SECOND);
+      expect(screen.getByText(/^Your bats still leave from Berlin, DE until /)).toBeOnTheScreen();
+
+      await letTimePass(SECOND);
+      expect(screen.queryByText(/still leave from/)).toBeNull();
+      expect(screen.getByText('@mara · Hamburg, DE')).toBeOnTheScreen();
     });
 
     it('does not show a placeholder name while the profile is loading', async () => {
