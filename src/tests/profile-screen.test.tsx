@@ -16,15 +16,9 @@ jest.setTimeout(20_000);
 
 const mockPush = jest.fn();
 
-jest.mock('expo-router', () => {
-  const React = jest.requireActual<typeof import('react')>('react');
-  return {
-    useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
-    // There is no navigator here, so being mounted stands in for being focused.
-    useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
-  };
-});
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
+}));
 
 const mockSignOut = jest.fn<Promise<void>, []>();
 const mockDeleteAccount = jest.fn<Promise<void>, []>();
@@ -46,17 +40,12 @@ const mockProfileState: {
   isGone: false,
   error: null,
 };
-// Stable, as the real hook's are: the screen reloads the profile on focus, and a
-// new function on every render would read as a new focus on every render.
-const mockReloadProfile = jest.fn(() => Promise.resolve());
 const mockUpdateDisplayName = jest.fn<Promise<void>, [displayName: string]>();
 
+// The hook keeps the profile fresh by itself - on coming into view, on the
+// app's return, after a load that failed - and has its own test for that.
 jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({
-    ...mockProfileState,
-    reload: mockReloadProfile,
-    updateDisplayName: mockUpdateDisplayName,
-  }),
+  useProfile: () => ({ ...mockProfileState, updateDisplayName: mockUpdateDisplayName }),
 }));
 
 /** The two links, as this build is configured. Unset in the environment, each is null. */
@@ -136,7 +125,6 @@ async function answerAlert(choice: string) {
 beforeEach(() => {
   mockPush.mockClear();
   mockedAlert.mockClear();
-  mockReloadProfile.mockClear();
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
   mockProfileState.isGone = false;
@@ -163,13 +151,6 @@ describe('ProfileScreen', () => {
       expect(screen.getByText('@mara')).toBeOnTheScreen();
       expect(screen.getByText('How friends find you. It cannot be changed.')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Username')).toBeNull();
-    });
-
-    // The city picker writes the change itself and pops back to this screen.
-    it('reloads the profile when the screen comes into view', async () => {
-      await renderScreen(<ProfileScreen />);
-
-      expect(mockReloadProfile).toHaveBeenCalled();
     });
 
     it('shows a spinner rather than an empty profile while it first loads', async () => {

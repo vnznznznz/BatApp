@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { RELOCATION_HOURS } from '@/constants/config';
 import { toProfile, useProfile } from '@/features/profile/use-profile';
@@ -40,6 +41,47 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => ({ session: { user: { id: 'user-anna' } } }),
 }));
 
+/**
+ * Stands in for navigation focus: an effect that runs while the screen is in
+ * front and is cleaned up when another covers it. A screen starts in front;
+ * `screenIs` moves it.
+ */
+const mockScreen = { inFront: true, watchers: new Set<(inFront: boolean) => void>() };
+
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      const [inFront, setInFront] = React.useState(mockScreen.inFront);
+      React.useEffect(() => {
+        mockScreen.watchers.add(setInFront);
+        return () => {
+          mockScreen.watchers.delete(setInFront);
+        };
+      }, []);
+      React.useEffect(() => (inFront ? effect() : undefined), [effect, inFront]);
+    },
+  };
+});
+
+async function screenIs(where: 'in front' | 'covered') {
+  mockScreen.inFront = where === 'in front';
+  await act(async () => mockScreen.watchers.forEach((watch) => watch(mockScreen.inFront)));
+}
+
+/** The app moving between foreground and background, as React Native reports it. */
+const appStateListeners = new Set<(state: AppStateStatus) => void>();
+
+async function appBecomes(state: AppStateStatus) {
+  await act(async () => appStateListeners.forEach((listener) => listener(state)));
+}
+
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+
+/** Lets time pass, with every load that is due in it. */
+const passes = (ms: number) => act(() => jest.advanceTimersByTimeAsync(ms));
+
 const found = (overrides: Partial<Row> = {}): Answer => ({ data: row(overrides), error: null });
 const notThere: Answer = { data: null, error: null };
 const failed: Answer = { data: null, error: { message: 'TypeError: Network request failed' } };
@@ -49,6 +91,15 @@ const COULD_NOT_LOAD = 'Your profile could not be loaded. Check your connection.
 beforeEach(() => {
   mockDatabase.read.mockReset();
   mockDatabase.change.mockReset().mockResolvedValue({ error: null });
+  mockScreen.inFront = true;
+  jest.mocked(AppState.addEventListener).mockImplementation((_type, listener) => {
+    appStateListeners.add(listener);
+    return { remove: () => appStateListeners.delete(listener) };
+  });
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('toProfile', () => {
@@ -120,6 +171,185 @@ describe('useProfile', () => {
     await waitFor(() => expect(result.current.error).toBe(COULD_NOT_LOAD));
     expect(result.current.profile).toBeNull();
     expect(result.current.isGone).toBe(false);
+  });
+
+  /**
+   * The profile was loaded once, when a screen was first shown. If that one
+   * request failed, the roost kept "Your profile could not be loaded" and a
+   * disabled "Write a letter" over bats that had long loaded, and compose kept
+   * its letter unsendable, until the courier left the screen.
+   */
+  describe('after a load that got no answer', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    it('asks again by itself until there is one', async () => {
+      mockDatabase.read
+        .mockResolvedValueOnce(failed)
+        .mockResolvedValueOnce(failed)
+        .mockResolvedValue(found());
+      const { result } = await renderHook(() => useProfile());
+      await passes(0);
+      expect(result.current.error).toBe(COULD_NOT_LOAD);
+      expect(result.current.isLoading).toBe(false);
+
+      await passes(2 * SECOND);
+      expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+
+      await passes(4 * SECOND);
+
+      expect(mockDatabase.read).toHaveBeenCalledTimes(3);
+      expect(result.current.profile?.username).toBe('anna');
+      expect(result.current.error).toBeNull();
+    });
+
+    it('stops asking once another screen covers this one', async () => {
+      mockDatabase.read.mockResolvedValue(failed);
+      await renderHook(() => useProfile());
+      await passes(0);
+      expect(mockDatabase.read).toHaveBeenCalledTimes(1);
+
+      await screenIs('covered');
+      await passes(10 * MINUTE);
+
+      expect(mockDatabase.read).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks nothing more once the screen is gone', async () => {
+      mockDatabase.read.mockResolvedValue(failed);
+      const { unmount } = await renderHook(() => useProfile());
+      await passes(0);
+
+      await unmount();
+      await passes(10 * MINUTE);
+
+      expect(mockDatabase.read).toHaveBeenCalledTimes(1);
+      expect(appStateListeners.size).toBe(0);
+    });
+
+    /** An account that is gone has been answered for, as has one that is there. */
+    it('does not ask again once the server has answered', async () => {
+      mockDatabase.read.mockResolvedValueOnce(failed).mockResolvedValue(notThere);
+      const { result } = await renderHook(() => useProfile());
+      await passes(2 * SECOND);
+      expect(result.current.isGone).toBe(true);
+
+      await passes(10 * MINUTE);
+
+      expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('coming back', () => {
+    /**
+     * The profile screen and the city picker change what the screens under
+     * them show, and the picker pops back without a word to anyone.
+     */
+    it('loads again when the screen comes back into view', async () => {
+      mockDatabase.read
+        .mockResolvedValueOnce(found())
+        .mockResolvedValue(found({ display_name: 'Anna B.' }));
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      await screenIs('covered');
+      expect(mockDatabase.read).toHaveBeenCalledTimes(1);
+      await screenIs('in front');
+
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna B.'));
+      expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+    });
+
+    it('loads again when the app returns from the background', async () => {
+      mockDatabase.read.mockResolvedValueOnce(failed).mockResolvedValue(found());
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.error).toBe(COULD_NOT_LOAD));
+
+      await appBecomes('background');
+      expect(mockDatabase.read).toHaveBeenCalledTimes(1);
+      await appBecomes('active');
+
+      await waitFor(() => expect(result.current.profile?.username).toBe('anna'));
+      expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('saving', () => {
+    it('saves a name without the spaces around it, and reads the profile back', async () => {
+      mockDatabase.read
+        .mockResolvedValueOnce(found())
+        .mockResolvedValue(found({ display_name: 'Anna B.' }));
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      await act(() => result.current.updateDisplayName('  Anna B. '));
+
+      expect(mockDatabase.change).toHaveBeenCalledWith({ display_name: 'Anna B.' });
+      expect(result.current.profile?.displayName).toBe('Anna B.');
+    });
+
+    it('saves a city by its id alone, and reads the profile back', async () => {
+      mockDatabase.read
+        .mockResolvedValueOnce(found())
+        .mockResolvedValue(found({ cities: { id: 2911298, name: 'Hamburg', country_code: 'DE' } }));
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.city?.name).toBe('Munich'));
+
+      await act(() => result.current.updateCity(2911298));
+
+      expect(mockDatabase.change).toHaveBeenCalledWith({ city_id: 2911298 });
+      expect(result.current.profile?.city?.name).toBe('Hamburg');
+    });
+
+    it.each([
+      [
+        'a name',
+        () => (hook: ReturnType<typeof useProfile>) => hook.updateDisplayName('Anna B.'),
+        'That name could not be saved.',
+      ],
+      [
+        'a city',
+        () => (hook: ReturnType<typeof useProfile>) => hook.updateCity(2911298),
+        'That city could not be saved.',
+      ],
+    ])('says so when %s could not be saved, and keeps what it had', async (_, save, words) => {
+      mockDatabase.read.mockResolvedValue(found());
+      mockDatabase.change.mockResolvedValue({
+        error: { message: 'TypeError: Network request failed' },
+      });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      let failure: unknown;
+      await act(async () => {
+        failure = await save()(result.current).catch((error: unknown) => error);
+      });
+
+      expect(failure).toEqual(new Error(words));
+      expect(mockDatabase.read).toHaveBeenCalledTimes(1);
+      expect(result.current.profile?.displayName).toBe('Anna');
+    });
+
+    /**
+     * A load that was under way when the name was saved comes back with the
+     * old name. Arriving after the one that read the new name back, it used to
+     * put the old one on screen again, under "Saved."
+     */
+    it('does not let a slow earlier answer put the old name back after a save', async () => {
+      let arriveLate: (answer: Answer) => void = () => {};
+      mockDatabase.read
+        .mockReturnValueOnce(new Promise<Answer>((resolve) => (arriveLate = resolve)))
+        .mockResolvedValue(found({ display_name: 'Anna B.' }));
+      const { result } = await renderHook(() => useProfile());
+
+      await act(() => result.current.updateDisplayName('Anna B.'));
+      expect(result.current.profile?.displayName).toBe('Anna B.');
+
+      await act(async () => arriveLate(found({ display_name: 'Anna' })));
+
+      expect(result.current.profile?.displayName).toBe('Anna B.');
+    });
   });
 
   /**

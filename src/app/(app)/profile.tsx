@@ -1,5 +1,5 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -21,7 +21,9 @@ import { CONTACT_URL, openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 export default function ProfileScreen() {
   const router = useRouter();
   const { signOut, deleteAccount } = useAuth();
-  const { profile, isLoading, isGone, error, reload, updateDisplayName } = useProfile();
+  // Read again each time the screen comes into view, which is what shows the
+  // city the picker has just saved before popping back here.
+  const { profile, isLoading, isGone, error, updateDisplayName } = useProfile();
   const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -38,14 +40,6 @@ export default function ProfileScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  // The city picker writes the change itself and pops back here, so this screen
-  // has to re-read rather than trust what it loaded on mount.
-  useFocusEffect(
-    useCallback(() => {
-      void reload();
-    }, [reload]),
-  );
 
   async function save() {
     const problem = validateDisplayName(displayName);

@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { RELOCATION_HOURS } from '@/constants/config';
 import { useAuth } from '@/features/auth/auth-context';
 import { supabase } from '@/lib/supabase';
+import { useRetry } from '@/lib/use-retry';
 
 export type ProfileCity = {
   id: number;
@@ -81,6 +84,11 @@ export function toProfile(row: Row, now: number = Date.now()): Profile {
  * There is deliberately no way to load anybody else's: row level security
  * returns nothing for another user's id, and until friend search exists in
  * Phase 5 there is no route from one user to another.
+ *
+ * Kept fresh the way `useRemote` keeps its data: loaded when the screen comes
+ * into view - the profile screen and the city picker change what the screens
+ * under them show - and when the app returns from the background, and loaded
+ * again by itself after a load that got no answer (see `useRetry`).
  */
 export function useProfile() {
   const { session } = useAuth();
@@ -91,16 +99,24 @@ export function useProfile() {
   const [isGone, setIsGone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!userId) return;
+  // Identifies the newest request, so a slow answer cannot put back what a
+  // newer one has replaced - the old name, after the new one was saved.
+  const latest = useRef(0);
+
+  // Resolves with whether the load is worth making again unasked: it failed,
+  // and it is still the newest.
+  const attempt = useCallback(async () => {
+    if (!userId) return false;
 
     // Nothing is set before the first await: this runs from an effect, and a
     // synchronous setState there costs an extra render pass before paint.
+    const request = ++latest.current;
     const { data, error: failure } = await supabase
       .from('profiles')
       .select(SELECT)
       .eq('id', userId)
       .maybeSingle<Row>();
+    if (request !== latest.current) return false;
 
     if (failure) {
       setError('Your profile could not be loaded. Check your connection.');
@@ -121,17 +137,20 @@ export function useProfile() {
       );
     }
     setIsLoading(false);
+    return failure !== null;
   }, [userId]);
+  const run = useRetry(attempt);
+  const load = useCallback(() => run(false), [run]);
 
-  useEffect(() => {
-    // `load` sets state only after awaiting the query, so nothing is updated
-    // synchronously here and React batches the updates that follow into a single
-    // pass. The rule cannot see through the async boundary to establish that.
-    // If this hook ever grows real caching needs, replace the pattern with a
-    // query library rather than widening this exemption.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') void load();
+      });
+      return () => subscription.remove();
+    }, [load]),
+  );
 
   const updateDisplayName = useCallback(
     async (displayName: string) => {
