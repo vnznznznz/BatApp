@@ -4,6 +4,7 @@ import {
   fetchBadges,
   fetchInbox,
   fetchSent,
+  fetchSentLetter,
   letterLength,
   PAGE_SIZE,
   prepareBody,
@@ -383,6 +384,72 @@ describe('sendMessage', () => {
 
     await expect(sendMessage('anna-id', 'Dear Anna,', REF)).rejects.toMatchObject({
       message: 'Your letter could not be sent. Check your connection.',
+      reason: null,
+    });
+  });
+});
+
+/**
+ * What became of a send that was never answered. The one mistake this must
+ * never make is to say "nothing went" when it only could not find out: the
+ * app would then let the same letter go a second time, on a second bat.
+ */
+describe('fetchSentLetter', () => {
+  const REF = '0f9e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f';
+
+  const held = {
+    message_id: 'letter-9',
+    deliver_at: '2026-11-01T00:18:00.000Z',
+    distance_km: 504.6,
+  };
+
+  it('asks for the letter that went out under a reference, in one call', async () => {
+    answer([]);
+
+    await fetchSentLetter(REF);
+
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith('sent_letter', { client_ref: REF });
+  });
+
+  it('reports the letter as a send would have: which it is, when it lands, how far', async () => {
+    answer([held]);
+
+    await expect(fetchSentLetter(REF)).resolves.toEqual({
+      id: 'letter-9',
+      deliverAt: new Date('2026-11-01T00:18:00.000Z'),
+      distanceKm: 504.6,
+    });
+    // Awaited as it is: asked for exactly one row, "none" would come back as an error.
+    expect(mockSingle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no rows', []],
+    ['nothing at all', null],
+  ])('says nothing went out under it when the server answers with %s', async (_, rows) => {
+    answer(rows);
+
+    await expect(fetchSentLetter(REF)).resolves.toBeNull();
+  });
+
+  it('fails, rather than say nothing went, when there is no connection to ask over', async () => {
+    fail({ message: 'TypeError: Network request failed', code: '', hint: '' });
+
+    const asking = fetchSentLetter(REF);
+
+    await expect(asking).rejects.toBeInstanceOf(RpcError);
+    await expect(asking).rejects.toMatchObject({
+      message: 'No connection. Check your network and try again.',
+      reason: null,
+    });
+  });
+
+  it('fails, rather than say nothing went, when the server answers with an error', async () => {
+    fail(UNEXPECTED);
+
+    await expect(fetchSentLetter(REF)).rejects.toMatchObject({
+      message: 'Could not find out whether your letter went.',
       reason: null,
     });
   });

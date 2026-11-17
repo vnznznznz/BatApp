@@ -227,6 +227,17 @@ export type Dispatch = {
   distanceKm: number;
 };
 
+/** What `send_message` and `sent_letter` both answer with. */
+type DispatchRow = { message_id: string; deliver_at: string; distance_km: number };
+
+function toDispatch(row: DispatchRow): Dispatch {
+  return {
+    id: row.message_id,
+    deliverAt: new Date(row.deliver_at),
+    distanceKm: row.distance_km,
+  };
+}
+
 /**
  * Sends a letter. `clientRef` names this letter rather than this attempt: pass
  * the same one when retrying the same letter, so that a send whose answer was
@@ -246,13 +257,24 @@ export async function sendMessage(
     })
     .single();
   if (error) throw toRpcError(error, 'Your letter could not be sent. Check your connection.');
+  return toDispatch(data as DispatchRow);
+}
 
-  const row = data as { message_id: string; deliver_at: string; distance_km: number };
-  return {
-    id: row.message_id,
-    deliverAt: new Date(row.deliver_at),
-    distanceKm: row.distance_km,
-  };
+/**
+ * The letter that went out under `clientRef`, or null if none did: what became
+ * of a send that was never answered. The database waits for a send under the
+ * same reference that is still running, so null means that none went, not that
+ * one is about to.
+ *
+ * Throws when it could not ask. That must never be read as null: "could not
+ * find out" taken for "nothing went" is how one letter leaves on two bats.
+ */
+export async function fetchSentLetter(clientRef: string): Promise<Dispatch | null> {
+  const { data, error } = await supabase.rpc('sent_letter', { client_ref: clientRef });
+  if (error) throw toRpcError(error, 'Could not find out whether your letter went.');
+
+  const [row] = (data ?? []) as DispatchRow[];
+  return row ? toDispatch(row) : null;
 }
 
 /* -------------------------------------------------------------------------- */
