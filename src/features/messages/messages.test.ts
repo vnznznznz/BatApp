@@ -6,6 +6,8 @@ import {
   fetchSent,
   fetchSentLetter,
   letterLength,
+  letterOpened,
+  onLetterOpened,
   PAGE_SIZE,
   prepareBody,
   PREVIEW_LENGTH,
@@ -588,6 +590,89 @@ describe('readMessage', () => {
     await expect(readMessage('letter-1')).rejects.toMatchObject({
       message: 'That letter could not be opened. Check your connection.',
     });
+  });
+
+  /**
+   * The inbox takes the unread mark off a letter when it hears that the letter
+   * was read. It has to hear it from here, where the server's answer arrives:
+   * a tap on the row is not a letter read. (Found in review.)
+   */
+  describe('telling whoever is listening that a letter was opened', () => {
+    const heard = jest.fn();
+    let stop: () => void;
+
+    beforeEach(() => {
+      heard.mockReset();
+      stop = onLetterOpened(heard);
+    });
+
+    afterEach(() => stop());
+
+    it('says so of a received letter, once the server has answered with it', async () => {
+      answer([letterRow({ id: 'letter-7' })]);
+
+      const reading = readMessage('letter-7');
+      expect(heard).not.toHaveBeenCalled();
+      await reading;
+
+      expect(heard).toHaveBeenCalledTimes(1);
+      expect(heard).toHaveBeenCalledWith('letter-7');
+    });
+
+    // The server never says whether a letter you sent was opened, and reading
+    // your own letter opens nothing.
+    it('says nothing of a letter you sent', async () => {
+      answer([letterRow({ direction: 'sent', opened_at: null })]);
+
+      await readMessage('letter-1');
+
+      expect(heard).not.toHaveBeenCalled();
+    });
+
+    it('says nothing of a letter that could not be read', async () => {
+      fail({ message: 'TypeError: Network request failed' });
+      await expect(readMessage('letter-1')).rejects.toBeInstanceOf(RpcError);
+
+      fail({ message: 'no such letter', code: 'P0001', hint: 'message_not_found' });
+      await expect(readMessage('letter-1')).rejects.toBeInstanceOf(RpcError);
+
+      expect(heard).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('onLetterOpened', () => {
+  it('tells everyone listening which letter it was, each time', () => {
+    const inbox = jest.fn();
+    const other = jest.fn();
+    const stopInbox = onLetterOpened(inbox);
+    const stopOther = onLetterOpened(other);
+
+    letterOpened('letter-1');
+    letterOpened('letter-2');
+
+    expect(inbox.mock.calls).toEqual([['letter-1'], ['letter-2']]);
+    expect(other.mock.calls).toEqual([['letter-1'], ['letter-2']]);
+    stopInbox();
+    stopOther();
+  });
+
+  it('tells nobody who has stopped listening, and still tells the others', () => {
+    const inbox = jest.fn();
+    const other = jest.fn();
+    const stopInbox = onLetterOpened(inbox);
+    const stopOther = onLetterOpened(other);
+
+    stopOther();
+    letterOpened('letter-1');
+
+    expect(other).not.toHaveBeenCalled();
+    expect(inbox).toHaveBeenCalledTimes(1);
+    stopInbox();
+  });
+
+  it('does nothing when nobody is listening', () => {
+    expect(() => letterOpened('letter-1')).not.toThrow();
   });
 });
 

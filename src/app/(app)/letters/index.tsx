@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { UnreadDot } from '@/components/badge';
@@ -14,6 +14,7 @@ import {
   fetchInbox,
   fetchSent,
   MAX_PAGE_SIZE,
+  onLetterOpened,
   PAGE_SIZE,
   type ReceivedLetter,
   type SentLetter,
@@ -55,10 +56,13 @@ export default function LettersScreen() {
 function ReceivedList() {
   const router = useRouter();
   const letters = usePaged(fetchInbox, PAGE_SIZE, MAX_PAGE_SIZE);
-  // Letters opened from this list. Opening marks a letter read on the server,
-  // but a refresh brings back at most a hundred letters; remembering here keeps
-  // the unread mark off a letter just read however deep in the list it was.
+  // Letters read while this list was shown. Reading marks a letter opened on
+  // the server, but a refresh brings back at most a hundred letters;
+  // remembering here keeps the unread mark off a letter just read however deep
+  // in the list it was. Read, not tapped: a letter that then cannot be opened
+  // is still unread, here as on the server. (Found in review.)
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => onLetterOpened((id) => setOpened((previous) => new Set(previous).add(id))), []);
 
   return (
     <LetterList
@@ -73,10 +77,7 @@ function ReceivedList() {
             detail={asOneLine(letter.preview)}
             emphasised={unread}
             leading={<UnreadDot visible={unread} label="Unread" />}
-            onPress={() => {
-              setOpened((previous) => new Set(previous).add(letter.id));
-              router.push({ pathname: '/letters/[id]', params: { id: letter.id } });
-            }}
+            onPress={() => router.push({ pathname: '/letters/[id]', params: { id: letter.id } })}
           />
         );
       }}

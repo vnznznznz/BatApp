@@ -6,6 +6,7 @@ import LettersScreen from '@/app/(app)/letters/index';
 import {
   fetchInbox,
   fetchSent,
+  letterOpened,
   PAGE_SIZE,
   type Correspondent,
   type ReceivedLetter,
@@ -45,14 +46,32 @@ jest.mock('expo-router', () => {
   };
 });
 
+/** How many lists are listening, at this moment, for letters being read. */
+const mockListening = { lists: 0 };
+
 // The screen is under test, not the network. The fetchers are replaced; the
-// helpers that name a correspondent and size a page are kept.
-jest.mock('@/features/messages/messages', () => ({
-  ...jest.requireActual('@/features/messages/messages'),
-  fetchInbox: jest.fn(),
-  fetchSent: jest.fn(),
-  readMessage: jest.fn(),
-}));
+// helpers that name a correspondent and size a page are kept. So is the way a
+// list hears that a letter was read - counted here, so that a list that has
+// gone can be seen to have stopped listening.
+jest.mock('@/features/messages/messages', () => {
+  const actual = jest.requireActual<typeof import('@/features/messages/messages')>(
+    '@/features/messages/messages',
+  );
+  return {
+    ...actual,
+    fetchInbox: jest.fn(),
+    fetchSent: jest.fn(),
+    readMessage: jest.fn(),
+    onLetterOpened: (listener: (id: string) => void) => {
+      const stop = actual.onLetterOpened(listener);
+      mockListening.lists += 1;
+      return () => {
+        mockListening.lists -= 1;
+        stop();
+      };
+    },
+  };
+});
 
 const mockedFetchInbox = jest.mocked(fetchInbox);
 const mockedFetchSent = jest.mocked(fetchSent);
@@ -188,6 +207,7 @@ async function letTimePass(ms: number) {
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
+  mockListening.lists = 0;
   mockedFetchInbox.mockReset();
   mockedFetchInbox.mockResolvedValue([]);
   mockedFetchSent.mockReset();
@@ -642,7 +662,12 @@ describe('LettersScreen', () => {
       expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, 1 + PAGE_SIZE);
     });
 
-    it('takes the unread mark off a letter as soon as it is opened', async () => {
+    /**
+     * Tapping a row asks for the letter; it has not been read until the server
+     * has answered. The mark used to go with the tap, and a letter that then
+     * could not be opened had lost it all the same. (Found in review.)
+     */
+    it('leaves the unread mark on a letter that has only been tapped', async () => {
       mockedFetchInbox.mockResolvedValue([received({ id: 'letter-1' })]);
       await renderScreen(<LettersScreen />);
       expect(await screen.findByLabelText('Unread')).toBeOnTheScreen();
@@ -653,6 +678,72 @@ describe('LettersScreen', () => {
         pathname: '/letters/[id]',
         params: { id: 'letter-1' },
       });
+      expect(screen.getByLabelText('Unread')).toBeOnTheScreen();
+    });
+
+    it('takes the unread mark off a letter as soon as it has been read, and off no other', async () => {
+      mockedFetchInbox.mockResolvedValue([
+        received({ id: 'from-anna', sender: anna }),
+        received({ id: 'from-ben', sender: ben }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      expect(await screen.findAllByLabelText('Unread')).toHaveLength(2);
+
+      // The letter's own screen, on top of this one, has read it.
+      await act(async () => letterOpened('from-anna'));
+
+      const read = screen.getByRole('button', { name: /Anna Weber/ });
+      const unread = screen.getByRole('button', { name: /Ben Okafor/ });
+      expect(within(read).queryByLabelText('Unread')).toBeNull();
+      expect(within(unread).getByLabelText('Unread')).toBeOnTheScreen();
+      // Without asking the server again.
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(1);
+    });
+
+    it('remembers every letter read since it was shown, not only the last', async () => {
+      mockedFetchInbox.mockResolvedValue([
+        received({ id: 'from-anna', sender: anna }),
+        received({ id: 'from-ben', sender: ben }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      await screen.findAllByLabelText('Unread');
+
+      await act(async () => letterOpened('from-anna'));
+      await act(async () => letterOpened('from-ben'));
+
+      expect(screen.queryAllByLabelText('Unread')).toHaveLength(0);
+    });
+
+    it('listens for letters being read only while the received letters are shown', async () => {
+      const view = await renderScreen(<LettersScreen />);
+      await screen.findByText(/^Nothing has landed yet\./);
+      expect(mockListening.lists).toBe(1);
+
+      await showSent();
+      expect(mockListening.lists).toBe(0);
+
+      await fireEvent.press(tab('Received'));
+      expect(mockListening.lists).toBe(1);
+
+      await view.unmount();
+      expect(mockListening.lists).toBe(0);
+    });
+
+    /**
+     * A refresh brings back the newest hundred letters and keeps what the list
+     * held of any older one - which, for a letter read since, is that it was
+     * unread. What the list was told outlasts the refresh.
+     */
+    it('keeps the mark off a letter that was read when a refresh still has it as unread', async () => {
+      mockedFetchInbox.mockResolvedValue([received({ id: 'letter-1' })]);
+      await renderScreen(<LettersScreen />);
+      await screen.findByLabelText('Unread');
+      await act(async () => letterOpened('letter-1'));
+
+      await pullToRefresh();
+
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Unread')).toBeNull();
     });
 

@@ -307,11 +307,43 @@ export async function fetchSent(
   return ((data ?? []) as SentRow[]).map(toSentLetter);
 }
 
-/** A whole letter. Reading a received one marks it opened, for your inbox only. */
+/**
+ * A whole letter. Reading a received one marks it opened, for your inbox only -
+ * and whoever is listening is told so (see `onLetterOpened`), once the server
+ * has answered that it is.
+ */
 export async function readMessage(id: string): Promise<Letter> {
   const { data, error } = await supabase.rpc('read_message', { message_id: id }).single();
   if (error) throw toRpcError(error, 'That letter could not be opened. Check your connection.');
-  return toLetter(data as LetterRow);
+
+  const letter = toLetter(data as LetterRow);
+  // Only a received letter ever comes back opened.
+  if (letter.openedAt) letterOpened(letter.id);
+  return letter;
+}
+
+const readers = new Set<(id: string) => void>();
+
+/**
+ * Calls `listener` with the id of each received letter the server has marked
+ * opened, until the returned function is called.
+ *
+ * The inbox asks again when it comes back into view, but only for its newest
+ * hundred letters; for one read farther down, this is how it learns that the
+ * letter is no longer unread. It used to assume so when the row was tapped,
+ * and a letter that then failed to open lost its mark while the server, and
+ * the roost's count, still had it as unread. (Found in review.)
+ */
+export function onLetterOpened(listener: (id: string) => void): () => void {
+  readers.add(listener);
+  return () => {
+    readers.delete(listener);
+  };
+}
+
+/** Says that the server has marked this received letter opened. */
+export function letterOpened(id: string): void {
+  readers.forEach((notify) => notify(id));
 }
 
 export async function fetchBadges(): Promise<Badges> {
