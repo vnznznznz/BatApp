@@ -645,14 +645,16 @@ it again from step 1, because Apple wants a demo account that does not expire.
       That it answers over https only is still **to check** in the Pages settings.
 - [x] Privacy policy published at `{{PRIVACY_POLICY_URL}}`
       (`https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, with
-      `privacy-policy.en.html` beside it) since 10 November 2026, to be rebuilt with
-      `LAUNCH_STATE=before-launch` until the item after this one is done (GO-LIVE, "Where the web
-      pages live"); with `{{OPERATOR_NAME}}`, `{{OPERATOR_ADDRESS}}`,
-      `{{CONTACT_EMAIL}}` and `{{EFFECTIVE_DATE}}` filled in only in the site repository's copy,
-      never in this repository. It is the only public page with the postal address. It names where
-      the data is: the database in Zurich, Switzerland, with Supabase (a US company) as processor,
-      and the USA for Supabase Inc., Microsoft (the mailbox), GitHub (the web pages), and Apple and
-      Google (for testers). Check Supabase's sub-processor list before writing "hosted in
+      `privacy-policy.en.html` beside it) since 10 November 2026, with `{{OPERATOR_NAME}}`,
+      `{{OPERATOR_ADDRESS}}`, `{{CONTACT_EMAIL}}` and `{{EFFECTIVE_DATE}}` filled in only in the
+      site repository's copy, never in this repository. It is the only public page with the postal
+      address. It names where the data is: the database in Zurich, Switzerland, with Supabase (a US
+      company) as processor, and the USA for Supabase Inc., Microsoft (the mailbox), GitHub (the
+      web pages), and Apple and Google (for testers).
+- [ ] What the published policy says, checked against the real project: its TO CHECK and PRÜFEN
+      notes were still open when it went up. Until they are worked through and the next item is
+      done, every rebuild uses `LAUNCH_STATE=before-launch` (GO-LIVE, "Where the web pages live").
+      Among them: read Supabase's sub-processor list before the policy says "hosted in
       Switzerland" without that qualification.
 - [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the web pages are rebuilt with
       `LAUNCH_STATE=live` (GO-LIVE, "Where the web pages live"): sections 7 and 8 of the privacy
@@ -663,15 +665,15 @@ it again from step 1, because Apple wants a demo account that does not expire.
       DSG as well as the GDPR.
 - [x] Support page (`support-page.md`) live at `{{SUPPORT_URL}}`
       (`https://vnznznznz.github.io/night-courier/`, the site's `night-courier/index.html`) since
-      10 November 2026, with its
-      placeholders filled in only in the site repository's copy. It points to the privacy policy
-      for the postal address and does not repeat it (section 2). If Apple wants the address on the
-      Support URL itself, use `{{PRIVACY_POLICY_URL}}` there instead.
+      10 November 2026, with its placeholders filled in only in the site repository's copy. It
+      points to the privacy policy for the postal address and does not repeat it (section 2). If
+      Apple wants the address on the Support URL itself, use `{{PRIVACY_POLICY_URL}}` there
+      instead.
 - [ ] The EAS environment for the build has `EXPO_PUBLIC_SUPABASE_URL` and
       `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted project, `EXPO_PUBLIC_CONTACT_URL`
       (`{{SUPPORT_URL}}`, the help page, which carries the contact address so that the app
-      bundle need not) and `EXPO_PUBLIC_PRIVACY_POLICY_URL`
-      (`{{PRIVACY_POLICY_URL}}`). These stay settings of the EAS environment and are never
+      bundle need not) and `EXPO_PUBLIC_PRIVACY_POLICY_URL` (`{{PRIVACY_POLICY_URL}}`). These
+      stay settings of the EAS environment and are never
       committed. On a device, Contact shows in the profile and the house rules, and Privacy policy
       shows there and on the sign-up form. Tap each once to see that it opens the right page.
 - [ ] App record created (section 1). App Information filled in (section 2), including the age

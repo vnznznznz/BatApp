@@ -742,15 +742,15 @@ A short note, not legal advice.
       every page carries the notice that Night Courier has not started.
 - [x] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}`
       (`https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
-      alongside) since 10 November 2026, to be rebuilt with `LAUNCH_STATE=before-launch` until the
-      item before this one is done; with the placeholders filled in only in the site repository
-      `vnznznznz.github.io`,
-      never in this one, and the database's location named as Switzerland. It is the only page with
-      the postal address.
+      alongside) since 10 November 2026, with the placeholders filled in only in the site
+      repository `vnznznznz.github.io`, never in this one, and the database's location named as
+      Switzerland. It is the only page with the postal address. Until the item before this one is
+      done, and the policy's TO CHECK and PRÜFEN notes are worked through (`app-store.md`,
+      section 7, has the item), every rebuild uses `LAUNCH_STATE=before-launch`.
 - [x] Support page live at `{{SUPPORT_URL}}` (`https://vnznznznz.github.io/night-courier/`, from
       `support-page.md`) since 10 November 2026, with the account deletion text (section 6), and
       without the postal address: it points to the privacy policy for that. Rebuild it whenever
-      that text changes (a test holds the two to the same words).
+      that text changes (a test holds its list of what is kept to the same words here and there).
 - [ ] The EU trader declaration, if Play Console asks for one (section 1): non-trader expected,
       **to check**.
 - [ ] App created (section 1), store listing in English and German, icon, feature graphic and
