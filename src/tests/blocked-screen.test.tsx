@@ -279,6 +279,7 @@ describe('BlockedScreen', () => {
 
       expect(spinners()).toHaveLength(1);
       expect(screen.queryByText(NOBODY)).toBeNull();
+      expect(screen.queryByText(REPORT_FROM_HERE)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
 
@@ -288,6 +289,8 @@ describe('BlockedScreen', () => {
 
       expect(await screen.findByText(LOAD_FAILED)).toBeOnTheScreen();
       expect(screen.queryByText(NOBODY)).toBeNull();
+      // Nobody is listed to report, so there is no Report to explain.
+      expect(screen.queryByText(REPORT_FROM_HERE)).toBeNull();
       expect(spinners()).toHaveLength(0);
 
       await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
