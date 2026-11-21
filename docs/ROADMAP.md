@@ -376,10 +376,11 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
   races fail CI when there is no database; a focused test fails lint; and the ages every document
   gives are held to the two constants.
 
-Verified on the merged tree: the typecheck, lint and format check; 2,095 app tests, run as written
-and again compiled; 554 database tests, 73 of them races on a real Postgres; and the 90 tests of
-the scripts and the runbooks. The groups also checked their parts against the local stack, and the
-screens in the web build. None of it has been run on a phone.
+Verified on 187439c, the merged tree before the dependency updates of 21 November 2026: the
+typecheck, lint and format check; 2,095 app tests, run as written and again compiled; 554 database
+tests, 73 of them races on a real Postgres; and the 90 tests of the scripts and the runbooks. The
+groups also checked their parts against the local stack, and the screens in the web build. None of
+it has been run on a phone.
 
 Still open:
 
@@ -398,9 +399,10 @@ Still open:
 - **A sign-out on a dead connection** can hold signing in back for about a minute. Sign in and
   Create account say so after five seconds; the code screens' Confirm and "Set the new password"
   show their spinner alone. Whether they should say so too is the operator's call.
-- **"Almost there" can only try the same password again.** If the auth server refuses the password
-  typed at sign-up or at sign-in - under a stricter rule, say - the way on is Start over, or Sign
-  out and "I forgot my password".
+- **"Almost there" can only try the same password again while the app stays open.** If the auth
+  server refuses the password typed at sign-up or at sign-in - under a stricter rule, say - the way
+  on is Start over, or Sign out and "I forgot my password", or closing the app and opening it
+  again, which then asks for a password: the one chosen before, or a new one.
 - **A lost answer to a sign-up's code.** If the server confirmed the account and the answer never
   came, nothing holds the way in: the account has no password until "I forgot my password" sets
   one, and keeps the username and name of the first sign-up for the address - perhaps someone
