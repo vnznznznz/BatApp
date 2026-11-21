@@ -77,13 +77,40 @@ export const sameAddress = (one: string | undefined, other: string | undefined) 
 
 /**
  * Whether the code of a password reset is what confirmed the account's
- * address: it was confirmed after the code was sent. The auth server confirms
- * an address with a reset's code too (GoTrue v2.197), so an account a sign-up
- * left waiting for its code - with that sign-up's password, username and name,
- * whoever it was - becomes a confirmed account by it.
+ * address. The auth server confirms an address with a reset's code too
+ * (GoTrue v2.197), so an account a sign-up left waiting for its code - with
+ * that sign-up's password, username and name, whoever it was - becomes a
+ * confirmed account by it.
+ *
+ * It does so in the request that signs in with the code: the address is
+ * confirmed in the moment of that sign-in, milliseconds before it (2 ms on
+ * the local server). Not "after the code was sent": a reset's code lives a
+ * day, and the auth server keeps it when a sign-up's code confirms the account
+ * meanwhile - typed once that account was finished and in use, it had it
+ * removed. (Found in review.) A renewal of the session leaves the time of its
+ * sign-in as it was, so this holds for a session kept on the device as well.
  */
-export function confirmedByResetCode(user: Pick<User, 'email_confirmed_at' | 'recovery_sent_at'>) {
-  const confirmed = Date.parse(user.email_confirmed_at ?? '');
-  const sent = Date.parse(user.recovery_sent_at ?? '');
-  return confirmed >= sent;
+export function confirmedByResetCode(
+  user: Partial<Pick<User, 'email_confirmed_at' | 'last_sign_in_at'>>,
+) {
+  const confirmed = instant(user.email_confirmed_at);
+  const signedIn = instant(user.last_sign_in_at);
+  return Math.abs(signedIn - confirmed) <= SAME_REQUEST_MS;
 }
+
+/**
+ * How far apart the two may be and still have come from one request: hundreds
+ * of times what the server takes between them, and less than anyone takes to
+ * use a second code after a first. The app itself, driven by a script, signed
+ * up, finished the account, used it and signed out in two seconds, and the
+ * reset's code typed then counted as what had confirmed it at five.
+ */
+const SAME_REQUEST_MS = 1000;
+
+/**
+ * A time from the auth server, in milliseconds; NaN for none. It writes up to
+ * nine digits after the second, and only the first three are read: more is
+ * not part of the format JavaScript engines must accept.
+ */
+const instant = (value: string | undefined) =>
+  Date.parse((value ?? '').replace(/(\.\d{3})\d+/, '$1'));

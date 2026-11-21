@@ -3106,12 +3106,21 @@ describe('what a code leaves to do, kept on the device', () => {
     return value === null ? null : (JSON.parse(value) as unknown);
   };
 
-  /** A right code's session, for an account whose address was confirmed at `confirmedAt`. */
-  const codeSession = (confirmedAt: string, recoverySentAt?: string) => {
+  /**
+   * A right code's session, for an account whose address was confirmed at
+   * `confirmed`, signed in to by the code at `signedIn`: the times as GoTrue
+   * v2.197 gives them, the sign-in's to the nanosecond.
+   */
+  const codeSession = (times: { confirmed: string; signedIn: string; resetSent: string }) => {
     const session = sessionOf(NEW_TOKEN, 'refresh-new', 3600);
     return {
       ...session,
-      user: { ...session.user, email_confirmed_at: confirmedAt, recovery_sent_at: recoverySentAt },
+      user: {
+        ...session.user,
+        email_confirmed_at: times.confirmed,
+        last_sign_in_at: times.signedIn,
+        recovery_sent_at: times.resetSent,
+      },
     };
   };
 
@@ -3256,7 +3265,22 @@ describe('what a code leaves to do, kept on the device', () => {
    * kept but the password. (Found in review.)
    */
   describe('a reset’s code that confirms an account nobody had confirmed', () => {
-    const NEVER = codeSession('2026-11-21T10:10:10.188Z', '2026-11-21T10:10:10.177Z');
+    // As auth2 answered a reset's code for an account only a sign-up had made:
+    // confirmed by the code, in the same request that signed in with it.
+    const NEVER = codeSession({
+      confirmed: '2026-11-21T11:57:56.799333Z',
+      signedIn: '2026-11-21T11:57:56.801425832Z',
+      resetSent: '2026-11-21T11:57:54.786386Z',
+    });
+    // The reset was asked for while the sign-up's code was on its way; the
+    // sign-up's code confirmed the account a second later, and the courier
+    // finished it, used it and signed out. The reset's code, typed minutes
+    // later, still works: it lives a day.
+    const EARLY = codeSession({
+      confirmed: '2026-11-21T11:09:19.020301Z',
+      signedIn: '2026-11-21T11:14:02.615083165Z',
+      resetSent: '2026-11-21T11:09:17.900417Z',
+    });
 
     it('removes the account, and signs out', async () => {
       server({ verify: () => json(200, NEVER) });
@@ -3322,7 +3346,15 @@ describe('what a code leaves to do, kept on the device', () => {
 
     it('leaves an account confirmed before the code was sent alone', async () => {
       server({
-        verify: () => json(200, codeSession('2026-11-01T10:00:00Z', '2026-11-21T10:10:10.177Z')),
+        verify: () =>
+          json(
+            200,
+            codeSession({
+              confirmed: '2026-11-01T10:00:00Z',
+              signedIn: '2026-11-21T10:10:12.441907113Z',
+              resetSent: '2026-11-21T10:10:10.177Z',
+            }),
+          ),
       });
       await openedSignedOut();
 
@@ -3332,6 +3364,43 @@ describe('what a code leaves to do, kept on the device', () => {
 
       expect(sent.filter(isDeletion)).toEqual([]);
       expect(auth.isSettingPassword).toBe(true);
+    });
+
+    /**
+     * Confirmed after the reset was asked for is not confirmed by its code.
+     * GoTrue keeps a reset's code when a sign-up's code confirms the account,
+     * and it works for a day: typed later, it removed the courier's own
+     * account, finished and in use, friends, letters and all. (Found in
+     * review, on the confirmation-on server.)
+     */
+    it('leaves an account a sign-up’s code confirmed after the reset was asked for alone', async () => {
+      server({ verify: () => json(200, EARLY) });
+      await openedSignedOut();
+
+      expect(await asked(() => auth.verifyResetCode('mara@example.test', '12345678'))).toBe(
+        'signed in',
+      );
+
+      expect(sent.filter(isDeletion)).toEqual([]);
+      expect(state()).toBe('signed in');
+      expect(auth.isSettingPassword).toBe(true);
+      expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test' });
+
+      expect(await outcomeOf(asked(() => auth.setNewPassword('a new password')))).toBe('done');
+      expect(sent.filter(isPasswordChange)).toHaveLength(1);
+      expect(auth.isSettingPassword).toBe(false);
+    });
+
+    it('takes no removal up at launch for an account confirmed before the code signed in', async () => {
+      server();
+      await keep({ ...EARLY, access_token: OLD_TOKEN });
+      mockKeychain.set(MARKER, JSON.stringify({ flow: 'reset', email: 'mara@example.test' }));
+
+      await launch();
+      await passes(A_MOMENT);
+
+      expect(auth.isSettingPassword).toBe(true);
+      expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test', remove: false });
     });
   });
 });
