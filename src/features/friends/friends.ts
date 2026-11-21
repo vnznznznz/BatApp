@@ -1,7 +1,7 @@
 import { normaliseUsername } from '@/features/auth/validation';
 import { describeCity } from '@/features/cities/search';
 import { formatDay, formatFlightEstimate, formatOnDay } from '@/lib/format';
-import { RpcError, toRpcError } from '@/lib/rpc-error';
+import { REFUSALS, RpcError, toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -194,6 +194,21 @@ export async function acceptFriend(friendshipId: string): Promise<void> {
 export async function removeFriend(friendshipId: string): Promise<void> {
   const { error } = await supabase.rpc('remove_friend', { friendship_id: friendshipId });
   if (error) throw toRpcError(error, 'That could not be done. Try again.');
+}
+
+/**
+ * Declines a request someone made. The same call as ending a friendship, but
+ * when the request has gone before the answer arrives - withdrawn by the one
+ * who asked - the server's "no such friendship" is said as what it is here:
+ * the request is no longer waiting. There never was a friendship to end.
+ */
+export async function declineRequest(friendshipId: string): Promise<void> {
+  const { error } = await supabase.rpc('remove_friend', { friendship_id: friendshipId });
+  if (!error) return;
+
+  const refusal = toRpcError(error, 'That request could not be declined. Try again.');
+  if (refusal.reason !== 'friendship_not_found') throw refusal;
+  throw new RpcError(REFUSALS.request_not_found, 'request_not_found', { cause: error });
 }
 
 /**

@@ -12,6 +12,7 @@ import { Colors, Spacing } from '@/constants/theme';
 import { validateUsername } from '@/features/auth/validation';
 import {
   acceptFriend,
+  declineRequest,
   describeRequestOutcome,
   describeRoute,
   fetchFriendships,
@@ -225,9 +226,11 @@ export default function FriendsScreen() {
                   label="Decline"
                   size="compact"
                   variant="ghost"
-                  loading={busyId === friendship.id && busy?.action === removeFriend}
+                  loading={busyId === friendship.id && busy?.action === declineRequest}
                   disabled={busyId !== null}
-                  onPress={() => void act(friendship, removeFriend)}
+                  // Not removeFriend: if they withdrew a moment ago, that
+                  // would say a friendship had ended that never began.
+                  onPress={() => void act(friendship, declineRequest)}
                 />
               </View>
             </View>

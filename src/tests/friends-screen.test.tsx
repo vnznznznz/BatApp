@@ -1,4 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { AccessibilityInfo, Alert, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
@@ -6,6 +14,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import FriendsScreen from '@/app/(app)/friends';
 import {
   acceptFriend,
+  declineRequest,
   fetchFriendships,
   removeFriend,
   requestFriend,
@@ -46,6 +55,7 @@ jest.mock('@/features/friends/friends', () => ({
   fetchFriendships: jest.fn(),
   requestFriend: jest.fn(),
   acceptFriend: jest.fn(),
+  declineRequest: jest.fn(),
   removeFriend: jest.fn(),
   withdrawRequest: jest.fn(),
 }));
@@ -69,6 +79,7 @@ jest.mock('@/features/profile/use-profile', () => {
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedRequestFriend = jest.mocked(requestFriend);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
+const mockedDeclineRequest = jest.mocked(declineRequest);
 const mockedRemoveFriend = jest.mocked(removeFriend);
 const mockedWithdrawRequest = jest.mocked(withdrawRequest);
 
@@ -220,6 +231,7 @@ beforeEach(() => {
   serve(() => [anna, ben, carla, dora]);
   mockedRequestFriend.mockReset();
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
+  mockedDeclineRequest.mockReset().mockResolvedValue(undefined);
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
   mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -443,15 +455,16 @@ describe('FriendsScreen', () => {
 
     it('declines a request, and then drops it from the list', async () => {
       serve(() => [carla]);
-      mockedRemoveFriend.mockImplementation(async () => {
+      mockedDeclineRequest.mockImplementation(async () => {
         serve(() => []);
       });
       await renderScreen(<FriendsScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Decline' }));
 
-      expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-carla');
+      expect(mockedDeclineRequest).toHaveBeenCalledWith('friendship-carla');
       expect(mockedAcceptFriend).not.toHaveBeenCalled();
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
       await waitFor(() => expect(screen.queryByText('Carla Ruiz')).toBeNull());
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
     });
@@ -467,7 +480,7 @@ describe('FriendsScreen', () => {
       expect(screen.getByRole('button', { name: 'Accept' })).toBeBusy();
       expect(screen.getByRole('button', { name: 'Decline' })).toBeDisabled();
       await fireEvent.press(screen.getByRole('button', { name: 'Decline' }));
-      expect(mockedRemoveFriend).not.toHaveBeenCalled();
+      expect(mockedDeclineRequest).not.toHaveBeenCalled();
 
       await act(async () => accepting.resolve());
       expect(mockedAcceptFriend).toHaveBeenCalledTimes(1);
@@ -479,7 +492,7 @@ describe('FriendsScreen', () => {
     it('shows the decline, not an accept, as the answer on its way', async () => {
       serve(() => [carla]);
       const declining = deferred<void>();
-      mockedRemoveFriend.mockReturnValue(declining.promise);
+      mockedDeclineRequest.mockReturnValue(declining.promise);
       await renderScreen(<FriendsScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Decline' }));
@@ -489,6 +502,28 @@ describe('FriendsScreen', () => {
       expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
 
       await act(async () => declining.resolve());
+    });
+
+    /**
+     * Declining reaches the server after the asker withdrew. What the screen
+     * says is declineRequest's (see friends.ts): the request is no longer
+     * waiting - not that a friendship has ended, as removing a friend says.
+     */
+    it('says a request is no longer waiting when it was withdrawn before the decline arrived', async () => {
+      serve(() => [carla]);
+      mockedDeclineRequest.mockImplementation(async () => {
+        serve(() => []);
+        throw new RpcError(REFUSALS.request_not_found, 'request_not_found');
+      });
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      await renderScreen(<FriendsScreen />);
+
+      await user.press(await screen.findByRole('button', { name: 'Decline' }));
+
+      expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+      expect(announced()).toEqual([REFUSALS.request_not_found]);
+      expect(screen.queryByText(REFUSALS.friendship_not_found)).toBeNull();
+      await waitFor(() => expect(screen.queryByText('Carla Ruiz')).toBeNull());
     });
 
     it('says so when a request is no longer waiting, and shows the list as it is now', async () => {

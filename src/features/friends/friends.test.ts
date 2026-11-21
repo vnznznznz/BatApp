@@ -1,5 +1,6 @@
 import {
   acceptFriend,
+  declineRequest,
   describeRequestOutcome,
   describeRoute,
   describeStanding,
@@ -454,6 +455,59 @@ describe('removeFriend', () => {
 
     await expect(removeFriend('friendship-anna')).rejects.toMatchObject({
       message: 'No connection. Check your network and try again.',
+    });
+  });
+});
+
+describe('declineRequest', () => {
+  it('declines the request by its friendship id', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+
+    await expect(declineRequest('friendship-cleo')).resolves.toBeUndefined();
+
+    expect(mockRpc).toHaveBeenCalledWith('remove_friend', { friendship_id: 'friendship-cleo' });
+  });
+
+  /**
+   * Withdrawn before the decline arrived: remove_friend finds no row and
+   * answers friendship_not_found, which read "That friendship has already
+   * ended" - for two people who never were friends.
+   */
+  it('says the request is no longer waiting when it was withdrawn first', async () => {
+    const error = { message: 'no such friendship', code: 'P0001', hint: 'friendship_not_found' };
+    mockRpc.mockResolvedValue({ data: null, error });
+
+    const declining = declineRequest('friendship-cleo');
+
+    await expect(declining).rejects.toBeInstanceOf(RpcError);
+    await expect(declining).rejects.toMatchObject({
+      message: REFUSALS.request_not_found,
+      reason: 'request_not_found',
+      cause: error,
+    });
+  });
+
+  it('passes on any other refusal in its own words', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'this account is suspended', code: 'P0001', hint: 'account_suspended' },
+    });
+
+    await expect(declineRequest('friendship-cleo')).rejects.toMatchObject({
+      message: REFUSALS.account_suspended,
+      reason: 'account_suspended',
+    });
+  });
+
+  it('says the request could not be declined when anything else goes wrong', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'internal error', code: 'XX000', hint: null },
+    });
+
+    await expect(declineRequest('friendship-cleo')).rejects.toMatchObject({
+      message: 'That request could not be declined. Try again.',
+      reason: null,
     });
   });
 });
