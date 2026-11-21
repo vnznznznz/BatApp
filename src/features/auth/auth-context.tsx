@@ -332,7 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { needsEmailConfirmation } = await signUp(details);
           return needsEmailConfirmation ? 'new code' : 'signed in';
         } catch (cause) {
-          throw new Error(
+          throw new SetUpAgainFailed(
             'This address had an account waiting for its code already, set up with another ' +
               'username, and it has been removed to make way for yours. Yours could not be ' +
               `set up just now: ${cause instanceof Error ? cause.message : String(cause)} ` +
@@ -451,6 +451,13 @@ const isAccountGone = (error: AuthError | null) =>
  * these words, to show them where the username is typed.
  */
 export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try another.';
+
+/**
+ * Thrown by `finishSignUp` when the account an earlier sign-up made has been
+ * removed to make way for the courier's, and theirs could not be set up: the
+ * one failure of it that leaves them signed out, and the form the way on.
+ */
+export class SetUpAgainFailed extends Error {}
 
 /**
  * Said for an address that has an account already, when the auth server

@@ -1,6 +1,14 @@
 import { act, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { BackHandler, DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
+import {
+  AccessibilityInfo,
+  BackHandler,
+  DeviceEventEmitter,
+  Platform,
+  StyleSheet,
+  TextInput,
+  type ViewProps,
+} from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ResetPasswordScreen from '@/app/reset-password';
@@ -239,6 +247,60 @@ describe('ResetPasswordScreen', () => {
     await user.press(button('Set the new password'));
   }
 
+  /**
+   * The form, and the button that was pressed, are replaced where they stood:
+   * a screen reader would stay on nothing, and say nothing of what is asked
+   * now. It is taken to the title and the words under it. (Found in review.)
+   */
+  describe('what a screen reader is told', () => {
+    let focus: jest.SpiedFunction<typeof AccessibilityInfo.sendAccessibilityEvent>;
+
+    /** Where a screen reader has been taken so far: the event, and the name of the view. */
+    const focusedOn = () =>
+      focus.mock.calls.map(([view, event]) => [
+        event,
+        (view as unknown as { props: ViewProps }).props.accessibilityLabel,
+      ]);
+
+    beforeEach(() => {
+      focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
+      // React Native's own stand-in records every call, from every test before.
+      focus.mockClear();
+    });
+
+    it('is taken to the code and the new password once a code has been asked for', async () => {
+      await askedForACode();
+
+      expect(focusedOn()).toEqual([['focus', `Check your email. ${SENT}`]]);
+    });
+
+    it('is taken to the word that the new password is saved', async () => {
+      await askedForACode();
+
+      await typedCodeAndPassword();
+
+      expect(focusedOn().at(-1)).toEqual([
+        'focus',
+        'Your new password is saved. Your bats are waiting.',
+      ]);
+    });
+
+    /** The button pressed is still there, under another name, and a screen reader stays on it. */
+    it('hears what has become of the screen, and why, when the password is not saved', async () => {
+      const SAME = 'The new password has to differ from the old one.';
+      mockSetNewPassword.mockRejectedValueOnce(new Error(SAME));
+      await askedForACode();
+
+      await typedCodeAndPassword();
+
+      expect(mockedAnnounce).toHaveBeenLastCalledWith(
+        'Your new password. The code was right, and you are signed in, but the new password ' +
+          `was not saved. Try again, or sign out. ${SAME}`,
+      );
+      expect(focusedOn()).toHaveLength(1);
+    });
+  });
+
   describe('asking for a code', () => {
     it('sends a code, not a link, to the address as typed', async () => {
       await renderScreen(<ResetPasswordScreen />);
@@ -460,7 +522,7 @@ describe('ResetPasswordScreen', () => {
 
         expect(screen.getByText(NOT_SAVED)).toBeOnTheScreen();
         expect(screen.getByText(SAME)).toBeOnTheScreen();
-        expect(mockedAnnounce).toHaveBeenCalledWith(SAME);
+        expect(mockedAnnounce).toHaveBeenCalledWith(`Your new password. ${NOT_SAVED} ${SAME}`);
         expect(screen.queryByLabelText('Code')).toBeNull();
         expect(screen.getByLabelText('New password').props.value).toBe('a new password');
       });

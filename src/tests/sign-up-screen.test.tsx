@@ -1,7 +1,15 @@
 import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { BackHandler, DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
+import {
+  AccessibilityInfo,
+  BackHandler,
+  DeviceEventEmitter,
+  Platform,
+  StyleSheet,
+  TextInput,
+  type ViewProps,
+} from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
@@ -484,6 +492,47 @@ describe('SignUpScreen', () => {
     const codeField = () => screen.getByLabelText('Code');
     const passes = (ms: number) => act(async () => jest.advanceTimersByTime(ms));
 
+    /**
+     * The form, and the button that was pressed, are gone: a screen reader
+     * would stay on nothing, and say nothing of the code now asked for. It is
+     * taken to the title and the words under it. (Found in review.)
+     */
+    it('takes a screen reader to what it asks now', async () => {
+      const focus = jest
+        .spyOn(AccessibilityInfo, 'sendAccessibilityEvent')
+        .mockImplementation(() => {});
+      // React Native's own stand-in records every call, from every test before.
+      focus.mockClear();
+
+      await signedUp();
+
+      expect(
+        focus.mock.calls.map(([view, event]) => [
+          event,
+          (view as unknown as { props: ViewProps }).props.accessibilityLabel,
+        ]),
+      ).toEqual([['focus', `Check your email. ${INTRO}`]]);
+      focus.mockRestore();
+    });
+
+    it('says what it asks now aloud on the web, where nothing can be focused', async () => {
+      const focus = jest
+        .spyOn(AccessibilityInfo, 'sendAccessibilityEvent')
+        .mockImplementation(() => {});
+      // React Native's own stand-in records every call, from every test before.
+      focus.mockClear();
+      Platform.OS = 'web';
+      try {
+        await signedUp();
+      } finally {
+        Platform.OS = 'ios';
+      }
+
+      expect(mockedAnnounce).toHaveBeenCalledWith(`Check your email. ${INTRO}`);
+      expect(focus).not.toHaveBeenCalled();
+      focus.mockRestore();
+    });
+
     it('asks for the code, in words true whether or not the address has an account', async () => {
       await signedUp();
 
@@ -552,7 +601,11 @@ describe('SignUpScreen', () => {
         expect(screen.getByText('Almost there')).toBeOnTheScreen();
         expect(screen.getByText(UNFINISHED)).toBeOnTheScreen();
         expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
-        expect(mockedAnnounce).toHaveBeenCalledWith(NO_CONNECTION);
+        // What has become of the screen, and why: the button pressed is still
+        // there, under another name, and a screen reader stays on it.
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(
+          `Almost there. ${UNFINISHED} ${NO_CONNECTION}`,
+        );
         expect(screen.queryByLabelText('Code')).toBeNull();
       });
 
@@ -683,7 +736,7 @@ describe('SignUpScreen', () => {
 
       expect(screen.getByText('One more code')).toBeOnTheScreen();
       expect(screen.getByText(AGAIN)).toBeOnTheScreen();
-      expect(mockedAnnounce).toHaveBeenCalledWith(AGAIN);
+      expect(mockedAnnounce).toHaveBeenCalledWith(`One more code. ${AGAIN}`);
       expect(codeField().props.value).toBe('');
       expect(button('Send the code again')).toBeDisabled();
 

@@ -1,6 +1,13 @@
 import { act, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
+import {
+  AccessibilityInfo,
+  DeviceEventEmitter,
+  Platform,
+  StyleSheet,
+  TextInput,
+  type ViewProps,
+} from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignInScreen from '@/app/sign-in';
@@ -226,6 +233,25 @@ describe('SignInScreen', () => {
     }
 
     const button = (name: string) => screen.getByRole('button', { name });
+
+    /** The form, and the button pressed, are gone; a screen reader is taken to what is asked now. */
+    it('takes a screen reader to what it asks now', async () => {
+      const focus = jest
+        .spyOn(AccessibilityInfo, 'sendAccessibilityEvent')
+        .mockImplementation(() => {});
+      // React Native's own stand-in records every call, from every test before.
+      focus.mockClear();
+
+      await signedInUnconfirmed();
+
+      expect(
+        focus.mock.calls.map(([view, event]) => [
+          event,
+          (view as unknown as { props: ViewProps }).props.accessibilityLabel,
+        ]),
+      ).toEqual([['focus', `Confirm your address. ${INTRO}`]]);
+      focus.mockRestore();
+    });
 
     it('asks for the code sent to the address', async () => {
       await signedInUnconfirmed();

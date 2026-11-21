@@ -8,8 +8,14 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
-import { CODE_DID_NOT_WORK, useAuth, type SignUpDetails } from '@/features/auth/auth-context';
+import {
+  CODE_DID_NOT_WORK,
+  SetUpAgainFailed,
+  useAuth,
+  type SignUpDetails,
+} from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
+import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import { EMAIL_CODE_LENGTH, validateEmailCode } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
@@ -141,10 +147,21 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
       setResent(false);
       setSetUpAgain(true);
       startWaiting();
-      announce(setUpAgainWords(email));
+      announce(stageWords('One more code', setUpAgainWords(email)));
     } catch (error) {
+      // Signed out, the account gone: the code stage, with the reason.
+      if (error instanceof SetUpAgainFailed || unfinished) {
+        failed(error);
+        return;
+      }
+      // Still signed in by the code, and held: the screen becomes the one
+      // that asks to try again. The button pressed stays where it was, under
+      // another name, and a screen reader on it hears what has become of the
+      // screen, and why.
+      const message = error instanceof Error ? error.message : 'Something went wrong.';
       setNotFinished(true);
-      failed(error);
+      setFormError(message);
+      announce(`${stageWords('Almost there', UNFINISHED)} ${message}`);
     }
   }
 
@@ -177,10 +194,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
     return (
       <Screen scroll avoidKeyboard style={styles.screen}>
         <HoldBack holding={isSettingPassword} />
-        <Text variant="title">Almost there</Text>
-        <Text variant="body" tone="secondary" style={styles.intro}>
-          {UNFINISHED}
-        </Text>
+        <StageHeading title="Almost there" intro={UNFINISHED} />
         <View style={styles.form}>
           {formError ? (
             <Text variant="caption" tone="danger">
@@ -199,18 +213,20 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
       {/* After signing up the code goes, or has signed the courier in: on until the
           account is theirs. From signing in, nothing is held. */}
       <HoldBack holding={isSettingPassword} />
-      <Text variant="title">
-        {setUpAgain ? 'One more code' : signedUp ? 'Check your email' : 'Confirm your address'}
-      </Text>
-      <Text variant="body" tone="secondary" style={styles.intro}>
-        {setUpAgain
-          ? setUpAgainWords(email)
-          : signedUp
-            ? `If ${email} is new here, a code is on its way to it. Type it in below, and your ` +
-              `${BATS_PER_USER} bats will be waiting. If you already have an account, sign in instead.`
-            : `Your account is waiting for the code we sent to ${email}. Type it in below. If you ` +
-              'cannot find it, or it no longer works, ask for a new one.'}
-      </Text>
+      <StageHeading
+        title={
+          setUpAgain ? 'One more code' : signedUp ? 'Check your email' : 'Confirm your address'
+        }
+        intro={
+          setUpAgain
+            ? setUpAgainWords(email)
+            : signedUp
+              ? `If ${email} is new here, a code is on its way to it. Type it in below, and your ` +
+                `${BATS_PER_USER} bats will be waiting. If you already have an account, sign in instead.`
+              : `Your account is waiting for the code we sent to ${email}. Type it in below. If you ` +
+                'cannot find it, or it no longer works, ask for a new one.'
+        }
+      />
 
       <View style={styles.form}>
         <CodeField
@@ -288,7 +304,6 @@ const setUpAgainWords = (email: string) =>
 
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
-  intro: { marginTop: Spacing.sm },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
   note: { textAlign: 'center' },
 });

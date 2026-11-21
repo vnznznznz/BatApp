@@ -10,6 +10,7 @@ import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
 import { CODE_DID_NOT_WORK, useAuth } from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
+import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import {
   EMAIL_CODE_LENGTH,
@@ -98,6 +99,9 @@ export default function ResetPasswordScreen() {
 
 const WAIT = 'You can ask for a new code a minute after the last one.';
 const NO_EMAIL = 'No email? Look in your spam folder, then ask for the code again.';
+const NOT_SAVED =
+  'The code was right, and you are signed in, but the new password was not saved. ' +
+  'Try again, or sign out.';
 
 /**
  * The code from the email and the new password, on one screen. The code signs
@@ -173,8 +177,18 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
         await setNewPassword(password);
         setSaved(true);
       } catch (caught) {
+        // Asked again for the password alone, the reason is all that is new.
+        if (signedInByCode) {
+          failed(caught);
+          return;
+        }
+        // The screen becomes the one that asks for the password alone. The
+        // button pressed stays where it was, under another name, and a screen
+        // reader on it hears what has become of the screen, and why.
+        const message = caught instanceof Error ? caught.message : 'Something went wrong.';
         setNotSaved(true);
-        failed(caught);
+        setFormError(message);
+        announce(`${stageWords('Your new password', NOT_SAVED)} ${message}`);
       }
     } finally {
       inFlight.current = false;
@@ -210,12 +224,12 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
   if (saved) {
     return (
       <Screen center scroll style={styles.screen}>
-        <Text variant="title" center>
-          Your new password is saved
-        </Text>
-        <Text variant="body" tone="secondary" center style={styles.intro}>
-          Your bats are waiting.
-        </Text>
+        <StageHeading
+          key="saved"
+          center
+          title="Your new password is saved"
+          intro="Your bats are waiting."
+        />
       </Screen>
     );
   }
@@ -224,14 +238,16 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
     <Screen scroll avoidKeyboard style={styles.screen}>
       {/* The code goes, or has signed the courier in: on until the password is saved. */}
       <HoldBack holding={isSettingPassword} />
-      <Text variant="title">{signedInByCode ? 'Your new password' : 'Check your email'}</Text>
-      <Text variant="body" tone="secondary" style={styles.intro}>
-        {signedInByCode
-          ? 'The code was right, and you are signed in, but the new password was not saved. ' +
-            'Try again, or sign out.'
-          : `If there is an account for ${email}, a code is on its way to it. Type it in below, ` +
-            'with your new password.'}
-      </Text>
+      <StageHeading
+        key="asked"
+        title={signedInByCode ? 'Your new password' : 'Check your email'}
+        intro={
+          signedInByCode
+            ? NOT_SAVED
+            : `If there is an account for ${email}, a code is on its way to it. Type it in ` +
+              'below, with your new password.'
+        }
+      />
 
       <View style={styles.form}>
         {signedInByCode ? null : (
@@ -310,7 +326,6 @@ const resentWords = (email: string) =>
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
   subtitle: { marginTop: Spacing.xs },
-  intro: { marginTop: Spacing.sm },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
   note: { textAlign: 'center' },
 });
