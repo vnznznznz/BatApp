@@ -99,7 +99,7 @@ export default function BlockedScreen() {
           <Text variant="caption" tone="danger">
             {list.error}
           </Text>
-          <Button label="Try again" variant="secondary" onPress={() => void reload()} />
+          <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
         </View>
       ) : null}
 

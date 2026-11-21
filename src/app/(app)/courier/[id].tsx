@@ -37,7 +37,7 @@ export default function CourierScreen() {
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
-  const { reload } = list;
+  const { reload, refresh } = list;
   // The city picker, opened from here, saves the city itself and pops back:
   // what this page says about a city of the courier's own is read again each
   // time it comes back into view - by the hook itself, which the page used to
@@ -70,7 +70,7 @@ export default function CourierScreen() {
               {list.error}
             </Text>
             <View style={styles.actions}>
-              <Button label="Try again" variant="secondary" onPress={() => void reload()} />
+              <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
             </View>
           </>
         ) : (

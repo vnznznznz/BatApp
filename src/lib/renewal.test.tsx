@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as React from 'react';
 import * as ReactNative from 'react-native';
 
+import type { AuthContextValue } from '@/features/auth/auth-context';
 import { secureStorage } from '@/lib/secure-storage';
 import { SESSION_KEY } from '@/lib/session-store';
 
@@ -104,6 +105,9 @@ async function open(count = 1) {
   client = db;
   const { useRemote } = jest.requireActual<typeof import('@/lib/use-remote')>('@/lib/use-remote');
   const { toRpcError } = jest.requireActual<typeof import('@/lib/rpc-error')>('@/lib/rpc-error');
+  const context = jest.requireActual<typeof import('@/features/auth/auth-context')>(
+    '@/features/auth/auth-context',
+  );
 
   async function loadRoost() {
     const { data, error } = await db.rpc('get_roost');
@@ -125,14 +129,30 @@ async function open(count = 1) {
     );
   }
 
-  await render(
-    <>
-      {Array.from({ length: count }, (_, id) => (
-        <Roost key={id} id={id} />
-      ))}
-    </>,
-  );
+  function Probe() {
+    auth = context.useAuth();
+    return null;
+  }
+
+  function Screens({ shown }: { shown: number }) {
+    return (
+      <context.AuthProvider>
+        <Probe />
+        {Array.from({ length: shown }, (_, id) => (
+          <Roost key={id} id={id} />
+        ))}
+      </context.AuthProvider>
+    );
+  }
+
+  const view = await render(<Screens shown={count} />);
+  openAnother = () => view.rerender(<Screens shown={++count} />);
 }
+
+/** Opens one more screen that loads the roost, as going on to another screen does. */
+let openAnother: () => Promise<void>;
+/** What the screens are given of the session, as of the latest render. */
+let auth: AuthContextValue;
 
 const shown = (id = 0) => screen.getByTestId(`roost-${id}`).props.children as string;
 
@@ -204,6 +224,51 @@ describe('a load asked for after the network has come back', () => {
     await passes(1000);
 
     expect([shown(0), shown(1)]).toEqual(['3 bats', '3 bats']);
+  });
+
+  /**
+   * Coming into view asks for a load as well, and so does the app's return to
+   * the front - but nobody pressed anything. Renewing for those started half a
+   * minute of attempts without a network each time a screen was opened, with
+   * the screen, every other request and "Sign out" waiting behind them. (Found
+   * in review: 25 s for each, where the memory answered at once.)
+   */
+  it('sends no renewal for a screen opened within the minute, and says at once what is wrong', async () => {
+    network = offline;
+    await open();
+    await passes(40_000);
+    const renewals = sent.filter(isRenewal).length;
+
+    await openAnother();
+    await passes(1000);
+
+    expect(shown(1)).toBe(NO_CONNECTION);
+    expect(sent.filter(isRenewal)).toHaveLength(renewals);
+  });
+
+  /**
+   * Sign out shares a renewal under way. With none started by opening a
+   * screen, it is through at once, as before. (Found in review: 24 s after
+   * the profile was opened without a network.)
+   */
+  it('lets Sign out through at once after a screen was opened offline', async () => {
+    network = offline;
+    await open();
+    await passes(40_000);
+    await openAnother();
+    await passes(1000);
+
+    const started = Date.now();
+    let done = false;
+    await act(async () => {
+      void auth.signOut().then(() => {
+        done = true;
+      });
+    });
+    for (let tenths = 0; tenths < 100 && !done; tenths++) await passes(100);
+
+    expect(done).toBe(true);
+    expect(Date.now() - started).toBeLessThanOrEqual(1000);
   });
 
   /**

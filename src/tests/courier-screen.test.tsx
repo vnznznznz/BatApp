@@ -13,6 +13,7 @@ import {
 } from '@/features/friends/friends';
 import type { Profile } from '@/features/profile/use-profile';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
+import * as renewal from '@/lib/renewal';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 // React Native loads its components on first use, and with a cold transform
@@ -1006,18 +1007,23 @@ describe('CourierScreen', () => {
 
     it('says why the list could not be loaded, rather than that the courier is gone, and tries again', async () => {
       const failure = 'Your friends could not be loaded. Check your connection.';
+      const renewing = jest.spyOn(renewal, 'renewOnNextRequest');
       mockedFetchFriendships.mockRejectedValueOnce(new RpcError(failure, null));
       await renderScreen(<CourierScreen />);
       expect(await screen.findByText(failure)).toBeOnTheScreen();
       expect(screen.queryByText(GONE)).toBeNull();
       expect(spinners()).toHaveLength(0);
 
+      expect(renewing).not.toHaveBeenCalled();
       await fireEvent.press(button('Try again'));
 
       expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.queryByText(failure)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
+      // A press: the session is renewed first if that failed a moment ago.
+      expect(renewing).toHaveBeenCalledTimes(1);
+      renewing.mockRestore();
     });
   });
 });

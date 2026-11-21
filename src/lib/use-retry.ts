@@ -25,10 +25,13 @@ const LONGEST_PAUSE_MS = 60_000;
  * way, and then goes on by itself for as long as the answer is true, the
  * screen is in front of the courier and the app in front of everything else.
  * Being asked for a load - on focus, on the app's return, by hand - starts the
- * pauses again from the shortest, and renews the session first if that failed
- * a moment ago (see renewal.ts). A load waiting to be made again is made at
- * once when the session has been renewed: the want of one is the likeliest
- * reason it got no answer.
+ * pauses again from the shortest. A load someone pressed for - "Try again", a
+ * pull: the visible ones - also renews the session first if that failed a
+ * moment ago (see renewal.ts). The others do not: without a network, each such
+ * renewal is half a minute of attempts that every request waits for, Sign out
+ * included, and coming into view started one at every screen opened. (Found in
+ * review.) A load waiting to be made again is made at once when the session
+ * has been renewed: the want of one is the likeliest reason it got no answer.
  */
 export function useRetry(
   attempt: (visible: boolean) => Promise<boolean>,
@@ -67,10 +70,8 @@ export function useRetry(
         // This load takes the place of an attempt still waiting its turn.
         clearTimeout(waiting.current);
         next.current = null;
-        if (!unasked) {
-          failures.current = 0;
-          renewOnNextRequest();
-        }
+        if (!unasked) failures.current = 0;
+        if (visible) renewOnNextRequest();
         if (!(await attempt(visible)) || !inFront.current) return;
 
         const pause = Math.min(FIRST_PAUSE_MS * 2 ** failures.current, LONGEST_PAUSE_MS);

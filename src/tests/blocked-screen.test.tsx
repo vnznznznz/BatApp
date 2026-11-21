@@ -5,6 +5,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import BlockedScreen from '@/app/(app)/blocked';
 import { fetchBlocked, unblockCourier, type BlockedCourier } from '@/features/safety/safety';
+import * as renewal from '@/lib/renewal';
 import { RpcError } from '@/lib/rpc-error';
 
 // React Native loads its components on first use, and with a cold transform
@@ -284,6 +285,7 @@ describe('BlockedScreen', () => {
     });
 
     it('says why the list could not be loaded, rather than that nobody is blocked, and tries again when asked', async () => {
+      const renewing = jest.spyOn(renewal, 'renewOnNextRequest');
       mockedFetchBlocked.mockRejectedValueOnce(new RpcError(LOAD_FAILED, null));
       await renderScreen(<BlockedScreen />);
 
@@ -293,12 +295,16 @@ describe('BlockedScreen', () => {
       expect(screen.queryByText(REPORT_FROM_HERE)).toBeNull();
       expect(spinners()).toHaveLength(0);
 
+      expect(renewing).not.toHaveBeenCalled();
       await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
 
       expect(await screen.findByText('@anna')).toBeOnTheScreen();
       expect(screen.queryByText(LOAD_FAILED)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(mockedFetchBlocked).toHaveBeenCalledTimes(2);
+      // A press: the session is renewed first if that failed a moment ago.
+      expect(renewing).toHaveBeenCalledTimes(1);
+      renewing.mockRestore();
     });
   });
 

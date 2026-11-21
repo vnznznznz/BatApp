@@ -16,15 +16,17 @@ import { supabase } from '@/lib/supabase';
 type Remembering = { lastRefreshFailure?: unknown };
 
 /**
- * For a load someone asked for - "Try again", a pull, the screen coming into
- * view, the app coming back to the front: the next request renews the session
- * if it needs renewing, rather than being answered from the memory of the last
- * renewal that failed. Loads the app makes again by itself leave the memory
- * as it is, as does a renewal already under way, which every request waits for.
+ * For a load someone pressed for - "Try again", a pull: the next request
+ * renews the session if it needs renewing, rather than being answered from the
+ * memory of the last renewal that failed. A renewal already under way, which
+ * every request waits for, is left as it is.
  *
- * A request made like this costs the auth server nothing it would not have
- * paid a minute later, and the client's own fetch keeps it from asking again
- * at once after a refusal (see guarded-fetch.ts).
+ * Only for a press. Each one may cost a renewal - without a network, half a
+ * minute of attempts that every request and Sign out wait for; with a refused
+ * token, one more refusal - and loads nobody pressed for, on coming into view
+ * or on the app's return, made one at every screen opened. (Found in review.)
+ * After an answer that is neither a session nor its end, the client's own
+ * fetch sends no renewal for half a minute (see guarded-fetch.ts).
  */
 export function renewOnNextRequest(): void {
   const client = supabase.auth as unknown as Remembering;
