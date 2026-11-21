@@ -8,6 +8,7 @@ import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import {
   acceptFriend,
+  declineRequest,
   describeRoute,
   describeStanding,
   fetchFriendships,
@@ -118,8 +119,11 @@ export default function CourierScreen() {
       // Withdrawing has a call of its own: if they said yes a moment ago,
       // removeFriend would end the new friendship without the question below.
       // Refused instead, the page stays and shows them as the friend they are.
+      // Declining has one too: if they took the request back a moment ago,
+      // removeFriend would say a friendship had ended that never began.
+      // (Found in review.)
       if (current.direction === 'incoming') {
-        void run('end', () => removeFriend(current.id), `Declined ${handle}.`, true);
+        void run('end', () => declineRequest(current.id), `Declined ${handle}.`, true);
       } else {
         void run(
           'end',
