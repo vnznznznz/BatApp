@@ -1253,6 +1253,20 @@ describe('what the courier is told when the auth server says no', () => {
     await passes(A_MOMENT);
   }
 
+  /** The auth server's settings, which anyone may read. */
+  const isSettings = (request: Sent) => request.url.endsWith('/auth/v1/settings');
+
+  /** Settings as GoTrue v2.197 gives them, for a server that confirms new accounts by email or not. */
+  const confirmsByEmail = (confirms: boolean) =>
+    json(200, {
+      external: { email: true, phone: false },
+      disable_signup: false,
+      mailer_autoconfirm: !confirms,
+      phone_autoconfirm: true,
+      sms_provider: '',
+      saml_enabled: false,
+    });
+
   describe('on signing in', () => {
     it.each<[string, () => Response | Promise<Response>, string]>([
       [
@@ -1514,10 +1528,79 @@ describe('what the courier is told when the auth server says no', () => {
           ),
       ],
     ])('answers as it does for a new address when %s', async (_, answer) => {
-      await opened(answer);
+      // A server that confirms new accounts by email, as both say it does.
+      network = (request) => (isSettings(request) ? confirmsByEmail(true) : answer());
+      await launch();
+      await passes(A_MOMENT);
 
       expect(await asked(() => auth.signUp(details))).toEqual({ needsEmailConfirmation: true });
       expect(state()).toBe('signed out');
+    });
+
+    /**
+     * With confirmation off - as the app runs until GO-LIVE - a new address is
+     * signed in at once, and one that has an account is answered "User
+     * already registered" (the normal local stack, 21 November 2026). There is
+     * no code to wait for then, and nothing to keep from anyone that signing
+     * in at once has not told already. Which way the server works it says in
+     * its settings, which anyone may read. (Found in review: the code screen
+     * waited for a code that never came.)
+     */
+    it('says plainly that the address has an account when the server signs new accounts in at once', async () => {
+      network = (request) =>
+        isSettings(request)
+          ? confirmsByEmail(false)
+          : authRefusal(422, 'user_already_exists', 'User already registered');
+      await launch();
+      await passes(A_MOMENT);
+
+      expect(await outcomeOf(asked(() => auth.signUp(details)))).toBe(
+        'There is already an account with that email address. Sign in instead.',
+      );
+
+      expect(sent.filter(isSettings).map(({ method }) => method)).toEqual(['GET']);
+      expect(state()).toBe('signed out');
+    });
+
+    it.each<[string, () => Response | Promise<Response>]>([
+      ['cannot be reached', offline],
+      ['answers with an error', () => json(500, {})],
+      ['says nothing of it', () => json(200, {})],
+    ])(
+      'answers as for a new address when the server’s settings %s, which is true whichever way it works',
+      async (_, settings) => {
+        network = (request) =>
+          isSettings(request)
+            ? settings()
+            : authRefusal(422, 'user_already_exists', 'User already registered');
+        await launch();
+        await passes(A_MOMENT);
+
+        expect(await asked(() => auth.signUp(details))).toEqual({ needsEmailConfirmation: true });
+      },
+    );
+
+    /** A code a moment ago means the server confirms by email: nothing to ask. */
+    it('asks nothing more of a server that has just sent a code', async () => {
+      await opened(() =>
+        authRefusal(
+          429,
+          'over_email_send_rate_limit',
+          'For security purposes, you can only request this after 43 seconds.',
+        ),
+      );
+
+      expect(await asked(() => auth.signUp(details))).toEqual({ needsEmailConfirmation: true });
+      expect(sent.filter(isSettings)).toEqual([]);
+    });
+
+    /** A new address, and every refusal but one, need no settings either. */
+    it('asks for the settings only when the address has an account', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      await asked(() => auth.signUp(details));
+
+      expect(sent.filter(isSettings)).toEqual([]);
     });
   });
 

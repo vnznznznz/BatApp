@@ -234,12 +234,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // The auth server tells by itself - "User already registered" - while
         // confirmation by phone is off (GO-LIVE), but at least the app does not.
         // A code that went to the address a moment ago is one on its way too.
-        if (
-          isAnswer(error, 'user_already_exists', 'user already registered') ||
-          isCodeJustSent(error)
-        ) {
+        if (isAnswer(error, 'user_already_exists', 'user already registered')) {
+          // Unless the server confirms nothing by email. A new address is
+          // signed in at once then, and there is no code to wait for: the plain
+          // answer tells nobody anything that signing in at once has not.
+          if (await signsInAtOnce()) throw new Error(ALREADY_REGISTERED, { cause: error });
           return { needsEmailConfirmation: true };
         }
+        if (isCodeJustSent(error)) return { needsEmailConfirmation: true };
         if (error) throw explained(error);
 
         // With email confirmation enabled, Supabase creates the user but hands
@@ -362,6 +364,41 @@ const isAccountGone = (error: AuthError | null) =>
  * these words, to show them where the username is typed.
  */
 export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try another.';
+
+/**
+ * Said for an address that has an account already, when the auth server
+ * confirms nothing by email. The form looks for these words, to show them at
+ * the address and offer the way to sign in.
+ */
+export const ALREADY_REGISTERED =
+  'There is already an account with that email address. Sign in instead.';
+
+/**
+ * What this file needs of the auth client that auth-js keeps to itself: the
+ * address it reaches the auth server at, the headers with the key it asks
+ * with, and the app's own fetch, time limit and all. auth-js has no call for
+ * the server's settings; the auth context tests go through the real client,
+ * and would see this stop working.
+ */
+type AuthClientInside = { url: string; headers: Record<string, string>; fetch: typeof fetch };
+
+/**
+ * Whether the auth server signs a new account in at once, with no code to
+ * confirm its address: its `mailer_autoconfirm`, from the settings it shows
+ * anyone. Taken for no when that cannot be found out - the form then says
+ * what is true either way.
+ */
+async function signsInAtOnce(): Promise<boolean> {
+  const { url, headers, fetch: send } = supabase.auth as unknown as AuthClientInside;
+  try {
+    const response = await send(`${url}/settings`, { headers });
+    if (!response.ok) return false;
+    const settings = (await response.json()) as { mailer_autoconfirm?: unknown } | null;
+    return settings?.mailer_autoconfirm === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Said for a code from an email that was not taken. Mistyped, run out, used

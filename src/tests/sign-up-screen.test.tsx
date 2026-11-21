@@ -24,7 +24,7 @@ jest.mock('expo-router', () => ({
  * Whether the form is given the app's own auth context, over an auth server
  * whose answers the test writes, in place of the stand-in the other tests use.
  */
-const mockAuth = { real: false, serverSignUp: jest.fn() };
+const mockAuth = { real: false, serverSignUp: jest.fn(), serverSettings: jest.fn() };
 
 jest.mock('@/features/auth/auth-context', () => {
   const actual = jest.requireActual<typeof import('@/features/auth/auth-context')>(
@@ -44,15 +44,26 @@ jest.mock('@/features/auth/auth-context', () => {
 });
 
 // The client, as far as signing up asks it. Nobody is signed in, and nothing
-// is stored.
+// is stored. The auth server's settings are read with the client's own
+// address, headers and fetch.
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
+      url: 'http://127.0.0.1:54321/auth/v1',
+      headers: { apikey: 'publishable-key' },
+      fetch: (...request: unknown[]) => mockAuth.serverSettings(...request),
       signUp: (...credentials: unknown[]) => mockAuth.serverSignUp(...credentials),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
   },
 }));
+
+/** The auth server's settings: whether it confirms new accounts by email. */
+const settings = (confirmsByEmail: boolean) =>
+  new Response(JSON.stringify({ mailer_autoconfirm: !confirmsByEmail, phone_autoconfirm: true }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
 
 jest.mock('@/lib/session-store', () => ({
   readStoredSession: () => Promise.resolve(null),
@@ -147,6 +158,7 @@ function placeOf(element: Element): number {
 beforeEach(() => {
   mockAuth.real = false;
   mockAuth.serverSignUp.mockReset();
+  mockAuth.serverSettings.mockReset().mockImplementation(async () => settings(true));
   mockSignUp.mockReset();
   mockConfirmEmail.mockReset();
   mockResendConfirmationCode.mockReset();
@@ -310,6 +322,51 @@ describe('SignUpScreen', () => {
     expect(screen.getByLabelText('Username')).toHaveProp('accessibilityHint', TAKEN);
     expect(screen.getByLabelText('Email')).not.toHaveProp('accessibilityHint', TAKEN);
     expect(screen.getByLabelText('Username').props.value).toBe('AnnaWeber');
+  });
+
+  /**
+   * With confirmation off - as the app runs until GO-LIVE - a new address is
+   * signed in at once, and the code screen shown for one that has an account
+   * waited for a code that never came. The form says it plainly instead, at
+   * the address, with the way to sign in: nothing anyone could not learn from
+   * a new address being signed in at once. (Found in review.)
+   */
+  it('says at the address that it has an account, when the server confirms nothing by email', async () => {
+    const ALREADY = 'There is already an account with that email address. Sign in instead.';
+    mockAuth.real = true;
+    mockAuth.serverSignUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: new AuthApiError('User already registered', 422, 'user_already_exists'),
+    });
+    mockAuth.serverSettings.mockResolvedValue(settings(false));
+    const user = userEvent.setup();
+    await renderScreen(
+      <AuthProvider>
+        <SignUpScreen />
+      </AuthProvider>,
+    );
+    await fillForm();
+
+    await user.press(button('Create account'));
+
+    expect(screen.queryByText('Check your email')).toBeNull();
+    expect(screen.getByLabelText('Email')).toHaveProp('accessibilityHint', ALREADY);
+    expect(mockAuth.serverSettings).toHaveBeenCalledWith(
+      'http://127.0.0.1:54321/auth/v1/settings',
+      expect.objectContaining({ headers: { apikey: 'publishable-key' } }),
+    );
+    await user.press(button('Sign in instead'));
+    expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+  });
+
+  it('offers no way to sign in for any other failure', async () => {
+    mockSignUp.mockRejectedValue(new Error('The email could not be sent. Try again later.'));
+    await renderScreen(<SignUpScreen />);
+
+    await fillForm();
+    await fireEvent.press(button('Create account'));
+
+    expect(screen.queryByRole('button', { name: 'Sign in instead' })).toBeNull();
   });
 
   it('lets go of that once the username is changed and the form sent again', async () => {
@@ -537,6 +594,8 @@ describe('SignUpScreen', () => {
      */
     it('shows exactly the same for an address that has an account as for a new one', async () => {
       mockAuth.real = true;
+      // With confirmation on; with it off, see the test above for that.
+      mockAuth.serverSettings.mockResolvedValue(settings(true));
       const shownFor = async (answer: unknown) => {
         mockAuth.serverSignUp.mockResolvedValue(answer);
         await renderScreen(

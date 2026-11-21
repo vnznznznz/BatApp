@@ -9,7 +9,7 @@ import { TextField } from '@/components/text-field';
 import { ToggleRow } from '@/components/toggle-row';
 import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
-import { USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
+import { ALREADY_REGISTERED, USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
 import {
   validateDisplayName,
@@ -74,8 +74,9 @@ export default function SignUpScreen() {
       if (needsEmailConfirmation) setSentTo(email.trim());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Something went wrong.';
-      // The one failure that belongs to a field is said at that field.
+      // The failures that belong to a field are said at that field.
       if (message === USERNAME_MAY_BE_TAKEN) setErrors({ ...next, username: message });
+      else if (message === ALREADY_REGISTERED) setErrors({ ...next, email: message });
       else setFormError(message);
     } finally {
       inFlight.current = false;
@@ -156,6 +157,16 @@ export default function SignUpScreen() {
           <Text variant="caption" tone="danger">
             {formError}
           </Text>
+        ) : null}
+
+        {/* Only while the server confirms nothing by email: then an address
+            with an account is said to have one (see signUp). */}
+        {errors.email === ALREADY_REGISTERED ? (
+          <Button
+            label="Sign in instead"
+            variant="secondary"
+            onPress={() => router.replace('/sign-in')}
+          />
         ) : null}
 
         <ToggleRow
