@@ -112,39 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(() => {
-    async function signOut() {
-      const announcedBefore = signOutsAnnounced;
-      // The server is asked first: only that ends the session on the
-      // courier's other devices as well.
-      const heard = await supabase.auth.signOut().then(
-        ({ error }) => !error,
-        () => false,
-      );
-      if (heard) return;
-
-      // It was not told, or cannot be known to have been. Signing out signs
-      // this device out all the same - and the client does not see to that
-      // by itself: with a token over an hour old and no network, it gives up
-      // before it has removed anything.
-      signedOutUnheard = true;
-      try {
-        await clearStoredSession();
-      } catch (cause) {
-        // Still signed in, then, and to be treated as such.
-        signedOutUnheard = false;
-        throw new Error('This device could not be signed out. Try again.', { cause });
-      }
-      setSession(null);
-
-      // The client has then announced no sign-out either, and whatever listens
-      // to it would go on holding the account. With nothing stored any more,
-      // signing out on this device alone sends nothing, and is announced.
-      // Where the client did remove the session - as it does when its token is
-      // still fresh - it has announced that already, and once is enough.
-      if (signOutsAnnounced === announcedBefore) {
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-      }
-    }
+    const signOut = () => signOutHere(() => setSession(null));
 
     return {
       session,
@@ -219,6 +187,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session, isRestoring]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
+}
+
+/**
+ * Signs this device out; `forget` lets go of the session the provider holds.
+ *
+ * Out here, not in the provider, on purpose. A real build compiles the provider
+ * with the React Compiler, which takes a module variable for a value that does
+ * not change while a function of the component runs: it compiled the snapshot
+ * below away, compared the count with itself, and announced every sign-out
+ * twice. (Found in the merged tree, in the bundle and in Jest run compiled.)
+ * The compiler leaves functions outside components and hooks as they are.
+ */
+async function signOutHere(forget: () => void): Promise<void> {
+  const announcedBefore = signOutsAnnounced;
+  // The server is asked first: only that ends the session on the courier's
+  // other devices as well.
+  const heard = await supabase.auth.signOut().then(
+    ({ error }) => !error,
+    () => false,
+  );
+  if (heard) return;
+
+  // It was not told, or cannot be known to have been. Signing out signs this
+  // device out all the same - and the client does not see to that by itself:
+  // with a token over an hour old and no network, it gives up before it has
+  // removed anything.
+  signedOutUnheard = true;
+  try {
+    await clearStoredSession();
+  } catch (cause) {
+    // Still signed in, then, and to be treated as such.
+    signedOutUnheard = false;
+    throw new Error('This device could not be signed out. Try again.', { cause });
+  }
+  forget();
+
+  // The client has then announced no sign-out either, and whatever listens to
+  // it would go on holding the account. With nothing stored any more, signing
+  // out on this device alone sends nothing, and is announced. Where the client
+  // did remove the session - as it does when its token is still fresh - it has
+  // announced that already, and once is enough.
+  if (signOutsAnnounced === announcedBefore) {
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+  }
 }
 
 export function useAuth(): AuthContextValue {
