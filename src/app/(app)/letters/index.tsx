@@ -98,14 +98,15 @@ function SentList() {
   // air everywhere else. (Found in review.) So it asks again when the next
   // letter is due, and keeps asking while one is overdue: fetching is what
   // lands it. `asked` changes after every such fetch, which is what sets the
-  // next one.
+  // next one. Quietly: the pull-down spinner is for a pull, and showed at
+  // every landing, and up to once a minute on a phone whose clock runs ahead.
   const nextLanding = soonestLanding(letters.items);
-  const { refresh } = letters;
+  const { reload } = letters;
   const [asked, setAsked] = useState(0);
   const askAgain = useCallback(async () => {
-    await refresh();
+    await reload();
     setAsked((times) => times + 1);
-  }, [refresh]);
+  }, [reload]);
   useRefreshAt(nextLanding, asked, askAgain);
 
   return (

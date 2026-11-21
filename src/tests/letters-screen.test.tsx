@@ -552,6 +552,31 @@ describe('LettersScreen', () => {
       ).toBeOnTheScreen();
     });
 
+    /**
+     * Asking again at a landing is the screen's own doing, so it does not
+     * show the pull-down spinner: that showed at every landing, and up to
+     * once a minute while the phone's clock ran ahead of the server's.
+     */
+    it('asks again at a landing without showing the pull-down spinner', async () => {
+      const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
+      const answer = deferred<SentLetter[]>();
+      mockedFetchSent.mockResolvedValueOnce([letter]).mockReturnValueOnce(answer.promise);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in less than a minute');
+
+      await letTimePass(32 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+      // The control is there, asked to show nothing: the list is not pulled.
+      expect(letterList().props.refreshControl.props.refreshing).toBe(false);
+
+      await act(async () => answer.resolve([{ ...letter, delivered: true }]));
+      expect(
+        screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+    });
+
     it('asks again after a failed fetch while a letter is overdue', async () => {
       const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
       mockedFetchSent
