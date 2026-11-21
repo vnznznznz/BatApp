@@ -128,6 +128,70 @@ describe.each(TEMPLATES)('the %s email', (kind) => {
   });
 });
 
+/**
+ * Every email the auth server can send (GoTrue v2.197, and the templates the
+ * Supabase CLI 3.2.0 configures): the app asks for two of them, but anyone can
+ * ask the auth server for a sign-in code by email for any address with an
+ * account, a signed-in account can ask to change its address, and the
+ * operator can invite. The auth server's own templates for those carry a link
+ * that signs in whoever follows it.
+ */
+const EVERY_EMAIL = [
+  'confirmation',
+  'recovery',
+  'magic_link',
+  'email_change',
+  'invite',
+  'reauthentication',
+] as const;
+
+/** A template's text, for any kind of email. */
+const textOf = (kind: string) =>
+  readFileSync(
+    join(ROOT, config.get(`auth.email.template.${kind}`)?.get('content_path') ?? 'missing'),
+    'utf8',
+  );
+
+describe('every email the auth server can send', () => {
+  it('has a template of the app’s, and no other is named', () => {
+    const named = [...config.keys()]
+      .filter((table) => table.startsWith('auth.email.template.'))
+      .map((table) => table.slice('auth.email.template.'.length));
+
+    expect(named.sort()).toEqual([...EVERY_EMAIL].sort());
+  });
+
+  describe.each(EVERY_EMAIL)('the %s email', (kind) => {
+    const settings = config.get(`auth.email.template.${kind}`);
+
+    it('has a template of its own, and the app’s subject', () => {
+      expect(settings?.get('subject')).toBe('Your Night Courier code');
+      expect(settings?.get('content_path')).toBe(`./supabase/templates/${kind}.html`);
+      expect(existsSync(join(ROOT, settings?.get('content_path') ?? 'missing'))).toBe(true);
+    });
+
+    it('carries a code, and no link', () => {
+      const text = textOf(kind);
+
+      expect(text).toContain('{{ .Token }}');
+      expect(text).not.toMatch(/<a[\s>]/i);
+      expect(text).not.toMatch(/href|https?:|nightcourier:|exp:/i);
+      expect(text).not.toMatch(/\.ConfirmationURL|\.TokenHash|\.RedirectTo|\.SiteURL/);
+      // The auth server's own words, besides the code: the two addresses of a change.
+      for (const field of text.match(/\{\{[^}]*\}\}/g) ?? []) {
+        expect(['{{ .Token }}', '{{ .Email }}', '{{ .NewEmail }}']).toContain(field);
+      }
+    });
+
+    it('shows the code large, on a line of its own', () => {
+      const code = filledIn(textOf(kind), '73483481');
+      const line = /<p[^>]*>\s*73483481\s*<\/p>/.exec(code)?.[0] ?? '';
+
+      expect(line).toMatch(/font-size:\s*(3\d|4\d)px/);
+    });
+  });
+});
+
 describe('the words of each email', () => {
   it('say what the confirmation code is for, and what to do if nobody here asked for it', () => {
     expect(wordsOf(filledIn(template('confirmation'), '73483481'))).toBe(

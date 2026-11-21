@@ -108,6 +108,29 @@ content_path = "./supabase/templates/confirmation.html"
 subject = "Your Night Courier code"
 content_path = "./supabase/templates/recovery.html"
 
+# Every other email the auth server can send carries a code too, and no link.
+# The app asks for none of them, but anyone can ask the auth server for a
+# sign-in code by email for any address with an account, a signed-in account
+# can ask to change its address, and the operator can invite. The auth
+# server's own templates for the sign-in, the change of address and the
+# invitation carry a link that signs in whoever follows it, through the app's
+# URL scheme; src/tests/email-codes.test.ts checks every template here.
+[auth.email.template.magic_link]
+subject = "Your Night Courier code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "Your Night Courier code"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.invite]
+subject = "Your Night Courier code"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.reauthentication]
+subject = "Your Night Courier code"
+content_path = "./supabase/templates/reauthentication.html"
+
 # No sign-up by phone number, so there is nothing to confirm either.
 [auth.sms]
 enabled = false
