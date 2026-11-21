@@ -259,6 +259,12 @@ removed.
   email cannot simply sign up again, and the daily tidy-up deletes it when the ban runs out. The
   privacy policy says exactly this, so do not ban for longer by hand.
 
+  Where there is nothing to remove, it says so and changes nothing: `there is no account <id>`
+  for an account that is gone - deleted by its owner while you were deciding, say - and
+  `account <id> has already been removed: the ban on its sign-in ends <time>` for one removed
+  before. An app still signed in to a removed account says that the account no longer exists,
+  with Sign out and Contact; signing in to it again is answered as for a suspended one (below).
+
   To delete an account without a ban instead - at its owner's request, a child's account, an
   address that was not the person's to sign up with - there is
   `select private.delete_account('<id>');`, with the steps around it in
@@ -275,9 +281,25 @@ removed.
   update auth.users set banned_until = now() + private.ban_period() where id = '<reported_id>';
   ```
 
-  They can no longer sign in, and their app stops working within the hour, when its sign-in would
-  be renewed. This is a suspension: the account still exists, with its profile and letters, and the
-  two years the privacy policy names count from the removal, which sets the ban afresh.
+  The database refuses their app at once: every request but a read of their own profile, the bare
+  rows of their friendships and the list of cities, for as long as its sign-in lasts - an hour at
+  most. Saving a name or a city is refused, and so is deleting the account, so nothing goes before
+  you have decided. The app says so once on each screen that is refused - "This account has been
+  suspended. To ask why, write to the person who runs Night Courier." - with Sign out and Contact
+  in place of Try again. When it next renews its sign-in, within the hour while it is open, the
+  auth server refuses: the app signs out, and the welcome screen says the same, once. Signing in
+  again is answered as a wrong password is, with "That email and password do not match an
+  account.", so that nobody who only types the address learns that it has an account, or what
+  became of it. Only "I forgot my password" tells, once the code from the email has proved the
+  mailbox theirs. So someone who writes that their password has stopped working may be suspended,
+  or removed: the first query of `docs/store/gdpr-records.md`, 5.4, finds a sign-in by its
+  address, with its `banned_until`.
+
+  Nothing changes for their friends. They can still write to the account - refusing their letters
+  would tell them of the suspension - and letters it sent that are still in the air land as usual.
+
+  This is a suspension: the account still exists, with its profile and letters, and the two years
+  the privacy policy names count from the removal, which sets the ban afresh.
 
   Then write to the reporter, at the address on their account, from the contact mailbox. The email
   has to say two things:
@@ -311,11 +333,12 @@ removed.
   update auth.users set banned_until = null where id = '<reported_id>';
   ```
 
-  The account can sign in again at once, with everything it had: nothing was deleted. Only do
-  this to an account that still has its profile. One that `private.remove_account` has removed
-  has nothing left to come back to, and its ban is what the privacy policy promises (the query
-  under "Sperren nach spätestens zwei Jahren beenden" in `docs/store/gdpr-records.md`, 5.6, lists
-  the suspended accounts that still have a profile).
+  The account can sign in again at once, and an app still signed in to it is served again at
+  once, with everything it had: nothing was deleted. Only do this to an account that still has its
+  profile. One that `private.remove_account` has removed has nothing left to come back to, and
+  its ban is what the privacy policy promises (the query under "Sperren nach spätestens zwei
+  Jahren beenden" in `docs/store/gdpr-records.md`, 5.6, lists the suspended accounts that still
+  have a profile).
 
 Then record the outcome, so the report leaves the queue:
 
@@ -660,7 +683,20 @@ tried on a real project**; go slowly there, and correct this page when you know 
    tried with `npx expo export` for iOS, Android and the web.
 
 6. **Try it:** sign up two accounts, choose cities, become friends, send a letter, watch it land;
-   report it and check the row in `public.reports`; then delete both test accounts.
+   report it and check the row in `public.reports`. That the sign-ups go through shows that the
+   triggers the migrations put on `auth.users` work for the auth server, whose role is not the
+   one the migrations ran as.
+
+   Then suspend one of the two, with the statement under "A threat" ("Handling a report") and its
+   id in place of `<reported_id>` (the first query of `docs/store/gdpr-records.md`, 5.4, finds it
+   by the address), and see its app refuse its next load at once - pull down on its roost - with
+   "This account has been suspended. To ask why, write to the person who runs Night Courier." Lift
+   the suspension with the statement given there, and see the app work again. Only this shows that
+   the database sees a suspension on the hosted project. It reads `auth.users` with the rights of
+   the role the migrations ran as, which gets past that table's row security on the local stack;
+   on a project where it did not, a suspension would go unseen, and nothing would say so.
+
+   Then delete both test accounts, with Delete my account in each.
 
 ---
 
