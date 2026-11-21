@@ -241,6 +241,34 @@ describe('build-cities.mjs, folding names', () => {
     assert.equal(indexOf(fromSpellings(), 268743), "ra's bayrut");
   });
 
+  /**
+   * Aliases like these never reached the table: the generator passed them
+   * over, and the migration that brought the rows to these rules could only
+   * rework the terms the rows had. The next run on a real dump adds them.
+   */
+  it('indexes an alias with a bracket, a slash or a typographic apostrophe in it', () => {
+    writeFileSync(
+      dump,
+      [
+        line(
+          2925535,
+          'Frankfurt (Oder)',
+          'Frankfurt an der Oder,Frankfurt/O.',
+          52.34,
+          14.55,
+          'DE',
+          58237,
+        ),
+        line(70225, 'Taiz', 'Ta‘izz,Ta’izz,Taizz (Stadt)', 13.5795, 44.0209, 'YE', 615222),
+      ].join('\n') + '\n',
+    );
+    assert.equal(fromDump().status, 0);
+    const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+
+    assert.equal(indexOf(sql, 2925535), 'frankfurt oder|frankfurt an der oder|frankfurt o.');
+    assert.equal(indexOf(sql, 70225), "taiz|ta'izz|taizz stadt");
+  });
+
   it('pins how the spellings people type fold, beside the names it wrote', () => {
     fromSpellings();
     const { pairs, spellings } = JSON.parse(readFileSync(fixture, 'utf8'));

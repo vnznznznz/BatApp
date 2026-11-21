@@ -464,6 +464,68 @@ describe('search_index, brought to one form for the saints', () => {
     assert.deepEqual(rows[0].lost, []);
   });
 
+  /**
+   * The generator gives a city the index this migration gave a row that was
+   * there, given the same names: the table's own rows, written out as a dump
+   * with the terms each had for its alternate names, come out of the
+   * generator as this migration left them. That is as far as the two can be
+   * held together here. The table's terms are folded already, and aliases
+   * with a bracket, a slash, a comma or a typographic apostrophe - which the
+   * generator used to pass over - never reached it: its next run on a real
+   * dump will add those, and no migration could have.
+   */
+  it('gives every row the index the generator writes for the same names', async () => {
+    const { rows: old } = await before_.query(
+      `select id, name, country_code, latitude, longitude, population, search_index
+       from public.cities`,
+    );
+    const scratch = mkdtempSync(join(tmpdir(), 'cities-db-'));
+    try {
+      const dump = old.map((row) =>
+        [row.id, row.name, row.name, row.search_index.split('|').join(','), row.latitude]
+          .concat([row.longitude, 'P', 'PPL', row.country_code, '', '', '', '', ''])
+          .concat([row.population, '', '', 'Europe/Berlin', '2026-11-21'])
+          .join('\t'),
+      );
+      writeFileSync(join(scratch, 'cities15000.txt'), dump.join('\n') + '\n');
+      mkdirSync(join(scratch, 'migrations'));
+      const result = spawnSync(
+        process.execPath,
+        [
+          GENERATOR,
+          '--dump',
+          join(scratch, 'cities15000.txt'),
+          '--migrations',
+          join(scratch, 'migrations'),
+          '--fixture',
+          join(scratch, 'fold-parity.fixture.json'),
+        ],
+        { encoding: 'utf8' },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const [file] = readdirSync(join(scratch, 'migrations'));
+      const sql = readFileSync(join(scratch, 'migrations', file), 'utf8');
+
+      // Each city's line ends with its index, the last quoted value.
+      const generated = new Map(
+        [...sql.matchAll(/^ {2}\((\d+), .*, '((?:[^']|'')*)'\)[,;]?$/gm)].map((match) => [
+          Number(match[1]),
+          match[2].replace(/''/g, "'"),
+        ]),
+      );
+      // All but the two quarters of Köln, which the generator leaves out.
+      assert.equal(generated.size, 4308);
+
+      const { rows: now } = await after_.query(`select id, search_index from public.cities`);
+      const differ = now
+        .filter((row) => generated.has(row.id) && generated.get(row.id) !== row.search_index)
+        .map((row) => `${row.id}: "${row.search_index}" / "${generated.get(row.id)}"`);
+      assert.deepEqual(differ, []);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it('leaves no term longer than the 64 characters search_cities reads', async () => {
     const { rows } = await after_.query(
       `select max(char_length(term)) as longest

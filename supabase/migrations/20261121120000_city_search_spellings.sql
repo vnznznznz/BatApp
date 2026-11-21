@@ -48,6 +48,13 @@
 --
 -- No term comes out longer than 40 characters, well inside the 64 that
 -- search_cities reads of a query.
+--
+-- What this cannot do is add the aliases that have a bracket, a slash, a comma
+-- or a typographic apostrophe in them: the generator passed those over, so
+-- they never reached the table, and only its next run on a GeoNames dump can
+-- index them (none could be downloaded where this was written). Given the
+-- names the table has, the generator writes for every row what this makes of
+-- it (cities.db.test.mjs).
 
 /* -------------------------------------------------------------------------- */
 /* The rule                                                                   */
