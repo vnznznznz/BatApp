@@ -33,8 +33,9 @@
  * courier may live there.
  *
  * After a run: commit the new migration and the fold-parity fixture, bring it
- * to the hosted project (`npx supabase@3.2.0 db push --remote --yes`), and look
- * for the old number of cities in the tests and the documents.
+ * to the hosted project (`npx supabase@3.2.0 db push --remote --yes`, handed the
+ * database password as docs/GO-LIVE.md, "Setting up the hosted project", step 3,
+ * has it), and look for the old number of cities in the tests and the documents.
  *
  * --dump <file> reads a cities15000.txt that is already on disk instead of
  * downloading one. --migrations <folder> and --fixture <file> write somewhere
@@ -248,9 +249,13 @@ mkdirSync(MIGRATIONS, { recursive: true });
 writeFileSync(OUT, header + statements.join('\n\n') + '\n', { flag: 'wx' });
 writeFixture(cities);
 console.log(`Wrote ${cities.length} cities to ${relative(ROOT, OUT)}`);
+// The bare command would be followed as it stands: without the database
+// password db push does not stop, it takes a temporary login role instead.
 console.log(
   'The earlier migrations are untouched. Commit the new one, then bring it to the hosted ' +
-    'project: npx supabase@3.2.0 db push --remote --yes',
+    'project: npx supabase@3.2.0 db push --remote --yes, with the database password in ' +
+    'SUPABASE_DB_PASSWORD for that command, as docs/GO-LIVE.md, "Setting up the hosted ' +
+    'project", step 3, has it ("Later, or on another machine")',
 );
 
 /**

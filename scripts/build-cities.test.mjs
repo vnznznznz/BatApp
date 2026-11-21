@@ -158,6 +158,11 @@ describe('build-cities.mjs', () => {
 
     assert.match(result.stdout, /Wrote 3 cities to .*\d{14}_cities_data\.sql/);
     assert.match(result.stdout, /db push --remote/);
+    // Without the database password db push does not stop: it takes a
+    // temporary login role nobody has tried on a real project. The hint once
+    // gave the bare command, so it sends the reader to the runbook's way.
+    assert.match(result.stdout, /SUPABASE_DB_PASSWORD/);
+    assert.match(result.stdout, /docs\/GO-LIVE\.md, "Setting up the hosted project", step 3/);
   });
 });
 

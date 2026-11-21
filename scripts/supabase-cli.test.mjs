@@ -300,3 +300,109 @@ describe('the Supabase commands in the documents', () => {
     );
   });
 });
+
+/**
+ * The commands of a document's shell code blocks, as a shell reads them: a
+ * line that ends in a backslash, in && or in || goes on in the next. Each with
+ * the line it starts on, its lines trimmed and joined by one space. Comment
+ * lines are left out.
+ */
+function shellCommands(source) {
+  const found = [];
+  let inBlock = false;
+  let current = null;
+  source.split('\n').forEach((raw, index) => {
+    const line = raw.trim();
+    if (!inBlock) {
+      inBlock = /^```(?:bash|sh)$/.test(line);
+      return;
+    }
+    if (line === '```') {
+      if (current) found.push(current);
+      inBlock = false;
+      current = null;
+      return;
+    }
+    if (!current && (line === '' || line.startsWith('#'))) return;
+    const text = line.replace(/\\$/, '').trim();
+    current = current
+      ? { ...current, text: `${current.text} ${text}`.trim() }
+      : { line: index + 1, text };
+    if (!/(\\|&&|\|\|)$/.test(line)) {
+      found.push(current);
+      current = null;
+    }
+  });
+  return found;
+}
+
+/**
+ * A session follows the runbooks with nobody at the keyboard, and gives each
+ * command a shell of its own: nothing one command sets is there for the next.
+ * GO-LIVE's step 1 once exported the database password for step 3, which would
+ * have run without it (found in review) - and db push without a password does
+ * not stop, it takes a temporary login role that nobody has tried on a real
+ * project.
+ */
+describe('the runbooks, run one command at a time', () => {
+  const PASSWORD_FILE = '~/.night-courier-db-password';
+  const runbooks = ['README.md', ...files(join(ROOT, 'docs')).map((file) => relative(ROOT, file))]
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => ({ file, commands: shellCommands(readFileSync(join(ROOT, file), 'utf8')) }));
+  const where = (file, command) => `${file}:${command.line}: ${command.text}`;
+  const every = (test) =>
+    runbooks.flatMap(({ file, commands }) =>
+      commands.filter(test).map((command) => where(file, command)),
+    );
+
+  it('are read at all', () => {
+    const goLive = runbooks.find(({ file }) => file === 'docs/GO-LIVE.md');
+    assert.ok(goLive.commands.length >= 20, 'expected the commands of GO-LIVE');
+    assert.ok(
+      goLive.commands.some((command) =>
+        command.text.startsWith(`[ -s ${PASSWORD_FILE} ] && SUPABASE_DB_PASSWORD=`),
+      ),
+      'expected a db push of step 3, read over its three lines',
+    );
+  });
+
+  it('export nothing for a later command to read', () => {
+    assert.deepEqual(
+      every((command) => /(?:^|[;&|(]\s*)export\s/.test(command.text)),
+      [],
+    );
+  });
+
+  it('hand every db push the database password, and do nothing where there is none', () => {
+    const handed = [
+      `[ -s ${PASSWORD_FILE} ] && SUPABASE_DB_PASSWORD="$(cat ${PASSWORD_FILE})" ${PINNED} db push `,
+      `[ -n "$SUPABASE_DB_PASSWORD" ] && ${PINNED} db push `,
+    ];
+    const pushes = every((command) => /\bsupabase(?:@[\w.-]+)? db push\b/.test(command.text));
+    assert.ok(pushes.length >= 4, 'expected the db push commands of README and GO-LIVE');
+    assert.deepEqual(
+      pushes.filter(
+        (push) => !handed.some((start) => push.split(': ').slice(1).join(': ').startsWith(start)),
+      ),
+      [],
+    );
+  });
+
+  // The file is the only copy of the password once the project exists: a
+  // second password written over it would leave db push with the wrong one.
+  it('make the password file once, readable by its owner only, and create the project from it', () => {
+    const writes = every((command) => command.text.includes(`> ${PASSWORD_FILE}`));
+    assert.equal(writes.length, 1, 'expected one command that writes the password file');
+    assert.match(writes[0], /: \[ -s ~\/\.night-courier-db-password \] \|\| \(umask 077 && /);
+
+    const creates = every((command) =>
+      /\bsupabase(?:@[\w.-]+)? projects create\b/.test(command.text),
+    );
+    assert.equal(creates.length, 1, 'expected one projects create');
+    assert.ok(
+      creates[0].includes(`: [ -s ${PASSWORD_FILE} ] && ${PINNED} projects create `),
+      creates[0],
+    );
+    assert.ok(creates[0].includes(`--db-password "$(cat ${PASSWORD_FILE})"`), creates[0]);
+  });
+});

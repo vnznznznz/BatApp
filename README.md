@@ -78,14 +78,15 @@ git: set all four values in the EAS environment.
 ### The Supabase project
 
 The app needs its settings and its schema in your Supabase project. Once, after creating the
-project, with a personal access token in `SUPABASE_ACCESS_TOKEN`:
+project, with a personal access token in `SUPABASE_ACCESS_TOKEN` and the project's database
+password in `SUPABASE_DB_PASSWORD`:
 
 ```bash
 npx supabase@3.2.0 link --project-ref <your-project-ref>
 npx supabase@3.2.0 config diff                  # read what the next command will change
 npx supabase@3.2.0 config push --yes
-npx supabase@3.2.0 db push --remote --dry-run   # which migrations, and into which database
-npx supabase@3.2.0 db push --remote --yes
+[ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --dry-run   # which migrations, and into which database
+[ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --yes
 ```
 
 Every command names the CLI version, on purpose: `npx supabase` alone runs whatever is newest, and
@@ -94,6 +95,12 @@ the versions differ in what the same words do. With this one:
 - A command changes the hosted project only when it is given `--yes`. Without it the command asks,
   and where nobody can answer - a script, a session - it stops and changes nothing.
 - `db push` goes to the **local** stack unless it is given `--remote`, even in a linked directory.
+- `db push --remote` connects to the project's Postgres with the database password, which it reads
+  from `SUPABASE_DB_PASSWORD`. Without one it does not stop: it connects through a temporary login
+  role that it asks the API for, a way not yet tried on a real project. The `[ -n ... ]` in front
+  makes the command do nothing instead, and exit with 1. A session gives each command a shell of
+  its own, so a variable exported by one command is gone in the next: GO-LIVE keeps the password
+  in a file and hands it to each command.
 - Each command first prints where it is going: `Target: project <name> (<ref>)`. Read that line.
 
 `db push --remote` applies everything in `supabase/migrations`: the tables, the row level security,

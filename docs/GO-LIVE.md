@@ -94,16 +94,18 @@ Recorded where the work is, not only here:
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
-- **The migrations must be pushed to the hosted project.**
-  `npx supabase@3.2.0 db push --remote --yes` after linking — see "Setting up the hosted project",
-  step 3. Until then the app signs in and then fails on every screen that reads a bat.
+- **The migrations must be pushed to the hosted project.** With `db push --remote`, after
+  linking, as "Setting up the hosted project", step 3, has it: each command there is handed the
+  database password. Without one `db push` does not stop but connects through a temporary login
+  role, which is not yet tried on a real project. Until then the app signs in and then fails on
+  every screen that reads a bat.
 
 ### The shortest path to friends using it
 
 1. Create the Supabase project in Zurich, link it, push config and migrations. _(unblocks everything)_
 2. Start Apple enrolment. _(long lead time, gates TestFlight)_
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
-   Phase 11. Push the migrations to the hosted project (`npx supabase@3.2.0 db push --remote --yes`).
+   Phase 11. Push the migrations to the hosted project ("Setting up the hosted project", step 3).
 4. Custom SMTP, then email confirmation on, then finish password reset - and before the first of
    these, change what an email's link hands over ("Known gaps", above).
 5. ~~Phase 10 push.~~ Dropped.
@@ -325,7 +327,9 @@ What a session with access does, so the steps do not depend on anyone rememberin
 - network access to `api.supabase.com`, which every command talks to, and to `<ref>.supabase.co`,
   the project itself, for the check in step 2 and for the app.
 - for `db push` in step 3, a connection to the project's Postgres: port 5432, which is not HTTPS
-  and which many cloud environments do not let out. Step 3 says what to do then.
+  and which many cloud environments do not let out. Step 3 says what to do then. It also needs
+  the database password, which step 1 makes and keeps in a file on the machine it runs on until
+  step 3 is done.
 
 Every command below names version 3.2.0 of the Supabase CLI. `npx supabase` alone runs whatever is
 newest that day, and versions differ in what the same words do (`scripts/supabase-cli.mjs` has the
@@ -340,30 +344,50 @@ short story). Three things about this version that the steps rely on:
 - Run by a session, the CLI answers in JSON; the checks below quote the fields to look for.
   `--output-format json` asks for that form whoever runs it.
 
-The commands were tried on 17 November 2026 with exactly this version: against a stand-in for
-Supabase's API, against scratch Postgres databases, and, read-only, against the local stack. No
-hosted project existed then. What that could not show is marked **not yet tried on a real
+And one thing about the session that runs them: it gives each command a shell of its own, so
+nothing that one command sets - a variable, an `export` - is there for the next. No step below
+relies on it. What a later step needs from an earlier one is written down where it arises: the
+project's `<ref>` in the output of step 1's check, the database password in a file.
+
+The commands were tried on 17 November 2026, those that keep the database password in a file on
+21 November, with exactly this version: against a stand-in for Supabase's API, against scratch
+Postgres databases, and, read-only, against the local stack. No hosted project existed then. What that could not show is marked **not yet tried on a real
 project**; go slowly there, and correct this page when you know more.
 
 1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan, in
    the operator's organisation, with a generated database password that is written neither into
-   the repository nor into a chat:
+   the repository nor into a chat. It goes into a file in the home directory that only this user
+   can read:
 
    ```bash
    npx supabase@3.2.0 orgs list
-   export SUPABASE_DB_PASSWORD="$(openssl rand -hex 24)"
-   npx supabase@3.2.0 projects create night-courier --org-id <org> --region eu-central-2 \
-     --db-password "$SUPABASE_DB_PASSWORD" --yes
+   [ -s ~/.night-courier-db-password ] ||
+     (umask 077 && node -p "require('crypto').randomBytes(24).toString('hex')" > ~/.night-courier-db-password)
+   [ -s ~/.night-courier-db-password ] &&
+     npx supabase@3.2.0 projects create night-courier --org-id <org> --region eu-central-2 \
+       --db-password "$(cat ~/.night-courier-db-password)" --yes
    ```
 
-   Keep `SUPABASE_DB_PASSWORD` exported for the rest of the session: step 3 reads it from there.
-   Nothing else needs it - the app never does - and the operator can set a new one in the dashboard
-   on the day one is wanted (Project Settings → Database; **to check** where exactly).
+   A file, because a variable does not last from one command to the next: this step used to
+   `export` the password for step 3, and in a session step 3 would never have seen it. The second
+   command makes a password only where the file has none. Once the project exists the file is the
+   only copy of its password, and a second one made over it would leave step 3 with the wrong one.
+   The third does nothing while the file is empty. (The CLI would not go on without a password
+   either: given an empty one where nobody can be asked, it stops with
+   `non-interactive mode requires the following to be set: --db-password` and creates nothing.)
+
+   Nobody has seen this password and nobody needs to: do not print the file. Nothing uses it but
+   `db push` in step 3 - the app never does - and step 3 deletes the file when the migrations are
+   in. A database password that is wanted later - by the operator, for the password manager
+   (`docs/store/gdpr-records.md`, 5.2), or by a later session with a new migration to push (step
+   3, "Later, or on another machine") - is a new one, set in the dashboard (Project Settings →
+   Database; **to check** where exactly).
 
    **Check:** `npx supabase@3.2.0 projects list --output-format json` shows a project named
    `night-courier` with `"region":"eu-central-2"` and, a minute or two after it was created,
    `"status":"ACTIVE_HEALTHY"`. Its `"ref"` is the `<ref>` of every later step. The region cannot be
-   changed afterwards: if it is not `eu-central-2`, stop here and say so.
+   changed afterwards: if it is not `eu-central-2`, stop here and say so. And
+   `wc -c < ~/.night-courier-db-password` says 49: the password's 48 characters and a line end.
 
    **The same day,** read what the free plan says about pausing a project nobody uses, and decide
    what to do about it: "Traps to diarise" has what is known, what a pause would do to this app,
@@ -412,28 +436,77 @@ project**; go slowly there, and correct this page when you know more.
 3. **Apply the migrations:**
 
    ```bash
-   npx supabase@3.2.0 db push --remote --dry-run
-   npx supabase@3.2.0 db push --remote --yes
+   [ -s ~/.night-courier-db-password ] &&
+     SUPABASE_DB_PASSWORD="$(cat ~/.night-courier-db-password)" \
+       npx supabase@3.2.0 db push --remote --dry-run --debug
+   [ -s ~/.night-courier-db-password ] &&
+     SUPABASE_DB_PASSWORD="$(cat ~/.night-courier-db-password)" \
+       npx supabase@3.2.0 db push --remote --yes
    ```
 
-   The dry run changes nothing. It must print `Target: project night-courier (<ref>)` and then
-   every file in `supabase/migrations` under "Would push these migrations". The second command
-   applies them in order and records each one in `supabase_migrations.schema_migrations`, so that a
-   later push sends only what is new. It never runs `supabase/seed.sql`, which is for the local
-   stack only: do not add `--include-seed`, and never aim a `db reset` at this project.
+   `db push` opens a connection to the project's Postgres and needs the database password for
+   it. Each command is handed the one from step 1, for itself alone. A command here that ends at
+   once and prints nothing found no file: this is not the machine that created the project, or
+   the file has been deleted. Do not take its first two lines off to get past that; see "Later,
+   or on another machine" below.
 
-   **Check:** `npx supabase@3.2.0 db push --remote --dry-run --output-format json` now ends in
-   `"upToDate":true` with `"target":{"kind":"linked","project_ref":"<ref>"` in the same line.
-   `"kind":"local"` means the check looked at the wrong database.
+   The dry run changes nothing. It must print `Target: project night-courier (<ref>)`, then
+   `Using database password from SUPABASE_DB_PASSWORD (environment)...` - that line is what
+   `--debug` is there for - and then every file in `supabase/migrations` under "Would push these
+   migrations". The second command applies them in order and records each one in
+   `supabase_migrations.schema_migrations`, so that a later push sends only what is new. It never
+   runs `supabase/seed.sql`, which is for the local stack only: do not add `--include-seed`, and
+   never aim a `db reset` at this project.
+
+   **Without a password `db push` does not stop.** It asks Supabase's API for a database role of
+   its own, good for a short time, and connects as that - the dry run too, and just the same
+   when `SUPABASE_DB_PASSWORD` is set but empty. Under `--debug` the line then reads
+   `No database password found; using a temporary login role...`. That is what these two
+   commands would have done in a session while step 1 kept the password in a variable. It may
+   well work, but it is **not yet tried on a real project**, and against the stand-in the dry run
+   asked for the role and then tried to connect eight times, for two and a half minutes, before it
+   gave up. It is not a way to arrive on by accident: if the dry run prints that line, stop it and
+   find out why the password was not read.
+
+   **Check:** the dry run once more, now answering in JSON:
+
+   ```bash
+   [ -s ~/.night-courier-db-password ] &&
+     SUPABASE_DB_PASSWORD="$(cat ~/.night-courier-db-password)" \
+       npx supabase@3.2.0 db push --remote --dry-run --output-format json
+   ```
+
+   It ends in `"upToDate":true` with `"target":{"kind":"linked","project_ref":"<ref>"` in the same
+   line. `"kind":"local"` means the check looked at the wrong database.
+
+   **Later, or on another machine** - a later session, with a new migration to push - the file is
+   not there, and the password that was in it cannot be had back. There are three ways, and the
+   first is the one to prefer:
+   - The operator sets a new database password in the dashboard (Project Settings → Database;
+     **to check** where exactly) and stores it for the session as the environment variable
+     `SUPABASE_DB_PASSWORD` of the cloud environment, the way the access token is stored and never
+     in a chat. (Not as a network secret: those are added to HTTPS requests, and this is a
+     Postgres connection.) Everyone who uses that environment can read the variable, so the
+     operator takes it out again after the push. The CLI reads it itself, so the commands are then
+
+     ```bash
+     [ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --dry-run --debug
+     [ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --yes
+     ```
+
+     with the same line to look for in the dry run.
+
+   - The way round through HTTPS, below. It needs neither the password nor the connection.
+   - The CLI's temporary role, knowingly: the two commands with nothing in front of them. The dry
+     run is where it shows whether that works. **Not yet tried on a real project.**
 
    **Where no Postgres connection gets out.** `db push` connects to `db.<ref>.supabase.co` (IPv6
    only) or to the project's pooler (IPv4; `link` has saved its address in
-   `supabase/.temp/pooler-url`), port 5432, with `SUPABASE_DB_PASSWORD` (without one it makes
-   itself a short-lived database role through the API - **not yet tried on a real project**). If
-   it fails with `IPv6 is not supported on your current network`, run `link` again; if it still
-   cannot connect, the network lets only HTTPS out. `db query --remote` does not need the
-   connection: it sends the SQL through Supabase's API. Send each file that way, in order, and
-   record it as `db push` would have, so that a later `db push` skips it:
+   `supabase/.temp/pooler-url`), port 5432. If it fails with
+   `IPv6 is not supported on your current network`, run `link` again; if it still cannot connect,
+   the network lets only HTTPS out. `db query --remote` does not need the connection: it sends the
+   SQL through Supabase's API. Send each file that way, in order, and record it as `db push` would
+   have, so that a later `db push` skips it:
 
    ```bash
    npx supabase@3.2.0 db query --remote --yes "create schema if not exists supabase_migrations" &&
@@ -459,6 +532,15 @@ project**; go slowly there, and correct this page when you know more.
    request, and whether a file that fails half-way leaves nothing behind. If the city file is
    refused for its size, send its nine `insert` statements one at a time - blank lines separate
    them, and each can be sent again safely.
+
+   **Last,** whichever way the migrations went in, once the check above or the version list has
+   shown them all: delete the password file. Nothing after this step needs it, and a database
+   password belongs in the operator's password manager or nowhere (`docs/store/gdpr-records.md`,
+   5.2) - not on whatever machine ran the session.
+
+   ```bash
+   rm -f ~/.night-courier-db-password
+   ```
 
 4. **Check it,** through the same API (`--read-only` cannot change anything):
 
