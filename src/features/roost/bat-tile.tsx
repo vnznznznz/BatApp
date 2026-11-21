@@ -69,8 +69,10 @@ export function BatTile({ bat, now, onPress, active = true }: BatTileProps) {
             {/* As many lines as the name takes: a tile is a third of a narrow
                 phone, and on one line "to Bruno Mond" read "to Bruno M…", on
                 two a 38-letter name "to Konstantin Alexandro…". (Found in the
-                browser.) A name has 40 letters at most. */}
-            <Text variant="caption" tone="secondary" center>
+                browser.) A name has 40 letters at most. As wide as the tile, so
+                that a word longer than that breaks inside it, not over its
+                edge (on the web the line grew to its longest word). */}
+            <Text variant="caption" tone="secondary" center style={styles.name}>
               to {flight.recipient.displayName}
             </Text>
             <Text variant="mono" center numberOfLines={1} adjustsFontSizeToFit>
@@ -123,6 +125,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
     minHeight: 40,
+  },
+  name: {
+    alignSelf: 'stretch',
   },
   track: {
     alignSelf: 'stretch',
