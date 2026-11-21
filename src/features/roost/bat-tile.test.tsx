@@ -59,12 +59,14 @@ describe('BatTile', () => {
   /**
    * A tile is a third of a narrow phone. On one line "to Bruno Mond" read "to
    * Bruno M…", and a long name was cut to its first letters. (Found in the
-   * browser at 360 px.)
+   * browser at 360 px.) Two lines still cut a name of some 25 letters or more
+   * - "to Konstantin Alexandro…" - and a name may have 40. (Found in review.)
+   * The name takes the lines it needs; the tiles beside it grow alike.
    */
-  it('lets the name of whom the bat flies to take a second line', async () => {
+  it('shows the whole name of whom the bat flies to, on as many lines as it takes', async () => {
     await render(<BatTile bat={flying} now={NOW} />);
 
-    expect(screen.getByText('to Anna Weber').props.numberOfLines).toBe(2);
+    expect(screen.getByText('to Anna Weber').props.numberOfLines).toBeUndefined();
   });
 
   /** The bar is drawing, not news: the tile already says when the bat lands. */

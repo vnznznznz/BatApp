@@ -66,9 +66,11 @@ export function BatTile({ bat, now, onPress, active = true }: BatTileProps) {
       <View style={styles.detail}>
         {flight ? (
           <>
-            {/* Two lines: a tile is a third of a narrow phone, and on one line
-                "to Bruno Mond" read "to Bruno M…". (Found in the browser.) */}
-            <Text variant="caption" tone="secondary" center numberOfLines={2}>
+            {/* As many lines as the name takes: a tile is a third of a narrow
+                phone, and on one line "to Bruno Mond" read "to Bruno M…", on
+                two a 38-letter name "to Konstantin Alexandro…". (Found in the
+                browser.) A name has 40 letters at most. */}
+            <Text variant="caption" tone="secondary" center>
               to {flight.recipient.displayName}
             </Text>
             <Text variant="mono" center numberOfLines={1} adjustsFontSizeToFit>
