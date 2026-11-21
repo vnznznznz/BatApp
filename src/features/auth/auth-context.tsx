@@ -436,7 +436,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       current = next;
       setSession(next);
       setIsRestoring(false);
-      if (fromElsewhere) lookForUnfinished(next);
+      if (fromElsewhere) {
+        lookForUnfinished(next);
+        // Someone has signed in, and the network is likely to be back: a
+        // sign-out the server never heard of is told now, as at a sign-in in
+        // this tab - which this tab, holding the session the other has, will
+        // not need. (Seen in Chromium: it stayed on the server.)
+        tellServerOwed();
+      }
     });
 
     // On the web, what a code was for, finished in another tab of the browser,

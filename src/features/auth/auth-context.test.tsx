@@ -1482,6 +1482,10 @@ describe('signing out', () => {
         expect(auth.session?.access_token).toBe(THEIRS);
         expect((await kept())?.refresh_token).toBe('refresh-theirs');
         expect(sent.filter(isLogout).map(({ bearer }) => bearer)).not.toContain(THEIRS);
+        // And the server, never told of the session let go, is told of it now,
+        // as at a sign-in in this tab: by itself. (Seen in Chromium: the
+        // other tab signed in, and the session let go stayed on the server.)
+        expect(sent.filter(isLogout).map(scopeAndBearer)).toContainEqual(['scope=local', LET_GO]);
       });
 
       /** What the mark is there for, still: nobody signed in. */
