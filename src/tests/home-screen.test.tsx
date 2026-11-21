@@ -675,6 +675,31 @@ describe('HomeScreen', () => {
       expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
     });
 
+    /**
+     * Without a network, an hour after the app was last used, the first loads
+     * wait about half a minute behind the session's renewal before they fail,
+     * and the roost showed spinners and nothing else. (Found in the browser.)
+     */
+    it('says that it is still trying when the bats take long to load', async () => {
+      mockedFetchRoost.mockReturnValue(new Promise<Bat[]>(() => {}));
+      await renderScreen(<HomeScreen />);
+      await letTimePass(4 * SECOND);
+      expect(screen.queryByText('Still trying to reach Night Courier…')).toBeNull();
+
+      await letTimePass(SECOND);
+
+      expect(screen.getByText('Still trying to reach Night Courier…')).toBeOnTheScreen();
+    });
+
+    it('says nothing of trying once the bats are in', async () => {
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      await letTimePass(10 * SECOND);
+
+      expect(screen.queryByText('Still trying to reach Night Courier…')).toBeNull();
+    });
+
     // Without a connection all of it fails at once. One way out is enough.
     it('offers it once when neither the roost nor the profile could be loaded', async () => {
       mockProfileState.profile = null;

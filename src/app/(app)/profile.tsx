@@ -17,6 +17,7 @@ import { announce } from '@/lib/announce';
 import { confirmAction, notify } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
 import { CONTACT_URL, openLink, PRIVACY_POLICY_URL } from '@/lib/links';
+import { STILL_TRYING, useLingering } from '@/lib/use-lingering';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function ProfileScreen() {
   const { profile, isLoading, isGone, error, updateDisplayName } = useProfile();
   const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const stillTrying = useLingering(isLoading && !profile);
 
   /**
    * Null until the user types, so the field shows whatever the profile last
@@ -108,14 +110,6 @@ export default function ProfileScreen() {
     });
   }
 
-  if (isLoading && !profile) {
-    return (
-      <Screen center edges={['bottom']}>
-        <ActivityIndicator color={Colors.textMuted} />
-      </Screen>
-    );
-  }
-
   return (
     <Screen scroll style={styles.screen} edges={['bottom']}>
       <Text variant="title">Your profile</Text>
@@ -129,7 +123,9 @@ export default function ProfileScreen() {
       {/* Without a profile there is nothing true to show here - not an empty
           username, and not "no city chosen" for a courier who has one. What
           stays is the way out: the error above may say that the account is
-          gone, and signing out is then all there is to do. */}
+          gone, and signing out is then all there is to do. It stays while the
+          profile is loading, too: offline, that took half a minute, with
+          nothing on the screen to press. (Found in the browser.) */}
       {profile ? (
         <>
           <Card style={styles.card}>
@@ -192,6 +188,15 @@ export default function ProfileScreen() {
             />
           </View>
         </>
+      ) : isLoading ? (
+        <View style={[styles.form, styles.loading]}>
+          <ActivityIndicator color={Colors.textMuted} />
+          {stillTrying ? (
+            <Text variant="caption" tone="muted" center>
+              {STILL_TRYING}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
 
       <View style={[styles.form, styles.divided]}>
@@ -254,4 +259,5 @@ const styles = StyleSheet.create({
   spaced: { marginTop: Spacing.sm },
   hint: { lineHeight: 19 },
   credit: { marginTop: Spacing.xl },
+  loading: { alignItems: 'center' },
 });

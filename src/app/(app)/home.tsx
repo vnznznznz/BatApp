@@ -18,6 +18,7 @@ import { useProfile } from '@/features/profile/use-profile';
 import { BatTile } from '@/features/roost/bat-tile';
 import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
 import { formatDuration, formatTimestamp } from '@/lib/format';
+import { STILL_TRYING, useLingering } from '@/lib/use-lingering';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
@@ -107,6 +108,9 @@ export default function HomeScreen() {
   // to do it. One button, wherever the bats would be, or else the name: with
   // no connection everything fails at once.
   const roostMissing = Boolean(roost.error) && !roost.data;
+  // A first load can take half a minute to fail without a network: the
+  // spinner says, after a few seconds, what it is waiting for.
+  const stillTrying = useLingering(!roost.data && !roost.error);
   const tryAgain = (
     <Button
       label="Try again"
@@ -204,7 +208,14 @@ export default function HomeScreen() {
             ))}
           </View>
         ) : roost.error ? null : (
-          <ActivityIndicator color={Colors.textMuted} style={styles.loading} />
+          <View style={styles.loading}>
+            <ActivityIndicator color={Colors.textMuted} />
+            {stillTrying ? (
+              <Text variant="caption" tone="muted" center>
+                {STILL_TRYING}
+              </Text>
+            ) : null}
+          </View>
         )}
 
         {roost.error ? (
@@ -296,6 +307,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   tiles: { flexDirection: 'row', gap: Spacing.sm },
-  loading: { paddingVertical: Spacing.xl },
+  loading: { paddingVertical: Spacing.xl, gap: Spacing.sm },
   write: { marginTop: Spacing.lg, gap: Spacing.sm },
 });

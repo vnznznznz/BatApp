@@ -164,6 +164,49 @@ describe('ProfileScreen', () => {
       expect(screen.queryByText('Not chosen yet')).toBeNull();
     });
 
+    /**
+     * Without a network, and an hour after the app was last used, the first
+     * load takes half a minute to fail, and the screen showed nothing but a
+     * spinner meanwhile: no way to sign out, which is what someone opening it
+     * offline may well have come for. (Found in the browser.) Only the name
+     * and the city wait for the profile.
+     */
+    it('offers signing out and the safety links while the profile is still loading', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isLoading = true;
+      mockLinks.contact = CONTACT;
+      await renderScreen(<ProfileScreen />);
+
+      expect(button('House rules')).toBeEnabled();
+      expect(button('Contact')).toBeEnabled();
+
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    describe('while the profile takes long to load', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('says that it is still trying', async () => {
+        mockProfileState.profile = null;
+        mockProfileState.isLoading = true;
+        await renderScreen(<ProfileScreen />);
+        await act(() => jest.advanceTimersByTimeAsync(4000));
+        expect(screen.queryByText('Still trying to reach Night Courier…')).toBeNull();
+
+        await act(() => jest.advanceTimersByTimeAsync(1000));
+
+        expect(screen.getByText('Still trying to reach Night Courier…')).toBeOnTheScreen();
+      });
+    });
+
     it('says when the profile could not be loaded again, and keeps what it had', async () => {
       mockProfileState.error = 'Your profile could not be loaded. Check your connection.';
       await renderScreen(<ProfileScreen />);
