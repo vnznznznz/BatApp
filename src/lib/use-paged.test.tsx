@@ -138,6 +138,28 @@ describe('usePaged', () => {
     });
   });
 
+  describe('why the first page was refused', () => {
+    it('is the refusal, as the server gave it', async () => {
+      const { result } = await renderList(
+        pages(new RpcError(REFUSALS.account_suspended, 'account_suspended')),
+      );
+
+      expect(result.current.reason).toBe('account_suspended');
+    });
+
+    /** "Null after a success": a reason left over would outlast what it explained. */
+    it('is gone once a load goes through', async () => {
+      const { result } = await renderList(
+        pages(new RpcError(REFUSALS.account_suspended, 'account_suspended'), page('a')),
+      );
+
+      await act(() => result.current.refresh());
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.reason).toBeNull();
+    });
+  });
+
   describe('loading more', () => {
     it('asks for the page after the last item held, and adds it below', async () => {
       const loadPage = pages(page('a', 'b', 'c'), page('d', 'e', 'f'));

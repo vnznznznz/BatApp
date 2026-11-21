@@ -510,6 +510,19 @@ describe('the block chosen last time', () => {
     expect(blockChoiceFor(mara, { courier: 'user-ben' })).toBe(true);
   });
 
+  /**
+   * Once, however many choices are remembered: a listener for each would be
+   * one more call at every sign-out, held for as long as the app runs.
+   * (Unpinned until the tests review.)
+   */
+  it('asks the client once to be told of sign-outs, however many choices it remembers', () => {
+    rememberBlockChoice(mara, letter, false);
+    rememberBlockChoice(mara, { courier: 'user-ben' }, true);
+    rememberBlockChoice(mara, letter, true);
+
+    expect(mockAuthListeners.size).toBe(1);
+  });
+
   it('keeps the choices while the session is only renewed', () => {
     rememberBlockChoice(mara, letter, false);
 
