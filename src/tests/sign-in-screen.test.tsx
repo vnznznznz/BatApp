@@ -228,6 +228,20 @@ describe('SignInScreen', () => {
     expect(mockSignIn).not.toHaveBeenCalled();
   });
 
+  /** The reset asked for the address again, typed here a moment before. */
+  it('takes the address typed here to the reset screen', async () => {
+    const user = userEvent.setup();
+    await renderScreen(<SignInScreen />);
+    await user.type(screen.getByLabelText('Email'), ' anna@example.com ');
+
+    await user.press(screen.getByRole('button', { name: 'I forgot my password' }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/reset-password',
+      params: { email: 'anna@example.com' },
+    });
+  });
+
   /** The keyboard's "go" key is not held back by the button's spinner. */
   it('signs in once, however often the form is sent while it is being answered', async () => {
     mockSignIn.mockReturnValue(new Promise(() => {}));
@@ -434,7 +448,11 @@ describe('SignInScreen', () => {
       ).toBeOnTheScreen();
       expect(screen.queryByText(/username or name you did not choose/)).toBeNull();
       await user.press(button('I forgot my password'));
-      expect(mockPush).toHaveBeenCalledWith('/reset-password');
+      // With the address the code went to, which the reset would ask for again.
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/reset-password',
+        params: { email: 'anna@example.com' },
+      });
     });
 
     /**

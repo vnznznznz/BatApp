@@ -8,6 +8,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import RootLayout from '@/app/_layout';
 import ResetPasswordScreen from '@/app/reset-password';
+import SignInScreen from '@/app/sign-in';
 
 /**
  * A password reset by code, through the app's own root layout, auth context
@@ -52,6 +53,8 @@ const mockServer = {
   },
   verify: jest.fn(),
   passwordChange: jest.fn(),
+  /** The addresses a code was asked for. */
+  resets: jest.fn(),
 };
 
 /** The answer to a right code: the session it brings, announced before it is answered. */
@@ -69,7 +72,10 @@ jest.mock('@/lib/supabase', () => ({
           data: { subscription: { unsubscribe: () => mockServer.listeners.delete(listener) } },
         };
       },
-      resetPasswordForEmail: async () => ({ data: {}, error: null }),
+      resetPasswordForEmail: async (email: string) => {
+        mockServer.resets(email);
+        return { data: {}, error: null };
+      },
       verifyOtp: (attributes: unknown) => mockServer.verify(attributes),
       updateUser: async (attributes: unknown) => {
         const answer = await mockServer.passwordChange(attributes);
@@ -122,6 +128,7 @@ beforeEach(() => {
   mockServer.listeners.clear();
   mockServer.verify.mockReset().mockImplementation(async () => codeRight());
   mockServer.passwordChange.mockReset();
+  mockServer.resets.mockReset();
 });
 
 describe('a password reset by code', () => {
@@ -271,6 +278,30 @@ describe('a password reset by code', () => {
       password: 'a brand new password',
     });
     expect(app.getPathname()).toBe('/home');
+  });
+
+  /**
+   * From the sign-in form, through the router as the app has it: the address
+   * typed there reaches the reset as it was typed - a plus sign too, which a
+   * query string can turn into a space - and the code goes to it.
+   */
+  it('starts the reset with the address typed to sign in', async () => {
+    const app = renderRouter(
+      { ...routes, 'sign-in': SignInScreen },
+      { initialUrl: '/sign-in', wrapper: withInsets },
+    );
+    await app;
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.type(screen.getByLabelText('Email'), 'anna+bats@example.com');
+
+    await user.press(screen.getByRole('button', { name: 'I forgot my password' }));
+    expect(app.getPathname()).toBe('/reset-password');
+    await user.press(screen.getByRole('button', { name: 'Send the code' }));
+
+    expect(mockServer.resets).toHaveBeenCalledWith('anna+bats@example.com');
+    expect(
+      screen.getByText(/^If there is an account for anna\+bats@example\.com, a code/),
+    ).toBeOnTheScreen();
   });
 
   /** "Use another address" led off the screen while the code was checked. (Found in review.) */

@@ -29,10 +29,14 @@ const mockBack = jest.fn();
  */
 const mockScreenOptions = jest.fn<void, [{ gestureEnabled?: boolean }]>();
 
+/** The screen's route parameters, as the form that opened it gave them; none unless a test says. */
+const mockParams: { email?: string | string[] } = {};
+
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
     useRouter: () => ({ push: jest.fn(), back: mockBack, replace: mockReplace }),
+    useLocalSearchParams: () => mockParams,
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
       React.useEffect(() => effect(), [effect]),
@@ -193,6 +197,7 @@ const swipeBack = () => mockScreenOptions.mock.calls.at(-1)?.[0].gestureEnabled 
 
 beforeEach(() => {
   mockScreenOptions.mockClear();
+  delete mockParams.email;
   backListeners = [];
   jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
     backListeners.push(listener);
@@ -465,6 +470,40 @@ describe('ResetPasswordScreen', () => {
       await user.press(button('Send the code'));
 
       expect(mockSendPasswordReset).not.toHaveBeenCalled();
+    });
+
+    /**
+     * "I forgot my password" brings the address typed on the form it is on,
+     * which the courier used to type again here.
+     */
+    it('starts with the address it was brought, which can still be changed', async () => {
+      mockParams.email = 'anna@example.com';
+      await renderScreen(<ResetPasswordScreen />);
+      expect(screen.getByLabelText('Email')).toHaveDisplayValue('anna@example.com');
+
+      await user.clear(screen.getByLabelText('Email'));
+      await user.type(screen.getByLabelText('Email'), 'anna.weber@example.com');
+      await user.press(button('Send the code'));
+
+      expect(mockSendPasswordReset).toHaveBeenCalledWith('anna.weber@example.com');
+    });
+
+    it('sends the code to the address it was brought, as it stands', async () => {
+      mockParams.email = 'anna@example.com';
+      await renderScreen(<ResetPasswordScreen />);
+
+      await user.press(button('Send the code'));
+
+      expect(mockSendPasswordReset).toHaveBeenCalledWith('anna@example.com');
+      expect(screen.getByText(SENT)).toBeOnTheScreen();
+    });
+
+    /** A link can name the parameter twice; the address is then not known. */
+    it('starts empty when it was brought no single address', async () => {
+      mockParams.email = ['anna@example.com', 'ben@example.com'];
+      await renderScreen(<ResetPasswordScreen />);
+
+      expect(screen.getByLabelText('Email')).toHaveDisplayValue('');
     });
   });
 
