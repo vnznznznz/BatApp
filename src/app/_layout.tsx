@@ -42,7 +42,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { session, isRestoring } = useAuth();
+  const { session, isRestoring, isFinishingReset } = useAuth();
   const router = useRouter();
   const segment = useSegments()[0];
   const inApp = segment === '(app)';
@@ -52,6 +52,11 @@ function RootNavigator() {
   // without learning why they are not where the link pointed. Its button leads
   // to the start, and from there this guard takes them to the roost.
   const forAnyone = segment === 'rules' || segment === '+not-found';
+  // The code from a reset email signs the courier in before the new password
+  // is saved, and saving it can fail. Until it is saved they stay on the reset
+  // screen, which says what happened and asks again; gone back from there,
+  // they are signed in all the same, and go to the roost.
+  const finishingReset = isFinishingReset && segment === 'reset-password';
 
   useEffect(() => {
     // Holding the splash until the stored session has been read is what stops
@@ -71,10 +76,10 @@ function RootNavigator() {
   // Dismissing first leaves the roost as the only screen in the stack, so back
   // does not return to a sign-in form for an account that is signed in.
   useEffect(() => {
-    if (isRestoring || !session || inApp || forAnyone) return;
+    if (isRestoring || !session || inApp || forAnyone || finishingReset) return;
     if (router.canDismiss()) router.dismissAll();
     router.replace('/home');
-  }, [isRestoring, session, inApp, forAnyone, router]);
+  }, [isRestoring, session, inApp, forAnyone, finishingReset, router]);
 
   if (isRestoring) return null;
 

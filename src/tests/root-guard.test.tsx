@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
@@ -57,17 +57,52 @@ jest.mock('expo-splash-screen', () => ({
   hideAsync: jest.fn(() => Promise.resolve(true)),
 }));
 
-const mockAuth: { session: object | null; isRestoring: boolean } = {
+type MockAuth = { session: object | null; isRestoring: boolean; isFinishingReset: boolean };
+
+const mockAuth: MockAuth = {
   session: null,
   isRestoring: false,
+  isFinishingReset: false,
+};
+
+/**
+ * Whoever reads the context, and what they were last given: a change is drawn
+ * at once, as with the app's own context, and not only when the whole tree
+ * happens to be drawn again - which, with the React Compiler, it is not.
+ */
+const mockReaders = {
+  listeners: new Set<() => void>(),
+  given: { ...mockAuth },
+  current(): MockAuth {
+    const { given } = mockReaders;
+    const changed = (Object.keys(mockAuth) as (keyof MockAuth)[]).some(
+      (key) => given[key] !== mockAuth[key],
+    );
+    if (changed) mockReaders.given = { ...mockAuth };
+    return mockReaders.given;
+  },
 };
 
 // The guard is under test, not the auth stack. Mocking the context keeps this
 // from becoming an integration test of Supabase's client.
-jest.mock('@/features/auth/auth-context', () => ({
-  AuthProvider: ({ children }: { children: import('react').ReactNode }) => children,
-  useAuth: () => mockAuth,
-}));
+jest.mock('@/features/auth/auth-context', () => {
+  const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+  return {
+    AuthProvider: ({ children }: { children: import('react').ReactNode }) => children,
+    useAuth: () =>
+      useSyncExternalStore((listener: () => void) => {
+        mockReaders.listeners.add(listener);
+        return () => mockReaders.listeners.delete(listener);
+      }, mockReaders.current),
+  };
+});
+
+/** Changes what the auth context says while the app is open. */
+const authChanges = (change: Partial<MockAuth>) =>
+  act(async () => {
+    Object.assign(mockAuth, change);
+    mockReaders.listeners.forEach((listener) => listener());
+  });
 
 /** A signed-in courier's session, as far as the guard looks at one. */
 const SESSION = { user: { id: 'user-mara' } };
@@ -109,6 +144,7 @@ beforeEach(() => {
   mockSegments.current = [];
   mockAuth.session = SESSION;
   mockAuth.isRestoring = false;
+  mockAuth.isFinishingReset = false;
 });
 
 describe('the root guard', () => {
@@ -190,6 +226,46 @@ describe('the root guard', () => {
 
       expect(mockNavigation).toEqual(['replace /home']);
     });
+  });
+
+  /**
+   * The code from a reset email signs the courier in, and the new password is
+   * saved with that session a moment later - or not, and they try another.
+   * Sent to the roost in between, they would be signed in with a password
+   * they do not know, and the screen asking for it gone.
+   */
+  describe('while a password reset is being finished', () => {
+    beforeEach(() => {
+      mockAuth.isFinishingReset = true;
+    });
+
+    it('leaves the courier on the reset screen until the new password is saved', async () => {
+      await openTheAppOn('reset-password');
+
+      expect(mockNavigation).toEqual([]);
+    });
+
+    it('takes them to the roost once it is saved', async () => {
+      await openTheAppOn('reset-password');
+      expect(mockNavigation).toEqual([]);
+
+      await authChanges({ isFinishingReset: false });
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+
+    /** Gone back from the reset screen, they are signed in, and in the app. */
+    it('holds nobody anywhere else', async () => {
+      await openTheAppOn('sign-in');
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+  });
+
+  it('sends a signed-in courier on from the reset screen when no reset is being finished', async () => {
+    await openTheAppOn('reset-password');
+
+    expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
   });
 
   describe('without a session', () => {
