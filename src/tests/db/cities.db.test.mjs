@@ -315,7 +315,8 @@ describe('search_index, brought to one form for the saints', () => {
   before(async () => {
     before_ = await createTestDatabase({ until: BEFORE_SPELLINGS });
     after_ = await createTestDatabase({ until: BEFORE_SPELLINGS });
-    await applyMigrations(after_, { after: BEFORE_SPELLINGS });
+    // That migration alone, so that every row is still there to be asked about.
+    await applyMigrations(after_, { after: BEFORE_SPELLINGS, until: SPELLINGS_MIGRATION });
   });
 
   after(async () => {
@@ -335,6 +336,9 @@ describe('search_index, brought to one form for the saints', () => {
        select * from unnest($1::integer[], $2::text[])`,
       [old.map((row) => row.id), old.map((row) => row.search_index)],
     );
+
+    const { rows: still } = await after_.query(`select count(*)::int as rows from public.cities`);
+    assert.equal(still[0].rows, 4310);
 
     const { rows } = await after_.query(`
       with typed as (

@@ -32,6 +32,11 @@
  * away: a town that has dropped out of the list stays in the table, because a
  * courier may live there.
  *
+ * Each city is written with its search index (searchIndex()) and, where
+ * another city of its country has the same name, what tells the two apart
+ * (qualify()). A city no name of which could be searched for is not written,
+ * and nor are the rows a migration took out (LEFT_OUT).
+ *
  * After a run: commit the new migration and the fold-parity fixture, bring it
  * to the hosted project (`npx supabase@3.2.0 db push --remote --yes`, handed the
  * database password as docs/GO-LIVE.md, "Setting up the hosted project", step 3,
