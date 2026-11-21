@@ -14,9 +14,9 @@ import {
   MIN_QUERY_LENGTH,
   searchCities,
 } from '@/features/cities/search';
-import { formatSettlesAt } from '@/features/cities/settles-at';
 import { useProfile, type Profile } from '@/features/profile/use-profile';
 import { confirmAction, type Confirmation } from '@/lib/confirm';
+import { formatTimestamp } from '@/lib/format';
 
 /** What the search said for one set of words: the cities found, or why it failed. */
 type Answer = { term: string; cities: City[]; error: string | null };
@@ -247,7 +247,7 @@ function describeChoice(
   const settles = new Date(now.getTime() + RELOCATION_HOURS * 3_600_000);
   return {
     title: `Move to ${name}?`,
-    message: `A move takes a day to count. Until ${formatSettlesAt(settles, now)}, your letters leave from ${describeCity(departing)}, and your friends' letters land there.`,
+    message: `A move takes a day to count. Until ${formatTimestamp(settles, now)}, your letters leave from ${describeCity(departing)}, and your friends' letters land there.`,
     confirmLabel: 'Move',
   };
 }

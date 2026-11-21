@@ -438,14 +438,18 @@ describe('CityPickerScreen', () => {
      * It still says at what time: "Until 1 Jan 2027" alone left the courier to
      * guess. (Found in review.)
      */
-    it('names the time the move settles in the next year, too', async () => {
-      jest.setSystemTime(new Date(2026, 11, 31, 21, 0));
+    it.each([
+      ['on New Year’s Eve', new Date(2026, 11, 31, 21, 0), '1 Jan 2027 21:00'],
+      ['just after midnight on New Year’s Eve', new Date(2026, 11, 31, 0, 30), '1 Jan 2027 00:30'],
+      ['the evening before New Year’s Eve', new Date(2026, 11, 30, 23, 30), '31 Dec 23:30'],
+    ])('names the day and the time the move settles when asked %s', async (_, asked, settles) => {
+      jest.setSystemTime(asked);
       await renderScreen(<CityPickerScreen />);
 
       await choose('Ham', hamburg);
 
       expect(lastAlert().message).toBe(
-        'A move takes a day to count. Until 1 Jan 2027 21:00, your letters leave from Berlin, ' +
+        `A move takes a day to count. Until ${settles}, your letters leave from Berlin, ` +
           "DE, and your friends' letters land there.",
       );
     });
