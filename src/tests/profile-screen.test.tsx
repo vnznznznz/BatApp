@@ -5,6 +5,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ProfileScreen from '@/app/(app)/profile';
 import { REPORT_RETENTION_DAYS } from '@/constants/config';
+import { CITY_DATA_CREDIT } from '@/features/cities/search';
 import type { Profile } from '@/features/profile/use-profile';
 import { formatTimestamp } from '@/lib/format';
 import { openLink } from '@/lib/links';
@@ -436,6 +437,28 @@ describe('ProfileScreen', () => {
       await renderScreen(<ProfileScreen />);
 
       expect(screen.getByText('Friedberg (near Frankfurt am Main), DE')).toBeOnTheScreen();
+    });
+
+    /**
+     * The city and where it is come from GeoNames, under CC BY 4.0, which asks
+     * for the credit wherever the data is shown - on the profile as in the
+     * city picker. Nothing noticed when the profile dropped it.
+     */
+    it('credits GeoNames for the city it shows, as the licence asks', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        move: {
+          from: { id: 2867714, name: 'Munich', countryCode: 'DE' },
+          settlesAt: new Date('2026-11-02T08:00:00Z'),
+        },
+      };
+      await renderScreen(<ProfileScreen />);
+      expect(screen.getByText('Berlin, DE')).toBeOnTheScreen();
+
+      const credit = screen.getByText(CITY_DATA_CREDIT);
+
+      expect(credit).toBeOnTheScreen();
+      expect(credit).toHaveTextContent(/GeoNames \(geonames\.org\).*CC BY 4\.0/);
     });
 
     it('asks for a city when none is chosen', async () => {

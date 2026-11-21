@@ -104,6 +104,49 @@ Recorded where the work is, not only here:
   ("Before a second person can sign up", step 4), it answers a taken username with an error, and
   it answers a sign-in to a suspended or removed account with "User is banned", whatever the
   password.
+- **A lost answer to a sign-up's code can leave a stranger's names on an account.** If the auth
+  server confirms an address with a sign-up's code and its answer never reaches the app, the
+  account is not finished: it has no password, and keeps the username and name of the first
+  sign-up for the address - a stranger's, if someone typed the address before its owner did. The
+  app says so once that code is refused again: ask for a new code first, and if none comes within
+  a few minutes, set a password with "I forgot my password"; after a sign-up it adds that whoever
+  finds a username or name on the account that they did not choose can delete it in the profile
+  and sign up again. That is decided: such an account is not removed for it, and whoever writes
+  about a username they never chose can be told the same. The hint also shows for the same wrong
+  code typed twice after a try that never left the phone, which the app cannot tell apart; a reset
+  taken at once then removes the courier's own account, still unconfirmed, and they sign up again
+  (ARCHITECTURE, "A code holds the way in").
+- **The web build has seams of its own,** which reach nobody: it is for development, and the apps
+  people are given are the iOS and Android builds ("Recommended distribution" below). One tab's
+  sign-out still under way can undo another tab's sign-in, a sign-out the server never heard of is
+  forgotten at a reload of the page, and the reset's "Your new password is saved" is never drawn -
+  only a screen reader hears it (ARCHITECTURE, "Sessions" and "A code holds the way in").
+- **Sign-up is open to anyone who has a build,** which carries the project's address and
+  publishable key, and usernames are first come: someone can take the username a relative is
+  expected to choose, and the requests meant for the relative reach them instead. And no name is
+  kept back: "Night Courier Team", or the username `admin`, is anyone's to take, to pass for the
+  operator. Reports are the remedy until there is a list of reserved names.
+- **Two friends with the same display name look alike** on compose and in the letters, which show
+  the username only where there is no name; a friend can take another's name to pass for them
+  (ARCHITECTURE, "Compose").
+- **Anyone can use up the project's emails for the hour** by asking again and again for codes for
+  addresses they know. New couriers then get no code to confirm or reset with until the hour is
+  over. A CAPTCHA in front of the auth server would stop it.
+- **No password can be changed while signed in.** The way is to sign out and use "I forgot my
+  password", which needs an email.
+- **Two checks of the hosted project are still to be added** to "Setting up the hosted project":
+  that pg_graphql serves nothing - enabled, it would offer the same tables and functions, under the
+  same grants, by another way - and that the publication `supabase_realtime` stays empty, the app
+  using no Realtime. Until they are, neither would be noticed.
+- **Correcting an account's email by hand leaves the old address behind,** in the details the auth
+  server keeps from sign-up, and so in every access token the account is given
+  (`docs/store/gdpr-records.md`, L12).
+- **A city deleted by hand** takes the city from the couriers who live there, and a move away from
+  it that was still settling counts at once. The database refuses it only while a letter has flown
+  from or to the city. Do not delete cities by hand.
+- **Turning email confirmation off again,** once it is on, would let a sign-up for the address of an
+  account still waiting for its code into that account, its username and name with it, as it does
+  today for an account made by hand and left unconfirmed ("Before a second person can sign up").
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
@@ -164,13 +207,13 @@ decision for Switzerland — see `ARCHITECTURE.md`.) Most of this is already in 
 now has a reason attached.
 
 **Impressum, separately (written for an operator in Germany):** under German law there would be **no Impressum obligation**. § 5 DDG (successor
-to § 5 TMG since 14 May 2024) applies to _geschäftsmäßige_ digital services. A free, invite-only app
-with no ads, no donations and no affiliate links is outside it. Profit intent is not the test —
-sustained commercial offering is — but a family app is not that. **To check:** this was written for
-an operator in Germany. Whether German law reaches an operator in Switzerland at all, and whether a
-comparable Swiss rule applies (Art. 3(1)(s) of the Unfair Competition Act, UWG, concerns offering
-goods, works or services in e-commerce), is a question for advice. The privacy policy names the
-operator and the postal address anyway.
+to § 5 TMG since 14 May 2024) applies to _geschäftsmäßige_ digital services. A free app handed
+to friends, with no ads, no donations and no affiliate links, is outside it. Profit intent is not
+the test — sustained commercial offering is — but a family app is not that. **To check:** this
+was written for an operator in Germany. Whether German law reaches an operator in Switzerland at
+all, and whether a comparable Swiss rule applies (Art. 3(1)(s) of the Unfair Competition Act, UWG,
+concerns offering goods, works or services in e-commerce), is a question for advice. The privacy
+policy names the operator and the postal address anyway.
 
 ### 2. A chat app is a user-generated-content app, and Apple Guideline 1.2 applies
 
@@ -186,9 +229,11 @@ Enforcement practice adds a EULA with a zero-tolerance clause for objectionable 
 first external TestFlight build of each version goes through Beta App Review against the App
 Review Guidelines, and 1.2 is exactly what reviewers check on a messaging app.
 
-Night Courier's design helps here: it is invite-only, one-to-one, and friendship-gated, so
-"block" largely already exists as "remove friend". But report, block-as-a-distinct-action and
-a contact route have to be built. **A new phase is needed** — see the roadmap change below.
+Night Courier's design helps here: it is handed only to friends, one-to-one, and
+friendship-gated, so "block" largely already exists as "remove friend". (Handed, not invite-only:
+sign-up is open to anyone who has a build, and usernames are first come - "Known gaps already
+logged".) But report, block-as-a-distinct-action and a contact route have to be built. **A new
+phase is needed** — see the roadmap change below.
 _(Built: Phase 13a.)_
 
 ---
@@ -538,8 +583,9 @@ tried on a real project**; go slowly there, and correct this page when you know 
    runs `supabase/seed.sql`, which is for the local stack only: do not add `--include-seed`, and
    never aim a `db reset` at this project.
 
-   The newest file as this is written, `20261121160000_confirmation_clears_password.sql`, puts a
-   trigger on `auth.users`. As an address that was emailed a code to confirm it is confirmed, the
+   `20261121160000_confirmation_clears_password.sql`, the last file but one as this is written,
+   puts a trigger on `auth.users`; the last, `20261121180000_tidy_up_ages.sql`, changes only the
+   ages the tidy-up counts. As an address that was emailed a code to confirm it is confirmed, the
    account's password goes, in the same statement: whoever signed up first chose it, and that may
    have been anyone who typed the address. From then on no password signs in until one is set with
    the session the code brought, and the app sets one at once - the password typed at sign-up, the
@@ -674,12 +720,14 @@ tried on a real project**; go slowly there, and correct this page when you know 
      from cron.job j
      left join lateral (
        select * from cron.job_run_details d
-       where d.jobid = j.jobid order by d.start_time desc limit 1
+       where d.jobid = j.jobid order by d.start_time desc nulls last limit 1
      ) d on true
      order by j.jobname"
    ```
 
-   Each of the three must have a `status` of `succeeded` and a `start_time` within its schedule.
+   (`nulls last`, because a run that a restart cut off before it began has no `start_time`, and
+   would otherwise come first; the tidy-up deletes such a row within about a week.) Each of the
+   three must have a `status` of `succeeded` and a `start_time` within its schedule.
    For the tidy-up that says only that it ran: a step it left out is in what it returns, which the
    job shows to nobody, and in the Postgres log, as a warning that begins `the tidy-up left out:`.
    So run `select private.tidy_up()` by hand once more, with the command above: it must return the
@@ -962,8 +1010,19 @@ Once confirmation is on, an account confirmed by hand - with
 the trigger sits on the table - loses its password as well, when a code to confirm it had been
 emailed ("Setting up the hosted project", step 3). Its owner then sets one with "I forgot my
 password", which needs an email of its own. So it does not help someone whose emails do not
-arrive: find out why they do not. A sign-up nobody confirms is deleted after a week, and the
-address can then sign up afresh.
+arrive: find out why they do not. (A password set with the admin API stays - in the same call,
+`"email_confirm": true` with a `"password"`, or in one before it: the auth server saves it first,
+and that clears the time the code was sent. It would be a password you chose for someone and sent
+them, and the app has no way to change it but "I forgot my password" - so not that either.) A
+sign-up nobody confirms is deleted a week after the last code sent to it, and the address can then
+sign up afresh.
+
+An account made by hand without confirming its address - in the dashboard, or through the admin
+API without `"email_confirm": true` - cannot sign in, and the tidy-up deletes it a week after it
+was made, or after the last code sent to it if one was asked for, confirmation on or off. Until
+then, while confirmation is off, whoever signs up with its address is signed in to it, username,
+name and all (seen on the local stack). So make accounts in the app, as the demo accounts are made,
+or confirm them as you make them.
 
 ### Push notifications: none
 
@@ -980,8 +1039,13 @@ transits it, so a content-free push keeps message text out of a US processor.
   satisfies GDPR Art. 17.
 - ~~**Report, block, and a contact route**~~ — built in Phase 13a. The contact route is a
   **Contact** button in the profile and in the house rules, and a **Privacy policy** button there
-  and on the sign-up form. Both read their address from the build's environment —
+  and on the sign-up form. Contact also stands wherever a courier may need a person: beside an
+  account that has ended or been suspended, on the welcome screen after a suspension, on the
+  reset's code stage, and on the code screen when a sign-in ended before the account was finished.
+  Both read their address from the build's environment —
   `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` — and are hidden while unset.
+  Without a contact address, the words of a suspension, and of that sign-in, name nobody to write
+  to either.
   **Set both for every build anyone else will use**, in `.env` and in the EAS environment: an App
   Reviewer looks for exactly these. Night Courier's builds use the help page and the privacy
   policy on GitHub Pages; the two values are in "Setting up the hosted project", step 5. (The
@@ -1087,10 +1151,10 @@ transits it, so a content-free push keeps message text out of a US processor.
   ```
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
-  README has the command with the values filled in. It was written before `LAUNCH_STATE` existed,
-  and as it stands there the build refuses it ("set LAUNCH_STATE"): with the first rebuild, add
-  `LAUNCH_STATE=before-launch` to the command there, and a line saying that a live build also
-  needs `DPA_SIGNED` (below).
+  README gives the same command with `…` for the four details, and says when `LAUNCH_STATE=live`
+  and `DPA_SIGNED` are due (below). Since 21 November 2026 it no longer has the operator's name,
+  postal address and email address written out: they stand on the published privacy policy, in
+  section 1, and nowhere else in either repository.
 
   **Check that it arrived,** a few minutes after the push. The pages are what people read, not
   the repository:
@@ -1153,7 +1217,16 @@ transits it, so a content-free push keeps message text out of a US processor.
   that exists (30 February) or is still to come, a live build has no date for the agreement, a
   placeholder is left over, a link within a page leads nowhere, or a page would load anything
   from another site, and its test builds the pages with made-up details on every
-  `npm run verify`.
+  `npm run verify`. Before anything else it refuses an `--out` inside this repository, by any
+  path - `.`, a whole path, a folder not made yet, a link - and writes nothing: this repository is
+  public, and the pages carry the operator's name and address. A folder beside it, such as the
+  site's checkout, is outside it. "Anything from another site" is any element that runs or embeds
+  something (`<script>`, `<img>`, `<iframe>`, `<object>`, `<embed>` and the like), any attribute
+  that fetches what it names (`src`, `srcset`, `data`, `poster`, `background`, `ping` and the
+  like), an `href` or `xlink:href` on anything but a link, an event handler, a `javascript:` link,
+  a refresh in a `<meta>`, and `@import`, `url(` or `image-set(` in a style; the refusal names what
+  it found. Plain links - to the pages themselves, to other sites, to anchors, to `mailto:` - still
+  build.
 
   It also refuses to build from a checkout whose migrations lack a function that a promise on
   the pages rests on, and names it: that an account deleted on request loses its sign-in records

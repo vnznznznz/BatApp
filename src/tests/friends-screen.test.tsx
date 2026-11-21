@@ -278,6 +278,25 @@ describe('FriendsScreen', () => {
       expect(mockedRequestFriend).not.toHaveBeenCalled();
     });
 
+    /**
+     * The field is for someone else's username. "Choose a username." is what
+     * signing up says, and read here as if the courier had to pick one of
+     * their own.
+     */
+    it.each(['', '   ', '@'])(
+      'asks for their username when the field holds %p, in its own words',
+      async (typed) => {
+        await renderScreen(<FriendsScreen />);
+        await listLoaded();
+
+        await ask(typed);
+
+        expect(screen.getByText('Enter their username.')).toBeOnTheScreen();
+        expect(screen.queryByText('Choose a username.')).toBeNull();
+        expect(mockedRequestFriend).not.toHaveBeenCalled();
+      },
+    );
+
     it.each<[RequestOutcome, string]>([
       ['requested', 'Request sent. Once @anna accepts, you can write to each other.'],
       ['already_requested', 'You have already asked @anna. Their answer is up to them.'],

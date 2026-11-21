@@ -305,6 +305,9 @@ so that one store's reviewer deleting theirs cannot break the other's:
    with the ones for App Review.
 4. Sign out on every device used for this. The sign-in goes only into Play Console.
 
+As for Apple, make the account through the app's sign-up: one made in the dashboard and left
+unconfirmed cannot sign in, and the daily tidy-up deletes it after a week.
+
 Afterwards, resolve any test reports with `resolution = 'play review test'` (GO-LIVE, "Handling a
 report"). If the reviewer blocked Demo Friend, unblock in Your profile → Blocked couriers and become
 friends again; if they deleted the account, make it again from step 1. A session left unused for 90
@@ -313,8 +316,8 @@ days is ended by the daily tidy-up, so a demo account not used for that long sim
 **Pre-launch reports:** Google's robots may install builds and explore them (Testing → Pre-launch
 report). Whether that happens on internal testing is **to check**. If it does, turn pre-launch
 reports off in their settings: a robot that taps Create an account would make real accounts on the
-hosted project (with email confirmation on, unconfirmed ones, which the daily tidy-up deletes after
-a week). Delete any that appear.
+hosted project (with email confirmation on, unconfirmed ones, which the daily tidy-up deletes a
+week after the last code sent to them). Delete any that appear.
 
 ### Ads
 

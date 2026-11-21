@@ -28,8 +28,9 @@ in `docs/GO-LIVE.md` (Commits 67562f9, 3a343b0, 611813b, 665924d, acd4efe und 19
 Durchsicht des ganzen Projekts am 21. November 2026 gegen den Code bis Commit 187439c nachgeführt:
 die Migrationen bis `20261121160000_confirmation_clears_password.sql` (gesperrte Konten, die Grenze
 für Freundschaftsanfragen, Umzüge vor dem ersten Brief, das Passwort beim Bestätigen einer Adresse)
-und die App mit Codes statt Links in den E-Mails und einem Merkzettel im Schlüsselbund
-(Änderungsverlauf am Ende).
+und die App mit Codes statt Links in den E-Mails und einem Merkzettel im Schlüsselbund; danach bis
+Commit 93c70c3 mit `20261121180000_tidy_up_ages.sql`, das festlegt, ab wann der tägliche Auftrag
+zählt (Änderungsverlauf am Ende).
 
 **Persönliche Daten stehen nicht in dieser Datei.** Dieses Repository ist öffentlich. Wo das
 Verzeichnis Angaben zum Betreiber braucht, steht ein Platzhalter: `{{OPERATOR_NAME}}`,
@@ -158,17 +159,29 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   geschlossen wurde, das Konto, bevor es eingerichtet ist (zu prüfen wie der Satz davor).
 - **Betroffene:** Nutzer. Außerdem Personen, deren E-Mail-Adresse jemand anderes ohne ihr Wissen
   registriert hat: Die E-Mail-Bestätigung ist zurzeit aus (`supabase/config.toml`). Ist sie an,
-  bleibt eine solche Registrierung unbestätigt, und der tägliche Auftrag löscht sie nach sieben
-  Tagen (4.5). Registriert sich die Person, der die Adresse gehört, vorher selbst und gibt den Code
+  bleibt eine solche Registrierung unbestätigt, und der tägliche Auftrag löscht sie sieben Tage
+  nach dem letzten Code, der ihre Adresse bestätigen sollte (4.5). Ebenso ein Konto, das die
+  Anmeldung per Code des Anmeldeservers (`/auth/v1/otp`, von der App nie benutzt) für eine Adresse
+  ohne Konto anlegt, mit dem Benutzernamen des Aufrufers oder einem erzeugten: Es wird behandelt wie
+  eine solche Registrierung (Entscheidung des Betreibers). Registriert sich die Person, der die
+  Adresse gehört, vorher selbst und gibt den Code
   aus der E-Mail ein, macht die App das Konto zu ihrem: Es bekommt das Passwort und den
   Anzeigenamen, die sie eingegeben hat; trug es einen anderen Benutzernamen, löscht die App es und
   legt es mit ihren Angaben neu an, mit einem neuen Code. Bestätigt erst der Code zum Zurücksetzen
   eines Passworts ein solches Konto, löscht die App es, und die Person kann sich selbst
-  registrieren (`src/features/auth/auth-context.tsx`, `finishSignUp` und `verifyResetCode`).
+  registrieren (`src/features/auth/auth-context.tsx`, `finishSignUp` und `verifyResetCode`). Geht
+  die Antwort auf ihren Code verloren, nachdem er die Adresse bestätigt hat, richtet die App das
+  Konto nicht ein: Es bleibt ohne Passwort, mit Benutzernamen und Anzeigenamen der früheren
+  Registrierung, und gehört der Person so, sobald sie mit „I forgot my password“ ein Passwort
+  setzt. Die App sagt ihr, dass sie es im Profil löschen und sich neu registrieren kann, wenn es
+  Namen zeigt, die sie nicht gewählt hat (`NAMES_NOT_CHOSEN`); so hat es der Betreiber entschieden.
 - **Daten:**
   - E-Mail-Adresse: `auth.users.email`; Kopien in `auth.identities.identity_data` und dessen
     berechneter Spalte `email`, in `auth.one_time_tokens.relates_to`, solange ein Code zum
-    Bestätigen oder Zurücksetzen offen ist, und im `email`-Claim jedes Zugangs-Tokens.
+    Bestätigen oder Zurücksetzen offen ist, und im `email`-Claim jedes Zugangs-Tokens. Eine
+    weitere schreibt GoTrue bei der Registrierung in `auth.users.raw_user_meta_data` (`email`, am
+    lokalen Stack gesehen), und damit in das `user_metadata` jedes Zugangs-Tokens. Ändert der
+    Betreiber die Adresse eines Kontos, bleibt dort die alte stehen (Lücke L12).
   - Passwort nur als bcrypt-Hash (`auth.users.encrypted_password`). Das Passwort selbst gibt es nur
     im Formular und in der TLS-Anfrage an GoTrue. Wird eine Adresse bestätigt, der ein Code zum
     Bestätigen geschickt worden war, leert die Datenbank den Hash in derselben Anweisung (Trigger
@@ -177,7 +190,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Bestätigung meldet danach mehr an. Die App setzt gleich danach das Passwort, das die Person
     eingegeben hat – bei der Registrierung, beim Anmelden oder als neues Passwort. Bestätigt der
     Betreiber ein solches Konto von Hand, leert das den Hash ebenso, und die Person setzt mit „I
-    forgot my password“ ein neues. Ist die Bestätigung aus, wird kein Code geschickt, und der Hash
+    forgot my password“ ein neues; nur ein Passwort, das er mit der Admin-API setzt – im selben
+    Aufruf oder in einem davor –, bliebe, und das nutzt er nicht (GO-LIVE, Ende von „Before a
+    second person can sign up“). Ist die Bestätigung aus, wird kein Code geschickt, und der Hash
     bleibt.
   - Eine Kopie von Benutzername und Anzeigename bei der Registrierung
     (`auth.users.raw_user_meta_data`, eine weitere in `auth.identities.identity_data`). Aus ihr
@@ -186,7 +201,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Bis dahin stehen sie auch im `user_metadata` der Zugangs-Tokens. Mehr als 4.096 Bytes solcher
     Angaben nimmt die Datenbank nicht an: Eine Registrierung, die mehr mitschickt, wird ganz
     abgewiesen, und über die Grenze wachsen lassen sie sich danach auch nicht (Trigger
-    `users_limit_sign_up_details`, `20261114120006_sign_up_details_limit.sql`).
+    `users_limit_sign_up_details`, `20261114120006_sign_up_details_limit.sql`). Andere Angaben,
+    die eine Registrierung an der App vorbei mitschickt, entfernt der Auftrag nicht: Sie bleiben,
+    bis zu dieser Grenze, so lange wie das Konto, und mit ihnen in jedem Zugangs-Token (Lücke L13).
   - Kontodatensatz: Nutzer-ID (UUID), `created_at`, `updated_at`, `last_sign_in_at`,
     `email_confirmed_at` (bei abgeschalteter Bestätigung automatisch gesetzt), Token für
     Bestätigung, Zurücksetzen und E-Mail-Wechsel mit ihren `*_sent_at`, `banned_until`,
@@ -224,13 +241,17 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     `users` 1→0, `identities` 1→0, `sessions` 3→0, `refresh_tokens` 3→0). Die Einträge des Kontos
     im Anmeldeprotokoll löscht die Funktion gleich mit (V8).
   - Abmelden beendet die Sitzungen der Person auf allen Geräten (supabase-js `signOut()`,
-    Voreinstellung `global`). Am lokalen Stack geprüft: GoTrue löscht dabei die Zeilen; auf dem
-    gehosteten Projekt bestätigen (zu prüfen). Erreicht die Abmeldung den Server nicht, bleiben sie,
-    bis die 90 Tage unten greifen. Ein Zugangs-Token, den ein anderes Gerät schon hält, gilt an der
-    Datenbank-API trotzdem weiter, bis er abläuft, also höchstens 3600 Sekunden: Dort sieht nichts
-    nach der Sitzung (am 17. November 2026 am lokalen Stack gezeigt, mit einem signierten Token
-    ohne Sitzung; GoTrue selbst lehnt ihn ab). Die Datenschutzerklärung sagt deshalb „höchstens
-    eine Stunde“ (3.9).
+    Voreinstellung `global`). Am lokalen Stack geprüft, am 4. und noch einmal am 14. November 2026:
+    GoTrue löscht dabei alle Sitzungen und Refresh-Token des Kontos. Das gehostete Projekt läuft
+    mit demselben GoTrue; dort bleibt dazu nichts zu prüfen (wie in der Datenschutzerklärung,
+    PRÜFEN-Hinweis zu 3.9). Erreicht die Abmeldung den Server nicht, sagt die
+    App ihm das Ende der Sitzung dieses Geräts bei der nächsten Anmeldung dort, für sich allein
+    (Bereich `local`, `owedToServer`), solange sie nicht geschlossen wurde; sonst, und für die
+    Sitzungen der anderen Geräte, bleiben sie, bis die 90 Tage unten greifen. Ein Zugangs-Token,
+    den ein anderes Gerät schon hält, gilt an der Datenbank-API trotzdem weiter, bis er abläuft,
+    also höchstens 3600 Sekunden: Dort sieht nichts nach der Sitzung (am 17. November 2026 am
+    lokalen Stack gezeigt, mit einem signierten Token ohne Sitzung; GoTrue selbst lehnt ihn ab).
+    Die Datenschutzerklärung sagt deshalb „höchstens eine Stunde“ (3.9).
   - **Unbenutzte Sitzungen:** Der tägliche Auftrag `tidy_up` löscht eine Sitzung, deren
     `updated_at` älter als 90 Tage ist (`private.idle_session_lifetime()`), mit ihren
     Refresh-Token. GoTrue setzt `updated_at` bei jeder Erneuerung, also etwa stündlich, solange die
@@ -249,18 +270,25 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     erreichbar ist; sie wartet höchstens fünf Sekunden auf ihn (`SERVER_SIGN_OUT_WAIT_MS`). Nach
     der Kontolöschung entfernt sie sie, ohne den Server zu fragen, sobald sie weiß, dass das Konto
     weg ist; geht die Antwort auf die Löschung verloren und ist auch der Server nicht zu fragen,
-    bleibt sie angemeldet, bis sie es erfahren kann. Den Merkzettel vergisst sie, sobald getan ist,
-    wofür der Code war, wenn das Konto gelöscht wird, bei jedem Abmelden, bei einer Anmeldung mit
-    Passwort und beim Start, wenn zu seiner Adresse keine Sitzung gespeichert ist. Auf iOS liegen
-    die Einträge mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY` (`KEYCHAIN_OPTIONS`): nicht in Backups für ein
-    anderes Gerät, kein Umzug auf ein neues iPhone. Ob sie das Löschen der App überleben: zu prüfen.
-    Auf Android sind sie von Auto Backup und Geräteübertragung ausgenommen.
+    bleibt sie angemeldet, bis sie es erfahren kann. Eine Sitzung, die sie losgelassen hat, ohne
+    dass der Server die Abmeldung binnen fünf Sekunden bestätigte, und die eines gelöschten Kontos
+    hält sie im Arbeitsspeicher, längstens bis die App geschlossen wird, nie gespeichert (`letGo`,
+    `owedToServer`): um eine Erneuerung dieser Sitzung, die danach noch ankommt, zu beenden statt zu
+    übernehmen, und um dem Server eine Abmeldung, die er nicht gehört hat, bei der nächsten
+    Anmeldung zu sagen. Den Merkzettel vergisst sie, sobald getan ist, wofür der Code war, wenn das
+    Konto gelöscht wird, bei jedem Abmelden, vor jeder Anmeldung und Registrierung (die Prüfung
+    eines Codes schreibt danach ihren eigenen) und beim Start, wenn zu seiner Adresse keine Sitzung
+    gespeichert ist. Auf iOS liegen die Einträge mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY`
+    (`KEYCHAIN_OPTIONS`): nicht in Backups für ein anderes Gerät, kein Umzug auf ein neues iPhone.
+    Ob sie das Löschen der App überleben: zu prüfen. Auf Android sind sie von Auto Backup und
+    Geräteübertragung ausgenommen.
   - Gesperrte Konten: V7.
 - **Quelle:** `supabase/config.toml`; `supabase/templates/`; `src/features/auth/auth-context.tsx`;
   `src/features/auth/unfinished.ts`; `src/lib/supabase.ts`; `src/lib/session-store.ts`;
   `src/lib/secure-storage.ts`; `src/app/sign-up.tsx`;
   `supabase/migrations/20261104120000_privacy_housekeeping.sql` (`delete_own_account`, `tidy_up`),
-  `20261114120006_sign_up_details_limit.sql`, `20261121160000_confirmation_clears_password.sql`.
+  `20261114120006_sign_up_details_limit.sql`, `20261121160000_confirmation_clears_password.sql`,
+  `20261121180000_tidy_up_ages.sql` (`tidy_up`, wie es heute ist).
 
 ### V2 Profil und Stadt
 
@@ -346,7 +374,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   einen Tag zurückliegt, also spätestens zwei Tage nach deren Beginn. Eine neue Anfrage nach Ablauf
   der Stunde beginnt die Zählung in derselben Zeile von vorn.
 - **Quelle:** `20261031120300_friendships.sql`, `20261102120000_safety.sql`,
-  `20261114120001_friend_requests.sql`, `20261114120004_one_lock_order.sql` (`tidy_up`),
+  `20261114120001_friend_requests.sql`, `20261121180000_tidy_up_ages.sql` (`tidy_up`),
   `20261114120008_courier_gate.sql` (`request_friend`); `src/lib/rpc-error.ts`.
 
 ### V4 Briefe und Fledermäuse (Zustellung)
@@ -447,7 +475,10 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   den Anmeldedaten des gemeldeten Kontos).
 - **Grenzen im Code:** höchstens 20 Meldungen je meldender Person und Tag; je meldender Person
   höchstens eine offene Meldung zu einem Brief und eine offene Meldung zu einer Person
-  (`reports_letter_once`, `reports_courier_once`).
+  (`reports_letter_once`, `reports_courier_once`). Gemeldet werden kann auch eine Person, mit der
+  die meldende nie befreundet war, denn auch eine fremde Person kann eine Anfrage unter einem
+  beleidigenden Namen schicken (Entscheidung des Betreibers). Wegwerfkonten können die
+  Warteschlange damit füllen, mit Meldungen über jede Person, deren Nutzer-ID sie kennen.
 - **Löschfristen:**
   - 180 Tage nach `created_at`, erledigt oder nicht: Der pg_cron-Job `forget-old-reports` läuft
     stündlich (`17 * * * *`) und ruft `private.forget_old_reports()` auf.
@@ -503,8 +534,11 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Passwort-Hash, die Zeitpunkte aus V1, `banned_until` –, dazu die Identität (ohne die Namen, die
   `tidy_up` entfernt). Die Sitzungen mit IP-Adresse und User-Agent bleiben, bis sie 90 Tage nicht
   benutzt wurden; ein gesperrtes Konto kann sie nicht mehr erneuern (lokal geprüft), sie gehen also
-  spätestens rund 91 Tage nach der Sperre (V1; Lücke L7; dass eine abgelehnte Erneuerung
-  `updated_at` nicht setzt: zu prüfen). Die Einträge im Anmeldeprotokoll lässt `remove_account`
+  spätestens rund 91 Tage nach der Sperre (V1; Lücke L7). Dass eine abgelehnte Erneuerung nicht als
+  Benutzung zählt, ist am 14. November 2026 am lokalen Stack gesehen: Eine Erneuerung, die GoTrue
+  wegen der Sperre ablehnt, ändert weder `updated_at` noch `refreshed_at` der Sitzung, die 90 Tage
+  laufen also ab der letzten echten Benutzung. Das gehostete Projekt läuft mit demselben GoTrue.
+  Die Einträge im Anmeldeprotokoll lässt `remove_account`
   bewusst stehen, weil sie nach einer Drohung das sind, was man der Polizei geben kann; sie gehen
   nach 30 Tagen (V8).
 - **Löschfrist:** **zwei Jahre ab dem Entfernen**, die Entscheidung des Betreibers
@@ -522,7 +556,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Token-Ereignisse, Anforderung eines Codes zum Bestätigen der Adresse oder für ein neues
     Passwort, eine weitere Registrierung derselben Adresse, Passwortänderung) `actor_id` (UUID),
     `actor_username` (= E-Mail-Adresse), `traits`, `ip_address`, `created_at`. Lokal ist
-    `ip_address` in jeder Zeile leer; ob das gehostete Projekt sie füllt: zu prüfen.
+    `ip_address` in jeder Zeile leer, während `auth.sessions` die IP-Adresse hat (zuletzt gesehen
+    am 14. November 2026); ob das gehostete Projekt sie füllt: zu prüfen.
   - Supabase-Protokolle (Logs Explorer): Gateway – IP-Adresse, Methode, Pfad (bei Profilabfragen mit
     der eigenen Nutzer-ID, `/rest/v1/profiles?...&id=eq.<uuid>`; beim Speichern einer Stadt dazu die
     Bedingung, unter der gespeichert wird: die Nummer der Stadt, von der die Fledermäuse gerade
@@ -673,7 +708,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Zeitpunkt und aufgerufene Seite, soweit GitHub sie festhält (genaue Felder: zu prüfen). Die Seiten
   selbst setzen keine Cookies und laden nichts von anderen Websites; beim Bauen prüfen, dass es so
   bleibt (keine Web-Schriften, Skripte, Analyse oder Einbettungen von fremden Adressen, auch kein
-  Theme, das so etwas nachlädt).
+  Theme, das so etwas nachlädt). Der Bau selbst weist eine Seite ab, die etwas von anderswo laden
+  würde, und sagt, was er fand; und er schreibt die Seiten mit Name und Anschrift nie in dieses
+  Repository (`scripts/build-store-pages.mjs`; GO-LIVE, „Where the web pages live“).
 - **Empfänger:** GitHub, Inc. (USA). Ob GitHub für GitHub Pages eigener Verantwortlicher oder
   Auftragsbearbeiter ist und es dafür einen Vertrag gibt, wie lange GitHub die IP-Adressen
   aufbewahrt und ob GitHub nach dem Swiss-US bzw. EU-US Data Privacy Framework zertifiziert ist: zu
@@ -699,9 +736,11 @@ fehlt, steht in 4.8.
   bestätigen: zu prüfen.
 - **Passwörter:** nur als bcrypt-Hash (GoTrue); zwischen 8 und 72 Bytes, wie GoTrue zählt – ein
   Buchstabe wie ä zählt zwei –, und die App sagt es vor dem Senden (`config.toml`,
-  `src/features/auth/validation.ts`). Wird eine Adresse bestätigt, der ein Code zum Bestätigen
-  geschickt worden war, leert die Datenbank den Hash, bis die App das Passwort der Person setzt
-  (V1).
+  `src/features/auth/validation.ts`). Eine Regel zu Zeichenarten gibt es nicht, es zählt vor allem
+  die Länge (Entscheidung des Betreibers); eine Prüfung gegen bekannte geleakte Passwörter gäbe es
+  im gehosteten Projekt erst in einem bezahlten Tarif. Wird eine Adresse bestätigt, der ein Code
+  zum Bestätigen geschickt worden war, leert die Datenbank den Hash, bis die App das Passwort der
+  Person setzt (V1).
 - **Auf dem Gerät:** Die Sitzung liegt im iOS-Schlüsselbund bzw. verschlüsselt mit dem
   Android-Keystore (`expo-secure-store`, `src/lib/secure-storage.ts`), nie in AsyncStorage, ebenso
   der Merkzettel zu einem Code aus einer E-Mail (V1). Auf iOS mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY`:
@@ -787,7 +826,8 @@ fehlt, steht in 4.8.
   war, der Merkzettel dazu (V1). Briefe, angefangene Briefe, Freundeslisten, Notizen zu Meldungen
   und die zuletzt gewählte Einstellung von „Also block“ sind nur im Speicher und mit dem Schließen
   der App weg; angefangene Briefe und „Also block“ je angemeldeter Person, und beim Abmelden
-  ebenso.
+  ebenso. Nur im Speicher ist auch eine Sitzung, die beim Abmelden losgelassen wurde, ohne dass
+  der Server die Abmeldung rechtzeitig bestätigte, und die eines gelöschten Kontos (V1).
 - Was eine Registrierung an Angaben mitschicken kann, begrenzt die Datenbank auf 4.096 Bytes (V1).
 - Inhalte in POST-Bodies statt in URLs, keine Parameter in den Postgres-Protokollen (V8).
 - Auf Android fordert die App nur die Berechtigung `INTERNET` an: `app.json` sperrt
@@ -818,15 +858,21 @@ fehlt, steht in 4.8.
   des Kontos im Anmeldeprotokoll, und sperrt nichts. Der Knopf „Delete user“ im Dashboard tut
   das nicht und wird dafür nicht benutzt.
 - **Täglicher Auftrag** `private.tidy_up()` (pg_cron-Job `tidy-up`, `43 4 * * *`, UTC): löscht
-  zuerst eine Registrierung, deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde,
-  samt Profil (`private.unconfirmed_sign_up_lifetime()`; findet nichts, solange die Bestätigung
-  aus ist), und den Anmeldedatensatz eines entfernten Kontos, sobald die Sperre abgelaufen ist;
-  dann löscht er Einträge im Anmeldeprotokoll nach 30 Tagen; löscht Sitzungen, die 90 Tage nicht
-  benutzt wurden, mit ihren Refresh-Token; entfernt die Namen von der Registrierung aus
-  `auth.users` und `auth.identities`; leert die vorherige Stadt nach einem abgeschlossenen Umzug;
-  löscht die Zählung der Freundschaftsanfragen eines Kontos, deren Stunde mehr als einen Tag
-  zurückliegt; behält das Laufprotokoll von pg_cron (`cron.job_run_details`) eine Woche
-  (`20261114120004_one_lock_order.sql`).
+  zuerst samt Profil eine Registrierung, deren E-Mail-Adresse 7 Tage nach dem letzten Code zur
+  Bestätigung (`auth.users.confirmation_sent_at`; ohne Code: nach der Registrierung) noch nicht
+  bestätigt ist (`private.unconfirmed_sign_up_lifetime()`). Wer am siebten Tag einen neuen Code
+  anfordert, hat dessen Tag, und vor dem Löschen fragt der Auftrag noch einmal nach. Solange die
+  Bestätigung aus ist, findet er Konten, die der Betreiber von Hand angelegt hat, ohne die Adresse
+  zu bestätigen (im Dashboard oder über die Admin-API), und löscht auch sie nach dieser Woche;
+  anmelden kann sich ein solches Konto nicht. Dann löscht er den Anmeldedatensatz eines entfernten
+  Kontos, sobald die Sperre abgelaufen ist; Einträge im Anmeldeprotokoll nach 30 Tagen; Sitzungen,
+  die 90 Tage nicht benutzt wurden, mit ihren Refresh-Token; er entfernt die Namen von der
+  Registrierung aus `auth.users` und `auth.identities`; leert die vorherige Stadt nach einem
+  abgeschlossenen Umzug; löscht die Zählung der Freundschaftsanfragen eines Kontos, deren Stunde
+  mehr als einen Tag zurückliegt; und behält das Laufprotokoll von pg_cron (`cron.job_run_details`)
+  eine Woche, auch einen Lauf, den ein Neustart abgebrochen hat: eine Woche ab seinem Beginn. Ein
+  Lauf, der vor seinem Beginn abgebrochen wurde, hat keine Zeit; er geht, sobald ein später
+  nummerierter Lauf vor mehr als einer Woche begann (`20261121180000_tidy_up_ages.sql`).
 - **Was bei fehlenden Rechten passiert:** Jeder Schritt an einer Tabelle von Supabase
   (`auth.audit_log_entries`, `auth.users`, `auth.identities`, `auth.sessions`,
   `cron.job_run_details`) steht für sich: Fehlt das Recht oder die Tabelle, wird er übersprungen,
@@ -892,8 +938,10 @@ dieses Verzeichnis, die Datenschutzerklärung und die Store-Formulare mit.
 | L7  | Während einer Sperre bleiben neben der E-Mail-Adresse auch Passwort-Hash und Zeitpunkte zwei Jahre ab dem Entfernen stehen, die Sitzungen mit IP-Adresse und User-Agent bis zu rund 91 Tage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Beim Entfernen auch die Sitzungen löschen (5.6), bei einer Drohung erst nach dem Export für die Polizei (GO-LIVE, „A threat“); einen anderen Grund, sie stehen zu lassen, gibt es dann nicht mehr. Dann die Datenschutzerklärung (3.8) mit ändern. Entscheidung des Betreibers                                                                                                                                                                                               |
 | L8  | Ob das gehostete Projekt `tidy_up` jeden Schritt erlaubt, ist offen. Fehlt ein Recht, wird nur dieser Schritt übersprungen und im Ergebnis genannt (4.5); der tägliche Lauf meldet trotzdem `succeeded`, und die Datenschutzerklärung stimmt an dieser Stelle nicht. Ob GoTrue ersetzte Refresh-Token aufräumt, ist ebenfalls offen; wenn nicht, wächst die Kette einer benutzten Sitzung um etwa eine Zeile je Stunde Nutzung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `select private.tidy_up();` nach dem ersten `db push` und monatlich von Hand; es muss eine leere Liste ergeben (`[]`, in psql `{}`; 5.2, 5.7). Für die Token: `GOTRUE_DB_CLEANUP_ENABLED` auf dem gehosteten Projekt erfragen, sonst `tidy_up` ersetzte Token nach einem Tag löschen lassen (Code-Änderung; vorher prüfen, dass GoTrues Erkennung wiederverwendeter Token das verträgt)                                                                                      |
 | L9  | Ordnung, keine Nutzerdaten im engeren Sinn: im Supabase Studio gespeicherte SQL-Schnipsel können Nutzer-IDs aus dem Runbook enthalten                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Schnipsel ohne IDs speichern, gelegentlich aufräumen                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung, und solange ein Code nicht getan hat, wofür er war, der Merkzettel dazu, im Klartext in localStorage (oder nur im Speicher, wo der Browser localStorage verweigert)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung, und solange ein Code nicht getan hat, wofür er war, der Merkzettel dazu, im Klartext in localStorage (oder nur im Speicher, wo der Browser localStorage verweigert); dazu stünde die E-Mail-Adresse, mit der jemand „I forgot my password“ drückt, in der Adresse der Seite und im Verlauf des Browsers (`/reset-password?email=…`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | L11 | Ob ein Benutzername vergeben ist, verrät eine Registrierung jedem, auch ohne Konto: Mit einer Adresse, die noch kein Konto hat, schlägt sie für einen vergebenen Namen fehl. Mit einem Konto verrät es auch eine Freundschaftsanfrage; dort zählen nur Treffer gegen die Grenze von 20 neuen Anfragen je Stunde (V2, V3). Ob eine E-Mail-Adresse ein Konto hat, sagt eine Registrierung offen, solange die Bestätigung aus ist („There is already an account with that email address“). Ist sie an, verrät es die App noch auf zwei Wegen: Solange das Projekt alle E-Mails der Stunde verschickt hat, antwortet sie auf eine Adresse mit bestätigtem Konto anders als auf eine ohne; und wer einen vergebenen Benutzernamen kennt, kann mit ihm Adressen durchprobieren, denn an ihm scheitert die Registrierung nur für eine Adresse ohne Konto. Der Anmeldeserver verrät es außerdem selbst, was immer die App zeigt (GO-LIVE, „Known gaps already logged“) | Beim Benutzernamen eine Änderung an der Datenbank: eine Registrierung, die an einem vergebenen Namen nicht scheitert, oder eine Prüfung der Namen, die keine Adresse braucht; ob sie nötig ist, entscheidet der Betreiber. Bei der Adresse die Schritte 2 und 4 in GO-LIVE, „Before a second person can sign up“: ein E-Mail-Limit weit über den Registrierungen einer Stunde, die Bestätigung an (L3). Was der Anmeldeserver sonst selbst verrät, kann die App nicht ändern |
+| L12 | Ändert der Betreiber die E-Mail-Adresse eines Kontos (5.4), bleibt die alte in `auth.users.raw_user_meta_data` (`email`), wo GoTrue sie bei der Registrierung eingetragen hat, und damit im `user_metadata` jedes Zugangs-Tokens, solange das Konto besteht (V1; in der Durchsicht gesehen)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Beim Berichtigen auch dort die Adresse ändern; wie, ist zu prüfen                                                                                                                                                                                                                                                                                                                                                                                                            |
+| L13 | Weitere Angaben, die eine Registrierung an der App vorbei mitschickt, bleiben bis zur Grenze von 4.096 Bytes im Kontodatensatz und in jedem Zugangs-Token, solange das Konto besteht: `tidy_up` entfernt nur Benutzername und Anzeigename (V1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `tidy_up` auch die übrigen Angaben entfernen lassen, außer denen, die GoTrue selbst schreibt (Code-Änderung)                                                                                                                                                                                                                                                                                                                                                                 |
 
 Am 4. November 2026 behoben (Migration `20261104120000_privacy_housekeeping.sql`,
 `src/lib/secure-storage.ts`, `app.json`, GO-LIVE): Das Anmeldeprotokoll überdauerte die
@@ -921,7 +969,10 @@ wer sich vor der Person, der eine Adresse gehört, mit dieser Adresse registrier
 nach ihrer Bestätigung noch mit seinem Passwort an; der Knopf „Delete user“ im Dashboard konnte mit
 einer Landung in einen Deadlock geraten (jetzt `private.delete_account`, 5.4); und Abmelden ließ
 ohne Netz 25 bis 40 Sekunden warten, bevor die Sitzung vom Gerät ging (jetzt höchstens fünf
-Sekunden).
+Sekunden). Zuletzt, mit `20261121180000_tidy_up_ages.sql`: Eine unbestätigte Registrierung zählte
+ihre Woche ab der Registrierung, sodass ein am siebten Tag angeforderter Code mit dem Konto in der
+Nacht verschwand; und ein Lauf von pg_cron, den ein Neustart abbrach, blieb für immer im
+Laufprotokoll.
 
 ---
 
@@ -1279,6 +1330,8 @@ hielte die E-Mail-Adresse eines Kindes zwei Jahre gespeichert.
 
 Die anderen Rechte: **Berichtigung** (Art. 32 Abs. 1 DSG, Art. 16 DSGVO) – Anzeigename und Stadt
 ändert die Person selbst; die E-Mail-Adresse ändert der Betreiber im Dashboard (Weg zu prüfen).
+Die alte Adresse bleibt danach in den Angaben von der Registrierung stehen, und damit in jedem
+Zugangs-Token des Kontos (Lücke L12); das gehört zur Antwort an die Person.
 Benutzernamen lassen sich nicht ändern (Entscheidung des Betreibers): Wer einen anderen will,
 löscht das Konto und registriert sich neu. Ob das dem Recht auf Berichtigung genügt: zu prüfen
 (6.16). **Einschränkung** (Art. 18) und **Widerspruch** (Art. 21) gegen Verarbeitungen nach Art. 6
@@ -1417,12 +1470,14 @@ Betreiber noch selbst tut:
   er keinen Schritt überspringt und dass keine abgelaufene Sperre übrig ist. Die zweite Abfrage muss
   eine leere Liste ergeben (`[]`, in psql `{}`), die dritte 0; dazu die Abfrage oben nach
   gesperrten Konten mit Profil. `succeeded`
-  allein genügt nicht: Ein übersprungener Schritt ist kein Fehler (4.5).
+  allein genügt nicht: Ein übersprungener Schritt ist kein Fehler (4.5). `nulls last` in der ersten
+  Abfrage, weil ein Lauf, den ein Neustart vor seinem Beginn abbrach, keine `start_time` hat und
+  sonst zuoberst stünde, bis `tidy_up` ihn nach etwa einer Woche löscht.
 
   ```sql
   select status, start_time from cron.job_run_details
   where jobid = (select jobid from cron.job where jobname = 'tidy-up')
-  order by start_time desc limit 3;
+  order by start_time desc nulls last limit 3;
 
   select private.tidy_up();
 
@@ -1490,13 +1545,16 @@ Betreiber noch selbst tut:
     `postgres` also jeden Schritt an den Tabellen von Supabase ausführen darf (sonst überspringt
     `tidy_up` diesen Schritt und nennt ihn, und `delete_own_account` überspringt das Löschen im
     Anmeldeprotokoll still, 4.5); ob `tidy-up` in `cron.job` steht; ob `ip_address` im
-    Anmeldeprotokoll gefüllt wird; dass Abmelden die Sitzungen löscht; dass eine abgelehnte
-    Erneuerung eines gesperrten Kontos `updated_at` der Sitzung nicht setzt; ob
+    Anmeldeprotokoll gefüllt wird (lokal ist es leer, V8); ob
     `GOTRUE_DB_CLEANUP_ENABLED` gesetzt ist und, wenn nicht, ob `tidy_up` ersetzte Refresh-Token
     selbst löschen kann; Bereinigung abgelaufener Einmal-Token; ob die Sperre greift, wenn beim
     Entfernen auch die Sitzungen gelöscht werden; ob das gehostete Projekt die Codes aus
     `config.toml` übernimmt (acht Ziffern, ein Tag) und die E-Mails mit den Vorlagen ohne Link
-    verschickt (V10).
+    verschickt (V10); ob pg_graphql dort nichts ausliefert und die Publikation `supabase_realtime`
+    leer bleibt (beides prüft das Einrichten noch nicht, GO-LIVE, „Known gaps already logged“).
+    Nicht mehr hier, weil am lokalen Stack gesehen und das gehostete Projekt mit demselben GoTrue
+    läuft: dass Abmelden alle Sitzungen löscht (V1) und dass eine abgelehnte Erneuerung eines
+    gesperrten Kontos `updated_at` der Sitzung nicht setzt (V7).
 11. Microsoft: Rolle, Vertrag und Grundlage für die USA (Swiss-US bzw. EU-US Data Privacy
     Framework?) für das Outlook.com-Postfach.
 12. Apple und Google: ihre Rolle bei Testerdaten; was App Store Connect bei Testern über einen
@@ -1541,3 +1599,4 @@ Betreiber noch selbst tut:
 | 4. November 2026  | Gegen den Code bis Commit 31cf850 geprüft: jeder Schritt von `tidy_up` abgesichert, Prüfung mit `select private.tidy_up();` statt der Rechteabfrage; Android-Berechtigungen; Konto eines Kindes unter 12 ohne Sperre löschen; zwei Jahre Sperre ab dem Entfernen; Anschrift öffentlich nur in der Datenschutzerklärung                                                                                                                                                                                                                                                                                                                                                                                           | –                                  |
 | 5. November 2026  | Entscheidungen des Betreibers: Er lebt in der Schweiz, als Privatperson – DSG zuerst (Verzeichnis nach Art. 12 DSG, EDÖB als Aufsicht, Datenpannen nach Art. 24 DSG, Rechte nach Art. 25, 28 und 32 DSG, die Länder Schweiz und USA mit ihren Garantien), die DSGVO für Menschen in der EU; Vertreter nach Art. 27 zu prüfen; die BDSG-Hinweise nur noch als „zu prüfen“. Altersgrenze 13 statt 12, Families Policy damit entschieden. Webseiten bei GitHub Pages (V13, Abschnitt 2)                                                                                                                                                                                                                             | –                                  |
 | 21. November 2026 | Gegen den Code bis Commit 187439c geprüft, nach der Durchsicht des ganzen Projekts: gesperrte Konten sofort abgewiesen, auch beim Löschen, Anmeldung wie mit falschem Passwort beantwortet (V7); Grenze und Zählung der Freundschaftsanfragen (V3); `has_corresponded`, Umzüge vor dem ersten Brief sofort (V2); Codes statt Links in allen E-Mails, kein PKCE, Passwort beim Bestätigen geleert (V1, V10, 4.3); Merkzettel auf dem Gerät (V1, 4.4); Grenze für Angaben bei der Registrierung, sichtbare Anzeigenamen; Ablauf und Deadlocks von `tidy_up` (4.5); Auskunftsabfrage mit `briefe_gehabt`, der Zählung und Städten mit Zusatz (5.3); Benutzernamen nicht änderbar (Entscheidung des Betreibers, 5.4) | –                                  |
+| 21. November 2026 | Gegen den Code bis Commit 93c70c3 nachgeführt: die Woche einer unbestätigten Registrierung ab dem letzten Code, von Hand angelegte unbestätigte Konten, das Laufprotokoll von pg_cron (V1, 4.5); was am lokalen Stack zu Abmelden und abgelehnter Erneuerung gesehen ist (V1, V7, 6.10); Meldungen über Fremde und Konten über `/auth/v1/otp` als Entscheidungen (V1, V6); Lücken L12 und L13                                                                                                                                                                                                                                                                                                                    | –                                  |

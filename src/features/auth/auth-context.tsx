@@ -34,7 +34,7 @@ import {
   normaliseUsername,
   PASSWORD_TOO_LONG,
 } from '@/features/auth/validation';
-import { noteAccountDeleted } from '@/lib/farewell';
+import { forgetSessionEnded, noteAccountDeleted } from '@/lib/farewell';
 import { CONTACT_URL } from '@/lib/links';
 import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
@@ -405,6 +405,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // screen has to remember to update the session itself.
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (event === 'SIGNED_OUT') signOutsAnnounced += 1;
+      // A sign-out the courier made on this device - Sign out, a deletion, a
+      // start over - may come after the auth server refused the session's
+      // renewal, ended elsewhere meanwhile. They signed out themselves: the
+      // welcome screen is not to say that they were signed out (farewell.ts).
+      if (event === 'SIGNED_OUT' && isSignOutUnderWay()) forgetSessionEnded();
       if (!active) return;
       announcements += 1;
       // Nothing is finished without the session a code brought. Every sign-out
@@ -853,6 +858,11 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
     if (await told) return;
     throw new Error('This device could not be signed out. Try again.', { cause });
   }
+  // The courier is signing out here: a session ended elsewhere meanwhile is no
+  // news to them, and the welcome screen opens now - before the client, still
+  // waiting for the server, announces SIGNED_OUT and the word is taken back
+  // there. (Found in review.)
+  forgetSessionEnded();
   forget();
 
   // The client may still be at it, renewing and then telling the server. If it

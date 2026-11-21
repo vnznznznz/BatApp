@@ -19,6 +19,14 @@ export const REFUSALS = {
   friendship_not_found: 'That friendship has already ended.',
   empty_message: 'Write something first.',
   message_too_long: `A letter can be at most ${MESSAGE_MAX_LENGTH} characters.`,
+  // Not a hint of the database's: a letter with a NUL or half an emoji in it
+  // is refused by Postgres or PostgREST before send_message reads it, by codes
+  // of their own (see sendMessage), and validateBody keeps it back first. The
+  // courier cannot see which character it is, so the words say what it may
+  // be, and how to be rid of it.
+  unsendable_character:
+    'Your letter has a character in it that cannot be sent: half of an emoji, or a hidden one ' +
+    'that came with pasted text. Delete it, or type that part again yourself.',
   not_friends: 'Letters can only go to friends.',
   sender_has_no_city: 'Choose your city first. Your bats need to know where home is.',
   recipient_has_no_city: 'Your friend has not chosen a city yet, so no bat can find them.',

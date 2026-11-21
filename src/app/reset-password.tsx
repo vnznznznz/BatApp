@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
@@ -36,8 +36,15 @@ export default function ResetPasswordScreen() {
   // yet saved - the app closed in between, say - taken up where it was left:
   // the root layout brings the courier here for it.
   const [resumed] = useState(() => (unfinished?.flow === 'reset' ? unfinished : null));
+  // The address typed on the form "I forgot my password" was pressed on, so
+  // that it is not typed twice. Only where the field starts: it can be changed,
+  // and is checked like any address typed here. A link can name it twice, and
+  // then it is not known which.
+  const { email: brought } = useLocalSearchParams<{ email?: string | string[] }>();
 
-  const [email, setEmail] = useState(resumed?.email ?? '');
+  const [email, setEmail] = useState(
+    resumed?.email ?? (typeof brought === 'string' ? brought : ''),
+  );
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   // The address, as sent, once a code has been asked for.

@@ -207,6 +207,45 @@ describe('whether a session is stored', () => {
   });
 });
 
+/**
+ * The app renews sessions it has let go of, too: to tell the server of a
+ * sign-out it may not have heard. What the server answers about one of those
+ * is no news of the session on the device, and the fetch of our own asks here
+ * which one a renewal is for.
+ */
+describe('whose refresh token a renewal carries', () => {
+  it('is the stored session’s while it is stored, and no other’s', async () => {
+    const { authStorage, isStoredRefreshToken, SESSION_KEY } = launch();
+    expect(isStoredRefreshToken('refreshtoken')).toBe(false);
+
+    await authStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+    expect(isStoredRefreshToken('refreshtoken')).toBe(true);
+    expect(isStoredRefreshToken('another')).toBe(false);
+    expect(isStoredRefreshToken('')).toBe(false);
+
+    await authStorage.setItem(SESSION_KEY, JSON.stringify({ ...SESSION, refresh_token: 'next' }));
+    expect(isStoredRefreshToken('refreshtoken')).toBe(false);
+    expect(isStoredRefreshToken('next')).toBe(true);
+
+    await authStorage.removeItem(SESSION_KEY);
+    expect(isStoredRefreshToken('next')).toBe(false);
+  });
+
+  it('is known from the first read that finds the session, and kept over a read that fails', async () => {
+    const earlier = launch();
+    await earlier.authStorage.setItem(earlier.SESSION_KEY, JSON.stringify(SESSION));
+
+    const { isStoredRefreshToken, readStoredSession } = launch();
+    expect(isStoredRefreshToken('refreshtoken')).toBe(false);
+    await readStoredSession();
+    expect(isStoredRefreshToken('refreshtoken')).toBe(true);
+
+    mockRefusal.reads = true;
+    await readStoredSession();
+    expect(isStoredRefreshToken('refreshtoken')).toBe(true);
+  });
+});
+
 describe('on the web', () => {
   /** A browser's storage, as far as the store uses it. */
   function browser(initial: Record<string, string> = {}) {

@@ -1,5 +1,5 @@
 import { MESSAGE_MAX_LENGTH, VISIBLE_CHARACTER_PATTERN } from '@/constants/config';
-import { toRpcError } from '@/lib/rpc-error';
+import { REFUSALS, RpcError, toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -258,7 +258,25 @@ export function validateBody(text: string): string | null {
   if (letterLength(body) > MESSAGE_MAX_LENGTH) {
     return `A letter can be at most ${MESSAGE_MAX_LENGTH} characters.`;
   }
+  if (hasUnsendableCharacter(body)) return REFUSALS.unsendable_character;
   return null;
+}
+
+/**
+ * Whether `text` holds a character no letter can carry: a NUL, which the
+ * database cannot store, or half of an emoji on its own - cut in two by
+ * whatever it was copied from - which PostgREST cannot read in the request.
+ * The server refuses either before send_message looks at the letter, so the
+ * letter would never go, however often it was sent.
+ */
+function hasUnsendableCharacter(text: string): boolean {
+  // Walked by code points: a whole emoji comes as one, and a half alone comes
+  // as a code point of its own, between U+D800 and U+DFFF.
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code === 0 || (code >= 0xd800 && code <= 0xdfff)) return true;
+  }
+  return false;
 }
 
 export type Dispatch = {
@@ -297,6 +315,15 @@ export async function sendMessage(
       client_ref: clientRef,
     })
     .single();
+  if (error?.code === '22P05' || error?.code === 'PGRST102') {
+    // Postgres's refusal of a NUL, and PostgREST's of half an emoji alone (tried
+    // on the local stack), both before send_message ran: the words themselves
+    // were refused, with no hint. Taken for a lost answer, the letter was asked
+    // after, and each try ended in "Your letter did not go. It is still here to
+    // send." with nothing to say why. A refusal with a reason is what it is:
+    // the letter did not go, and the words say what to do.
+    throw new RpcError(REFUSALS.unsendable_character, 'unsendable_character', { cause: error });
+  }
   if (error) throw toRpcError(error, 'Your letter could not be sent. Check your connection.');
   return toDispatch(data as DispatchRow);
 }

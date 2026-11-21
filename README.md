@@ -220,7 +220,8 @@ is skipped, saying so; with `RUNBOOKS_MUST_RUN=1`, as CI sets it, it fails inste
 
 `npm run build:pages` needs the operator's details and the launch state in its environment, which
 keeps them out of this public repository; the command to run is at the top of
-`scripts/build-store-pages.mjs`.
+`scripts/build-store-pages.mjs`. For the same reason it refuses to write the pages anywhere inside
+this repository.
 
 ## Project layout
 

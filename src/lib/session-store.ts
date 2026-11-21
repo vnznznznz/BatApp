@@ -67,7 +67,8 @@ const browserStorage = {
 
 const backing = Platform.OS === 'web' ? browserStorage : secureStorage;
 
-let sessionStored = false;
+/** The stored session's refresh token; null while no session is known to be stored. */
+let storedRefreshToken: string | null = null;
 
 /**
  * Whether this device holds a session - which is not whether the client can
@@ -76,8 +77,20 @@ let sessionStored = false;
  * sends anything, a launch knows what is stored by the time it matters.
  */
 export function isSessionStored(): boolean {
-  return sessionStored;
+  return storedRefreshToken !== null;
 }
+
+/**
+ * Whether `refreshToken` is the stored session's. The app also renews
+ * sessions it has let go of, to tell the server of a sign-out it may not have
+ * heard (auth-context.tsx), and what the server answers about one of those is
+ * no news of the session on this device.
+ */
+export function isStoredRefreshToken(refreshToken: string): boolean {
+  return storedRefreshToken !== null && refreshToken === storedRefreshToken;
+}
+
+const refreshTokenOf = (value: string | null) => parseSession(value)?.refresh_token ?? null;
 
 function parseSession(value: string | null): Session | null {
   if (value === null) return null;
@@ -110,18 +123,18 @@ export const authStorage = {
     const value = await backing.getItem(key);
     // Null says nothing: the keychain answers it for an entry it could not
     // read as well as for one that is not there.
-    if (key === SESSION_KEY && value !== null) sessionStored = parseSession(value) !== null;
+    if (key === SESSION_KEY && value !== null) storedRefreshToken = refreshTokenOf(value);
     return value;
   },
 
   async setItem(key: string, value: string): Promise<void> {
     await backing.setItem(key, value);
-    if (key === SESSION_KEY) sessionStored = parseSession(value) !== null;
+    if (key === SESSION_KEY) storedRefreshToken = refreshTokenOf(value);
   },
 
   async removeItem(key: string): Promise<void> {
     await backing.removeItem(key);
-    if (key === SESSION_KEY) sessionStored = false;
+    if (key === SESSION_KEY) storedRefreshToken = null;
   },
 };
 

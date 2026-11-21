@@ -37,6 +37,12 @@ halves the styling surface and keeps the identity coherent. `app.json` pins
 **Trade-off:** users who prefer light interfaces get no choice. Accepted as a deliberate part of
 the product identity rather than an oversight.
 
+On Android the look of the navigation bar is settled once, at launch, from the phone's own theme,
+before the app makes itself dark. So a phone in light theme with three-button navigation may draw
+a bright bar with dark buttons under every screen - read in React Native's source, not seen. It is
+to be looked at on such a phone before anyone else gets a build (decided on the operator's behalf);
+if it shows, `expo-navigation-bar` can set the bar dark as the app starts.
+
 ### Product invariants live in one typed module
 
 `src/constants/config.ts` holds the rules that define the product — three bats per user, no
@@ -258,6 +264,14 @@ at once anyway, so the form says plainly "There is already an account with that 
 Sign in instead." Which of the two the project does is read from `mailer_autoconfirm` in the
 settings the auth server shows anyone (`GET /auth/v1/settings`), and taken for "on" when that
 cannot be read: the form then says what is true either way.
+
+**Known gap:** while confirmation is off, a sign-up for the address of an account that is still
+unconfirmed - one the operator made by hand without confirming it, or one left from a time
+confirmation was on - is answered with a session in that account. Whoever signed up is in it, with
+its username and name, and without the password they typed (seen on the local stack, with an
+account made by hand). The tidy-up deletes such accounts after a week (see "Keeping less, for less
+long"), and GO-LIVE keeps confirmation in `supabase/config.toml`, so that a push does not turn it
+off again.
 
 ### The database is tested, not just written
 
@@ -502,6 +516,12 @@ so a development project at 0.01 lands a same-city letter in 12 seconds. The 20 
 duplicated from `src/constants/config.ts`; `parity.db.test.mjs` reads that file and fails if they
 drift.
 
+Values far below 0.01 are not refused (decided on the operator's behalf: the multiplier is a
+developer's setting, and production has 1). At about one ten-billionth every same-city send fails
+on the table's rule that nothing lands at the moment it is sent (`messages_never_instant`), and
+review saw a deletion deadlock once against the delivery worker with flights shorter than the
+deletion took.
+
 `flight_duration` is `STRICT`. It was not at first, and `greatest()` skips nulls, so every route
 with a missing city quoted the 20-minute floor as if it were a real flight time.
 
@@ -643,6 +663,12 @@ a repeat that overlaps its original finds the letter that went, or that none did
 The unique index on `(sender_id, client_ref)` stays as the table's own guarantee. Concurrency tests
 hold the original open while the repeat and the question run.
 
+A repeated ref is answered with the letter that went even when the words or the friend differ: the
+second words are dropped, and the send is reported as gone. That is by design (decided on the
+operator's behalf): the app makes a new ref for new words or another friend, so only a mistake in a
+later client could send other words under an old ref - and that letter would be lost without a
+word.
+
 ### An unusable page cursor is reported, not answered with nothing
 
 A page is asked for after the id of the last letter held. If that letter has since gone - deleted
@@ -711,7 +737,8 @@ text would, and four things changed:
   on a 360dp phone a name and a username beside Write and Remove were cut to a few characters. In
   "Asking you", Accept and Decline sit under the name for the same reason. A row can also give
   its subtitle and detail every line they need (`subtitleLines`, `detailLines`), which the friends'
-  routes and compose's chooser use for a town told apart from its twin (see "Cities").
+  routes, compose's chooser and the two letters lists use for a town told apart from its twin (see
+  "Cities").
 - **Errors and outcomes are spoken.** `aria-invalid` reaches assistive technology only on the web.
   `TextField` announces an error as it appears and makes it the field's hint; sends, friend
   requests and saves announce how they went (`src/lib/announce.ts`).
@@ -898,6 +925,10 @@ victim might need. The privacy policy has to say so, and the account deletion di
   itself is made at the limit, deliberately: it protects now, and the report can wait.
 - The numbers live in `src/constants/config.ts` and the migration, and a parity test fails if they
   drift apart.
+- A courier can report someone they have never been friends with (decided on the operator's
+  behalf): a stranger can send a request under an offensive name, and the courier's page, opened
+  from the request, is where it is reported. Throwaway accounts can therefore fill the queue with
+  reports about any courier whose id they hold, each at most 20 a day.
 
 ### Deleting two accounts that had blocked or reported each other
 
@@ -937,6 +968,15 @@ repository is public and the operator's address must never be in it. Only `https
 accepted, and an unset link hides its button - fine for development, and caught by GO-LIVE's
 checklist before a build for anyone else.
 
+_Grown in November 2026:_ Contact is no longer only in the profile and the house rules. It stands
+beside the end of an account (`AccountClosedActions`), on the welcome screen after a suspension, on
+the reset's code stage, and on the code screen beside the words for a sign-in ended before the
+account was finished. The words that send a courier to a person - a suspension, that sign-in -
+name whom to write to only in a build with a contact address: one without shows no Contact and no
+address anywhere, and the words sent the courier to someone it gave no way to reach. (Found in
+review; see "Accounts that are gone, or suspended" and "A code holds the way in" in "The
+whole-project review".)
+
 ### The house rules live outside the signed-in group
 
 `/rules` has to be readable from the sign-up form, before an account exists, and from the profile.
@@ -971,6 +1011,10 @@ content.
   sign-in banned for two years, so that the same email cannot return (GO-LIVE, "Handling a
   report"). Retiring usernames for a while after deletion would close the rest, at the cost of more
   data kept.
+- Usernames are first come, and sign-up is open to anyone who has a build, which carries the
+  project's address and publishable key. Someone can take the username a relative is expected to
+  choose before the relative joins, and the requests meant for them then reach that someone. Who
+  is given a build is the only gate.
 
 ### A row's text may open it, beside its actions
 
@@ -1018,18 +1062,35 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
   the app is refused its next renewal, and its owner signs in again.
 - **Unconfirmed sign-ups.** Once email confirmation is on, a sign-up whose address is never
   confirmed can never sign in, but `handle_new_user` has already made its profile - with someone's
-  email address, perhaps not the sign-up's own. The tidy-up deletes it after 7 days
-  (`private.unconfirmed_sign_up_lifetime()`), long after any code has expired - a code lasts a
-  day. While confirmation is off, GoTrue confirms every address at sign-up, and the step finds
-  nothing. Until then the username it took stays taken, which the code screen tells someone who
-  has mistyped their address; and a later sign-up for the address under another username replaces
-  such an account once its code is confirmed (see "A code holds the way in").
+  email address, perhaps not the sign-up's own. The tidy-up deletes it 7 days
+  (`private.unconfirmed_sign_up_lifetime()`) after the last code sent to confirm its address
+  (`auth.users.confirmation_sent_at`, which GoTrue writes at sign-up, at each "Send the code again"
+  and at a second sign-up for the address), or 7 days after it was made if no code was ever sent.
+  A code asked for on the seventh day keeps its day - a code lasts a day - and the deletion asks
+  again, so a code sent while the job waits for the account's rows keeps the account too
+  (`20261121180000_tidy_up_ages.sql`; the week used to count from the sign-up, and such a code was
+  refused the next morning). While confirmation is off, GoTrue confirms every address at sign-up,
+  but the step still finds an account the operator makes by hand - in the dashboard, or through the
+  auth server's admin API - without confirming its address. Such an account cannot sign in either,
+  and it goes after the same week, with its profile and bats. Until then the username it took
+  stays taken, which the code screen tells someone who has mistyped their address; and a later
+  sign-up for the address under another username replaces such an account once its code is
+  confirmed (see "A code holds the way in"). Known gaps: having its profile from the start, such
+  an account takes friend requests as anyone's does, and when its week is up a request to it goes
+  with it, out of the sender's "Waiting for an answer" with no word of why. And whoever made it can
+  keep it, and its username, by asking for a new code every few days - each code goes to the owner
+  of the address, who can still take the address back by signing up; signing up again after each
+  deletion did as much before.
 - **Moves.** The city a courier moved away from stays on their profile only while the move
   settles, then goes. Before a courier's first letter nothing of a move is kept at all: it counts
   at once. Whether a letter has ever gone to or from a courier (`profiles.has_corresponded`, since
   November 2026) is kept as long as the account, even once the letters are gone, because it is what
   makes a move take a day.
-- **pg_cron's own log** is kept a week.
+- **pg_cron's own log** is kept a week: a run's row goes a week after the run ended. A run cut off
+  by a restart never ends - pg_cron marks it failed, "server restarted", and writes no end - and
+  goes a week after it began; a run cut off before it began has neither time, and goes once a run
+  pg_cron numbered after it began more than a week ago (`20261121180000_tidy_up_ages.sql`; both
+  used to stay for ever).
 
 One daily job, `private.tidy_up()`, does all of it at 04:43. Each step that touches a table
 Supabase owns stands alone: where the platform withholds the privilege, that step is skipped and
@@ -1056,7 +1117,9 @@ is undone alone, listed in what the run returns (`<step>: deadlock detected`) an
 night; and since what a nightly run returns is seen by nobody, whatever it left out is also written
 to the server's log as a warning. Any other error still fails the run. The database's own refusal
 of a suspended account (see "Accounts the operator has stopped") was seen against the local stack
-in the merged tree.
+in the merged tree. Last, `20261121180000_tidy_up_ages.sql` counts an unconfirmed sign-up's week
+from the last code sent to it, and forgets pg_cron's runs that never ended (both above); the
+steps, their order, the rows they take first and the errors they pass over are as before.
 
 The iOS build also no longer asks for Face ID: expo-secure-store declares that permission by
 default, and the app never uses biometrics, so the store's privacy questions would have had to
@@ -1077,7 +1140,7 @@ the tests, the setup and the documents - and each finding was verified before it
 fixes were made in groups, each reviewed and checked again, and then merged; the seams between them
 were checked against the local stack and in the browser. None of it has been run on a phone yet.
 What the review changed or added is recorded here; where it made an earlier entry untrue, that
-entry says so. What it left open is in the roadmap.
+entry says so. What it left open is in the roadmap, and as a known gap under the entry it concerns.
 
 ### Sessions
 
@@ -1125,19 +1188,37 @@ session on the courier's other devices as well, but for no longer than `SERVER_S
 (5 seconds, in `src/features/auth/auth-context.tsx`): to be told, it may first need the session
 renewed, and without a network Sign out spun for 25 to 40 seconds. Not told by then, the device
 lets go regardless. The app removes the session from the keychain itself and remembers that the
-server never heard (`signedOutUnheard`): a session the client announces after that, which nobody
-signed in to - a renewal under way as the entry went - is not taken but ended with the server.
-Signing out can fail only when the keychain will not let go of the entry, and that is said once the
-client is done with the server.
+server never heard (`signedOutUnheard`), and which session it let go of (`letGo`, read before the
+server is asked: the client removes it itself when the server cannot be reached). That session,
+announced again after that - a renewal under way as the entry went - is not taken but ended with
+the server. It is known by its id, which the auth server writes into every access token it issues
+(`session_id`) and keeps through every renewal; when either id cannot be read, the session counts
+as that one, as every session did before. Any other session announced meanwhile is taken, and
+clears the mark: on the web a sign-in in one tab of the browser is announced in every other, and
+ending it signed that tab out, and the server out of every session of the account. (Found in
+review.) Signing out can fail only when the keychain will not let go of the entry, and that is said
+once the client is done with the server.
 
 A logout request already sent may still reach the server after the device has let go. A session
 whose token had run out cannot: the client renews it before it tells the server, and throws away a
 renewal that comes back once the session is no longer stored. So when the client is done, the app
 tells the server once more - a global logout with the old token, and when the server refuses that,
 with a token renewed without keeping or announcing it (auth-js 2.112's private
-`_refreshAccessToken`, which the provider's tests run on the real client). That reaches the server
-if the network is back by then; after that nothing does, and the server's session lasts until the
-courier signs in and out again or the tidy-up ends it after 90 days unused.
+`_refreshAccessToken`, which the provider's tests run on the real client) - and every way of
+signing in waits for it. That reaches the server if the network is back by then.
+
+What the server has still not heard the end of - that last try got no answer, or, for a token
+still fresh, neither did the client's own logout, which without a network fails at once - is owed
+(`owedToServer`), and told at the next sign-in on the device, and on the web when another tab
+signs in: by itself, with scope `local`, the session let go and no other. Told that late, a global
+logout would end the sessions begun since as well, on another device or on this one a moment
+later; so nobody waits for it, and what still cannot be told stays owed. A session whose token had
+run out is owed in the same way, rather than told globally, when someone has signed in meanwhile -
+in another tab, on the web. (Found in review: without a network the session let go stayed live on
+the server beside the one the courier signed in with a moment later.) What is owed is kept in
+memory only, so closing the app forgets it, and on the web so does every reload of the page. The
+server's session then lasts until the courier signs in and out again, or the tidy-up ends it after
+90 days unused.
 
 Every way a session ends on the device ends with the client announcing `SIGNED_OUT`, once: a
 sign-out with or without a network, a renewal the auth server refuses, an account deleted or gone.
@@ -1146,6 +1227,24 @@ with nothing stored sends nothing and is announced - but not over someone who ha
 meanwhile. What the app keeps for an account besides the session - the letters not sent yet and the
 "Also block" choices in memory, what a code was for in the keychain - is let go of at that
 announcement.
+
+**A session ended elsewhere is told.** A sign-out on another device, the tidy-up of a session unused
+for 90 days and a new password set elsewhere each end the session this device holds, and the auth
+server refuses its next renewal alike: the session is over (`refresh_token_not_found`, seen on the
+local stack for each). The device was signed out, and the welcome screen said nothing of why.
+(Found in review.) A renewal refused with the auth server's word that the session is over - any
+code but `user_banned`, which is the suspension's - now leaves the welcome screen "You were signed
+out. Sign in again to go on." to say once, with no Contact button (`noteSessionEnded` in
+`src/lib/farewell.ts`, in memory only; read in `src/lib/guarded-fetch.ts`). Only a renewal of the
+session the device holds leaves it (`isStoredRefreshToken` in `src/lib/session-store.ts`): the
+renewals the app sends to tell the server of a sign-out it may not have heard (above) say nothing.
+A sign-out made on the device takes the word back as its `SIGNED_OUT` is announced - Sign out, a
+deletion, Start over, the code screens' sign-outs - and a deletion or a suspension noted first
+keeps its own words. A renewal refused while the access token still holds, which auth-js tries in
+the token's last minute and a half, leaves the session as it is until the token runs out, and the
+word waits for that end. An account deleted on another device is refused in the same way, so its
+device says the same words, although signing in cannot work any more: the refusal cannot tell the
+two apart.
 
 Every way of signing in first waits until no sign-out is under way (`beforeSigningIn`): a password,
 a sign-up, each code from an email, and the sign-up again after an account under another username
@@ -1156,7 +1255,25 @@ theirs. The wait has an end - no request waits more than 20 seconds, and the cli
 attempt at a renewal after half a minute - but with a stale session on a connection that never
 answers it is about a minute. After 5 seconds of it, Sign in and Create account say under the
 button, and aloud, "Finishing the last sign-out first. Without a connection, that can take a
-minute." The code screens wait the same way with a spinner alone.
+minute." So do the two buttons that check a code from an email, the code screen's Confirm and the
+reset's "Set the new password", which showed their spinner alone. "Almost there" and the reset's
+"Your new password" check no code, and say nothing of a sign-out.
+
+**Known gaps, on the web only.** The web build is for development; the apps people are given are
+the iOS and Android builds (GO-LIVE, "Recommended distribution"). Two seams stay open there:
+
+- One tab's sign-out still under way can undo another tab's sign-in. auth-js's own `signOut()`,
+  still running in one tab - a logout that never answers, up to 20 seconds, or a stale token
+  without a network, about half a minute - removes whatever session is stored when its request
+  ends, and the browser's storage is one for every tab. A sign-in in another tab within that
+  window is signed out again, and its session left on the server, or ended there with the others
+  when the logout carried its token (seen in Chromium and in Jest). Within one tab
+  `beforeSigningIn` prevents it; across tabs nothing does. A logout with the token read at the
+  start, and the app's own removal, in place of auth-js's `signOut()` in `signOutOfDevice` would;
+  it was left, as a larger change to a flow the tests hold closely.
+- A sign-out the server never heard of is forgotten when the page is loaded again, as it is when
+  the app is closed on a phone (above): on the web that is any reload, an address typed or a link
+  followed. Keeping the owed session's refresh token in storage would let it be told after one.
 
 ### Loading, and loading again
 
@@ -1174,19 +1291,29 @@ minute." The code screens wait the same way with a spinner alone.
   return, takes the newest answer only, and says when the account is gone (`isGone`): the profile
   row is made with the account, so no row of one's own means the account has been deleted or
   removed. The roost, Friends and a courier's page read the profile through it, once each time they
-  come into view; the roost asking as well had made two requests for the same row.
+  come into view; the roost asking as well had made two requests for the same row. A name saved
+  shows at once, before the profile is read back (`updateDisplayName`): a read that got no answer
+  had left the old name beside "Saved.", under the read's error, until a later read got through.
+  (Found in review.) A read that answers puts the row in its place, as the server has it.
 - **`useLingering`** (`src/lib/use-lingering.ts`) says when a wait has gone on: "Still trying to
   reach Night Courier…" under the first load's spinner on the roost and on the profile, after 5
   seconds. Without a network, an hour after the app was last used, every first load waits about
   half a minute while the client tries to renew the session, and the spinners said nothing all that
   time. The profile now shows its Safety and Account sections, Sign out among them, while it is
-  still loading, so that the way out does not wait for the network. The sign-in and sign-up forms
-  use `useLingering` for a sign-out still under way.
+  still loading, so that the way out does not wait for the network. The sign-in and sign-up forms,
+  the code screen and the reset use `useLingering` for a sign-out still under way.
 - **`useRefreshAt`** sets no timer for a landing time that is not a number, which fired at once
   after every answer. The Sent list uses it now as well: it calls a letter landed only when the
   server says `delivered`, reads "landing any moment now" until then, and asks again, quietly, when
   the next letter in the air is due. It went by the phone's clock alone, and on a phone running fast
   called a letter landed that was still in the air.
+
+The phone's clock still decides every countdown (decided on the operator's behalf): the server
+decides when a letter lands, and the countdowns only show it. On a phone whose clock runs an hour
+ahead, each countdown ends an hour early and then reads "any moment now", every screen showing a
+letter in the air - the roost, compose, the Sent list, the letter - asks again at least once a
+minute until the landing is due by the server's clock, and auth-js, which goes by the same clock,
+renews the session before almost every request: each renewal an entry in the 30-day sign-in log.
 
 An error that says "try again" comes with a button for it where a screen has nothing else to show,
 beside the hooks' own retries, and the button shows itself busy: once on the roost (the bats, the
@@ -1228,9 +1355,11 @@ under every refusal, which could not help.
   request field and button as well. A name or a city saved is refused with the same words: "This
   account has been suspended. To ask why, write to the person who runs Night Courier." They name
   whom to write to rather than a button or a page, because they also stand under a save with
-  nothing beside them, and in a build without a contact address. A renewal the auth server refuses
-  with `user_banned` signs the device out, and the welcome screen then says the suspension once,
-  with Contact where the build has one (`src/lib/farewell.ts`, in memory).
+  nothing beside them. A build without a contact address shows no Contact and no address anywhere,
+  and there they say only "This account has been suspended." (`REFUSALS.account_suspended` in
+  `src/lib/rpc-error.ts`, read as the words are shown). A renewal the auth server refuses with
+  `user_banned` signs the device out, and the welcome screen then says the suspension once, with
+  Contact where the build has one (`src/lib/farewell.ts`, in memory).
 - **Signing in to a suspended account** is answered as a wrong password. The auth server refuses a
   banned account before it looks at the password, so whoever typed an address would learn that it
   had an account, and what became of it. Only the code of "I forgot my password", which proves the
@@ -1284,6 +1413,12 @@ hosted project", step 2).
   that is wrong, has run out, has been used or has been replaced gets one answer from the auth
   server (`otp_expired`), so one sentence fits them all: "That code did not work. Check it against
   the newest email, or ask for a new one."
+- "I forgot my password" on the sign-in form opens the reset with the address typed there, and on
+  the code screen with the address the code went to (the route's parameter `email`): it was typed
+  twice. The field only starts with it - it can be changed, and is checked like any address typed
+  there - and a link that names it twice is ignored, while a reset taken up again keeps its own
+  address. On the web the address therefore stands in the page's address and in the browser's
+  history (`/reset-password?email=…`), which matters only if a web build is ever published.
 - A new code can be asked for a minute after the last, which the screens count themselves
   (`RESEND_WAIT_SECONDS`): the hosted project's own 60 seconds between two emails to an address.
   `config.toml` names no `max_frequency`, so that a push leaves those 60 seconds as they are; the
@@ -1291,7 +1426,16 @@ hosted project", step 2).
 - No code flow (PKCE): `createClient` says `flowType: 'implicit'` rather than leave it to a default
   a later supabase-js may change. With codes only, a verifier kept on the device protects nothing,
   and with one, each emailed code left a row on the auth server that nothing deletes
-  (`auth.flow_state`), and verifier entries in the keychain until the next sign-out.
+  (`auth.flow_state`), and verifier entries in the keychain until the next sign-out. Today's
+  default is the same, so `src/lib/supabase.client.test.ts` runs the app's client on a supabase-js
+  made to default to the code flow, and finds no code challenge sent with a sign-up or a reset, and
+  no verifier kept.
+
+**Known gaps.** There is no way to change a password while signed in: a courier who wants a new one
+signs out and uses "I forgot my password", which needs an email of its own. And nothing stops
+anyone from using up the project's emails for the hour on purpose, by asking again and again for
+codes for addresses they know; until the hour is over, new couriers get no code to confirm their
+address or set a password with. A CAPTCHA in front of the auth server's endpoints would stop it.
 
 ### A code holds the way in
 
@@ -1310,19 +1454,40 @@ What a code is for is kept in the keychain beside the session, under `night-cour
 (`src/features/auth/unfinished.ts`): the address, username and name typed at sign-up, or the
 address of a sign-in or a reset - never a password. It is written before the code goes, because the
 client keeps the session the moment the code is answered, and an app closed in between opened in
-the roost. It is forgotten once the work is done, when the account is removed, at any sign-out, at
-a sign-in with a password, and at launch when no session for that address is stored. At launch a
-stored session for the same address holds the way in again, and the root layout takes the courier
-to the screen that asked for the code, which asks for what is left: a password - the one chosen
-before, or a new one - on the sign-up and sign-in screens, and the new password on the reset
-screen.
+the roost. It is forgotten once the work is done, when the account is removed, at any sign-out, as
+every way of signing in begins (a code's check then writes its own), and at launch when no session
+for that address is stored. At launch a stored session for the same address holds the way in
+again, and the root layout takes the courier to the screen that asked for the code, which asks for
+what is left: a password - the one chosen before, or a new one - on the sign-up and sign-in
+screens, and the new password on the reset screen.
+
+On the web the keychain is the browser's storage, one for every tab, and a sign-in in one tab is
+announced in every other. A tab already open took the session a sign-up's code had brought in
+another as it came, and showed the roost of the account the code had just confirmed - a stranger's
+sign-up, perhaps, with nobody's password. (Found in review.) A session the tab did not sign in with
+itself - announced while none of its own sign-ins was waiting for the client, and not the one it
+holds, renewed or not - now holds the way in while the marker is read, and on, as at a launch, if
+the marker is for that session's address (`lookForUnfinished`). So the session the client
+announces again whenever a tab comes to the front is not looked at. A tab lets go of the hold when
+another removes the marker - finished there, given up or signed out of (`watchUnfinishedElsewhere`,
+on the browser's `storage` event) - so that Start over cannot remove an account the other tab has
+finished. That every way of signing in forgets a marker left behind is for this too: what a
+password brings is never held elsewhere.
 
 If saving fails, the code screen becomes "Almost there". After a sign-up it offers Try again, or
 Start over, which removes the account and then signs out - never a plain sign-out, which would leave
 the account confirmed with whatever an earlier sign-up had given it. After signing in it offers Try
-again, or Sign out, and then a password set with "I forgot my password". If the session the code
+again, or Sign out, and then a password set with "I forgot my password". The form the courier goes
+back to says above its fields what happened, until they try again: that the account has been
+removed and they can sign up again, or that they are signed out, and need a password set with "I
+forgot my password" to sign in - the sign-in form empties its password field too, since confirming
+the address took that password away, and signing in with it again was answered as a wrong one.
+Read aloud alone, it reached nobody who reads the screen. (Found in review.) If the session the code
 brought has been ended elsewhere - a change of password ends every other session - the courier is
-signed out with the reason (`SignedOutUnfinished`).
+signed out with the reason (`SignedOutUnfinished`). After a sign-up the reason ends by naming whom
+to write to, so that the account can be removed and the courier sign up again, with Contact beside
+it - in a build with a contact address only, as for a suspension (`signInEndedWords`); after
+signing in, it says to set a password with "I forgot my password".
 
 **One more code, when a stranger signed up first.** GoTrue keeps an account that is waiting for its
 code exactly as the first sign-up for the address made it: a second sign-up sends a new code and
@@ -1334,6 +1499,18 @@ username is removed - nothing can have been done with it, the code having confir
 and the courier is signed up again with what they typed, which sends a new code ("One more code").
 A different name is changed to the one typed.
 
+**An account made by asking for a sign-in code.** The auth server's sign-in by code
+(`/auth/v1/otp`), which the app never uses, makes an account for an address that has none: with the
+username and name the caller sends, or else `courier_` and twelve characters of its id, and
+"Courier". With confirmation on, that is a stranger's sign-up like any other, and is treated as
+one (decided on the operator's behalf): the account waits for its code, and the email carries a
+code and no link, as every email does (seen on the local auth server that has email confirmation
+on); the owner's own sign-up sends a new code and takes the account over as above, removing it when
+its username is not the one they typed; and the tidy-up deletes it a week after its last code.
+With confirmation off it is made confirmed, with a password nobody knows; as after a stranger's
+sign-up then, its owner is told the address has an account, and writes to the operator, who
+deletes it (privacy policy 3.10).
+
 **A reset's code that confirms an account.** The auth server confirms an address with a reset's
 code too, so an account a sign-up left waiting for its code - perhaps someone else's, with their
 password, username and name - would become the courier's with all of that and a new password. When
@@ -1344,6 +1521,46 @@ address confirmed within a second of the sign-in the code brings (`email_confirm
 test is made at launch. At first the confirmation was compared with when the reset was asked for,
 and then a reset's code asked for before a sign-up's code confirmed the account, and typed within
 its day, removed the courier's own finished account.
+
+**A code whose check got no answer.** A check can reach the auth server and be carried out - the
+code used up, the address confirmed and its password taken away - with its answer lost on the way
+back. Every later check of that code is then refused, signing in finds no password, and asking for
+a new code sends none, the address being confirmed. A check that got no answer from the auth
+server, none at all or not one of its own, is thrown as `CodeUnanswered`, and the code screen keeps
+the codes that got none since a code was last taken. When one of them is refused on a later check,
+the screen says in place of the ordinary words that the try before may have confirmed the address:
+to ask for a new code first, and if none comes within a few minutes, to set a password with "I
+forgot my password" and sign in with it - with that button beside the words (`MAY_BE_CONFIRMED` in
+`confirm-email.tsx`). A new code first, because auth-js cannot say whether a try left the device at
+all: a request cut off before it reached the server and an answer lost after the server carried it
+out come back as the same failed fetch, status 0. A code that comes means the address is not
+confirmed, and it does what the first was for; a reset taken instead would have its own code
+confirm the address, and remove the account (above). Another code refused gets the ordinary words
+and nothing more: a code mistyped after a try that never left the device had been answered with
+the hint, and its reset removed the courier's own account. (Found in review, in the browser.)
+
+After a sign-up, an account confirmed so may be as an earlier sign-up for the address set it up -
+a stranger's, perhaps, with the username and name they chose - and a reset keeps both: a username
+cannot be changed. The operator's decision is that it stays so, and that the courier is told what
+to do. On the sign-up path the hint ends "If the account shows a username or name you did not
+choose, you can delete it in your profile and sign up again." (`NAMES_NOT_CHOSEN`), and so does the
+reset's "Your new password is saved" for an account another code confirmed in the day before the
+reset's sign-in (`confirmedJustBefore` in `unfinished.ts`: more than the second that marks the
+reset's own code, and no more than a day, as long as a reset's code lives). After signing in, the
+account is the one whose password the courier knew, names and all, and the hint says nothing of
+names.
+
+**Known gaps.** The hint also shows when the same wrong code is typed twice and the first try never
+left the device, and for an old code typed again after "Send the code again" replaced it: nothing
+auth-js says tells those apart from an answer lost, so any code that got no answer counts. The
+words keep that from harm as far as words can - the new code they send the courier for comes - but
+a reset taken at once has its own code confirm the address, and removes the courier's own
+unconfirmed account. And on the web the reset's "Your new password is saved" is never drawn: the
+roost replaces it before the browser draws a frame, so its words, the sentence about names among
+them, reach a screen reader only, through the live region. Couriers read that sentence in the hint
+before the reset. Keeping the stage on screen, with a button to go on, would change what the reset
+does today, and saying the sentence on the roost is the other way: the operator's to decide. On a
+phone the change of screen may show the stage for a moment - not seen.
 
 ### Confirming an address takes its password away
 
@@ -1359,9 +1576,15 @@ the app sets one with the session the code brought: `finishSignUp` the one typed
 off nothing changes: the auth server inserts each new account unconfirmed and confirms it within
 the same request, nothing is emailed, and the password just chosen stays. An operator who confirms
 an account by hand clears its password too, if a code had been emailed to it; its owner then sets
-one with "I forgot my password". (Decided on the operator's behalf.) On a server without the
-migration, setting the password the account has already is answered as the same password, and
-taken as done.
+one with "I forgot my password". (Decided on the operator's behalf.) Whether a code was emailed is
+what the row held before the statement (`old.confirmation_sent_at`): a confirmation that clears the
+time the code was sent as it goes takes the password all the same (`confirmation.db.test.mjs`).
+A password the admin API sets stays: in the same call that confirms (`"email_confirm": true` with a
+`"password"`), or in a call before it. GoTrue's update of the password clears the time the code was
+sent, and the confirmation that follows finds none - seen for both on the local auth server that
+has email confirmation on. That is a password someone else chose, and GO-LIVE does not use it. On a
+server without the migration, setting the password the account has already is answered as the same
+password, and taken as done.
 
 ### Who can tell whether an address has an account
 
@@ -1408,7 +1631,16 @@ the words the server's refusal gets (`src/features/auth/validation.ts`):
 
 - Passwords are counted in bytes, as the auth server counts them: between eight and 72, the most
   bcrypt reads, a letter such as ä counting two and an emoji four. Counted in characters, the form
-  had refused four umlauts, which the server takes.
+  had refused four umlauts, which the server takes. Nothing more is asked of a password - no kinds
+  of characters (`minimum_password_length = 8` and no `password_requirements` in
+  `supabase/config.toml`): length counts for most, so "12345678" is taken, and only the auth
+  server's limit per network address slows guessing. The hosted project's check against leaked
+  passwords is an option of the paid plans. (Decided on the operator's behalf.)
+- An empty field is asked for in its form's own words: "Enter your password." at sign-in, and on
+  Friends, whose field is "Their username", "Enter their username." The sign-up form, a reset's new
+  password and the code screen keep "Choose a password." and "Choose a username."
+  (`validatePassword` and `validateUsername` take the words for an empty field). Sign-in and
+  Friends had the sign-up words too. (Found in review.)
 - An address in a shape the auth server refuses - a letter such as ä anywhere, a quote or a
   bracket - is refused with "That email address was not accepted. Check it for mistakes - letters
   such as ä or é, and signs such as quotes or brackets, cannot be used." The `xn--` spelling of
@@ -1509,7 +1741,12 @@ than as a friendship that ended (`declineRequest`), on Friends and on a courier'
   with a parity test). Only growing is refused: an account that carries more already, from before
   the bound, may stay as it is or become smaller, or one such account would stop every night's
   tidy-up. The trigger is `SECURITY DEFINER` because Supabase Auth's role writes the row, and that
-  role cannot reach the `private` schema.
+  role cannot reach the `private` schema. Two known gaps: the tidy-up takes the username and the
+  display name out of these details and nothing else, so whatever more a sign-up sent past the
+  app, up to the 4,096 bytes, stays in them, and in every access token, for as long as the account
+  exists. And the auth server writes the address into them at sign-up (`email`), where it stays
+  when the operator changes an account's address: only the sign-in's own address changes, and the
+  old one goes on travelling in every access token (seen in review).
 - **A city search** reads the first 64 characters of its query. The query was tidied again for
   every one of the cities, over its whole length, so a search cost more the longer the query: on
   the real stack 100,000 characters ran until the API's eight-second timeout cancelled them, from
@@ -1541,6 +1778,11 @@ A letter likewise needs a character that shows (`send_message`): a letter of one
 used to cost a bat and arrive blank. The table's own check is left as it was, so that no letter
 already sent is judged again.
 
+**Known gap:** no name and no username is kept back. Anyone can call themselves "Night Courier
+Team", or take the username `admin` or `support`, and look to their friends like the operator.
+Until there is a list of reserved names, reports are the remedy: the operator removes such an
+account.
+
 #### Known gaps
 
 - `sent_letter` cannot see a send that has not reached the database yet. A first send still on its
@@ -1554,6 +1796,10 @@ already sent is judged again.
   fails with a database error rather than as a session that has ended.
 - The dashboard's "Delete user" passes no gate, as it already passes the lock order by; the runbook
   uses `private.delete_account`.
+- A signed-in client can ask PostgREST for a table's planned count (`Prefer: count=planned`), which
+  it answers with the planner's estimate for the whole table, and can read `xmin` on the rows it
+  may read. Both tell a little about how busy the service is - roughly how many friendships there
+  are - and nothing about anyone in particular.
 
 ### Compose
 
@@ -1593,11 +1839,36 @@ about a minute for changed words after a send without an answer. A letter read j
 stamped opened no earlier than it landed: a request that began before the landing used to fail on
 it.
 
+**Characters no letter can carry.** A NUL, which Postgres cannot store, and half of an emoji on its
+own - cut in two by whatever the text was copied from - are refused before `send_message` reads the
+letter: by Postgres as `22P05`, by PostgREST as `PGRST102` (tried on the local stack). The app took
+either for a lost answer and asked after the letter, and every try ended in "Your letter did not
+go. It is still here to send." with no reason, however often it was sent. (Found in review.)
+`validateBody` now keeps such a letter back, reading it by code points so that a whole emoji
+passes, and says "Your letter has a character in it that cannot be sent: half of an emoji, or a
+hidden one that came with pasted text. Delete it, or type that part again yourself." The server's
+two refusals get the same words, as a refusal, and the letter is not asked after
+(`REFUSALS.unsendable_character` in `src/lib/rpc-error.ts`, a reason the database never gives).
+Only letters were changed: a report's note or a city search with a NUL in it is still answered
+"Check your connection".
+
 **Writing back to a former friend.** Write back passes the correspondent's name with the route.
 When they are no longer a friend, compose says "… is no longer among your friends, so you cannot
 write to them." rather than only that letters go to friends; Write back stays on such a letter, and
 compose names them (decided on the operator's behalf). Choosing a friend on compose puts their name
-in the route too, so that a name left from before cannot stand for someone else.
+in the route too, so that a name left from before cannot stand for someone else. So do Write on the
+friends list and "Write a letter" on a courier's page: a friendship that ended before compose had
+asked who is a friend got the general words, not the friend's name. (Found in the browser.) The
+name is the route's, though, and a link from anywhere can put any text there - a line break,
+characters that turn the sentence round, a paragraph. Compose shows it only if the display-name
+rule takes it (`validateDisplayName`, which takes every name the app itself puts there, a username
+with its @ too), without the blank space around it; otherwise, and for a name given twice, it says
+only that letters go to friends, as for a route without a name. (Found in review.)
+
+**Known gap:** compose's list of friends and the letters lists name a friend by display name alone,
+with the username only where there is no name, or on compose no city. Two friends of the same name
+in the same city look alike in "Who is it for?" and in the letters, and a friend can take another
+friend's name and pass for them there.
 
 ### Cities
 
@@ -1658,7 +1929,11 @@ a city is shown with its country, and "Friedberg (near Augsburg)" where it stand
 the letters list, a letter's flight path and the confirmation of a send (`describeCity`,
 `cityName`). A town with a name of its own is written as before. In the
 friends list and in compose's list of friends the town has a line of its own and the way there the
-next.
+next. In the letters list a letter's line takes the lines it needs: on one, a long name - "Sankt
+Peter (near Klagenfurt am Wörthersee)" - cut off the distance and the time, or the countdown, at
+360 and 390 px. On a letter's flight path each town's name wraps under its end of the path, which
+keeps its height. And a distance keeps its number and its "km" together on a line that wraps
+(`formatDistance`, with a space that does not break). (Found in the browser.)
 
 #### Rows nothing could find
 
@@ -1672,6 +1947,11 @@ of the list under no name that says Köln. A courier who lived in one lives in K
 with no move to settle, and a letter that flew from or to one flew from or to Köln. The generator
 leaves the two out of every migration it writes (`LEFT_OUT`), and writes no city with nothing to
 search by. The table holds 4,308 cities.
+
+**Known gap:** nothing guards a city deleted by hand. The database refuses it while any letter ever
+flew from or to it; otherwise its couriers lose their city, and a move away from it that was still
+settling counts at once. The one migration that deletes cities moves their couriers and letters
+to Köln first; a delete in the dashboard would do nothing of the kind.
 
 #### Moves before the first letter
 
@@ -1733,6 +2013,18 @@ and one time limit ("Testing"), focused tests ("Linting"), sign-ups made as Supa
   now.
 - `src/constants/config.test.ts` reads every Markdown document, at the root and under `docs/`, for
   the ages it gives, and holds each to `MINIMUM_AGE` and `PARENTAL_PERMISSION_UNDER`.
+- The profile's credit to GeoNames is asserted beside the city it shows, as the city picker's is:
+  it had gone untested.
+
+**Known gaps.** Three shields can be narrowed and every test still passes: the tidy-up's around
+idle sessions and around the names in identities, made to pass over `deadlock_detected` alone
+(`20261121180000_tidy_up_ages.sql`), and `delete_own_account`'s around the sign-in log, made to
+let `insufficient_privilege` through (`20261114120000_suspended_accounts.sql`). On a project that
+withholds those tables, the nightly tidy-up, or every courier's deletion of their own account,
+would then fail, and CI would not see it. And PGlite itself, not the product, starts failing with
+"stack depth limit exceeded" (`54001`) after about 3,000 statements with many errors raised in one
+database, where Postgres 16 runs the same steps cleanly: a long new test file wants a database of
+its own.
 
 ## Deferred to later phases
 

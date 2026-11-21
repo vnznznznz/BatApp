@@ -62,8 +62,9 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    Server (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx); das Speichern einer Stadt
    schickt die Bedingung, unter der gespeichert wird, in der Adresse der Anfrage mit, die in die
    Server-Protokolle gelangt: die Stadt, von der die Fledermäuse losfliegen, oder dass noch kein
-   Brief ging (updateCity in src/features/profile/use-profile.ts). Ändert sich daran etwas, diese
-   Abschnitte anpassen.
+   Brief ging (updateCity in src/features/profile/use-profile.ts); eine unbestätigte Registrierung
+   wird 7 Tage nach dem letzten Code gelöscht, der an sie ging (20261121180000_tidy_up_ages.sql).
+   Ändert sich daran etwas, diese Abschnitte anpassen.
 -->
 
 # Datenschutzerklärung für Night Courier
@@ -391,9 +392,11 @@ das Runbook zuerst vorläufig (dieselbe Anweisung, eine Woche früher) und entfe
 später; mit dem Entfernen beginnen die zwei Jahre neu. "Zwei Jahre ab dem Entfernen" stimmt nur,
 solange niemand von Hand länger sperrt. Dass der Kontodatensatz mit Passwort-Hash stehen bleibt,
 ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 90 Tagen ohne
-Benutzung wie alle anderen (tidy_up); dass eine abgelehnte Erneuerung nicht als Benutzung zählt
-(updated_at), ist noch zu prüfen (gdpr-records.md V7). Was die Polizei davon bekommen soll,
-exportiert das Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
+Benutzung wie alle anderen (tidy_up). Dass eine abgelehnte Erneuerung nicht als Benutzung zählt,
+ist am lokalen Stack gesehen, am 14. November 2026: Eine Erneuerung, die GoTrue wegen der Sperre
+ablehnt, ändert weder updated_at noch refreshed_at der Sitzung (gdpr-records.md V7), und das
+gehostete Projekt läuft mit demselben GoTrue. Was die Polizei davon bekommen soll, exportiert das
+Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
 sperren nichts: die durch die Person selbst und die durch den Betreiber auf jemandes Bitte, also
 "select private.delete_account('<id>');" (gdpr-records.md 5.4) und nie der Knopf Authentication →
 Users → Delete user im Dashboard. Ein vorläufig gesperrtes Konto: Die Datenbank weist es sofort ab
@@ -430,9 +433,11 @@ oder Betriebssystems (den sogenannten User-Agent).
   ebenfalls gelöscht. Eine Sitzung, die **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem
   du die App so lange nicht geöffnet hast –, löscht ein täglicher Auftrag; dort meldest du dich dann
   neu an. Erfährt der Server nichts von deiner Abmeldung, etwa ohne Netz, bleiben deine Sitzungen
-  dort, bis dieser Auftrag sie löscht; willst du sie früher beenden, melde dich einmal an und wieder
-  ab. Wenn du ein Handy verlierst, melde dich auf einem anderen Gerät an und ab – die Anmeldung auf
-  dem verlorenen Handy funktioniert dann spätestens nach einer Stunde nicht mehr – oder schreib mir.
+  dort, bis dieser Auftrag sie löscht; die dieses Geräts nur, bis du dich darauf wieder anmeldest,
+  wenn du die App dazwischen nicht geschlossen hast, denn dann sagt die App es dem Server. Willst du
+  sie alle früher beenden, melde dich einmal an und wieder ab. Wenn du ein Handy verlierst, melde
+  dich auf einem anderen Gerät an und ab – die Anmeldung auf dem verlorenen Handy funktioniert dann
+  spätestens nach einer Stunde nicht mehr – oder schreib mir.
 - **Anmelde-Token.** Während die App geöffnet ist, wird deine Anmeldung etwa einmal pro Stunde
   erneuert. Dabei entsteht jedes Mal ein neues Token, und das alte wird ungültig. Gespeichert bleiben
   die Token höchstens so lange wie die Sitzung, zu der sie gehören.
@@ -461,11 +466,17 @@ oder Betriebssystems (den sogenannten User-Agent).
   (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx) und meldet das Gerät dann
   trotzdem ab; eine schon gesendete Anfrage kann den Server noch erreichen, und bei einer Sitzung,
   deren Token abgelaufen war, sagt die App es dem Server noch einmal, wenn der Client fertig ist
-  (tellServerAfterAll) - das erreicht ihn nur, wenn das Netz bis dahin zurück ist. "Höchstens eine
-  Stunde": Ein Zugangs-Token, den ein anderes Gerät schon hält, gilt an der Datenbank-API weiter,
-  bis er abläuft (jwt_expiry = 3600 in supabase/config.toml), weil dort nichts nach der Sitzung
-  sieht; am 17. November 2026 am lokalen Stack gezeigt, mit einem signierten Token ganz ohne
-  Sitzung. Supabase Auth selbst lehnt einen solchen Token ab, und erneuern lässt er sich nicht.
+  (tellServerAfterAll) - das erreicht ihn nur, wenn das Netz bis dahin zurück ist. Eine Sitzung,
+  deren Ende der Server dann noch nicht gehört hat - dieser Versuch, oder bei frischem Token die
+  Abmeldung des Clients selbst, blieb ohne Antwort -, sagt die App ihm für sich allein (scope
+  "local") bei der nächsten Anmeldung auf dem Gerät, solange sie nicht geschlossen wurde
+  (owedToServer): der Satz über die Sitzung dieses Geräts. Dafür hält die App die Sitzung im
+  Arbeitsspeicher, längstens bis sie geschlossen wird, nie gespeichert (letGo und owedToServer in
+  derselben Datei; Abschnitt 5). "Höchstens eine Stunde": Ein Zugangs-Token, den ein anderes Gerät
+  schon hält, gilt an der Datenbank-API weiter, bis er abläuft (jwt_expiry = 3600 in
+  supabase/config.toml), weil dort nichts nach der Sitzung sieht; am 17. November 2026 am lokalen
+  Stack gezeigt, mit einem signierten Token ganz ohne Sitzung. Supabase Auth selbst lehnt einen
+  solchen Token ab, und erneuern lässt er sich nicht.
 - Anmelde-Token: GoTrues automatisches Aufräumen (ersetzte Token nach 24 Stunden) ist nur aktiv,
   wenn GOTRUE_DB_CLEANUP_ENABLED gesetzt ist; der Standard ist "false", lokal ist es aus. Ist es auf
   dem gehosteten Projekt an, kann der Satz lauten: "Ersetzte Token löscht Supabase nach 24 Stunden."
@@ -504,14 +515,19 @@ enthalten die E-Mails nicht. Keine Newsletter, keine Werbung. Schreibe ich dir s
 
 Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht bestätigt. Wenn jemand deine
 E-Mail-Adresse ohne dein Wissen für ein Konto benutzt hat, schreib mir; dann lösche ich dieses
-Konto. Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher Auftrag jede Registrierung,
-deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde, samt Profil. Registrierst du
-dich vorher selbst mit deiner Adresse, macht der Code, der sie bestätigt, dieses Konto zu deinem:
-Mit der Bestätigung wird das zuvor gesetzte Passwort gelöscht, und die App gibt dem Konto das
-Passwort und den Anzeigenamen, die du gewählt hast – oder sie löscht es, wenn es einen anderen
-Benutzernamen hat, und richtet an seiner Stelle deines ein, mit einem neuen Code. Benutzt du für ein
+Konto. Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher Auftrag jede Registrierung
+samt Profil, deren E-Mail-Adresse 7 Tage nach dem letzten Code, der sie bestätigen sollte, noch
+nicht bestätigt ist. Registrierst du dich vorher selbst mit deiner Adresse, macht der Code, der sie
+bestätigt, dieses Konto zu deinem: Mit der Bestätigung wird das zuvor gesetzte Passwort gelöscht,
+und die App gibt dem Konto das Passwort und den Anzeigenamen, die du gewählt hast – oder sie löscht
+es, wenn es einen anderen Benutzernamen hat, und richtet an seiner Stelle deines ein, mit einem
+neuen Code. Benutzt du für ein
 solches Konto stattdessen „I forgot my password“, löscht sein Code das Konto, und du kannst dich
-danach registrieren.
+danach registrieren. Geht die Antwort auf deinen Code unterwegs verloren – die Verbindung bricht
+gerade dann ab –, kann deine Adresse bestätigt sein, ohne dass die App dem Konto dein Passwort und
+deine Namen gegeben hat. Du legst dann mit „I forgot my password“ ein Passwort fest, und das Konto
+behält den Benutzernamen und den Anzeigenamen, die es hatte: Sind es nicht die, die du gewählt
+hast, lösch das Konto in deinem Profil und registriere dich neu, wie die App es dir sagt.
 
 <!-- PRÜFEN: Die E-Mail-Bestätigung ist heute aus (supabase/config.toml, enable_confirmations =
 false), weil Supabases eigener Mailversand bis zum eigenen SMTP nur den Betreiber erreicht
@@ -519,9 +535,16 @@ false), weil Supabases eigener Mailversand bis zum eigenen SMTP nur den Betreibe
 E-Mail-Bestätigung an sind, "Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht
 bestätigt." ersetzen durch "Bei der Registrierung schicke ich dir einen Code, mit dem du deine
 E-Mail-Adresse bestätigst." und oben "– sobald das eingeschaltet ist –" streichen; in den
-späteren Sätzen des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht" durch "Ein
-täglicher Auftrag löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen. Die 7 Tage sind
-private.unconfirmed_sign_up_lifetime() (tidy_up). Die 8 Ziffern und der Tag des Codes sind
+späteren Sätzen des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher
+Auftrag" durch "Ein täglicher Auftrag löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen.
+Die 7 Tage sind private.unconfirmed_sign_up_lifetime() (tidy_up), gezählt ab
+auth.users.confirmation_sent_at, das GoTrue mit jedem Code setzt, den es zum Bestätigen einer
+Adresse schickt - bei der Registrierung, bei "Send the code again" und bei einer zweiten
+Registrierung -, oder ab der Registrierung, wo kein Code ging (20261121180000_tidy_up_ages.sql).
+Ein Konto, das der Betreiber von Hand anlegt, ohne die Adresse zu bestätigen, geht nach derselben
+Woche, auch solange die Bestätigung aus ist; anmelden kann es sich nicht. Ein Konto, das der
+Anmeldeserver für einen Anmeldecode anlegt (/auth/v1/otp, von der App nie benutzt), gilt als
+Registrierung (Entscheidung des Betreibers). Die 8 Ziffern und der Tag des Codes sind
 otp_length und otp_expiry = 86400 in supabase/config.toml, und die Vorlagen in supabase/templates
 sagen dasselbe. Das gehostete Projekt verschickt sie erst, wenn config push sie dorthin gebracht
 hat (docs/GO-LIVE.md, "Setting up the hosted project"); seine eigenen Vorlagen enthalten einen
@@ -537,7 +560,10 @@ das gehostete Projekt welche schickt, ist zu prüfen (docs/GO-LIVE.md, "Setting 
 project", Schritt 2). Ist einer an, ihn hier nennen und ihm, wie GO-LIVE sagt, eine Vorlage der App
 ohne Link geben, oder ihn ausschalten. Was ein solches Konto zu deinem macht: finishSignUp und
 verifyResetCode in src/features/auth/auth-context.tsx und die Migration
-20261121160000_confirmation_clears_password.sql. -->
+20261121160000_confirmation_clears_password.sql. Nach einer verlorenen Antwort bleibt das Konto,
+wie die frühere Registrierung es angelegt hat (Entscheidung des Betreibers): CodeUnanswered und
+NAMES_NOT_CHOSEN in auth-context.tsx, MAY_BE_CONFIRMED in src/features/auth/confirm-email.tsx und
+confirmedJustBefore in src/features/auth/unfinished.ts. -->
 
 <!-- PRÜFEN (rechtlich): Das Bestätigen einer Adresse übernimmt oder löscht ein Konto, das eine
 frühere, unbestätigte Registrierung mit ihr angelegt hatte - vielleicht die einer anderen Person -,
@@ -670,7 +696,9 @@ haben; in der App angezeigt wird sie nicht.
   deinem Passwort anmeldest und wenn die App ohne Anmeldung für diese Adresse geöffnet wird.
 - Beim Abmelden löscht die App die Sitzung und diese Notiz von deinem Gerät, auch wenn der Server
   gerade nicht erreichbar ist. Nach dem Löschen deines Kontos tut sie das, sobald sie weiß, dass das
-  Löschen geklappt hat.
+  Löschen geklappt hat. Bis du die App schließt, kann sie die Sitzung noch im Arbeitsspeicher
+  behalten – gespeichert wird sie nicht –, damit die Abmeldung sicher gilt: War der Server nicht
+  erreichbar, sagt sie es ihm bei deiner nächsten Anmeldung.
 - Sonst speichert die App nichts auf deinem Gerät. Briefe, Entwürfe, Freundeslisten und Meldungen
   sind nur so lange auf dem Gerät, wie die App geöffnet ist. Ein angefangener Brief ist weg, wenn du
   die App schließt oder dich abmeldest.
@@ -683,7 +711,12 @@ Hinweis 5 oben. Die Notiz, wofür ein Code ist, ist der Eintrag night-courier.un
 (src/features/auth/unfinished.ts), im selben Speicher wie die Sitzung (authStorage in
 src/lib/session-store.ts); sie wird geschrieben, bevor der Code geprüft wird. Ungesendete Briefe
 und die Wahl bei „auch blockieren“ liegen nur im Arbeitsspeicher (src/features/messages/drafts.ts,
-src/features/safety/safety.ts) und werden bei jedem Abmelden vergessen. -->
+src/features/safety/safety.ts) und werden bei jedem Abmelden vergessen. Die Sitzung im
+Arbeitsspeicher nach dem Abmelden: letGo in src/features/auth/auth-context.tsx, gesetzt, wenn der
+Server die Abmeldung nicht binnen fünf Sekunden bestätigte, und nach jeder Kontolöschung, damit
+eine Erneuerung dieser Sitzung, die danach noch ankommt, beendet statt übernommen wird; und
+owedToServer, eine Sitzung, deren Ende der Server nie gehört hat, ihm mit scope "local" bei der
+nächsten Anmeldung gesagt (tellServerOwed). Keine von beiden wird irgendwo geschrieben. -->
 
 ## 6. Rechtsgrundlagen im Überblick
 
@@ -827,7 +860,7 @@ gefragt.
 | Sitzungen                                               | bis zum Abmelden, wenn der Server davon erfährt, oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
 | Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                                                      |
 | Anmeldeprotokoll                                        | 30 Tage; deine Einträge gehen sofort, wenn du dein Konto löschst oder ich es auf deine Bitte lösche (Abschnitt 3.9)                                     |
-| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                                                       |
+| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage nach dem letzten Code zur Bestätigung, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                 |
 | Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                                                         |
 | Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                                                           |
 | E-Mails an mich                                         | solange ich sie für dein Anliegen brauche                                                                                                               |

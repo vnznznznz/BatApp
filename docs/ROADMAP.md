@@ -280,7 +280,8 @@ under Apple Guideline 1.2, and Beta App Review checks it. The decisions are reco
   agreed to be friends, found by exact username. There is no search, no public profile and no way to
   write to a stranger. That gate, with report and block behind it, is the filter. There is no
   automated scanning of letters: they are private correspondence between friends, and reading them
-  by machine would be a larger intrusion than the risk it addresses in an invite-only app.
+  by machine would be a larger intrusion than the risk it addresses in an app handed only to
+  friends.
 - **A contact route**: Contact and Privacy policy buttons in the profile and the house rules, and
   the Privacy policy button on the sign-up form too. Their addresses come from the build's
   environment so that nothing personal is ever committed. The postal address for the store
@@ -343,52 +344,86 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
   no longer shows half a minute of splash and then the welcome screen. The client's fetch keeps a
   session through a failed renewal, gives a request 20 seconds, and renews a token the database
   refused; the keychain keeps a session whole whatever a write does. Signing out waits for the
-  server five seconds at most and tells it after all once it can, and every way of signing in
-  waits for a sign-out still under way.
+  server five seconds at most and tells it after all once it can - at the latest at the next
+  sign-in, while the app stays open - and every way of signing in waits for a sign-out still under
+  way, and says so after five seconds, under the buttons that check a code as well. On the web a
+  sign-in in another tab is no longer taken for the session let go, and ended. A session ended
+  elsewhere - signed out on another device, unused for 90 days, a password set anew - is told on
+  the welcome screen: "You were signed out. Sign in again to go on."
 - **Loading.** A load that got no answer is made again by itself, a screen with nothing to show has
-  Try again, a long first load says it is still trying, and Try again renews the session first.
+  Try again, a long first load says it is still trying, and Try again renews the session first. A
+  name saved on the profile shows at once, before the profile is read back.
 - **Accounts that end.** The database refuses a suspended account at once. The screens give an
   account that is gone or suspended the way out, Sign out and Contact; deleting an account says
-  that it happened; signing in to a suspended account is answered as a wrong password.
+  that it happened; signing in to a suspended account is answered as a wrong password. Words that
+  send a courier to a person name one only where the build has a way to them.
 - **Sign-up and reset by emailed code**, which finishes what Phase 2 left incomplete. Every email
   carries an 8-digit code and no link, and the code flow (PKCE) is gone. A code holds the way in
   until the password is saved, across a relaunch too; a stranger's earlier sign-up for the address
   makes way for the courier's; and confirming an address takes its password away until the
-  courier's own is set (migration `20261121160000`).
+  courier's own is set (migration `20261121160000`). A code whose check got no answer, refused
+  later, says that the address may be confirmed and how to go on; the forms say what Start over and
+  Sign out did; and on the web a code's sign-in in one tab holds the way in in the others too. "I
+  forgot my password" starts the reset with the address typed to sign in, or the one the code
+  went to.
 - **Database.** One lock order for everything that ends an account, the nightly tidy-up included,
   and a gate for each courier; twenty new friend requests an hour per account, friends listed
   before requests, and a Withdraw that cannot end a friendship; bounds on what a sign-in carries,
   on a city search, and on what a name or a letter may be; a letter read in the one order; and a
   send that answers its repeat with the letter that went, with `sent_letter` to ask what became of
-  one.
+  one. The tidy-up counts an unconfirmed sign-up's week from the last code sent to it, and forgets
+  pg_cron's runs that never ended a week after they began (`20261121180000_tidy_up_ages.sql`).
 - **Compose.** A letter not sent yet survives leaving the screen, a send outlives its screen, a
   send without an answer is asked after rather than taken for failed, and changed words wait until
-  it is known what became of the first. Write back names a former friend.
+  it is known what became of the first. Write back, Write on the friends list and "Write a letter"
+  on a courier's page name a former friend, and a name in the route is shown only if it could be
+  someone's. A letter with a NUL or half an emoji in it, which the server refuses before it reads
+  the letter, is kept back with words that say what to do; every try of it used to end in "Your
+  letter did not go." with no reason.
 - **Cities.** Saints' towns and names with brackets and slashes are found as people type them; 28
   pairs of towns of the same name are told apart wherever a city is shown; the sixteen rows nothing
   could find are settled, and the table holds 4,308 cities; a move counts at once until the first
   letter; and the city picker asks before it saves.
 - **Forms and layout.** The forms stay reachable above the keyboard on iOS and Android and check
-  what the server checks; a link that leads nowhere lands on a page of the app's own; rows keep
-  names and routes whole at a narrow phone's width.
+  what the server checks; an empty field is asked for in the words of its form - "Enter your
+  password." at sign-in, "Enter their username." on Friends; a link that leads nowhere lands on a
+  page of the app's own; rows keep names and routes whole at a narrow phone's width, and so do the
+  letters list and a letter's flight path; a distance keeps its "km" on its line.
 - **Tests.** The suite runs again compiled by the React Compiler, in CI, and what the compiler
   leaves out is listed; presses go through the real controls; the scheduled jobs run in a test; the
-  races fail CI when there is no database; a focused test fails lint; and the ages every document
-  gives are held to the two constants.
+  races fail CI when there is no database; a focused test fails lint; the ages every document
+  gives are held to the two constants; and the profile's credit to GeoNames is tested, as the
+  city picker's was.
+- **The web pages.** The build refuses to write the pages, with the operator's details, anywhere
+  inside this repository, and refuses every way a page could fetch something from another site,
+  naming what it found.
 
 Verified on 187439c, the merged tree before the dependency updates of 21 November 2026: the
 typecheck, lint and format check; 2,095 app tests, run as written and again compiled; 554 database
 tests, 73 of them races on a real Postgres; and the 90 tests of the scripts and the runbooks. The
-groups also checked their parts against the local stack, and the screens in the web build. None of
-it has been run on a phone.
+last round of fixes after it - sign-outs the server did not hear of, tabs on the web, the hint
+after a lost answer, the forms' notices, the lines of the letters list and the flight path, Write
+naming a friend - was checked on its own branch with the same commands, ending at 555 database
+tests (c0f80fc); and the merged tree, 236c734, at 2,179 app tests, as written and again compiled,
+and the 90 of the scripts. A last audit of every finding against 236c734 left some open; the fixes
+for them - a session ended elsewhere told, a letter with a character no letter can carry kept
+back, the forms' own words, the reset's address, a saved name, the web pages' build and the
+tidy-up's ages - were checked on their own branches the same way, and merged in 93c70c3 at 2,224
+app tests, as written and again compiled, 559 database tests, 74 of them races on a real Postgres,
+and 111 tests of the scripts and the runbooks. The groups also checked their parts against the
+local stack, and the screens in the web build. None of it has been run on a phone.
 
 Still open:
 
 - **Seen on no phone.** The keyboard's room on Android and iOS, the code field's autofill and
   number pad, the swipe and the back button held on the code screens, an app closed with a code
-  half done, VoiceOver and TalkBack on the code screens, Hermes reading the auth server's times, and
-  the twin towns' lines in a phone's own fonts were tried in Jest and, where they could be, against
-  the local stack and in the web build - not on a device.
+  half done, VoiceOver and TalkBack on the code screens, the forms' notices and the hint after a
+  lost answer, Hermes reading the auth server's times and a session's id, the words for a session
+  ended elsewhere, and the twin towns' lines in a phone's own fonts were tried in Jest and, where
+  they could be, against the local stack and in the web build - not on a device. The Android
+  navigation bar of a phone in light theme with button navigation, which may stay bright under the
+  dark app, is read from React Native's source only: it is to be looked at on such a phone
+  (ARCHITECTURE, "Dark theme only").
 - **The hosted project.** Everything above goes with its first `db push` and `config push`, and
   whether it takes a code life of a day (`otp_expiry = 86400`) shows at that push. Custom SMTP, and
   email confirmation on, before anyone else signs up (GO-LIVE).
@@ -396,17 +431,30 @@ Still open:
   emails for the hour used up, and the auth server's own answers still tell (ARCHITECTURE, "Who can
   tell whether an address has an account"). Closing the first needs a database change; the rest is
   the operator's to weigh.
-- **A sign-out on a dead connection** can hold signing in back for about a minute. Sign in and
-  Create account say so after five seconds; the code screens' Confirm and "Set the new password"
-  show their spinner alone. Whether they should say so too is the operator's call.
 - **"Almost there" can only try the same password again while the app stays open.** If the auth
   server refuses the password typed at sign-up or at sign-in - under a stricter rule, say - the way
   on is Start over, or Sign out and "I forgot my password", or closing the app and opening it
   again, which then asks for a password: the one chosen before, or a new one.
 - **A lost answer to a sign-up's code.** If the server confirmed the account and the answer never
-  came, nothing holds the way in: the account has no password until "I forgot my password" sets
-  one, and keeps the username and name of the first sign-up for the address - perhaps someone
-  else's - until the operator removes it.
+  came, nothing holds the way in: the account has no password, and keeps the username and name of
+  the first sign-up for the address - perhaps a stranger's. Once that code is refused again, the
+  code screen says so: a new code first, and if none comes, a password set with "I forgot my
+  password". That the account then keeps a stranger's names is decided, not open: the words, in
+  the hint and on the reset's last stage, say to delete it in the profile and sign up again. Open
+  is that the hint also shows for the same wrong code typed twice after a try that never left the
+  phone - auth-js cannot tell the two apart - where a reset taken at once removes the courier's own
+  account; the new code the words ask for first does come.
+- **The reset's last stage on the web.** "Your new password is saved" - after such a code, with the
+  sentence about names - is replaced by the roost before the browser draws it, and only a screen
+  reader hears it. Keeping it on screen, with a button to go on, would change what the reset does
+  today; saying the sentence on the roost is the other way. The operator's call; on a phone it has
+  not been seen either way.
+- **Two seams on the web**, which is for development and given to no one. One tab's sign-out still
+  under way - a logout that never answers, or a stale token offline, for up to about half a minute -
+  can undo another tab's sign-in. And a sign-out the server never heard of is forgotten at every
+  reload of the page, as on a phone only when the app is closed, and then lasts on the server until
+  the courier signs in and out again, or the tidy-up's 90 days. The first would take the app's own
+  logout in place of auth-js's; the second, the owed session kept in storage.
 - **A letter could still go twice** if the first send is still on its way to the database both
   times the app asks after it, and changed words go in between. The window is normally
   milliseconds.
@@ -416,11 +464,39 @@ Still open:
 - **An account deleted on another phone** keeps its token on this one for up to an hour. The app
   shows it as gone, but a friend request, a block or a report sent from it fails with a database
   error rather than as an account that has ended.
-- **The longest twin-town names** are still cut in the letters list, where they push the time or
-  the countdown off the line, and on the flight path, at 360 and 390 px. Write on the friends list
-  and on a courier's page passes no name to compose, so a friendship that ends in between gets the
-  general words rather than the friend's name.
 - **A read of the profile on a connection that never answers** takes about a minute and a half to
   fail: the profile is the only table the app reads directly, and postgrest-js repeats such a read
   three times by itself, each attempt with its own 20 seconds. `db: { retry: false }` in
   `createClient` would make it fail as the rest do.
+- **No password can be changed while signed in.** The way to a new one is to sign out and use "I
+  forgot my password", which needs an email.
+- **The hour's emails can be used up on purpose**, by asking for codes again and again; new
+  couriers then get no code until the hour is over. A CAPTCHA would stop it.
+- **Usernames are first come, and no name is kept back.** Anyone with a build can take the
+  username a relative is expected to choose, or call themselves "Night Courier Team" or `admin` and
+  pass for the operator; reports are the remedy meanwhile.
+- **Two friends with the same display name look alike** on compose and in the letters, which show
+  the username only where there is no name.
+- **A request to an unconfirmed sign-up** is taken, and vanishes with the account when its week is
+  up, with no word to whoever sent it.
+- **What a sign-in carries.** Other details a sign-up sent past the app, up to 4,096 bytes, stay
+  for the account's life, and an address the operator corrects leaves the old one there: both go
+  out in every access token.
+- **Two checks to add to the hosted setup:** that pg_graphql serves nothing, and that the Realtime
+  publication stays empty. Until then neither would be noticed.
+- **A city deleted by hand** takes its couriers' city from them; only a letter that ever flew from
+  or to it stops the delete.
+- **A planned count** (`Prefer: count=planned`) and `xmin` tell a signed-in client roughly how busy
+  the service is - nothing about anyone in particular.
+- **Turning confirmation off again** would let a sign-up into an account still waiting for its
+  code, names and all - as it does today for an account made by hand and left unconfirmed.
+- **Tests.** Three shields - the tidy-up's around idle sessions and identities,
+  `delete_own_account`'s around the sign-in log - can be narrowed with every test still passing,
+  and PGlite fails a long test file with "stack depth limit exceeded" where Postgres does not.
+- **Decided on the operator's behalf** in that last audit, each with its reason in ARCHITECTURE:
+  passwords of at least 8 characters with no rule on their kinds of characters, the hosted check
+  against leaked passwords being an option of the paid plans; reports about couriers who were never
+  friends, at most 20 a day; an account made through the auth server's sign-in by code treated as a
+  stranger's sign-up, every email carrying a code; a repeated `client_ref` with other words answered
+  with the first letter; the development time multiplier left unguarded; the phone's clock deciding
+  the countdowns; and the Android navigation bar checked on a phone before anything is changed.

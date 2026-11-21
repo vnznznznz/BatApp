@@ -224,14 +224,20 @@ export function useProfile() {
       // With nobody signed in there is no row to save to. Returning quietly
       // let the profile say "Saved." over a name that went nowhere.
       if (!userId) throw new Error('Your session has ended. Sign in again.');
+      const saved = displayName.trim();
       const { error: failure } = await supabase
         .from('profiles')
-        .update({ display_name: displayName.trim() })
+        .update({ display_name: saved })
         .eq('id', userId);
 
       // A refusal keeps its words - "this account has been suspended" - as it
       // does from every function of the database. (Found in the merged tree.)
       if (failure) throw toRpcError(failure, 'That name could not be saved.');
+      // Saved, so the profile shows the name now, before it is read back. Left
+      // to the read alone, one that got no answer kept the old name on screen,
+      // beside "Saved.", until a later read got through. A read that answers
+      // puts the row in its place, as the server has it.
+      setProfile((current) => (current ? { ...current, displayName: saved } : current));
       await load();
     },
     [userId, load],

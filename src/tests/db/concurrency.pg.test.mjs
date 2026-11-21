@@ -1374,6 +1374,85 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     });
 
     /**
+     * Someone can ask for a new code in that wait instead, and the new code
+     * gives the sign-up another week. So the delete asks the whole question
+     * again: still unconfirmed, and its last code still a week old. The update
+     * is GoTrue v2.197's own when it sends a code (pg_stat_statements on the
+     * local stack).
+     */
+    it('keeps a sign-up that is sent a new code while it waits for its rows', async () => {
+      const late = await unconfirmedSignUp('late');
+      const holder = await connect();
+      const tidier = await connect();
+      const gotrue = await connect();
+      await gotrue.query('set role supabase_auth_admin');
+      const tidierPid = (await tidier.query('select pg_backend_pid() as pid')).rows[0].pid;
+
+      await holder.query('begin');
+      await holder.query(`select 1 from public.bats where owner_id = $1 limit 1 for update`, [
+        late,
+      ]);
+      const tidying = tidyUp(tidier);
+      await until(`select 1 from pg_stat_activity where pid = $1 and wait_event_type = 'Lock'`, [
+        tidierPid,
+      ]);
+      await gotrue.query(
+        `update auth.users as users
+         set confirmation_sent_at = now(), confirmation_token = 'a new code', updated_at = now()
+         where users.id = $1`,
+        [late],
+      );
+      await holder.query('commit');
+      const { rows } = await tidying;
+
+      assert.deepEqual(
+        rows[0].skipped.filter((step) => !step.startsWith('pg_cron run log: ')),
+        [],
+      );
+      const { rows: left } = await admin.query(
+        `select (select count(*)::int from auth.users where id = $1) as "sign-in",
+                (select count(*)::int from public.profiles where id = $1) as profile,
+                (select count(*)::int from public.bats where owner_id = $1) as bats`,
+        [late],
+      );
+      assert.deepEqual(left, [{ 'sign-in': 1, profile: 1, bats: 3 }]);
+    });
+
+    /**
+     * A sign-up more than a week old whose last code is not: that code gives
+     * it another week. The tidy-up chooses its sign-ups by their last code
+     * too, so it neither deletes this one nor waits for its rows - a wait that
+     * anything holding them would have kept the whole night's run in.
+     * (Found in review.)
+     */
+    it('neither deletes nor waits for a sign-up whose last code is under a week old', async () => {
+      const recent = await unconfirmedSignUp('recent');
+      await admin.query(
+        `update auth.users
+         set created_at = now() - interval '10 days', confirmation_sent_at = now() - interval '6 days'
+         where id = $1`,
+        [recent],
+      );
+      const holder = await connect();
+      const tidier = await connect();
+
+      await holder.query('begin');
+      await holder.query(`select 1 from public.bats where owner_id = $1 limit 1 for update`, [
+        recent,
+      ]);
+      const tidying = tidyUp(tidier);
+      const first = await Promise.race([
+        tidying.then(() => 'finished'),
+        pause(2000).then(() => 'still waiting'),
+      ]);
+      await holder.query('commit');
+      await tidying;
+
+      assert.equal(first, 'finished');
+      assert.equal(await accountsLeft([recent]), 1);
+    });
+
+    /**
      * If Postgres does stop the tidy-up, only the step it was in is undone. The
      * whole night's run used to go with it - old sign-in records, idle
      * sessions, sign-up names all stayed another day - and nothing said so.

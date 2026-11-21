@@ -32,11 +32,12 @@
  * loaded from anywhere else. Then commit and push there. docs/GO-LIVE.md,
  * "The web pages", has the whole procedure.
  *
- * Refuses to build when a value is missing, a date does not exist or is still
- * to come, a live build has no date for the agreement, a placeholder is left
- * over, a link within a page leads nowhere, a page would load anything from
- * another site - the privacy policy promises it does not - or this tree's
- * migrations lack a function that a promise on the pages rests on.
+ * Refuses to build into this repository, which is public, by any path; and
+ * when a value is missing, a date does not exist or is still to come, a live
+ * build has no date for the agreement, a placeholder is left over, a link
+ * within a page leads nowhere, a page would load anything from another site -
+ * the privacy policy promises it does not - or this tree's migrations lack a
+ * function that a promise on the pages rests on.
  *
  * --sources <folder> builds from another folder than docs/store/, and
  * --migrations <folder> looks for the functions in another folder than
@@ -44,8 +45,8 @@
  * document, or a tree without a migration, would do.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { marked } from 'marked';
@@ -77,6 +78,32 @@ const option = (name) => {
 const outArg = option('--out');
 if (!outArg) fail('pass --out <the site repository checkout>');
 const OUT = resolve(outArg);
+
+/**
+ * The folder `path` names as the file system has it: through every link, as
+ * far as the folders exist, and the rest as written.
+ */
+function realFolder(path) {
+  const rest = [];
+  let existing = resolve(path);
+  while (!existsSync(existing)) {
+    rest.unshift(basename(existing));
+    existing = dirname(existing);
+  }
+  return join(realpathSync.native(existing), ...rest);
+}
+
+// The pages carry the operator's name, address and email, and this repository
+// is public: built anywhere inside it - "--out ." for the site's checkout,
+// mistyped - they are one `git add -A` from being published with the code.
+// Asked before anything else, so that nothing is written there. A folder
+// beside it whose name begins as its own does is outside it.
+const fromRoot = relative(realFolder(ROOT), realFolder(OUT));
+if (!(fromRoot === '..' || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)))
+  fail(
+    `--out ${outArg} is inside this repository, which is public, and the pages carry the ` +
+      "operator's details. Pass the checkout of the site repository, outside this one",
+  );
 const SOURCES = resolve(option('--sources') ?? join(ROOT, 'docs', 'store'));
 const MIGRATIONS = resolve(option('--migrations') ?? OWN_MIGRATIONS);
 
@@ -353,9 +380,88 @@ for (const [name, html] of Object.entries(pages)) {
   }
 }
 
+/**
+ * The elements that are there to run or to embed something, refused whatever
+ * their attributes say: a script without src runs all the same.
+ */
+const LOADING_ELEMENTS =
+  /<(applet|base|embed|frame|frameset|iframe|img|link|object|portal|script)\b/i;
+
+/**
+ * The attributes that fetch what they name, on whichever element they stand:
+ * an image's src or srcset, a video's poster, a table's background, the
+ * address a followed link pings, an <object>'s data.
+ */
+const LOADING_ATTRIBUTES = [
+  'archive',
+  'background',
+  'codebase',
+  'data',
+  'dynsrc',
+  'imagesrcset',
+  'lowsrc',
+  'manifest',
+  'ping',
+  'poster',
+  'src',
+  'srcset',
+];
+
+/** A tag: its name, and what stands in it, a quoted value read whole - a > in one ends nothing. */
+const TAG = /<([a-z][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+/** An attribute in what stands in a tag: its name, and its value if it has one. */
+const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
+
+/**
+ * What in `html` would have a browser fetch something, or run a script that
+ * could, as the page is shown - said as the build says it - or null. A link
+ * fetches nothing until it is followed: <a href> is how the pages lead to each
+ * other and to the sites they name, and stays. On anything else - an SVG
+ * <image> or <use>, a <base> - href fetches, and so does xlink:href.
+ */
+function whatLoads(html) {
+  const element = LOADING_ELEMENTS.exec(html);
+  if (element) return `<${element[1].toLowerCase()}>`;
+  for (const [, tagName, inside] of html.matchAll(TAG)) {
+    const tag = tagName.toLowerCase();
+    for (const [, attributeName, quoted = ''] of inside.matchAll(ATTRIBUTE)) {
+      const attribute = attributeName.toLowerCase();
+      // Without its quotes and, as a browser reads an address, without blank
+      // space - and with its character references read, as a browser reads
+      // them: &#106;avascript: is a javascript: link all the same.
+      const value = quoted
+        .replace(/&#(x?)([0-9a-f]+);?/gi, (_, hex, digits) =>
+          String.fromCodePoint(parseInt(digits, hex ? 16 : 10)),
+        )
+        .replace(/^["']|["']$|\s/g, '')
+        .toLowerCase();
+      if (LOADING_ATTRIBUTES.includes(attribute)) return `${attribute}= on <${tag}>`;
+      if ((attribute === 'href' || attribute === 'xlink:href') && tag !== 'a') {
+        return `${attribute}= on <${tag}>`;
+      }
+      // An event's handler is a script, and so is a javascript: link.
+      if (/^on/.test(attribute)) return `${attribute}= on <${tag}>`;
+      if ((attribute === 'href' || attribute === 'xlink:href') && value.startsWith('javascript:')) {
+        return 'a javascript: link';
+      }
+      // Another page, fetched in this one's place as it is shown.
+      if (attribute === 'http-equiv' && value === 'refresh') {
+        return `http-equiv=refresh on <${tag}>`;
+      }
+    }
+  }
+  // A style that reaches out, in a <style> or a style= alike.
+  return /@import|url\(|image-set\(/i.exec(html)?.[0].toLowerCase() ?? null;
+}
+
 for (const [name, html] of Object.entries(pages)) {
-  if (/<script|<link\b|<iframe|<img|\ssrc=|@import|url\(/i.test(html)) {
-    fail(`${name} would load something from elsewhere; the privacy policy promises it does not`);
+  const loads = whatLoads(html);
+  if (loads) {
+    fail(
+      `${name} would load something from elsewhere (${loads}); the privacy policy promises it ` +
+        'does not',
+    );
   }
   if (/\{\{|<!--/.test(html)) fail(`${name} still has a placeholder or a note`);
 }

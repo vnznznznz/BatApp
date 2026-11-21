@@ -123,6 +123,11 @@ const letterRow = (overrides: Partial<LetterRow> = {}): LetterRow => ({
 
 const UNEXPECTED: ApiError = { message: 'internal error', code: 'XX000', hint: null };
 
+/** Said of a letter with a character in it that cannot be sent, wherever that is found. */
+const UNSENDABLE =
+  'Your letter has a character in it that cannot be sent: half of an emoji, or a hidden one ' +
+  'that came with pasted text. Delete it, or type that part again yourself.';
+
 beforeEach(() => {
   mockRpc.mockReset();
   mockSingle.mockReset();
@@ -260,6 +265,29 @@ describe('validateBody', () => {
   it('uses the same words as the database when it refuses', () => {
     expect(validateBody('')).toBe(REFUSALS.empty_message);
     expect(validateBody('a'.repeat(MESSAGE_MAX_LENGTH + 1))).toBe(REFUSALS.message_too_long);
+  });
+
+  /**
+   * The database cannot hold a NUL, and PostgREST cannot read half of an
+   * emoji on its own: such a letter was refused before send_message saw it,
+   * taken for a lost answer, and the courier told only that it did not go -
+   * a letter that would never go, however often it was sent. (Tried on the
+   * local stack.)
+   */
+  it.each([
+    ['a NUL', 'Dear Ben,\u0000 the bats are well.'],
+    ['the first half of an emoji alone', 'Dear Ben, \uD83E the bats are well.'],
+    ['the second half of an emoji alone', 'Dear Ben, \uDD87 the bats are well.'],
+    ['an emoji cut off at the end', 'Dear Ben, the bats are well. \uD83E'],
+  ])('refuses a letter with %s, and says what to do', (_, body) => {
+    const said = validateBody(body);
+
+    expect(said).toBe(UNSENDABLE);
+    expect(said).not.toMatch(/connection/i);
+  });
+
+  it('takes an emoji whole, however many halves it has', () => {
+    expect(validateBody('Dear Ben, 🦇👩‍👧 the bats are well.')).toBeNull();
   });
 });
 
@@ -413,6 +441,38 @@ describe('sendMessage', () => {
     await expect(sendMessage('stranger-id', 'Hello', REF)).rejects.toMatchObject({
       message: REFUSALS.not_friends,
       reason: 'not_friends',
+    });
+  });
+
+  /**
+   * What the local stack answered for such a letter, before send_message ran:
+   * Postgres for a NUL, PostgREST for half of an emoji. Each is a refusal of
+   * the words, not a lost answer - the letter did not go, and asking whether
+   * it did, or sending it again, would change nothing.
+   */
+  it.each<[string, ApiError]>([
+    [
+      'a NUL, which the database cannot hold',
+      {
+        code: '22P05',
+        message: 'unsupported Unicode escape sequence',
+        hint: null,
+      },
+    ],
+    [
+      'half of an emoji, which PostgREST cannot read',
+      { code: 'PGRST102', message: 'Empty or invalid json', hint: null },
+    ],
+  ])('says what to do when the server refuses %s', async (_, error) => {
+    fail(error);
+
+    const sending = sendMessage('anna-id', 'Dear Anna,', REF);
+
+    await expect(sending).rejects.toBeInstanceOf(RpcError);
+    await expect(sending).rejects.toMatchObject({
+      message: UNSENDABLE,
+      reason: 'unsendable_character',
+      cause: error,
     });
   });
 
