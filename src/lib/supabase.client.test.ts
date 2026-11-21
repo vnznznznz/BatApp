@@ -578,6 +578,43 @@ describe('the codes from the emails', () => {
     );
   });
 
+  /**
+   * Said in the client's options, not left to supabase-js's default: a later
+   * one may default to the code flow, and every email would then leave a row
+   * on the auth server that nothing deletes. Today's default is the same, so
+   * without this the option could go unnoticed. (Found in review.)
+   */
+  it('are asked for with no code challenge by a supabase-js that defaults to the code flow', async () => {
+    jest.doMock('@supabase/supabase-js', () => {
+      const actual =
+        jest.requireActual<typeof import('@supabase/supabase-js')>('@supabase/supabase-js');
+      return {
+        ...actual,
+        createClient: (...[url, key, options]: Parameters<typeof actual.createClient>) =>
+          actual.createClient(url, key, {
+            ...options,
+            auth: { flowType: 'pkce', ...options?.auth },
+          }),
+      };
+    });
+    try {
+      answered();
+      const { client } = launch();
+
+      await settled(client.auth.signUp({ email: 'mara@example.test', password: 'night-courier' }));
+      await settled(client.auth.resetPasswordForEmail('mara@example.test'));
+
+      const asked = sent.filter((request) => isSignUp(request) || isRecover(request));
+      expect(asked).toHaveLength(2);
+      for (const { body } of asked) {
+        expect(body).not.toEqual(expect.objectContaining({ code_challenge: expect.anything() }));
+      }
+      expect([...mockKeychain.keys()].filter(isVerifier)).toEqual([]);
+    } finally {
+      jest.dontMock('@supabase/supabase-js');
+    }
+  });
+
   /** The auth server checks a code typed in itself. */
   it('sign in when typed in, with nothing but the session kept', async () => {
     answered();
