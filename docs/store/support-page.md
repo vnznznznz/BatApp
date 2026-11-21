@@ -29,11 +29,23 @@ Notes for the operator - remove before publishing, like every comment in this fi
    Datenschutzerklärung."), here and in google-play.md. For the same reason "Privacy" says that
    the policy gives the periods "as far as it is known today" ("soweit es heute feststeht"): take
    those words out, dashes included, in the same change.
-5. Forgotten password: the app sends the reset email, but cannot yet finish the reset (GO-LIVE,
-   "Password reset cannot be completed in-app"), and no email leaves the hosted project before a
-   custom SMTP provider is set up. Until both are done, this page sends people to the contact
-   address. Once they are, replace that paragraph with: "On the sign-in screen, tap I forgot my
-   password, enter your email address and follow the link in the email."
+5. Codes: the app sets a new password, and confirms an address, with an 8-digit code from an
+   email; every email carries a code and no link (supabase/templates; otp_length and otp_expiry in
+   supabase/config.toml). No email leaves the hosted project before a custom SMTP provider is set
+   up (GO-LIVE, "Before a second person can sign up: custom SMTP"): until then no code reaches
+   anyone but the operator, and what helps is writing to the contact address, as "No email?" ends.
+   Keep that ending in any case. "Confirming your email address" applies once email confirmation
+   is switched on (enable_confirmations in supabase/config.toml); until then the app asks for no
+   such code. A code's day is otp_expiry = 86400: if the hosted project allows less, change "a day"
+   here, in the privacy policy (3.10) and in the templates together. Confirming an address by hand
+   also takes its password away when a code to confirm it had been emailed
+   (supabase/migrations/20261121160000_confirmation_clears_password.sql), which is what the last
+   sentence of "No email?" says.
+6. "Your account has been suspended" follows signIn and verifyResetCode in
+   src/features/auth/auth-context.tsx and the words of REFUSALS.account_suspended in
+   src/lib/rpc-error.ts, which send a suspended courier to "the person who runs Night Courier";
+   the app's Contact button opens this page (EXPO_PUBLIC_CONTACT_URL, GO-LIVE "Setting up the
+   hosted project", step 5). It goes with the privacy policy, section 3.8.
 -->
 
 # Night Courier – help and contact
@@ -64,8 +76,42 @@ I read every email and answer as soon as I can.
 
 ## Forgotten password
 
-Write to {{CONTACT_EMAIL}} from the email address of your account, and I will help you set a new
-one.
+On the sign-in screen, tap _I forgot my password_ and enter your email address. Type the 8-digit
+code from the email into the app, with your new password. The code works for a day, and only the
+newest one counts. If the app is closed after the code was taken but before your new password was
+saved, it asks for the password again when it opens. No email? See below.
+
+If the app says instead that the address had an account nobody had confirmed, that account has been
+removed, with nothing in it: sign up with the address to make it yours.
+
+## Confirming your email address
+
+If the app asks for a code after you sign up or sign in, it is in an email to your address: type it
+in. It works for a day, and only the newest code counts. After signing in, the app then saves your
+password again, because confirming the address takes it away. If it then shows _One more code_, an
+earlier sign-up for your address had another username: that account has made way for yours, and
+the new code finishes it.
+
+If the app opens on _Almost there_, your address is confirmed, but your password is not saved yet.
+Type it – the one you chose before, or a new one – and tap _Finish_. After a sign-up you can tap
+_Start over_ instead: the unfinished account is removed, and you can sign up again. After signing
+in, you can tap _Sign out_ instead, and set a password with _I forgot my password_.
+
+## No email?
+
+Look in your spam folder, then ask for the code again: the app lets you a minute after the last
+one. A code comes only where it can be used: none for a new password if the address has no
+account, and none after a sign-up if you already have an account – sign in instead. If none comes
+at all, write to {{CONTACT_EMAIL}} from that address. If I then confirm your address by hand, your
+password goes with it: set one with _I forgot my password_.
+
+## Your account has been suspended
+
+If the app says that your account has been suspended, write to {{CONTACT_EMAIL}} from the address
+of your account to ask why. A suspended account cannot be deleted in the app either: if you want it
+deleted, say so in your email. Signing in to a suspended account is answered as if the password
+were wrong. So if the app will not take a password you are sure of, tap _I forgot my password_:
+once you have typed the code from the email, the app says so if the account has been suspended.
 
 ## Deleting your account
 
@@ -148,8 +194,45 @@ Ich lese jede E-Mail und antworte, sobald ich kann.
 
 ## Passwort vergessen
 
-Schreib an {{CONTACT_EMAIL}}, von der E-Mail-Adresse deines Kontos, dann helfe ich dir, ein neues
-festzulegen.
+Tippe auf dem Anmeldebildschirm auf „I forgot my password“ und gib deine E-Mail-Adresse ein. Den
+8-stelligen Code aus der E-Mail tippst du mit deinem neuen Passwort in die App. Der Code gilt einen
+Tag, und nur der neueste zählt. Wird die App geschlossen, nachdem der Code angenommen wurde, aber
+bevor dein neues Passwort gespeichert ist, fragt sie beim nächsten Öffnen noch einmal nach dem
+Passwort. Keine E-Mail? Siehe unten.
+
+Sagt die App stattdessen, dass es zu der Adresse ein Konto gab, das niemand bestätigt hatte, ist
+dieses Konto entfernt, ohne Inhalt: Registriere dich mit der Adresse, dann gehört sie dir.
+
+## Deine E-Mail-Adresse bestätigen
+
+Fragt die App nach der Registrierung oder beim Anmelden nach einem Code, steht er in einer E-Mail an
+deine Adresse: Tippe ihn ein. Er gilt einen Tag, und nur der neueste Code zählt. Beim Anmelden
+speichert die App danach dein Passwort noch einmal, weil das Bestätigen der Adresse es wegnimmt.
+Zeigt sie danach „One more code“, hatte eine frühere Registrierung mit deiner Adresse einen anderen
+Benutzernamen: Dieses Konto hat deinem Platz gemacht, und der neue Code schließt deines ab.
+
+Öffnet die App mit „Almost there“, ist deine Adresse bestätigt, aber dein Passwort noch nicht
+gespeichert. Gib es ein – das, das du gewählt hattest, oder ein neues – und tippe auf „Finish“. Nach
+einer Registrierung kannst du stattdessen auf „Start over“ tippen: Das unfertige Konto wird
+entfernt, und du kannst dich neu registrieren. Nach dem Anmelden kannst du dich stattdessen mit
+„Sign out“ abmelden und mit „I forgot my password“ ein Passwort festlegen.
+
+## Keine E-Mail?
+
+Schau im Spam-Ordner nach und fordere den Code noch einmal an; das geht eine Minute nach dem
+letzten. Ein Code kommt nur, wo er etwas nützt: keiner für ein neues Passwort, wenn es zu der
+Adresse kein Konto gibt, und keiner nach einer Registrierung, wenn du schon ein Konto hast – melde
+dich dann an. Kommt gar keiner, schreib an {{CONTACT_EMAIL}}, von dieser Adresse. Bestätige ich
+deine Adresse dann von Hand, geht dein Passwort mit: Leg mit „I forgot my password“ eines fest.
+
+## Dein Konto ist gesperrt
+
+Sagt die App, dass dein Konto gesperrt ist, schreib an {{CONTACT_EMAIL}}, von der Adresse deines
+Kontos, und frag, warum. Ein gesperrtes Konto lässt sich auch nicht in der App löschen: Willst du es
+löschen lassen, schreib das dazu. Eine Anmeldung bei einem gesperrten Konto wird beantwortet, als
+wäre das Passwort falsch. Nimmt die App ein Passwort nicht an, bei dem du dir sicher bist, tippe
+also auf „I forgot my password“: Hast du den Code aus der E-Mail eingegeben, sagt die App es, wenn
+das Konto gesperrt ist.
 
 ## Dein Konto löschen
 
