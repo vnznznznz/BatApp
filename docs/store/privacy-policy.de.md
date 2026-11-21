@@ -430,9 +430,11 @@ oder Betriebssystems (den sogenannten User-Agent).
   ebenfalls gelöscht. Eine Sitzung, die **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem
   du die App so lange nicht geöffnet hast –, löscht ein täglicher Auftrag; dort meldest du dich dann
   neu an. Erfährt der Server nichts von deiner Abmeldung, etwa ohne Netz, bleiben deine Sitzungen
-  dort, bis dieser Auftrag sie löscht; willst du sie früher beenden, melde dich einmal an und wieder
-  ab. Wenn du ein Handy verlierst, melde dich auf einem anderen Gerät an und ab – die Anmeldung auf
-  dem verlorenen Handy funktioniert dann spätestens nach einer Stunde nicht mehr – oder schreib mir.
+  dort, bis dieser Auftrag sie löscht; die dieses Geräts nur, bis du dich darauf wieder anmeldest,
+  wenn du die App dazwischen nicht geschlossen hast, denn dann sagt die App es dem Server. Willst du
+  sie alle früher beenden, melde dich einmal an und wieder ab. Wenn du ein Handy verlierst, melde
+  dich auf einem anderen Gerät an und ab – die Anmeldung auf dem verlorenen Handy funktioniert dann
+  spätestens nach einer Stunde nicht mehr – oder schreib mir.
 - **Anmelde-Token.** Während die App geöffnet ist, wird deine Anmeldung etwa einmal pro Stunde
   erneuert. Dabei entsteht jedes Mal ein neues Token, und das alte wird ungültig. Gespeichert bleiben
   die Token höchstens so lange wie die Sitzung, zu der sie gehören.
@@ -461,11 +463,17 @@ oder Betriebssystems (den sogenannten User-Agent).
   (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx) und meldet das Gerät dann
   trotzdem ab; eine schon gesendete Anfrage kann den Server noch erreichen, und bei einer Sitzung,
   deren Token abgelaufen war, sagt die App es dem Server noch einmal, wenn der Client fertig ist
-  (tellServerAfterAll) - das erreicht ihn nur, wenn das Netz bis dahin zurück ist. "Höchstens eine
-  Stunde": Ein Zugangs-Token, den ein anderes Gerät schon hält, gilt an der Datenbank-API weiter,
-  bis er abläuft (jwt_expiry = 3600 in supabase/config.toml), weil dort nichts nach der Sitzung
-  sieht; am 17. November 2026 am lokalen Stack gezeigt, mit einem signierten Token ganz ohne
-  Sitzung. Supabase Auth selbst lehnt einen solchen Token ab, und erneuern lässt er sich nicht.
+  (tellServerAfterAll) - das erreicht ihn nur, wenn das Netz bis dahin zurück ist. Eine Sitzung,
+  deren Ende der Server dann noch nicht gehört hat - dieser Versuch, oder bei frischem Token die
+  Abmeldung des Clients selbst, blieb ohne Antwort -, sagt die App ihm für sich allein (scope
+  "local") bei der nächsten Anmeldung auf dem Gerät, solange sie nicht geschlossen wurde
+  (owedToServer): der Satz über die Sitzung dieses Geräts. Dafür hält die App die Sitzung im
+  Arbeitsspeicher, längstens bis sie geschlossen wird, nie gespeichert (letGo und owedToServer in
+  derselben Datei; Abschnitt 5). "Höchstens eine Stunde": Ein Zugangs-Token, den ein anderes Gerät
+  schon hält, gilt an der Datenbank-API weiter, bis er abläuft (jwt_expiry = 3600 in
+  supabase/config.toml), weil dort nichts nach der Sitzung sieht; am 17. November 2026 am lokalen
+  Stack gezeigt, mit einem signierten Token ganz ohne Sitzung. Supabase Auth selbst lehnt einen
+  solchen Token ab, und erneuern lässt er sich nicht.
 - Anmelde-Token: GoTrues automatisches Aufräumen (ersetzte Token nach 24 Stunden) ist nur aktiv,
   wenn GOTRUE_DB_CLEANUP_ENABLED gesetzt ist; der Standard ist "false", lokal ist es aus. Ist es auf
   dem gehosteten Projekt an, kann der Satz lauten: "Ersetzte Token löscht Supabase nach 24 Stunden."
@@ -511,7 +519,11 @@ Mit der Bestätigung wird das zuvor gesetzte Passwort gelöscht, und die App gib
 Passwort und den Anzeigenamen, die du gewählt hast – oder sie löscht es, wenn es einen anderen
 Benutzernamen hat, und richtet an seiner Stelle deines ein, mit einem neuen Code. Benutzt du für ein
 solches Konto stattdessen „I forgot my password“, löscht sein Code das Konto, und du kannst dich
-danach registrieren.
+danach registrieren. Geht die Antwort auf deinen Code unterwegs verloren – die Verbindung bricht
+gerade dann ab –, kann deine Adresse bestätigt sein, ohne dass die App dem Konto dein Passwort und
+deine Namen gegeben hat. Du legst dann mit „I forgot my password“ ein Passwort fest, und das Konto
+behält den Benutzernamen und den Anzeigenamen, die es hatte: Sind es nicht die, die du gewählt
+hast, lösch das Konto in deinem Profil und registriere dich neu, wie die App es dir sagt.
 
 <!-- PRÜFEN: Die E-Mail-Bestätigung ist heute aus (supabase/config.toml, enable_confirmations =
 false), weil Supabases eigener Mailversand bis zum eigenen SMTP nur den Betreiber erreicht
@@ -537,7 +549,10 @@ das gehostete Projekt welche schickt, ist zu prüfen (docs/GO-LIVE.md, "Setting 
 project", Schritt 2). Ist einer an, ihn hier nennen und ihm, wie GO-LIVE sagt, eine Vorlage der App
 ohne Link geben, oder ihn ausschalten. Was ein solches Konto zu deinem macht: finishSignUp und
 verifyResetCode in src/features/auth/auth-context.tsx und die Migration
-20261121160000_confirmation_clears_password.sql. -->
+20261121160000_confirmation_clears_password.sql. Nach einer verlorenen Antwort bleibt das Konto,
+wie die frühere Registrierung es angelegt hat (Entscheidung des Betreibers): CodeUnanswered und
+NAMES_NOT_CHOSEN in auth-context.tsx, MAY_BE_CONFIRMED in src/features/auth/confirm-email.tsx und
+confirmedJustBefore in src/features/auth/unfinished.ts. -->
 
 <!-- PRÜFEN (rechtlich): Das Bestätigen einer Adresse übernimmt oder löscht ein Konto, das eine
 frühere, unbestätigte Registrierung mit ihr angelegt hatte - vielleicht die einer anderen Person -,
@@ -670,7 +685,9 @@ haben; in der App angezeigt wird sie nicht.
   deinem Passwort anmeldest und wenn die App ohne Anmeldung für diese Adresse geöffnet wird.
 - Beim Abmelden löscht die App die Sitzung und diese Notiz von deinem Gerät, auch wenn der Server
   gerade nicht erreichbar ist. Nach dem Löschen deines Kontos tut sie das, sobald sie weiß, dass das
-  Löschen geklappt hat.
+  Löschen geklappt hat. Bis du die App schließt, kann sie die Sitzung noch im Arbeitsspeicher
+  behalten – gespeichert wird sie nicht –, damit die Abmeldung sicher gilt: War der Server nicht
+  erreichbar, sagt sie es ihm bei deiner nächsten Anmeldung.
 - Sonst speichert die App nichts auf deinem Gerät. Briefe, Entwürfe, Freundeslisten und Meldungen
   sind nur so lange auf dem Gerät, wie die App geöffnet ist. Ein angefangener Brief ist weg, wenn du
   die App schließt oder dich abmeldest.
@@ -683,7 +700,12 @@ Hinweis 5 oben. Die Notiz, wofür ein Code ist, ist der Eintrag night-courier.un
 (src/features/auth/unfinished.ts), im selben Speicher wie die Sitzung (authStorage in
 src/lib/session-store.ts); sie wird geschrieben, bevor der Code geprüft wird. Ungesendete Briefe
 und die Wahl bei „auch blockieren“ liegen nur im Arbeitsspeicher (src/features/messages/drafts.ts,
-src/features/safety/safety.ts) und werden bei jedem Abmelden vergessen. -->
+src/features/safety/safety.ts) und werden bei jedem Abmelden vergessen. Die Sitzung im
+Arbeitsspeicher nach dem Abmelden: letGo in src/features/auth/auth-context.tsx, gesetzt, wenn der
+Server nicht binnen fünf Sekunden antwortete, und nach jeder Kontolöschung, damit eine Erneuerung
+dieser Sitzung, die danach noch ankommt, beendet statt übernommen wird; und owedToServer, eine
+Sitzung, deren Ende der Server nie gehört hat, ihm mit scope "local" bei der nächsten Anmeldung
+gesagt (tellServerOwed). Keine von beiden wird irgendwo geschrieben. -->
 
 ## 6. Rechtsgrundlagen im Überblick
 

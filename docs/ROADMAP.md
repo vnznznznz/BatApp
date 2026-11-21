@@ -343,18 +343,23 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
   no longer shows half a minute of splash and then the welcome screen. The client's fetch keeps a
   session through a failed renewal, gives a request 20 seconds, and renews a token the database
   refused; the keychain keeps a session whole whatever a write does. Signing out waits for the
-  server five seconds at most and tells it after all once it can, and every way of signing in
-  waits for a sign-out still under way.
+  server five seconds at most and tells it after all once it can - at the latest at the next
+  sign-in, while the app stays open - and every way of signing in waits for a sign-out still under
+  way, and says so after five seconds, under the buttons that check a code as well. On the web a
+  sign-in in another tab is no longer taken for the session let go, and ended.
 - **Loading.** A load that got no answer is made again by itself, a screen with nothing to show has
   Try again, a long first load says it is still trying, and Try again renews the session first.
 - **Accounts that end.** The database refuses a suspended account at once. The screens give an
   account that is gone or suspended the way out, Sign out and Contact; deleting an account says
-  that it happened; signing in to a suspended account is answered as a wrong password.
+  that it happened; signing in to a suspended account is answered as a wrong password. Words that
+  send a courier to a person name one only where the build has a way to them.
 - **Sign-up and reset by emailed code**, which finishes what Phase 2 left incomplete. Every email
   carries an 8-digit code and no link, and the code flow (PKCE) is gone. A code holds the way in
   until the password is saved, across a relaunch too; a stranger's earlier sign-up for the address
   makes way for the courier's; and confirming an address takes its password away until the
-  courier's own is set (migration `20261121160000`).
+  courier's own is set (migration `20261121160000`). A code whose check got no answer, refused
+  later, says that the address may be confirmed and how to go on; the forms say what Start over and
+  Sign out did; and on the web a code's sign-in in one tab holds the way in in the others too.
 - **Database.** One lock order for everything that ends an account, the nightly tidy-up included,
   and a gate for each courier; twenty new friend requests an hour per account, friends listed
   before requests, and a Withdraw that cannot end a friendship; bounds on what a sign-in carries,
@@ -363,14 +368,17 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
   one.
 - **Compose.** A letter not sent yet survives leaving the screen, a send outlives its screen, a
   send without an answer is asked after rather than taken for failed, and changed words wait until
-  it is known what became of the first. Write back names a former friend.
+  it is known what became of the first. Write back, Write on the friends list and "Write a letter"
+  on a courier's page name a former friend, and a name in the route is shown only if it could be
+  someone's.
 - **Cities.** Saints' towns and names with brackets and slashes are found as people type them; 28
   pairs of towns of the same name are told apart wherever a city is shown; the sixteen rows nothing
   could find are settled, and the table holds 4,308 cities; a move counts at once until the first
   letter; and the city picker asks before it saves.
 - **Forms and layout.** The forms stay reachable above the keyboard on iOS and Android and check
   what the server checks; a link that leads nowhere lands on a page of the app's own; rows keep
-  names and routes whole at a narrow phone's width.
+  names and routes whole at a narrow phone's width, and so do the letters list and a letter's
+  flight path; a distance keeps its "km" on its line.
 - **Tests.** The suite runs again compiled by the React Compiler, in CI, and what the compiler
   leaves out is listed; presses go through the real controls; the scheduled jobs run in a test; the
   races fail CI when there is no database; a focused test fails lint; and the ages every document
@@ -379,16 +387,21 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
 Verified on 187439c, the merged tree before the dependency updates of 21 November 2026: the
 typecheck, lint and format check; 2,095 app tests, run as written and again compiled; 554 database
 tests, 73 of them races on a real Postgres; and the 90 tests of the scripts and the runbooks. The
-groups also checked their parts against the local stack, and the screens in the web build. None of
-it has been run on a phone.
+last round of fixes after it - sign-outs the server did not hear of, tabs on the web, the hint
+after a lost answer, the forms' notices, the lines of the letters list and the flight path, Write
+naming a friend - was checked on its own branch with the same commands, ending at 555 database
+tests (c0f80fc); and the merged tree, 236c734, at 2,179 app tests, as written and again compiled,
+and the 90 of the scripts. The groups also checked their parts against the local stack, and the
+screens in the web build. None of it has been run on a phone.
 
 Still open:
 
 - **Seen on no phone.** The keyboard's room on Android and iOS, the code field's autofill and
   number pad, the swipe and the back button held on the code screens, an app closed with a code
-  half done, VoiceOver and TalkBack on the code screens, Hermes reading the auth server's times, and
-  the twin towns' lines in a phone's own fonts were tried in Jest and, where they could be, against
-  the local stack and in the web build - not on a device.
+  half done, VoiceOver and TalkBack on the code screens, the forms' notices and the hint after a
+  lost answer, Hermes reading the auth server's times and a session's id, and the twin towns' lines
+  in a phone's own fonts were tried in Jest and, where they could be, against the local stack and in
+  the web build - not on a device.
 - **The hosted project.** Everything above goes with its first `db push` and `config push`, and
   whether it takes a code life of a day (`otp_expiry = 86400`) shows at that push. Custom SMTP, and
   email confirmation on, before anyone else signs up (GO-LIVE).
@@ -396,17 +409,30 @@ Still open:
   emails for the hour used up, and the auth server's own answers still tell (ARCHITECTURE, "Who can
   tell whether an address has an account"). Closing the first needs a database change; the rest is
   the operator's to weigh.
-- **A sign-out on a dead connection** can hold signing in back for about a minute. Sign in and
-  Create account say so after five seconds; the code screens' Confirm and "Set the new password"
-  show their spinner alone. Whether they should say so too is the operator's call.
 - **"Almost there" can only try the same password again while the app stays open.** If the auth
   server refuses the password typed at sign-up or at sign-in - under a stricter rule, say - the way
   on is Start over, or Sign out and "I forgot my password", or closing the app and opening it
   again, which then asks for a password: the one chosen before, or a new one.
 - **A lost answer to a sign-up's code.** If the server confirmed the account and the answer never
-  came, nothing holds the way in: the account has no password until "I forgot my password" sets
-  one, and keeps the username and name of the first sign-up for the address - perhaps someone
-  else's - until the operator removes it.
+  came, nothing holds the way in: the account has no password, and keeps the username and name of
+  the first sign-up for the address - perhaps a stranger's. Once that code is refused again, the
+  code screen says so: a new code first, and if none comes, a password set with "I forgot my
+  password". That the account then keeps a stranger's names is decided, not open: the words, in
+  the hint and on the reset's last stage, say to delete it in the profile and sign up again. Open
+  is that the hint also shows for the same wrong code typed twice after a try that never left the
+  phone - auth-js cannot tell the two apart - where a reset taken at once removes the courier's own
+  account; the new code the words ask for first does come.
+- **The reset's last stage on the web.** "Your new password is saved" - after such a code, with the
+  sentence about names - is replaced by the roost before the browser draws it, and only a screen
+  reader hears it. Keeping it on screen, with a button to go on, would change what the reset does
+  today; saying the sentence on the roost is the other way. The operator's call; on a phone it has
+  not been seen either way.
+- **Two seams on the web**, which is for development and given to no one. One tab's sign-out still
+  under way - a logout that never answers, or a stale token offline, for up to about half a minute -
+  can undo another tab's sign-in. And a sign-out the server never heard of is forgotten at every
+  reload of the page, as on a phone only when the app is closed, and then lasts on the server until
+  the tidy-up's 90 days. The first would take the app's own logout in place of auth-js's; the
+  second, the owed session kept in storage.
 - **A letter could still go twice** if the first send is still on its way to the database both
   times the app asks after it, and changed words go in between. The window is normally
   milliseconds.
@@ -416,10 +442,6 @@ Still open:
 - **An account deleted on another phone** keeps its token on this one for up to an hour. The app
   shows it as gone, but a friend request, a block or a report sent from it fails with a database
   error rather than as an account that has ended.
-- **The longest twin-town names** are still cut in the letters list, where they push the time or
-  the countdown off the line, and on the flight path, at 360 and 390 px. Write on the friends list
-  and on a courier's page passes no name to compose, so a friendship that ends in between gets the
-  general words rather than the friend's name.
 - **A read of the profile on a connection that never answers** takes about a minute and a half to
   fail: the profile is the only table the app reads directly, and postgrest-js repeats such a read
   three times by itself, each attempt with its own 20 seconds. `db: { retry: false }` in

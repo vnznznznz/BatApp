@@ -104,6 +104,23 @@ Recorded where the work is, not only here:
   ("Before a second person can sign up", step 4), it answers a taken username with an error, and
   it answers a sign-in to a suspended or removed account with "User is banned", whatever the
   password.
+- **A lost answer to a sign-up's code can leave a stranger's names on an account.** If the auth
+  server confirms an address with a sign-up's code and its answer never reaches the app, the
+  account is not finished: it has no password, and keeps the username and name of the first
+  sign-up for the address - a stranger's, if someone typed the address before its owner did. The
+  app says so once that code is refused again: ask for a new code first, and if none comes within
+  a few minutes, set a password with "I forgot my password"; after a sign-up it adds that whoever
+  finds a username or name on the account that they did not choose can delete it in the profile
+  and sign up again. That is decided: such an account is not removed for it, and whoever writes
+  about a username they never chose can be told the same. The hint also shows for the same wrong
+  code typed twice after a try that never left the phone, which the app cannot tell apart; a reset
+  taken at once then removes the courier's own account, still unconfirmed, and they sign up again
+  (ARCHITECTURE, "A code holds the way in").
+- **The web build has seams of its own,** which reach nobody: it is for development, and the apps
+  people are given are the iOS and Android builds ("Recommended distribution" below). One tab's
+  sign-out still under way can undo another tab's sign-in, a sign-out the server never heard of is
+  forgotten at a reload of the page, and the reset's "Your new password is saved" is never drawn -
+  only a screen reader hears it (ARCHITECTURE, "Sessions" and "A code holds the way in").
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
@@ -962,8 +979,11 @@ Once confirmation is on, an account confirmed by hand - with
 the trigger sits on the table - loses its password as well, when a code to confirm it had been
 emailed ("Setting up the hosted project", step 3). Its owner then sets one with "I forgot my
 password", which needs an email of its own. So it does not help someone whose emails do not
-arrive: find out why they do not. A sign-up nobody confirms is deleted after a week, and the
-address can then sign up afresh.
+arrive: find out why they do not. (Only a password set in the same call of the admin API,
+`"email_confirm": true` with a `"password"`, stays: the auth server saves it first, and that clears
+the time the code was sent. It would be a password you chose for someone and sent them, and the
+app has no way to change it but "I forgot my password" - so not that either.) A sign-up nobody
+confirms is deleted after a week, and the address can then sign up afresh.
 
 ### Push notifications: none
 
@@ -980,8 +1000,13 @@ transits it, so a content-free push keeps message text out of a US processor.
   satisfies GDPR Art. 17.
 - ~~**Report, block, and a contact route**~~ — built in Phase 13a. The contact route is a
   **Contact** button in the profile and in the house rules, and a **Privacy policy** button there
-  and on the sign-up form. Both read their address from the build's environment —
+  and on the sign-up form. Contact also stands wherever a courier may need a person: beside an
+  account that has ended or been suspended, on the welcome screen after a suspension, on the
+  reset's code stage, and on the code screen when a sign-in ended before the account was finished.
+  Both read their address from the build's environment —
   `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` — and are hidden while unset.
+  Without a contact address, the words of a suspension, and of that sign-in, name nobody to write
+  to either.
   **Set both for every build anyone else will use**, in `.env` and in the EAS environment: an App
   Reviewer looks for exactly these. Night Courier's builds use the help page and the privacy
   policy on GitHub Pages; the two values are in "Setting up the hosted project", step 5. (The

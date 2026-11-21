@@ -164,7 +164,12 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Anzeigenamen, die sie eingegeben hat; trug es einen anderen Benutzernamen, löscht die App es und
   legt es mit ihren Angaben neu an, mit einem neuen Code. Bestätigt erst der Code zum Zurücksetzen
   eines Passworts ein solches Konto, löscht die App es, und die Person kann sich selbst
-  registrieren (`src/features/auth/auth-context.tsx`, `finishSignUp` und `verifyResetCode`).
+  registrieren (`src/features/auth/auth-context.tsx`, `finishSignUp` und `verifyResetCode`). Geht
+  die Antwort auf ihren Code verloren, nachdem er die Adresse bestätigt hat, richtet die App das
+  Konto nicht ein: Es bleibt ohne Passwort, mit Benutzernamen und Anzeigenamen der früheren
+  Registrierung, und gehört der Person so, sobald sie mit „I forgot my password“ ein Passwort
+  setzt. Die App sagt ihr, dass sie es im Profil löschen und sich neu registrieren kann, wenn es
+  Namen zeigt, die sie nicht gewählt hat (`NAMES_NOT_CHOSEN`); so hat es der Betreiber entschieden.
 - **Daten:**
   - E-Mail-Adresse: `auth.users.email`; Kopien in `auth.identities.identity_data` und dessen
     berechneter Spalte `email`, in `auth.one_time_tokens.relates_to`, solange ein Code zum
@@ -177,8 +182,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Bestätigung meldet danach mehr an. Die App setzt gleich danach das Passwort, das die Person
     eingegeben hat – bei der Registrierung, beim Anmelden oder als neues Passwort. Bestätigt der
     Betreiber ein solches Konto von Hand, leert das den Hash ebenso, und die Person setzt mit „I
-    forgot my password“ ein neues. Ist die Bestätigung aus, wird kein Code geschickt, und der Hash
-    bleibt.
+    forgot my password“ ein neues; nur ein Passwort, das derselbe Aufruf der Admin-API setzt,
+    bliebe, und das nutzt er nicht (GO-LIVE, Ende von „Before a second person can sign up“). Ist
+    die Bestätigung aus, wird kein Code geschickt, und der Hash bleibt.
   - Eine Kopie von Benutzername und Anzeigename bei der Registrierung
     (`auth.users.raw_user_meta_data`, eine weitere in `auth.identities.identity_data`). Aus ihr
     entsteht das Profil (`handle_new_user()`); danach entfernt der tägliche Auftrag
@@ -225,12 +231,14 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     im Anmeldeprotokoll löscht die Funktion gleich mit (V8).
   - Abmelden beendet die Sitzungen der Person auf allen Geräten (supabase-js `signOut()`,
     Voreinstellung `global`). Am lokalen Stack geprüft: GoTrue löscht dabei die Zeilen; auf dem
-    gehosteten Projekt bestätigen (zu prüfen). Erreicht die Abmeldung den Server nicht, bleiben sie,
-    bis die 90 Tage unten greifen. Ein Zugangs-Token, den ein anderes Gerät schon hält, gilt an der
-    Datenbank-API trotzdem weiter, bis er abläuft, also höchstens 3600 Sekunden: Dort sieht nichts
-    nach der Sitzung (am 17. November 2026 am lokalen Stack gezeigt, mit einem signierten Token
-    ohne Sitzung; GoTrue selbst lehnt ihn ab). Die Datenschutzerklärung sagt deshalb „höchstens
-    eine Stunde“ (3.9).
+    gehosteten Projekt bestätigen (zu prüfen). Erreicht die Abmeldung den Server nicht, sagt die
+    App ihm das Ende der Sitzung dieses Geräts bei der nächsten Anmeldung dort, für sich allein
+    (Bereich `local`, `owedToServer`), solange sie nicht geschlossen wurde; sonst, und für die
+    Sitzungen der anderen Geräte, bleiben sie, bis die 90 Tage unten greifen. Ein Zugangs-Token,
+    den ein anderes Gerät schon hält, gilt an der Datenbank-API trotzdem weiter, bis er abläuft,
+    also höchstens 3600 Sekunden: Dort sieht nichts nach der Sitzung (am 17. November 2026 am
+    lokalen Stack gezeigt, mit einem signierten Token ohne Sitzung; GoTrue selbst lehnt ihn ab).
+    Die Datenschutzerklärung sagt deshalb „höchstens eine Stunde“ (3.9).
   - **Unbenutzte Sitzungen:** Der tägliche Auftrag `tidy_up` löscht eine Sitzung, deren
     `updated_at` älter als 90 Tage ist (`private.idle_session_lifetime()`), mit ihren
     Refresh-Token. GoTrue setzt `updated_at` bei jeder Erneuerung, also etwa stündlich, solange die
@@ -249,12 +257,18 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     erreichbar ist; sie wartet höchstens fünf Sekunden auf ihn (`SERVER_SIGN_OUT_WAIT_MS`). Nach
     der Kontolöschung entfernt sie sie, ohne den Server zu fragen, sobald sie weiß, dass das Konto
     weg ist; geht die Antwort auf die Löschung verloren und ist auch der Server nicht zu fragen,
-    bleibt sie angemeldet, bis sie es erfahren kann. Den Merkzettel vergisst sie, sobald getan ist,
-    wofür der Code war, wenn das Konto gelöscht wird, bei jedem Abmelden, bei einer Anmeldung mit
-    Passwort und beim Start, wenn zu seiner Adresse keine Sitzung gespeichert ist. Auf iOS liegen
-    die Einträge mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY` (`KEYCHAIN_OPTIONS`): nicht in Backups für ein
-    anderes Gerät, kein Umzug auf ein neues iPhone. Ob sie das Löschen der App überleben: zu prüfen.
-    Auf Android sind sie von Auto Backup und Geräteübertragung ausgenommen.
+    bleibt sie angemeldet, bis sie es erfahren kann. Eine Sitzung, die sie losgelassen hat, ohne
+    dass der Server binnen fünf Sekunden antwortete, und die eines gelöschten Kontos hält sie im
+    Arbeitsspeicher, längstens bis die App geschlossen wird, nie gespeichert (`letGo`,
+    `owedToServer`): um eine Erneuerung dieser Sitzung, die danach noch ankommt, zu beenden statt zu
+    übernehmen, und um dem Server eine Abmeldung, die er nicht gehört hat, bei der nächsten
+    Anmeldung zu sagen. Den Merkzettel vergisst sie, sobald getan ist, wofür der Code war, wenn das
+    Konto gelöscht wird, bei jedem Abmelden, vor jeder Anmeldung und Registrierung (die Prüfung
+    eines Codes schreibt danach ihren eigenen) und beim Start, wenn zu seiner Adresse keine Sitzung
+    gespeichert ist. Auf iOS liegen die Einträge mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY`
+    (`KEYCHAIN_OPTIONS`): nicht in Backups für ein anderes Gerät, kein Umzug auf ein neues iPhone.
+    Ob sie das Löschen der App überleben: zu prüfen. Auf Android sind sie von Auto Backup und
+    Geräteübertragung ausgenommen.
   - Gesperrte Konten: V7.
 - **Quelle:** `supabase/config.toml`; `supabase/templates/`; `src/features/auth/auth-context.tsx`;
   `src/features/auth/unfinished.ts`; `src/lib/supabase.ts`; `src/lib/session-store.ts`;
@@ -787,7 +801,8 @@ fehlt, steht in 4.8.
   war, der Merkzettel dazu (V1). Briefe, angefangene Briefe, Freundeslisten, Notizen zu Meldungen
   und die zuletzt gewählte Einstellung von „Also block“ sind nur im Speicher und mit dem Schließen
   der App weg; angefangene Briefe und „Also block“ je angemeldeter Person, und beim Abmelden
-  ebenso.
+  ebenso. Nur im Speicher ist auch eine Sitzung, die beim Abmelden losgelassen wurde, ohne dass
+  der Server rechtzeitig antwortete (V1).
 - Was eine Registrierung an Angaben mitschicken kann, begrenzt die Datenbank auf 4.096 Bytes (V1).
 - Inhalte in POST-Bodies statt in URLs, keine Parameter in den Postgres-Protokollen (V8).
 - Auf Android fordert die App nur die Berechtigung `INTERNET` an: `app.json` sperrt

@@ -393,9 +393,10 @@ system (the so-called user agent).
   account. A session that has not been used for **90 days** – on a device where you have not opened
   the app for that long – is deleted by a daily job; there you sign in again. If the server does
   not hear of your sign-out – without a network, for example – your sessions there stay until that
-  job deletes them; to end them sooner, sign in and out once more. If you lose a phone, sign in and
-  out on another device – the sign-in on the lost phone then stops working within the hour – or
-  write to me.
+  job deletes them; this device's only until you next sign in on it, if you have not closed the app
+  in between, since the app then tells the server. To end them all sooner, sign in and out once
+  more. If you lose a phone, sign in and out on another device – the sign-in on the lost phone then
+  stops working within the hour – or write to me.
 - **Sign-in tokens.** While the app is open, your sign-in is renewed about once an hour. Each
   renewal creates a new token, and the old one stops working. Tokens are kept at most as long as the
   session they belong to.
@@ -421,11 +422,15 @@ system (the so-called user agent).
   src/features/auth/auth-context.tsx) and then signs the device out regardless; a request already
   sent may still reach the server, and for a session whose token had run out the app tells the
   server once more when the client is done (tellServerAfterAll), which reaches it only if the
-  network is back by then. "For up to an hour": an access token another device already holds stays
-  good at the database API until it expires (jwt_expiry = 3600 in supabase/config.toml), because
-  nothing there looks for the session; shown on the local stack on 17 November 2026 with a signed
-  token that had no session at all. Supabase Auth itself refuses such a token, and no renewal is
-  possible.
+  network is back by then. A session the server has still not heard the end of - that try, or for
+  a fresh token the client's own logout, got no answer - the app tells it of by itself (scope
+  "local") at the next sign-in on the device, as long as the app has not been closed
+  (owedToServer): the sentence on this device's session. For that the app keeps the session in
+  memory, at most until it is closed, never stored (letGo and owedToServer in the same file;
+  section 5). "For up to an hour": an access token another device already holds stays good at the
+  database API until it expires (jwt_expiry = 3600 in supabase/config.toml), because nothing there
+  looks for the session; shown on the local stack on 17 November 2026 with a signed token that had
+  no session at all. Supabase Auth itself refuses such a token, and no renewal is possible.
 - Sign-in tokens: GoTrue's automatic cleanup (replaced tokens after 24 hours) only runs when
   GOTRUE_DB_CLEANUP_ENABLED is set; the default is "false", and locally it is off. If it is on for
   the hosted project, the sentence can read: "Supabase deletes replaced tokens after 24 hours."
@@ -467,7 +472,11 @@ the code that confirms it makes that account yours: confirming the address delet
 set before, and the app gives the account the password and the display name you chose – or, if the
 account has another username, deletes it and sets up yours in its place, with a new code. If you
 use "I forgot my password" for such an account instead, its code deletes the account, and you can
-then sign up.
+then sign up. If the answer to your code is lost on the way – the connection breaks just then –
+your address can be confirmed without the app having given the account your password and names.
+You then set a password with "I forgot my password", and the account keeps the username and display
+name it had: if they are not the ones you chose, delete the account in your profile and sign up
+again, as the app tells you.
 
 <!-- TO CHECK: email confirmation is off today (supabase/config.toml, enable_confirmations = false),
 because until custom SMTP is set up Supabase's own mailer reaches only the operator
@@ -490,7 +499,10 @@ also send notices of its own, of a changed password or address among others
 sends any is to check (docs/GO-LIVE.md, "Setting up the hosted project", step 2). If one is on, name
 it here and give it a template of the app's without a link, as GO-LIVE says, or turn it off. What
 makes such an account yours: finishSignUp and verifyResetCode in src/features/auth/auth-context.tsx,
-and the migration 20261121160000_confirmation_clears_password.sql. -->
+and the migration 20261121160000_confirmation_clears_password.sql. After a lost answer the account
+stays as the earlier sign-up set it up (the operator's decision): CodeUnanswered and
+NAMES_NOT_CHOSEN in auth-context.tsx, MAY_BE_CONFIRMED in src/features/auth/confirm-email.tsx, and
+confirmedJustBefore in src/features/auth/unfinished.ts. -->
 
 <!-- TO CHECK (legal): confirming an address takes over, or deletes, an account that an earlier,
 unconfirmed sign-up for it had set up - perhaps someone else's - with its password and name. Whether
@@ -604,7 +616,9 @@ received one from you, has exchanged letters with you, or has blocked you; the a
   sign in with your password, and when the app opens without a sign-in for that address.
 - When you sign out, the app deletes the session and that note from your device, even if the
   server cannot be reached at that moment. After you delete your account, it does so as soon as it
-  knows that the deletion went through.
+  knows that the deletion went through. Until you close the app, it may still keep the session in
+  its memory – it does not store it – to make sure the sign-out holds: if the server could not be
+  reached, the app tells it at your next sign-in.
 - Apart from that, the app stores nothing on your device. Letters, drafts, friend lists and reports
   are on the device only while the app is open. A letter you have started is gone when you close the
   app or sign out.
@@ -617,7 +631,11 @@ note 5 at the top. The note of what a code is for is the entry night-courier.unf
 (src/features/auth/unfinished.ts), in the same storage as the session (authStorage in
 src/lib/session-store.ts); it is written before the code is checked. Unsent letters and the
 "also block" choices are kept in memory only (src/features/messages/drafts.ts,
-src/features/safety/safety.ts) and forgotten at every sign-out. -->
+src/features/safety/safety.ts) and forgotten at every sign-out. The session kept in memory after a
+sign-out: letGo in src/features/auth/auth-context.tsx, set when the server did not answer within
+five seconds and after every account deletion, so that a renewal of that session arriving later is
+ended rather than taken; and owedToServer, a session the server never heard the end of, told with
+scope "local" at the next sign-in (tellServerOwed). Neither is written anywhere. -->
 
 ## 6. Legal bases at a glance
 

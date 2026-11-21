@@ -42,12 +42,16 @@ Notes for the operator - remove before publishing, like every comment in this fi
    this page does not offer it: it takes the password away when a code to confirm the address had
    been emailed (supabase/migrations/20261121160000_confirmation_clears_password.sql), and setting a
    new one needs an email of its own (GO-LIVE, end of "Before a second person can sign up: custom
-   SMTP").
+   SMTP"). The sentences in "No email?" on a try that may have confirmed the address follow the
+   code screen's words after a check that got no answer (MAY_BE_CONFIRMED in
+   src/features/auth/confirm-email.tsx, NAMES_NOT_CHOSEN in src/features/auth/auth-context.tsx):
+   change them together.
 6. "Your account has been suspended" follows signIn and verifyResetCode in
    src/features/auth/auth-context.tsx and the words of REFUSALS.account_suspended in
-   src/lib/rpc-error.ts, which send a suspended courier to "the person who runs Night Courier";
-   the app's Contact button opens this page (EXPO_PUBLIC_CONTACT_URL, GO-LIVE "Setting up the
-   hosted project", step 5). It goes with the privacy policy, section 3.8.
+   src/lib/rpc-error.ts, which send a suspended courier to "the person who runs Night Courier" in
+   a build with a contact address (without one they say only that the account has been
+   suspended); the app's Contact button opens this page (EXPO_PUBLIC_CONTACT_URL, GO-LIVE "Setting
+   up the hosted project", step 5). It goes with the privacy policy, section 3.8.
 -->
 
 # Night Courier – help and contact
@@ -103,8 +107,12 @@ in, you can tap _Sign out_ instead, and set a password with _I forgot my passwor
 
 Look in your spam folder, then ask for the code again: the app lets you a minute after the last
 one. A code comes only where it can be used: none for a new password if the address has no
-account, and none after a sign-up if you already have an account – sign in instead. If none comes
-at all, write to {{CONTACT_EMAIL}} from that address, and I will find out why.
+account, and none after a sign-up if you already have an account – sign in instead. If the app has
+said that a try before may have confirmed your address, and no new code comes within a few
+minutes, your address is confirmed: set a password with _I forgot my password_. If the account then
+shows a username or name you did not choose, delete it under _Your profile_ → _Delete my account_,
+and sign up again. If no code comes at all, write to {{CONTACT_EMAIL}} from that address, and I
+will find out why.
 
 ## Your account has been suspended
 
@@ -224,8 +232,12 @@ entfernt, und du kannst dich neu registrieren. Nach dem Anmelden kannst du dich 
 Schau im Spam-Ordner nach und fordere den Code noch einmal an; das geht eine Minute nach dem
 letzten. Ein Code kommt nur, wo er etwas nützt: keiner für ein neues Passwort, wenn es zu der
 Adresse kein Konto gibt, und keiner nach einer Registrierung, wenn du schon ein Konto hast – melde
-dich dann an. Kommt gar keiner, schreib an {{CONTACT_EMAIL}}, von dieser Adresse; ich finde dann
-heraus, woran es liegt.
+dich dann an. Hat die App gesagt, dass ein Versuch davor deine Adresse vielleicht schon bestätigt
+hat, und kommt binnen einiger Minuten kein neuer Code, ist deine Adresse bestätigt: Leg mit
+„I forgot my password“ ein Passwort fest. Zeigt das Konto danach einen Benutzernamen oder Namen,
+den du nicht gewählt hast, lösch es unter „Your profile“ → „Delete my account“ und registriere dich
+neu. Kommt gar kein Code, schreib an {{CONTACT_EMAIL}}, von dieser Adresse; ich finde dann heraus,
+woran es liegt.
 
 ## Dein Konto ist gesperrt
 
