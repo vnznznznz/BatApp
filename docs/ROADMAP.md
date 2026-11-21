@@ -431,8 +431,8 @@ Still open:
   under way - a logout that never answers, or a stale token offline, for up to about half a minute -
   can undo another tab's sign-in. And a sign-out the server never heard of is forgotten at every
   reload of the page, as on a phone only when the app is closed, and then lasts on the server until
-  the tidy-up's 90 days. The first would take the app's own logout in place of auth-js's; the
-  second, the owed session kept in storage.
+  the courier signs in and out again, or the tidy-up's 90 days. The first would take the app's own
+  logout in place of auth-js's; the second, the owed session kept in storage.
 - **A letter could still go twice** if the first send is still on its way to the database both
   times the app asks after it, and changed words go in between. The window is normally
   milliseconds.

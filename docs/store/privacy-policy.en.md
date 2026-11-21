@@ -632,10 +632,11 @@ note 5 at the top. The note of what a code is for is the entry night-courier.unf
 src/lib/session-store.ts); it is written before the code is checked. Unsent letters and the
 "also block" choices are kept in memory only (src/features/messages/drafts.ts,
 src/features/safety/safety.ts) and forgotten at every sign-out. The session kept in memory after a
-sign-out: letGo in src/features/auth/auth-context.tsx, set when the server did not answer within
-five seconds and after every account deletion, so that a renewal of that session arriving later is
-ended rather than taken; and owedToServer, a session the server never heard the end of, told with
-scope "local" at the next sign-in (tellServerOwed). Neither is written anywhere. -->
+sign-out: letGo in src/features/auth/auth-context.tsx, set when the server had not confirmed the
+sign-out within five seconds and after every account deletion, so that a renewal of that session
+arriving later is ended rather than taken; and owedToServer, a session the server never heard the
+end of, told with scope "local" at the next sign-in (tellServerOwed). Neither is written
+anywhere. -->
 
 ## 6. Legal bases at a glance
 

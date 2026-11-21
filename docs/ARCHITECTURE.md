@@ -1474,12 +1474,12 @@ an account by hand clears its password too, if a code had been emailed to it; it
 one with "I forgot my password". (Decided on the operator's behalf.) Whether a code was emailed is
 what the row held before the statement (`old.confirmation_sent_at`): a confirmation that clears the
 time the code was sent as it goes takes the password all the same (`confirmation.db.test.mjs`).
-Only a password set in the same call of the admin API that confirms (`"email_confirm": true` with
-a `"password"`) stays: GoTrue's update of the password clears the time the code was sent first, and
-the confirmation that follows finds none - seen on the local auth server that has email
-confirmation on, as was a password set first and the address confirmed after. That is a password
-someone else chose, and GO-LIVE does not use it. On a server without the migration, setting the
-password the account has already is answered as the same password, and taken as done.
+A password the admin API sets stays: in the same call that confirms (`"email_confirm": true` with a
+`"password"`), or in a call before it. GoTrue's update of the password clears the time the code was
+sent, and the confirmation that follows finds none - seen for both on the local auth server that
+has email confirmation on. That is a password someone else chose, and GO-LIVE does not use it. On a
+server without the migration, setting the password the account has already is answered as the same
+password, and taken as done.
 
 ### Who can tell whether an address has an account
 

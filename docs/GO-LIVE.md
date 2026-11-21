@@ -979,11 +979,11 @@ Once confirmation is on, an account confirmed by hand - with
 the trigger sits on the table - loses its password as well, when a code to confirm it had been
 emailed ("Setting up the hosted project", step 3). Its owner then sets one with "I forgot my
 password", which needs an email of its own. So it does not help someone whose emails do not
-arrive: find out why they do not. (Only a password set in the same call of the admin API,
-`"email_confirm": true` with a `"password"`, stays: the auth server saves it first, and that clears
-the time the code was sent. It would be a password you chose for someone and sent them, and the
-app has no way to change it but "I forgot my password" - so not that either.) A sign-up nobody
-confirms is deleted after a week, and the address can then sign up afresh.
+arrive: find out why they do not. (A password set with the admin API stays - in the same call,
+`"email_confirm": true` with a `"password"`, or in one before it: the auth server saves it first,
+and that clears the time the code was sent. It would be a password you chose for someone and sent
+them, and the app has no way to change it but "I forgot my password" - so not that either.) A
+sign-up nobody confirms is deleted after a week, and the address can then sign up afresh.
 
 ### Push notifications: none
 

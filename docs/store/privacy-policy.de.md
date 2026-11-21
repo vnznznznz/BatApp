@@ -702,10 +702,10 @@ src/lib/session-store.ts); sie wird geschrieben, bevor der Code geprüft wird. U
 und die Wahl bei „auch blockieren“ liegen nur im Arbeitsspeicher (src/features/messages/drafts.ts,
 src/features/safety/safety.ts) und werden bei jedem Abmelden vergessen. Die Sitzung im
 Arbeitsspeicher nach dem Abmelden: letGo in src/features/auth/auth-context.tsx, gesetzt, wenn der
-Server nicht binnen fünf Sekunden antwortete, und nach jeder Kontolöschung, damit eine Erneuerung
-dieser Sitzung, die danach noch ankommt, beendet statt übernommen wird; und owedToServer, eine
-Sitzung, deren Ende der Server nie gehört hat, ihm mit scope "local" bei der nächsten Anmeldung
-gesagt (tellServerOwed). Keine von beiden wird irgendwo geschrieben. -->
+Server die Abmeldung nicht binnen fünf Sekunden bestätigte, und nach jeder Kontolöschung, damit
+eine Erneuerung dieser Sitzung, die danach noch ankommt, beendet statt übernommen wird; und
+owedToServer, eine Sitzung, deren Ende der Server nie gehört hat, ihm mit scope "local" bei der
+nächsten Anmeldung gesagt (tellServerOwed). Keine von beiden wird irgendwo geschrieben. -->
 
 ## 6. Rechtsgrundlagen im Überblick
 

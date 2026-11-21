@@ -182,9 +182,10 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     Bestätigung meldet danach mehr an. Die App setzt gleich danach das Passwort, das die Person
     eingegeben hat – bei der Registrierung, beim Anmelden oder als neues Passwort. Bestätigt der
     Betreiber ein solches Konto von Hand, leert das den Hash ebenso, und die Person setzt mit „I
-    forgot my password“ ein neues; nur ein Passwort, das derselbe Aufruf der Admin-API setzt,
-    bliebe, und das nutzt er nicht (GO-LIVE, Ende von „Before a second person can sign up“). Ist
-    die Bestätigung aus, wird kein Code geschickt, und der Hash bleibt.
+    forgot my password“ ein neues; nur ein Passwort, das er mit der Admin-API setzt – im selben
+    Aufruf oder in einem davor –, bliebe, und das nutzt er nicht (GO-LIVE, Ende von „Before a
+    second person can sign up“). Ist die Bestätigung aus, wird kein Code geschickt, und der Hash
+    bleibt.
   - Eine Kopie von Benutzername und Anzeigename bei der Registrierung
     (`auth.users.raw_user_meta_data`, eine weitere in `auth.identities.identity_data`). Aus ihr
     entsteht das Profil (`handle_new_user()`); danach entfernt der tägliche Auftrag
@@ -258,8 +259,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
     der Kontolöschung entfernt sie sie, ohne den Server zu fragen, sobald sie weiß, dass das Konto
     weg ist; geht die Antwort auf die Löschung verloren und ist auch der Server nicht zu fragen,
     bleibt sie angemeldet, bis sie es erfahren kann. Eine Sitzung, die sie losgelassen hat, ohne
-    dass der Server binnen fünf Sekunden antwortete, und die eines gelöschten Kontos hält sie im
-    Arbeitsspeicher, längstens bis die App geschlossen wird, nie gespeichert (`letGo`,
+    dass der Server die Abmeldung binnen fünf Sekunden bestätigte, und die eines gelöschten Kontos
+    hält sie im Arbeitsspeicher, längstens bis die App geschlossen wird, nie gespeichert (`letGo`,
     `owedToServer`): um eine Erneuerung dieser Sitzung, die danach noch ankommt, zu beenden statt zu
     übernehmen, und um dem Server eine Abmeldung, die er nicht gehört hat, bei der nächsten
     Anmeldung zu sagen. Den Merkzettel vergisst sie, sobald getan ist, wofür der Code war, wenn das
@@ -802,7 +803,7 @@ fehlt, steht in 4.8.
   und die zuletzt gewählte Einstellung von „Also block“ sind nur im Speicher und mit dem Schließen
   der App weg; angefangene Briefe und „Also block“ je angemeldeter Person, und beim Abmelden
   ebenso. Nur im Speicher ist auch eine Sitzung, die beim Abmelden losgelassen wurde, ohne dass
-  der Server rechtzeitig antwortete (V1).
+  der Server die Abmeldung rechtzeitig bestätigte, und die eines gelöschten Kontos (V1).
 - Was eine Registrierung an Angaben mitschicken kann, begrenzt die Datenbank auf 4.096 Bytes (V1).
 - Inhalte in POST-Bodies statt in URLs, keine Parameter in den Postgres-Protokollen (V8).
 - Auf Android fordert die App nur die Berechtigung `INTERNET` an: `app.json` sperrt
