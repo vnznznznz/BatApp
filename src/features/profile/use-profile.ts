@@ -34,6 +34,12 @@ export type Profile = {
   city: ProfileCity | null;
   /** Present while a change of city is settling. */
   move: ProfileMove | null;
+  /**
+   * Whether a letter has gone to or from the courier yet. Until then a move
+   * counts at once, as the first city did; from the first letter on it takes
+   * RELOCATION_HOURS (see the moves before the first letter migration).
+   */
+  hasCorresponded?: boolean;
 };
 
 type CityRow = { id: number; name: string; country_code: string; qualifier: string | null };
@@ -46,13 +52,14 @@ type Row = {
   city_changed_at: string | null;
   cities: CityRow | null;
   settled: CityRow | null;
+  has_corresponded: boolean;
 };
 
 // The foreign keys are named because profiles refers to cities twice - the
 // city, and while a move settles the one the bats still fly from - and
 // PostgREST refuses an embed it cannot attribute to exactly one of them.
 const SELECT =
-  'id, username, display_name, avatar_url, city_changed_at, ' +
+  'id, username, display_name, avatar_url, city_changed_at, has_corresponded, ' +
   'cities!profiles_city_id_fkey(id, name, country_code, qualifier), ' +
   'settled:cities!profiles_settled_city_id_fkey(id, name, country_code, qualifier)';
 
@@ -78,6 +85,7 @@ export function toProfile(row: Row, now: number = Date.now()): Profile {
       row.settled && settlesAt && settlesAt.getTime() > now
         ? { from: toCity(row.settled), settlesAt }
         : null,
+    hasCorresponded: row.has_corresponded,
   };
 }
 
@@ -169,18 +177,31 @@ export function useProfile() {
     [userId, load],
   );
 
+  /**
+   * Saves a city, and resolves with whether it was saved. `beforeFirstLetter`
+   * saves it only while no letter has gone to or from the courier: the picker
+   * says such a move counts at once, which is so only until then, and a letter
+   * can come or go between its question and the answer. If one did, nothing
+   * is saved and this resolves with false.
+   */
   const updateCity = useCallback(
-    async (cityId: number) => {
-      if (!userId) return;
+    async (cityId: number, { beforeFirstLetter = false }: { beforeFirstLetter?: boolean } = {}) => {
+      if (!userId) return false;
       // Only the id crosses the wire. The coordinates behind it are the
       // server's, so a client cannot shorten its own flights.
-      const { error: failure } = await supabase
-        .from('profiles')
-        .update({ city_id: cityId })
-        .eq('id', userId);
+      const change = supabase.from('profiles').update({ city_id: cityId }).eq('id', userId);
 
-      if (failure) throw new Error('That city could not be saved.');
+      let saved = true;
+      if (beforeFirstLetter) {
+        const { data, error: failure } = await change.eq('has_corresponded', false).select('id');
+        if (failure) throw new Error('That city could not be saved.');
+        saved = (data ?? []).length > 0;
+      } else {
+        const { error: failure } = await change;
+        if (failure) throw new Error('That city could not be saved.');
+      }
       await load();
+      return saved;
     },
     [userId, load],
   );

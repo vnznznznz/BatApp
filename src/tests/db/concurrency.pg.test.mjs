@@ -72,7 +72,14 @@ async function connectAs(userId) {
   return client;
 }
 
-async function createCourier(name, city) {
+/**
+ * A courier living in `city`, who has had letters before, as most have: their
+ * moves take a day, and their sends take nothing of the profiles. Before a
+ * courier's first letter a move counts at once, and a first letter takes the
+ * profiles of both couriers (see the moves before the first letter migration);
+ * `{ corresponded: false }` makes a courier who has had none.
+ */
+async function createCourier(name, city, { corresponded = true } = {}) {
   const { rows } = await admin.query(
     `insert into auth.users (email, raw_user_meta_data)
      values ($1, jsonb_build_object('username', $2::text, 'display_name', $2::text))
@@ -82,9 +89,10 @@ async function createCourier(name, city) {
   const id = rows[0].id;
   await admin.query(
     `update public.profiles
-     set city_id = (select id from public.cities where name = $2 and country_code = $3)
+     set city_id = (select id from public.cities where name = $2 and country_code = $3),
+         has_corresponded = $4
      where id = $1`,
-    [id, city[0], city[1]],
+    [id, city[0], city[1], corresponded],
   );
   return id;
 }
@@ -1541,6 +1549,120 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
 
       const { rows: names } = await admin.query(`select display_name from public.profiles`);
       assert.deepEqual(names, [{ display_name: '\u{1F469}\u200D\u{1F467}' }]);
+    });
+  });
+
+  /**
+   * Until a courier's first letter a move counts at once; from it on, a move
+   * takes a day. A first letter and a move that come at the same moment must
+   * come out as one after the other, whichever went first - never the letter
+   * timed from the old city while the move counts at once as if no letter had
+   * gone, which is the borrowed city that the day's wait exists to stop. The
+   * send takes the profiles of both couriers before it reads where they are,
+   * in the order of their ids; the move holds its own profile while it decides.
+   */
+  describe('a first letter and a move at the same moment', () => {
+    const munich = `(select id from public.cities where name = 'Munich' and country_code = 'DE')`;
+
+    /** Where the courier's letters fly from now, and whether a move is still settling. */
+    const standing = async (courier) =>
+      (
+        await admin.query(
+          `select home.name as city, settled.name as settled,
+                  p.city_changed_at is not null as pending
+           from public.profiles p
+           join public.cities home on home.id = p.city_id
+           left join public.cities settled on settled.id = p.settled_city_id
+           where p.id = $1`,
+          [courier],
+        )
+      ).rows[0];
+
+    const letterKm = async (sender) =>
+      (await admin.query(`select distance_km from public.messages where sender_id = $1`, [sender]))
+        .rows[0].distance_km;
+
+    it('makes a move wait for a first letter being sent, and then take a day', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+
+      const sender = await connectAs(anna);
+      await sender.query('begin');
+      await sender.query(`select * from public.send_message($1, 'The first.')`, [ben]);
+      const moving = (await connectAs(anna)).query(
+        `update public.profiles set city_id = ${munich} where id = $1`,
+        [anna],
+      );
+
+      assert.equal(await settlesWithin(moving, 400), false, 'the move did not wait');
+      await sender.query('commit');
+      await moving;
+
+      assert.ok(Math.abs((await letterKm(anna)) - 505) < 5, 'the letter left from Berlin');
+      assert.deepEqual(await standing(anna), { city: 'Munich', settled: 'Berlin', pending: true });
+    });
+
+    it('makes a first letter wait for a move being made, and then fly from the new city', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+
+      const mover = await connectAs(anna);
+      await mover.query('begin');
+      await mover.query(`update public.profiles set city_id = ${munich} where id = $1`, [anna]);
+      const sending = (await connectAs(anna)).query(
+        `select * from public.send_message($1, 'The first.')`,
+        [ben],
+      );
+
+      assert.equal(await settlesWithin(sending, 400), false, 'the letter did not wait');
+      await mover.query('commit');
+      await sending;
+
+      assert.equal(await letterKm(anna), 0, 'the letter left from Munich');
+      assert.deepEqual(await standing(anna), { city: 'Munich', settled: null, pending: false });
+    });
+
+    it('makes a move wait for a first letter on its way to the courier, and then take a day', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+
+      const sender = await connectAs(ben);
+      await sender.query('begin');
+      await sender.query(`select * from public.send_message($1, 'The first.')`, [anna]);
+      const moving = (await connectAs(anna)).query(
+        `update public.profiles set city_id = ${munich} where id = $1`,
+        [anna],
+      );
+
+      assert.equal(await settlesWithin(moving, 400), false, 'the move did not wait');
+      await sender.query('commit');
+      await moving;
+
+      assert.ok(Math.abs((await letterKm(ben)) - 505) < 5, 'the letter flew to Berlin');
+      assert.deepEqual(await standing(anna), { city: 'Munich', settled: 'Berlin', pending: true });
+    });
+
+    /** Each sends the first letter to the other, at once: both go, one after the other. */
+    it('lets two first letters between the same couriers go at once', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+
+      const outcomes = await Promise.allSettled([
+        (await connectAs(anna)).query(`select * from public.send_message($1, 'Hello!')`, [ben]),
+        (await connectAs(ben)).query(`select * from public.send_message($1, 'Hello!')`, [anna]),
+      ]);
+
+      allFulfilled(outcomes);
+      const { rows } = await admin.query(
+        `select count(*)::int as corresponded from public.profiles
+         where id = any($1) and has_corresponded`,
+        [[anna, ben]],
+      );
+      assert.equal(rows[0].corresponded, 2);
     });
   });
 

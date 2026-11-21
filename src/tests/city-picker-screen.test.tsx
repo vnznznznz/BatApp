@@ -29,7 +29,10 @@ jest.mock('@/features/cities/search', () => ({
 }));
 
 const mockProfileState: { profile: Profile | null } = { profile: null };
-const mockUpdateCity = jest.fn<Promise<void>, [number]>();
+const mockUpdateCity = jest.fn<
+  Promise<boolean>,
+  [cityId: number, options?: { beforeFirstLetter?: boolean }]
+>();
 
 jest.mock('@/features/profile/use-profile', () => ({
   useProfile: () => ({
@@ -86,7 +89,11 @@ const courier: Profile = {
   avatarUrl: null,
   city: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
   move: null,
+  hasCorresponded: true,
 };
+
+/** The same courier before any letter has gone to or from her. */
+const newcomer: Profile = { ...courier, hasCorresponded: false };
 
 const TOO_SHORT = 'Type at least two letters.';
 const NO_SUCH_CITY = 'No city by that name. Try the nearest larger town.';
@@ -150,7 +157,7 @@ beforeEach(() => {
   mockBack.mockClear();
   mockFocus.focused = true;
   mockProfileState.profile = courier;
-  mockUpdateCity.mockReset().mockResolvedValue(undefined);
+  mockUpdateCity.mockReset().mockResolvedValue(true);
   mockedSearchCities.mockReset().mockResolvedValue([hamburg, hameln]);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
@@ -562,10 +569,80 @@ describe('CityPickerScreen', () => {
       expect(lastAlert()).toEqual({
         title: 'Make Hamburg, DE your city?',
         message:
-          'A first city counts at once. If you have one already, a move takes a day to count, ' +
-          'and letters leave from your old city until then.',
+          'A first city counts at once, and so does a change until a letter has gone to or ' +
+          'from you. After that, a move takes a day to count, and letters leave from your old ' +
+          'city until then.',
         buttons: ['Cancel', 'Choose'],
       });
+    });
+
+    /**
+     * A first city chosen by mistake used to stand for a day once put right.
+     * Until a letter has gone to or from the courier there is no flight to
+     * shorten, so a change counts at once - and the question says so. (Found
+     * in review.)
+     */
+    it('says a first city can be changed at once until the first letter', async () => {
+      mockProfileState.profile = { ...newcomer, city: null };
+      await renderScreen(<CityPickerScreen />);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert()).toEqual({
+        title: 'Make Hamburg, DE your city?',
+        message:
+          'It counts at once: your bats fly from Hamburg, DE from now on. Until a letter has ' +
+          'gone to or from you, a change counts at once too; after that, a new city takes a ' +
+          'day to count.',
+        buttons: ['Cancel', 'Choose'],
+      });
+    });
+
+    it('says a move counts at once before the first letter, and saves it only while that holds', async () => {
+      mockProfileState.profile = newcomer;
+      await renderScreen(<CityPickerScreen />);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'It counts at once, since no letter has gone to or from you yet: your bats fly from ' +
+          'Hamburg, DE from now on. From your first letter on, a move takes a day to count.',
+        buttons: ['Cancel', 'Move'],
+      });
+      await chooseInAlert('Move');
+      expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { beforeFirstLetter: true }]]);
+      expect(mockBack).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A letter can come between the question and the answer. The move was
+     * then not saved - it would have taken a day, which is not what was said
+     * - and the picker asks again in the words that hold now.
+     */
+    it('asks again when a letter came or went before a move said to count at once was saved', async () => {
+      mockProfileState.profile = newcomer;
+      mockUpdateCity.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+
+      await chooseInAlert('Move');
+
+      expect(mockBack).not.toHaveBeenCalled();
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'A letter has gone to or from you since, so a move now takes a day to count. Until ' +
+          "18 Nov 21:00, your letters leave from Berlin, DE, and your friends' letters land there.",
+        buttons: ['Cancel', 'Move'],
+      });
+      await chooseInAlert('Move');
+      expect(mockUpdateCity.mock.calls).toEqual([
+        [hamburg.id, { beforeFirstLetter: true }],
+        [hamburg.id],
+      ]);
+      expect(mockBack).toHaveBeenCalledTimes(1);
     });
 
     it('saves nothing, and stays, if the courier thinks better of it', async () => {
@@ -607,14 +684,14 @@ describe('CityPickerScreen', () => {
      * would close that letter instead. (Found in review.)
      */
     it('stays where the courier has gone if they left before the save answered', async () => {
-      const saving = deferred<void>();
+      const saving = deferred<boolean>();
       mockUpdateCity.mockReturnValue(saving.promise);
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
       await chooseInAlert('Move');
 
       mockFocus.focused = false;
-      await act(async () => saving.resolve());
+      await act(async () => saving.resolve(true));
 
       expect(mockUpdateCity).toHaveBeenCalledTimes(1);
       expect(mockBack).not.toHaveBeenCalled();
@@ -626,7 +703,7 @@ describe('CityPickerScreen', () => {
 
     /** One save at a time, shown on the row it is for. */
     it('shows the save on the row chosen, and takes no other choice meanwhile', async () => {
-      const saving = deferred<void>();
+      const saving = deferred<boolean>();
       mockUpdateCity.mockReturnValue(saving.promise);
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
@@ -640,7 +717,7 @@ describe('CityPickerScreen', () => {
       await fireEvent.press(screen.getByRole('button', { name: /^Hameln/ }));
       expect(alertSpy).toHaveBeenCalledTimes(1);
 
-      await act(async () => saving.resolve());
+      await act(async () => saving.resolve(true));
     });
 
     it('says why a save failed, and stays so the courier can try again', async () => {
@@ -656,7 +733,7 @@ describe('CityPickerScreen', () => {
     });
 
     it('lets go of a failed save once the courier tries again', async () => {
-      const again = deferred<void>();
+      const again = deferred<boolean>();
       mockUpdateCity
         .mockRejectedValueOnce(new Error('That city could not be saved.'))
         .mockReturnValueOnce(again.promise);
@@ -669,7 +746,7 @@ describe('CityPickerScreen', () => {
       await chooseInAlert('Move');
 
       expect(screen.queryByText('That city could not be saved.')).toBeNull();
-      await act(async () => again.resolve());
+      await act(async () => again.resolve(true));
       expect(mockBack).toHaveBeenCalledTimes(1);
     });
   });

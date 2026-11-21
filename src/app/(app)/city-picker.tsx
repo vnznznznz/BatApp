@@ -14,7 +14,7 @@ import {
   MIN_QUERY_LENGTH,
   searchCities,
 } from '@/features/cities/search';
-import { useProfile, type Profile } from '@/features/profile/use-profile';
+import { useProfile, type Profile, type ProfileCity } from '@/features/profile/use-profile';
 import { confirmAction, type Confirmation } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
 
@@ -88,25 +88,45 @@ export default function CityPickerScreen() {
       router.back();
       return;
     }
-    // A first city counts at once and a change takes a day, so a slip of the
-    // finger would cost a day to put right. Asked first, in the words that fit.
+    // Once a letter has gone to or from the courier a change takes a day, so a
+    // slip of the finger would cost a day to put right. Asked first, in the
+    // words that fit.
+    const { beforeFirstLetter, ...question } = describeChoice(city, profile, new Date());
     confirmAction({
-      ...describeChoice(city, profile, new Date()),
+      ...question,
       cancelLabel: 'Cancel',
-      onConfirm: () => void save(city),
+      onConfirm: () => void save(city, beforeFirstLetter),
     });
   }
 
-  async function save(city: City) {
+  /**
+   * `beforeFirstLetter`: the question said the move counts at once because no
+   * letter has gone to or from the courier, so it is saved only while that is
+   * still so. A letter that came or went in between leaves it unsaved, and the
+   * question is asked again in the words that hold now.
+   */
+  async function save(city: City, beforeFirstLetter: boolean) {
     setSaving(city.id);
     setSaveError(null);
     try {
-      await updateCity(city.id);
+      const saved = beforeFirstLetter
+        ? await updateCity(city.id, { beforeFirstLetter })
+        : await updateCity(city.id);
       // Only if the picker is still in front: on a slow connection the courier
       // may have gone on - to a letter they are now writing - and going back
       // would close that instead.
-      if (navigation.isFocused()) router.back();
-      else setSaving(null);
+      if (!navigation.isFocused()) {
+        setSaving(null);
+      } else if (saved) {
+        router.back();
+      } else {
+        setSaving(null);
+        confirmAction({
+          ...describeLateMove(city, profile, new Date()),
+          cancelLabel: 'Cancel',
+          onConfirm: () => void save(city, false),
+        });
+      }
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : 'That city could not be saved.');
       setSaving(null);
@@ -118,8 +138,9 @@ export default function CityPickerScreen() {
       <Text variant="title">Where is your roost?</Text>
       <Text variant="caption" tone="secondary" style={styles.subtitle}>
         Your city decides how long your bats take to reach your friends. Nothing finer than the city
-        is stored, and your location is never tracked. If you move, your bats take a day to settle
-        in, and letters sent before then still leave from your old city.
+        is stored, and your location is never tracked. Once a letter has gone to or from you, your
+        bats take a day to settle in after a move, and letters sent before then still leave from
+        your old city.
       </Text>
 
       <View style={styles.search}>
@@ -212,34 +233,44 @@ export default function CityPickerScreen() {
   );
 }
 
+type Question = Pick<Confirmation, 'title' | 'message' | 'confirmLabel'>;
+
 /**
  * The question before a city is saved, as the database will treat it (see
- * `private.settle_city`): a first city, or a move back to where the bats still
- * are, counts at once; any other move takes RELOCATION_HOURS, from now, during
- * which letters still leave from - and land at - where the bats are.
+ * `private.settle_city`): a first city, a move back to where the bats still
+ * are, and any move before the courier's first letter count at once; any other
+ * move takes RELOCATION_HOURS, from now, during which letters still leave from
+ * - and land at - where the bats are. `beforeFirstLetter` is set when the move
+ * counts at once only because no letter has gone to or from the courier yet.
  */
 function describeChoice(
   city: City,
   profile: Profile | null,
   now: Date,
-): Pick<Confirmation, 'title' | 'message' | 'confirmLabel'> {
+): Question & { beforeFirstLetter: boolean } {
   const name = describeCity(city);
 
   if (!profile) {
     return {
       title: `Make ${name} your city?`,
       message:
-        'A first city counts at once. If you have one already, a move takes a day to count, ' +
-        'and letters leave from your old city until then.',
+        'A first city counts at once, and so does a change until a letter has gone to or from ' +
+        'you. After that, a move takes a day to count, and letters leave from your old city ' +
+        'until then.',
       confirmLabel: 'Choose',
+      beforeFirstLetter: false,
     };
   }
 
   if (!profile.city) {
     return {
       title: `Make ${name} your city?`,
-      message: `It counts at once: your bats fly from ${name} from now on. If you change it later, the new city takes a day to count.`,
+      message:
+        profile.hasCorresponded === false
+          ? `It counts at once: your bats fly from ${name} from now on. Until a letter has gone to or from you, a change counts at once too; after that, a new city takes a day to count.`
+          : `It counts at once: your bats fly from ${name} from now on. If you change it later, the new city takes a day to count.`,
       confirmLabel: 'Choose',
+      beforeFirstLetter: false,
     };
   }
 
@@ -249,13 +280,52 @@ function describeChoice(
       title: `Move back to ${name}?`,
       message: 'Your bats are still there, so it counts at once.',
       confirmLabel: 'Move',
+      beforeFirstLetter: false,
     };
   }
 
-  const settles = new Date(now.getTime() + RELOCATION_HOURS * 3_600_000);
+  if (profile.hasCorresponded === false) {
+    return {
+      title: `Move to ${name}?`,
+      message: `It counts at once, since no letter has gone to or from you yet: your bats fly from ${name} from now on. From your first letter on, a move takes a day to count.`,
+      confirmLabel: 'Move',
+      beforeFirstLetter: true,
+    };
+  }
+
   return {
-    title: `Move to ${name}?`,
-    message: `A move takes a day to count. Until ${formatTimestamp(settles, now)}, your letters leave from ${describeCity(departing)}, and your friends' letters land there.`,
+    ...describeDaysMove(city, departing, now, 'A move takes a day to count.'),
+    beforeFirstLetter: false,
+  };
+}
+
+/**
+ * Asked again when a move said to count at once could not be saved as one: a
+ * letter came or went between the question and the answer, and from it on a
+ * move takes a day.
+ */
+function describeLateMove(city: City, profile: Profile | null, now: Date): Question {
+  const departing = profile?.move?.from ?? profile?.city;
+  return describeDaysMove(
+    city,
+    departing ?? null,
+    now,
+    'A letter has gone to or from you since, so a move now takes a day to count.',
+  );
+}
+
+/** A move that takes a day: until when, and where letters leave from meanwhile. */
+function describeDaysMove(
+  city: City,
+  departing: ProfileCity | null,
+  now: Date,
+  lead: string,
+): Question {
+  const settles = new Date(now.getTime() + RELOCATION_HOURS * 3_600_000);
+  const from = departing ? describeCity(departing) : 'your old city';
+  return {
+    title: `Move to ${describeCity(city)}?`,
+    message: `${lead} Until ${formatTimestamp(settles, now)}, your letters leave from ${from}, and your friends' letters land there.`,
     confirmLabel: 'Move',
   };
 }

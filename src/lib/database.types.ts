@@ -269,6 +269,7 @@ export type Database = {
           city_id: number | null;
           created_at: string;
           display_name: string;
+          has_corresponded: boolean;
           id: string;
           settled_city_id: number | null;
           updated_at: string;
@@ -281,6 +282,7 @@ export type Database = {
           city_id?: number | null;
           created_at?: string;
           display_name: string;
+          has_corresponded?: boolean;
           id: string;
           settled_city_id?: number | null;
           updated_at?: string;
@@ -292,6 +294,7 @@ export type Database = {
           city_id?: number | null;
           created_at?: string;
           display_name?: string;
+          has_corresponded?: boolean;
           id?: string;
           settled_city_id?: number | null;
           updated_at?: string;

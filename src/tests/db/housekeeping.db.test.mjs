@@ -256,6 +256,10 @@ describe('the daily tidy-up', () => {
   it('forgets the city a courier moved away from once the move has settled', async () => {
     const settled = await createCourier(db, { city: ['Berlin', 'DE'] });
     const moving = await createCourier(db, { city: ['Berlin', 'DE'] });
+    // Before a courier's first letter a move counts at once: both have had one.
+    await db.query(`update public.profiles set has_corresponded = true where id = any($1)`, [
+      [settled, moving],
+    ]);
     await setCity(db, settled, ['Munich', 'DE']);
     await setCity(db, moving, ['Munich', 'DE']);
     await db.query(

@@ -605,7 +605,9 @@ describe('the rows nothing could find', () => {
         older.query(`select public.send_message($1, 'Hallo aus der Südstadt.')`, [couriers.emil]),
       );
 
-      await applyMigrations(older, { after: BEFORE_DEAD_ROWS });
+      // This migration alone: a later one settles at once the moves of couriers
+      // who have had no letter, as these have not.
+      await applyMigrations(older, { after: BEFORE_DEAD_ROWS, until: DEAD_ROWS_MIGRATION });
     });
 
     after(async () => {

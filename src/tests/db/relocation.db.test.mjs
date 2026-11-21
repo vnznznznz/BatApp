@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { cityId, createCourier, makeFriends, rpc, setCity } from './fixtures.mjs';
-import { asUser, createTestDatabase } from './harness.mjs';
+import {
+  applyMigrations,
+  asUser,
+  createTestDatabase,
+  createUser,
+  migrationFiles,
+} from './harness.mjs';
 
 /**
  * Moving house, and why it takes a day.
@@ -11,8 +17,15 @@ import { asUser, createTestDatabase } from './harness.mjs';
  * switch to a friend's city, send a twenty-minute letter, and switch back -
  * choosing their own flight time. So a new city becomes where letters leave
  * from, and arrive at, only a day after the move (RELOCATION_HOURS). A first
- * city counts at once.
+ * city counts at once, and so does every move before a courier's first letter,
+ * sent or received: there is no flight yet to shorten.
  */
+
+/** The migration that let a move before the first letter count at once, and the one before it. */
+const FIRST_LETTER_MIGRATION = '20261121120003_moves_before_the_first_letter.sql';
+const BEFORE_FIRST_LETTER = migrationFiles()
+  .filter((file) => file < FIRST_LETTER_MIGRATION)
+  .at(-1);
 
 let db;
 
@@ -82,7 +95,28 @@ const flightMinutes = async (messageId) => {
   return { minutes: Number(rows[0].minutes), km: rows[0].distance_km };
 };
 
+/** Where a courier's move stands: the city in effect until it settles, and since when. */
+const settling = async (who) =>
+  (
+    await db.query(
+      `select settled_city_id, city_changed_at is not null as pending
+       from public.profiles where id = $1`,
+      [who],
+    )
+  ).rows[0];
+
+/**
+ * Two friends who have written to each other already: from the first letter
+ * on, a move takes a day. Anna's letter to Ben is still in the air.
+ */
 async function annaInBerlinBenInMunich() {
+  const { anna, ben } = await strangersToLetters();
+  await send(anna, ben, 'The first.');
+  return { anna, ben };
+}
+
+/** Two friends no letter has passed between yet. */
+async function strangersToLetters() {
   const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
   const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
   await makeFriends(db, anna, ben);
@@ -99,6 +133,180 @@ describe('a first city', () => {
     const sent = await send(anna, ben);
 
     assert.ok(Math.abs((await flightMinutes(sent.message_id)).km - 505) < 5);
+  });
+});
+
+/**
+ * A first city chosen by mistake - the other Friedberg, a slip on the list -
+ * used to stand for a day when put right, for every flight and for what
+ * friends were shown. (Found in review.) Until a letter has gone to or from a
+ * courier there is no flight to shorten, so until then a move counts at once,
+ * as the first choice did.
+ */
+describe('before the first letter', () => {
+  it('counts a move at once', async () => {
+    const { anna, ben } = await strangersToLetters();
+
+    await moveTo(anna, ['Hamburg', 'DE']);
+    const sent = await send(anna, ben);
+
+    assert.deepEqual(await settling(anna), { settled_city_id: null, pending: false });
+    const fromHamburg = await kmBetween(['Hamburg', 'DE'], ['Munich', 'DE']);
+    assert.ok(Math.abs((await flightMinutes(sent.message_id)).km - fromHamburg) < 0.001);
+  });
+
+  it('counts a move for the recipient at once too, until a letter is on its way to them', async () => {
+    const { anna, ben } = await strangersToLetters();
+
+    await moveTo(ben, ['Berlin', 'DE']);
+    const sent = await send(anna, ben);
+
+    assert.equal((await flightMinutes(sent.message_id)).km, 0);
+  });
+
+  it('holds a move to a day once a letter has gone from the courier', async () => {
+    const { anna, ben } = await strangersToLetters();
+    await send(anna, ben);
+
+    await moveTo(anna, ['Munich', 'DE']);
+
+    assert.deepEqual(await settling(anna), {
+      settled_city_id: await cityId(db, 'Berlin', 'DE'),
+      pending: true,
+    });
+  });
+
+  it('holds a move to a day once a letter is on its way to the courier', async () => {
+    const { anna, ben } = await strangersToLetters();
+    await send(ben, anna);
+
+    await moveTo(anna, ['Munich', 'DE']);
+
+    assert.equal((await settling(anna)).pending, true);
+  });
+
+  /**
+   * The first letter may fly from where the courier moved at once: so may a
+   * new account's. But the courier then lives there, and a move back takes a
+   * day like any other, with every letter of that day flying from there.
+   */
+  it('lets the first letter fly from where the courier moved, and holds the move back to a day', async () => {
+    const { anna, ben } = await strangersToLetters();
+    await moveTo(anna, ['Munich', 'DE']);
+    const first = await send(anna, ben);
+
+    await moveTo(anna, ['Berlin', 'DE']);
+    const second = await send(anna, ben);
+
+    assert.equal((await flightMinutes(first.message_id)).km, 0);
+    assert.equal((await flightMinutes(second.message_id)).km, 0);
+    assert.equal((await settling(anna)).pending, true);
+  });
+
+  /** Letters go with an account; that a courier has had one does not. */
+  it('still holds a move to a day after the only letter has gone with its sender', async () => {
+    const { anna, ben } = await strangersToLetters();
+    await send(ben, anna);
+    await asUser(db, ben, () => db.query(`select public.delete_own_account()`));
+
+    await moveTo(anna, ['Munich', 'DE']);
+
+    assert.equal((await settling(anna)).pending, true);
+  });
+
+  it('is known to both ends of a letter from the moment it is sent', async () => {
+    const { anna, ben } = await strangersToLetters();
+    const cara = await createCourier(db, { name: 'cara', city: ['Hamburg', 'DE'] });
+
+    await send(anna, ben);
+
+    const { rows } = await db.query(
+      `select id, has_corresponded from public.profiles where id = any($1) order by username`,
+      [[anna, ben, cara]],
+    );
+    assert.deepEqual(
+      rows.map((row) => row.has_corresponded),
+      [true, true, false],
+    );
+  });
+
+  it('is read by the courier with the rest of their profile, and cannot be written', async () => {
+    const { anna } = await strangersToLetters();
+
+    const read = await asUser(
+      db,
+      anna,
+      async () =>
+        (await db.query(`select has_corresponded from public.profiles where id = $1`, [anna])).rows,
+    );
+    assert.deepEqual(read, [{ has_corresponded: false }]);
+    await assert.rejects(() =>
+      asUser(db, anna, () =>
+        db.query(`update public.profiles set has_corresponded = true where id = $1`, [anna]),
+      ),
+    );
+  });
+});
+
+/** Couriers who had letters before the migration have had them after it too. */
+describe('the first letters there were before', () => {
+  let older;
+
+  before(async () => {
+    older = await createTestDatabase({ until: BEFORE_FIRST_LETTER });
+  });
+
+  after(async () => {
+    await older?.close();
+  });
+
+  it('are counted for everyone who sent or received one', async () => {
+    const courier = async (name) => {
+      const id = await createUser(older, { username: name, displayName: name });
+      await older.query(
+        `update public.profiles set city_id = (select id from public.cities where name = 'Berlin')
+         where id = $1`,
+        [id],
+      );
+      return id;
+    };
+    const [dora, emil, fritz] = [
+      await courier('dora'),
+      await courier('emil'),
+      await courier('fritz'),
+    ];
+    await older.query(
+      `insert into public.friendships (requester_id, addressee_id, status, accepted_at)
+       values ($1, $2, 'accepted', now())`,
+      [dora, emil],
+    );
+    await asUser(older, dora, () =>
+      older.query(`select public.send_message($1, 'Hallo.')`, [emil]),
+    );
+    // Dora and Fritz both moved to Munich a moment ago, and wait for it to count.
+    for (const who of [dora, fritz]) {
+      await asUser(older, who, () =>
+        older.query(
+          `update public.profiles set city_id = (select id from public.cities where name = 'Munich')
+           where id = $1`,
+          [who],
+        ),
+      );
+    }
+
+    await applyMigrations(older, { after: BEFORE_FIRST_LETTER });
+
+    const { rows } = await older.query(
+      `select has_corresponded, city_changed_at is not null as settling
+       from public.profiles where id = any($1) order by username`,
+      [[dora, emil, fritz]],
+    );
+    assert.deepEqual(rows, [
+      { has_corresponded: true, settling: true },
+      { has_corresponded: true, settling: false },
+      // Fritz has had no letter: his move counts now, as it would have under the rule.
+      { has_corresponded: false, settling: false },
+    ]);
   });
 });
 
