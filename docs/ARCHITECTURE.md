@@ -1046,16 +1046,17 @@ run out, and a session left unused for 91 days ended while one in use renews as 
 _Changed in November 2026:_ the job deletes first - sign-ups never confirmed, all together after
 taking their rows in the one order everything that ends an account takes them, then expired bans -
 and only then tidies the sign-in log, sessions, sign-up names, settled moves, the counts of friend
-requests (a day after their hour began) and pg_cron's log. Whatever a step touches, the job holds
-until it ends; with the deletions done while it holds nothing else, a courier deleting their own
-account at that moment waits for it and is never waited for. Review's stress test, a courier
-deleting their account while the tidy-up deleted a sign-up they had asked to be friends and
-reported, ended with one of the two stopped in 30 rounds of 150. A step that Postgres still stops
-because it and a request were each waiting for the other is undone alone, listed in what the run
-returns (`<step>: deadlock detected`) and done the next night; and since what a nightly run returns
-is seen by nobody, whatever it left out is also written to the server's log as a warning. Any
-other error still fails the run. The database's own refusal of a suspended account (see "Accounts
-the operator has stopped") was seen against the local stack in the merged tree.
+requests (once their hour began more than a day ago, so at most two days after) and pg_cron's log.
+Whatever a step touches, the job holds until it ends; with the deletions done while it holds
+nothing else, a courier deleting their own account at that moment waits for it and is never
+waited for. Review's stress test, a courier deleting their account while the tidy-up deleted a
+sign-up they had asked to be friends and reported, ended with one of the two stopped in 30 rounds
+of 150. A step that Postgres still stops because it and a request were each waiting for the other
+is undone alone, listed in what the run returns (`<step>: deadlock detected`) and done the next
+night; and since what a nightly run returns is seen by nobody, whatever it left out is also written
+to the server's log as a warning. Any other error still fails the run. The database's own refusal
+of a suspended account (see "Accounts the operator has stopped") was seen against the local stack
+in the merged tree.
 
 The iOS build also no longer asks for Face ID: expo-secure-store declares that permission by
 default, and the app never uses biometrics, so the store's privacy questions would have had to
@@ -1212,11 +1213,13 @@ operator - and the API still takes its token for up to an hour. The screens offe
 under every refusal, which could not help.
 
 - **Gone.** The roost and the profile say "This account no longer exists: it has been deleted or
-  removed. All that is left to do is to sign out.", with Sign out beside it. The roost's bats are
-  hidden, where it said "0 of 0 at home"; compose shows the notice in place of the friends; the
-  profile offers neither Blocked couriers nor Delete my account. Every account has its bats from
-  the start, so a roost without one makes compose read the profile again, which is how the end is
-  found there. A city saved to an account that is gone says so.
+  removed. All that is left to do is to sign out.", with Sign out beside it, and Contact in a build
+  with a contact address (`AccountClosedActions` on the roost and on compose; the profile has both
+  buttons anyway). The roost's bats are hidden, where it said "0 of 0 at home"; compose shows the
+  notice in place of the friends; the profile offers neither Blocked couriers nor Delete my
+  account. Every account has its bats from the start, so a roost without one makes compose read the
+  profile again, which is how the end is found there. A city saved to an account that is gone says
+  so.
 - **Suspended.** The database refuses a suspended account everything that reaches anyone else (see
   "Accounts the operator has stopped"), with the hint `account_suspended`. The roost, compose - one
   notice, wherever it shows - the letters list, a letter, Friends, a courier's page and the blocked
@@ -1255,15 +1258,20 @@ cannot delete itself (see "Accounts the operator has stopped").
 The auth server's emails carried a link. It came back through the app's URL scheme,
 `nightcourier://`, with a whole session in it - for whichever app on the phone answered to the
 scheme - and the app had no screen to finish a reset with (the roadmap's "Incomplete, and not by
-design"). Every email the auth server can send now carries an 8-digit code to type into the app,
-and no link: the six templates in `supabase/templates` - the confirmation, the reset, the sign-in
-code, the change of address, the invitation and the reauthentication - which `supabase/config.toml`
-names, with the subject "Your Night Courier code". The app asks for two of them. The others carry a
-code too, because anyone can ask the auth server for a sign-in code for an address with an account,
-a signed-in account can ask to change its address, and the operator can invite, and the auth
+design"). Every email the auth server sends to confirm an address, reset a password, sign in,
+change an address, invite or reauthenticate now carries an 8-digit code to type into the app, and
+no link: the six templates in `supabase/templates`, which `supabase/config.toml` names, with the
+subject "Your Night Courier code". The app asks for two of them. The others carry a code too,
+because anyone can ask the auth server for a sign-in code for an address with an account, a
+signed-in account can ask to change its address, and the operator can invite, and the auth
 server's own templates for those carry a link that signs in whoever follows it.
 `src/tests/email-codes.test.ts` checks every template: the code, and no link nor any field a link
 is made of.
+
+The notices the auth server can send of its own accord - of a changed password or address, among
+others (`[auth.email.notification]`) - have no template of the app's, and `config.toml` turns none
+of them on; whether a new hosted project sends any is to be checked (GO-LIVE, "Setting up the
+hosted project", step 2).
 
 - `otp_length = 8`, as many digits as the code field asks for (`EMAIL_CODE_LENGTH`), and
   `otp_expiry = 86400`, a day, where the auth server's own is an hour: someone who signs up in the
@@ -1387,9 +1395,11 @@ What still tells:
   second email for a known address and answers an unknown one as sent; a known address takes
   measurably longer to answer; a sign-up for a confirmed address is answered "User already
   registered" for as long as confirmation by phone is off, as `supabase/config.toml` leaves it,
-  phone sign-up being off altogether - turning `enable_confirmations` on under `[auth.sms]` as well
-  as under `[auth.email]` makes it answer as for a new address; a taken username is an error; and a
-  banned account is refused at sign-in whatever the password.
+  phone sign-up being off altogether; a taken username is an error; and a banned account is refused
+  at sign-in whatever the password. Turning `enable_confirmations` on under `[auth.sms]` as well as
+  under `[auth.email]` should make it answer that sign-up as for a new address, but no server here
+  has had both on, so that is still to be checked (GO-LIVE, "Before a second person can sign up:
+  custom SMTP", step 4).
 
 ### The forms check what the server checks
 
@@ -1415,12 +1425,15 @@ the words the server's refusal gets (`src/features/auth/validation.ts`):
 
 #### Accounts the operator has stopped
 
-The operator stops an account by banning its sign-in: for a week after a threat, and for two years
-after a removal (GO-LIVE, "Handling a report"). Supabase Auth honours a ban at sign-in and at
-renewal, but an access token already held stays good at the API for up to an hour, and the
-database never looked. In that hour a suspended account could go on writing to people, and delete
-itself - the letters a reporter was promised a week to copy, the sign-in records kept for the
-police, and the banned sign-in itself, so that the same address could sign up again at once.
+The operator stops an account by banning its sign-in (GO-LIVE, "Handling a report"). After a
+threat the ban is set at once, for `private.ban_period()`, two years, and a week later the account
+is removed, which sets the two years afresh - or the ban is lifted, if the threat proved unfounded.
+After a serious or repeated breach `private.remove_account` removes the account and bans its
+sign-in for the two years in one step. Supabase Auth honours a ban at sign-in and at renewal, but
+an access token already held stays good at the API for up to an hour, and the database never
+looked. In that hour a suspended account could go on writing to people, and delete itself - the
+letters a reporter was promised a week to copy, the sign-in records kept for the police, and the
+banned sign-in itself, so that the same address could sign up again at once.
 
 Now the database looks (`20261114120000_suspended_accounts.sql`). `private.caller()`, which every
 function a client can reach starts from, refuses a suspended account with the hint
@@ -1476,15 +1489,15 @@ them.
 limit cuts off is requests (`20261114120001_friend_requests.sql`). One account can make twenty new
 requests an hour (`FRIEND_REQUESTS_PER_HOUR`, with a parity test), counted one call at a time under
 an advisory lock, in one row per courier in `private.friend_request_counts` - when the hour being
-counted began, and how many - which goes with the account, and which the tidy-up deletes a day
-after its hour began. The limit is decided before the username is looked up, so its refusal is the
-same for a name that exists and one that does not. A request counts whatever becomes of it, or
-asking, being declined and asking again would never run out; accepting is not asking. The app says
-"That is a lot of requests in a short time. Try again in an hour." Withdrawing is
-`withdraw_request`, which refuses once the request is no longer waiting, and the app then says
-whether they accepted in the meantime. Declining is still `remove_friend`, but a request withdrawn
-before the decline is said as one no longer waiting rather than as a friendship that ended
-(`declineRequest`), on Friends and on a courier's page.
+counted began, and how many - which goes with the account, and which the daily tidy-up deletes
+once its hour began more than a day ago, so at most two days after it began. The limit is decided
+before the username is looked up, so its refusal is the same for a name that exists and one that
+does not. A request counts whatever becomes of it, or asking, being declined and asking again would
+never run out; accepting is not asking. The app says "That is a lot of requests in a short time.
+Try again in an hour." Withdrawing is `withdraw_request`, which refuses once the request is no
+longer waiting, and the app then says whether they accepted in the meantime. Declining is still
+`remove_friend`, but a request withdrawn before the decline is said as one no longer waiting rather
+than as a friendship that ended (`declineRequest`), on Friends and on a courier's page.
 
 #### Bounds
 
@@ -1548,11 +1561,12 @@ already sent is judged again.
 out of it threw them away without a question - the header's arrow, a swipe, Android's back button,
 going back to read once more the letter being answered. They are kept outside it now
 (`src/features/messages/drafts.ts`): one unsent letter for each friend, for each signed-in account,
-in memory only - the privacy policy says that a letter you have started is gone when you close the
-app, and that nothing but the session is stored on the device - and all of it forgotten when the
-client announces a sign-out. Screens read them with `useSyncExternalStore`, so a screen shows what
-will still be there when it is opened again, and compose's list of friends says to whom a letter
-was started.
+in memory only, and all of it forgotten when the client announces a sign-out. Screens read them
+with `useSyncExternalStore`, so a screen shows what will still be there when it is opened again,
+and compose's list of friends says to whom a letter was started. Nothing of them is written to the
+device, because the privacy policy says that a letter you have started is gone when you close the
+app or sign out, and that the app stores nothing on the device but the session and, while a code
+from an email is in use, the note of what it is for (see "A code holds the way in").
 
 **The sending of it.** A send outlives its screen too (`src/features/messages/sending.ts`). It runs
 to its end whether or not the screen that started it is still there, notes what became of the
@@ -1619,11 +1633,12 @@ Petersburg as if its name began so. It runs with its owner's rights to call `pri
 #### Towns of the same name
 
 Twenty-eight pairs of cities share their name and their country - Friedberg in Hessen and in
-Bavaria, Hamm, Langen, Sankt Peter, and twenty more abroad - and the picker listed each pair as the
-same row twice, while the friends list and the letters said "Friedberg, DE" for either. GeoNames
-has the state a town is in, but not in the file this list is built from, so what tells a town apart
-is worked out from the table itself: `cities.qualifier`, set by `private.qualify_cities()` over the
-whole table (`20261121120002_city_qualifiers.sql`).
+Bavaria, Hamm, Langen, Mülheim and Senden in Germany, Sankt Peter in Austria, and twenty-two more
+elsewhere - and the picker listed each pair as the same row twice, while the friends list and the
+letters said "Friedberg, DE" for either. GeoNames has the state a town is in, but not in the file
+this list is built from, so what tells a town apart is worked out from the table itself:
+`cities.qualifier`, set by `private.qualify_cities()` over the whole table
+(`20261121120002_city_qualifiers.sql`).
 
 - A town is named by a larger city of its country with a name of its own: the largest within 30 km,
   otherwise the nearest larger one.
