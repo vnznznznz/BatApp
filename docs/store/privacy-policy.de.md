@@ -48,8 +48,8 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    Geschichte lesbar. In der App bleiben EXPO_PUBLIC_PRIVACY_POLICY_URL und EXPO_PUBLIC_CONTACT_URL
    Einstellungen der Umgebung und werden nicht eingecheckt. Abschnitt 7 beschreibt GitHub als
    Anbieter der Webseiten.
-9. Die Abschnitte 3.1 bis 3.3, 3.8 bis 3.10, 4, 5, 7, 9 und 11 folgen außerdem dem Code vom
-   21. November 2026: Ein Umzug gilt bis zum ersten Brief eines Kuriers sofort
+9. "Kurz gesagt" und die Abschnitte 3.1 bis 3.3, 3.8 bis 3.10, 4, 5, 6, 7, 9 und 11 folgen außerdem
+   dem Code vom 21. November 2026: Ein Umzug gilt bis zum ersten Brief eines Kuriers sofort
    (profiles.has_corresponded, Migration 20261121120003_moves_before_the_first_letter.sql);
    höchstens 20 neue Freundschaftsanfragen pro Stunde, gezählt in private.friend_request_counts
    (20261114120001_friend_requests.sql); ein vorläufig gesperrtes Konto ist sofort gestoppt und kann
@@ -57,10 +57,13 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    beantwortet die App wie ein falsches Passwort (signIn in src/features/auth/auth-context.tsx);
    jede E-Mail enthält einen Code und keinen Link (supabase/templates; otp_length und otp_expiry in
    supabase/config.toml); das Bestätigen einer Adresse löscht das Passwort, das das Konto hatte
-   (20261121160000_confirmation_clears_password.sql); die Notiz, wofür ein Code ist, liegt neben
-   der Sitzung (src/features/auth/unfinished.ts); das Abmelden wartet höchstens 5 Sekunden auf den
-   Server (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx). Ändert sich daran etwas,
-   diese Abschnitte anpassen.
+   (20261121160000_confirmation_clears_password.sql); die Notiz, wofür ein Code ist, liegt neben der
+   Sitzung (src/features/auth/unfinished.ts); das Abmelden wartet höchstens 5 Sekunden auf den
+   Server (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx); das Speichern einer Stadt
+   schickt die Bedingung, unter der gespeichert wird, in der Adresse der Anfrage mit, die in die
+   Server-Protokolle gelangt: die Stadt, von der die Fledermäuse losfliegen, oder dass noch kein
+   Brief ging (updateCity in src/features/profile/use-profile.ts). Ändert sich daran etwas, diese
+   Abschnitte anpassen.
 -->
 
 # Datenschutzerklärung für Night Courier
@@ -441,12 +444,14 @@ oder Betriebssystems (den sogenannten User-Agent).
   3.10 und 10 –, werden deine Einträge sofort mitgelöscht. Nur ein Konto, das ich wegen
   Regelverstößen entferne, behält seine Einträge, bis sie 30 Tage alt sind (Abschnitt 3.8).
 - **Server-Protokolle.** Supabase protokolliert Anfragen an den Server: IP-Adresse, Zeitpunkt, die
-  aufgerufene Adresse (sie kann deine Nutzer-ID enthalten), User-Agent und Ergebnis, bei Anmeldungen
-  auch deine E-Mail-Adresse, außerdem Fehlermeldungen der Datenbank. Briefe, Notizen und Namen
-  schickt die App im Inhalt einer Anfrage, nicht in der Adresse; in diese Protokolle gelangen sie
-  deshalb normalerweise nicht. Eine Fehlermeldung der Datenbank kann aber einen einzelnen Wert
-  enthalten, zum Beispiel einen schon vergebenen Benutzernamen bei der Registrierung. Diese
-  Protokolle löscht Supabase nach kurzer Zeit automatisch.
+  aufgerufene Adresse (sie kann deine Nutzer-ID enthalten und, wenn du deine Stadt wechselst, die
+  Nummer der Stadt, von der deine Fledermäuse gerade losfliegen, oder die Angabe, dass noch kein
+  Brief an dich oder von dir ging), User-Agent und Ergebnis, bei Anmeldungen auch deine
+  E-Mail-Adresse, außerdem Fehlermeldungen der Datenbank. Briefe, Notizen und Namen schickt die App
+  im Inhalt einer Anfrage, nicht in der Adresse; in diese Protokolle gelangen sie deshalb
+  normalerweise nicht. Eine Fehlermeldung der Datenbank kann aber einen einzelnen Wert enthalten,
+  zum Beispiel einen schon vergebenen Benutzernamen bei der Registrierung. Diese Protokolle löscht
+  Supabase nach kurzer Zeit automatisch.
 
 <!-- PRÜFEN:
 - Sitzungen: am 4. November 2026 auf dem lokalen Supabase-Stack geprüft. Jede Anmeldung legt eine
@@ -521,9 +526,14 @@ otp_length und otp_expiry = 86400 in supabase/config.toml, und die Vorlagen in s
 sagen dasselbe. Das gehostete Projekt verschickt sie erst, wenn config push sie dorthin gebracht
 hat (docs/GO-LIVE.md, "Setting up the hosted project"); seine eigenen Vorlagen enthalten einen
 Link. Nach diesem push prüfen, ob das gehostete Projekt den Tag übernommen hat, und wenn es weniger
-erlaubt, das hier, auf der Hilfeseite und in den Vorlagen eintragen. Was ein solches Konto zu
-deinem macht: finishSignUp und verifyResetCode in src/features/auth/auth-context.tsx und die
-Migration 20261121160000_confirmation_clears_password.sql. -->
+erlaubt, das hier, auf der Hilfeseite und in den Vorlagen eintragen. Der Auth-Server kann auch
+eigene Hinweise schicken, unter anderem über ein geändertes Passwort oder eine geänderte Adresse
+([auth.email.notification]); supabase/config.toml schaltet keinen davon ein. Ob das gehostete
+Projekt welche schickt, ist zu prüfen (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 2).
+Ist einer an, ihn hier nennen und ihm, wie GO-LIVE sagt, eine Vorlage der App ohne Link geben, oder
+ihn ausschalten. Was ein solches Konto zu deinem macht: finishSignUp und verifyResetCode in
+src/features/auth/auth-context.tsx und die Migration
+20261121160000_confirmation_clears_password.sql. -->
 
 <!-- PRÜFEN (rechtlich): Das Bestätigen einer Adresse übernimmt oder löscht ein Konto, das eine
 frühere, unbestätigte Registrierung mit ihr angelegt hatte - vielleicht die einer anderen Person -,

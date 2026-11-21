@@ -45,18 +45,21 @@ Notes for the operator - remove before publishing, like every comment in this fi
    readable in its history. In the app, EXPO_PUBLIC_PRIVACY_POLICY_URL and EXPO_PUBLIC_CONTACT_URL
    stay settings of the environment and are not committed. Section 7 describes GitHub as the host
    of the web pages.
-9. Sections 3.1 to 3.3, 3.8 to 3.10, 4, 5, 7, 9 and 11 also follow the code of 21 November 2026: a
-   move counts at once until a courier's first letter (profiles.has_corresponded, migration
-   20261121120003_moves_before_the_first_letter.sql); at most 20 new friend requests an hour,
-   counted in private.friend_request_counts (20261114120001_friend_requests.sql); a suspended
-   account is stopped at once and cannot delete itself (20261114120000_suspended_accounts.sql), and
-   the app answers its sign-in as a wrong password (signIn in src/features/auth/auth-context.tsx);
-   every email carries a code and no link (supabase/templates; otp_length and otp_expiry in
-   supabase/config.toml); confirming an address deletes the password the account had
-   (20261121160000_confirmation_clears_password.sql); the note of what a code is for, kept beside
-   the session (src/features/auth/unfinished.ts); signing out waits at most 5 seconds for the server
-   (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx). If any of that changes, update
-   those sections.
+9. "In short" and sections 3.1 to 3.3, 3.8 to 3.10, 4, 5, 6, 7, 9 and 11 also follow the code of
+   21 November 2026: a move counts at once until a courier's first letter
+   (profiles.has_corresponded, migration 20261121120003_moves_before_the_first_letter.sql);
+   at most 20 new friend requests an hour, counted in private.friend_request_counts
+   (20261114120001_friend_requests.sql); a suspended account is stopped at once and cannot delete
+   itself (20261114120000_suspended_accounts.sql), and the app answers its sign-in as a wrong
+   password (signIn in src/features/auth/auth-context.tsx); every email carries a code and no link
+   (supabase/templates; otp_length and otp_expiry in supabase/config.toml); confirming an address
+   deletes the password the account had (20261121160000_confirmation_clears_password.sql); the note
+   of what a code is for, kept beside the session (src/features/auth/unfinished.ts); signing out
+   waits at most 5 seconds for the server (SERVER_SIGN_OUT_WAIT_MS in
+   src/features/auth/auth-context.tsx); saving a city puts the condition it is saved on into the
+   address of the request, which ends up in the server logs: the city the bats leave from, or that
+   no letter has gone yet (updateCity in src/features/profile/use-profile.ts). If any of that
+   changes, update those sections.
 -->
 
 # Privacy policy for Night Courier
@@ -403,11 +406,12 @@ system (the so-called user agent).
   in sections 3.10 and 10 – your entries are deleted with it at once. Only an account I remove
   for breaking the rules keeps its entries until they are 30 days old (section 3.8).
 - **Server logs.** Supabase logs requests to the server: IP address, time, the address requested
-  (which can contain your user ID), user agent and result, for sign-ins also your email address, and
-  database error messages. The app sends letters, notes and names in the body of a request, not in
-  its address, so they do not normally end up in these logs. A database error message can contain a
-  single value, though, such as a username that is already taken at sign-up. Supabase deletes these
-  logs automatically after a short time.
+  (which can contain your user ID and, when you change your city, the ID of the city your bats
+  currently fly from, or the information that no letter has gone to or from you yet), user agent and
+  result, for sign-ins also your email address, and database error messages. The app sends letters,
+  notes and names in the body of a request, not in its address, so they do not normally end up in
+  these logs. A database error message can contain a single value, though, such as a username that
+  is already taken at sign-up. Supabase deletes these logs automatically after a short time.
 
 <!-- TO CHECK:
 - Sessions: checked on the local Supabase stack on 4 November 2026. Each sign-in adds a row to
@@ -477,7 +481,11 @@ and otp_expiry = 86400 in supabase/config.toml, and the templates in supabase/te
 same. The hosted project sends them only once config push has carried them there (docs/GO-LIVE.md,
 "Setting up the hosted project"); its own templates carry a link. After that push, check that the
 hosted project took the day, and if it allows less, write that here, on the help page and in the
-templates. What makes such an account yours: finishSignUp and verifyResetCode in
+templates. The auth server can also send notices of its own, of a changed password or address among
+others ([auth.email.notification]); supabase/config.toml turns none of them on. Whether the hosted
+project sends any is to check (docs/GO-LIVE.md, "Setting up the hosted project", step 2). If one is
+on, name it here and give it a template of the app's without a link, as GO-LIVE says, or turn it
+off. What makes such an account yours: finishSignUp and verifyResetCode in
 src/features/auth/auth-context.tsx, and the migration
 20261121160000_confirmation_clears_password.sql. -->
 
