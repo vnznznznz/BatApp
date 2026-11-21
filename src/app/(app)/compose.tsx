@@ -84,7 +84,9 @@ const HELD_BACK =
  */
 export default function ComposeScreen() {
   const router = useRouter();
-  const { to } = useLocalSearchParams<{ to?: string }>();
+  // Whom the letter is for, and by what name: "Write back" passes both, so
+  // that someone who is no longer a friend can be named here.
+  const { to, name: named } = useLocalSearchParams<{ to?: string; name?: string }>();
   const { session } = useAuth();
   const courierId = session?.user.id;
   const { profile, error: profileError, isGone, reload: reloadProfile } = useProfile();
@@ -303,12 +305,17 @@ export default function ComposeScreen() {
         {closedNotice}
 
         {/* Pointing at a list only where there is one: below it, there may be
-            no friend left to choose. (Found in the browser.) */}
+            no friend left to choose. (Found in the browser.) And naming the
+            one written back to: "You can only write to friends" over the
+            friends who were left did not say that they were not among them.
+            (Found in the browser.) */}
         {to && friendships.data && !closed ? (
           <Text variant="caption" tone="danger" style={styles.spaced}>
-            {friends.length > 0
-              ? 'You can only write to friends. Choose one below.'
-              : 'You can only write to friends.'}
+            {named
+              ? `${named} is no longer among your friends, so you cannot write to them.`
+              : friends.length > 0
+                ? 'You can only write to friends. Choose one below.'
+                : 'You can only write to friends.'}
           </Text>
         ) : null}
 
@@ -342,7 +349,14 @@ export default function ComposeScreen() {
                 key={friendship.id}
                 friendship={friendship}
                 courierId={courierId}
-                onPress={() => router.setParams({ to: friendship.friend.id })}
+                // With the name, as "Write back" gives it: one left in the
+                // route from before would name someone else.
+                onPress={() =>
+                  router.setParams({
+                    to: friendship.friend.id,
+                    name: friendName(friendship.friend),
+                  })
+                }
               />
             ))}
           </Card>

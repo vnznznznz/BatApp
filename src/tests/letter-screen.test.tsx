@@ -280,12 +280,20 @@ describe('LetterScreen', () => {
       expect(await screen.findByText('Sent 30 Dec 17:53. Landed 30 Dec 21:04.')).toBeOnTheScreen();
     });
 
+    /**
+     * By their name as well as their id: if the friendship has ended since,
+     * compose says who it is that can no longer be written to. (Found in the
+     * browser.)
+     */
     it('offers to write back to whoever sent it', async () => {
       await renderScreen(<LetterScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Write back' }));
 
-      expect(mockPush).toHaveBeenCalledWith({ pathname: '/compose', params: { to: 'user-anna' } });
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/compose',
+        params: { to: 'user-anna', name: 'Anna Weber' },
+      });
     });
   });
 

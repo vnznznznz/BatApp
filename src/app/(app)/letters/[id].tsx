@@ -179,10 +179,18 @@ export default function LetterScreen() {
       {received ? (
         <>
           <View style={styles.actions}>
+            {/* With their name: if the friendship has ended since the letter
+                came, compose can say who it is that can no longer be written
+                to. (Found in the browser.) */}
             <Button
               label="Write back"
               disabled={blocking}
-              onPress={() => router.push({ pathname: '/compose', params: { to: data.other.id } })}
+              onPress={() =>
+                router.push({
+                  pathname: '/compose',
+                  params: { to: data.other.id, name: correspondentName(data.other) },
+                })
+              }
             />
           </View>
 

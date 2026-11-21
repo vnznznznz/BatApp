@@ -20,7 +20,7 @@ const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockSetParams = jest.fn();
 /** The route's search params, as the screen reads them. */
-const mockParams: { to?: string } = {};
+const mockParams: { to?: string; name?: string } = {};
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
@@ -339,6 +339,7 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockSetParams.mockClear();
   delete mockParams.to;
+  delete mockParams.name;
   mockSession.user = { id: 'user-mara' };
   forgetAllDrafts();
   mockProfileState.profile = courier;
@@ -388,12 +389,13 @@ describe('ComposeScreen', () => {
       expect(screen.queryByText(/dora/)).toBeNull();
     });
 
+    /** By name as well, so that the route says whom it is for, as "Write back" does. */
     it('picks a friend by putting them in the route', async () => {
       await renderScreen(<ComposeScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: /^Anna Weber/ }));
 
-      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna', name: 'Anna Weber' });
     });
 
     it('cannot pick a friend no bat can find', async () => {
@@ -431,6 +433,50 @@ describe('ComposeScreen', () => {
       expect(await screen.findByText('You can only write to friends.')).toBeOnTheScreen();
       expect(screen.queryByText(/Choose one below/)).toBeNull();
       expect(screen.getByText('You have no friends to write to yet.')).toBeOnTheScreen();
+    });
+
+    /**
+     * "Write back" on the letter of someone who is no longer a friend opened
+     * "You can only write to friends", with the friends who were left, and
+     * did not say that the one written back to was not among them. (Found in
+     * the browser.) The letter passes their name with the route, and the
+     * screen says it plainly.
+     */
+    it.each([
+      ['with friends left to choose', () => [anna, ben, carla, dora], 'Anna Weber'],
+      ['with no friend left', () => [carla, dora], null],
+    ])(
+      'names someone who is no longer a friend when the route names them, %s',
+      async (_, list, offered) => {
+        serveFriends(list);
+        mockParams.to = 'user-bruno';
+        mockParams.name = 'Bruno Kraft';
+        await renderScreen(<ComposeScreen />);
+
+        expect(
+          await screen.findByText(
+            'Bruno Kraft is no longer among your friends, so you cannot write to them.',
+          ),
+        ).toBeOnTheScreen();
+        expect(screen.queryByText(/You can only write to friends/)).toBeNull();
+        expect(screen.queryByLabelText('Your letter')).toBeNull();
+        if (offered) {
+          expect(screen.getByRole('button', { name: new RegExp(`^${offered}`) })).toBeEnabled();
+        } else {
+          expect(screen.getByText('You have no friends to write to yet.')).toBeOnTheScreen();
+        }
+      },
+    );
+
+    /** A friend is written to under their own name, whatever name the route gives. */
+    it('opens the letter to a friend whatever name the route gives', async () => {
+      mockParams.to = 'user-anna';
+      mockParams.name = 'Bruno Kraft';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByLabelText('Your letter')).toBeOnTheScreen();
+      expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
+      expect(screen.queryByText(/Bruno Kraft/)).toBeNull();
     });
 
     it('sends someone with nobody to write to off to find friends', async () => {
@@ -707,7 +753,7 @@ describe('ComposeScreen', () => {
 
       await fireEvent.press(annaRow);
 
-      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna', name: 'Anna Weber' });
     });
 
     /**
@@ -1741,7 +1787,7 @@ describe('ComposeScreen', () => {
       expect(mockedFetchSentLetter).toHaveBeenCalledTimes(asked);
 
       await fireEvent.press(annaRow);
-      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna', name: 'Anna Weber' });
     });
 
     // What may have gone is what was sent, whatever has been written over it
