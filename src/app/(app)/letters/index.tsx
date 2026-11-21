@@ -82,6 +82,11 @@ function ReceivedList() {
             // A town that shares its name says where it is: "From Friedberg"
             // was either of two. (Found in review.)
             subtitle={`From ${cityName(letter.origin)} · ${formatDistance(letter.distanceKm)} · ${formatTimestamp(letter.arrivedAt)}`}
+            // With the lines it needs: on one, a long town name - "Sankt
+            // Peter (near Klagenfurt am Wörthersee)", "Universitäts- und
+            // Hansestadt Greifswald" - cut off the distance and the time at
+            // 360 and 390 px. (Found in the browser.)
+            subtitleLines={0}
             detail={asOneLine(letter.preview)}
             emphasised={unread}
             leading={<UnreadDot visible={unread} label="Unread" />}
@@ -132,6 +137,10 @@ function SentList() {
                   ? `In the air to ${to} · lands in ${formatDuration(remaining)}`
                   : `In the air to ${to} · landing any moment now`
             }
+            // With the lines it needs, as above: on one, "In the air to La
+            // Ceiba (131 km from San Pedro Sula)" left no room for the
+            // countdown. (Found in the browser.)
+            subtitleLines={0}
             detail={asOneLine(letter.preview)}
             onPress={() => router.push({ pathname: '/letters/[id]', params: { id: letter.id } })}
           />
