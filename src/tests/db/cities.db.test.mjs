@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,24 +16,19 @@ import {
   migrationFiles,
 } from './harness.mjs';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+
 /**
  * What the client's fold makes of a name or a spelling, as the generator
  * pinned it: search.test.ts holds the client to these pairs, so they are what
  * the app sends.
  */
 const FIXTURE = JSON.parse(
-  readFileSync(
-    join(
-      dirname(fileURLToPath(import.meta.url)),
-      '..',
-      '..',
-      'features',
-      'cities',
-      'fold-parity.fixture.json',
-    ),
-    'utf8',
-  ),
+  readFileSync(join(HERE, '..', '..', 'features', 'cities', 'fold-parity.fixture.json'), 'utf8'),
 );
+
+/** The script that writes a migration of cities from a GeoNames dump. */
+const GENERATOR = join(HERE, '..', '..', '..', 'scripts', 'build-cities.mjs');
 
 /** The query the app sends for `spelling`, from the fixture's spellings. */
 function sent(spelling) {
@@ -451,6 +448,12 @@ describe('cities.qualifier, for towns of the same name', () => {
       assert.equal(named.length, 1, `${row.name}: "${row.qualifier}" names no one city`);
       const [place] = named;
       assert.equal(place.same_name, 1, `${row.name}: ${place.name} has a twin itself`);
+      // Every country with a twin has a larger city for each of them; the rule
+      // for one that has none is tried on made-up towns below.
+      assert.ok(
+        place.population > row.population,
+        `${row.name} (${row.population}) is named by ${place.name} (${place.population})`,
+      );
 
       if (row.qualifier.startsWith('near ')) {
         assert.ok(place.km <= 50, `${row.name} is ${place.km} km from ${place.name}`);
@@ -608,6 +611,203 @@ describe('cities.qualifier, wherever a city is read with its country', () => {
         ['Friedberg', BAVARIA],
       );
     }
+  });
+});
+
+/**
+ * What tells two towns apart is worked out by private.qualify_cities, over the
+ * whole table: by the qualifier migration for the rows there were, and again
+ * by every migration build-cities.mjs writes. The rules the real pairs never
+ * reach are tried here on towns made up for the purpose, in a country of
+ * their own, and taken out again.
+ */
+describe('private.qualify_cities, on towns made up for it', () => {
+  /** What each made-up town is told apart by, once the rules have run over the table. */
+  async function qualified(towns, change = null) {
+    await db.exec('begin');
+    try {
+      for (const [id, name, latitude, longitude, population] of towns) {
+        await db.query(
+          `insert into public.cities
+             (id, name, country_code, latitude, longitude, population, search_index)
+           values ($1, $2, 'ZZ', $3, $4, $5, lower($2))`,
+          [id, name, latitude, longitude, population],
+        );
+      }
+      await db.query(`select private.qualify_cities()`);
+      if (change) {
+        await db.query(change);
+        await db.query(`select private.qualify_cities()`);
+      }
+      const { rows } = await db.query(
+        `select id, qualifier from public.cities where country_code = 'ZZ' order by id`,
+      );
+      return rows.map((row) => [row.id, row.qualifier]);
+    } finally {
+      await db.exec('rollback');
+    }
+  }
+
+  /** "Near Großstadt" twice would tell nothing apart. */
+  it('gives each its distance where both would be near the same city', async () => {
+    assert.deepEqual(
+      await qualified([
+        [990000001, 'Neudorf', 50.0, 10.0, 20000],
+        [990000002, 'Neudorf', 50.1, 10.1, 18000],
+        [990000003, 'Großstadt', 50.05, 10.2, 500000],
+      ]),
+      [
+        [990000001, '15 km from Großstadt'],
+        [990000002, '9 km from Großstadt'],
+        [990000003, null],
+      ],
+    );
+  });
+
+  it('names the nearest city of any size where the country has none larger', async () => {
+    assert.deepEqual(
+      await qualified([
+        [990000001, 'Kleinheim', 50.0, 10.0, 20000],
+        [990000002, 'Kleinheim', 51.0, 11.0, 19000],
+        [990000003, 'Dorf am See', 50.1, 10.0, 16000],
+        [990000004, 'Bergdorf', 50.9, 11.0, 15500],
+      ]),
+      [
+        [990000001, 'near Dorf am See'],
+        [990000002, 'near Bergdorf'],
+        [990000003, null],
+        [990000004, null],
+      ],
+    );
+  });
+
+  /**
+   * Worked out again, two towns that no longer share a name - one of them
+   * renamed in a later dump - lose what they had.
+   */
+  it('takes the qualifier from towns whose names are their own again', async () => {
+    assert.deepEqual(
+      await qualified(
+        [
+          [990000001, 'Neudorf', 50.0, 10.0, 20000],
+          [990000002, 'Neudorf', 50.1, 10.1, 18000],
+          [990000003, 'Großstadt', 50.05, 10.2, 500000],
+        ],
+        `update public.cities set name = 'Neudorf an der Au' where id = 990000002`,
+      ),
+      [
+        [990000001, null],
+        [990000002, null],
+        [990000003, null],
+      ],
+    );
+  });
+});
+
+/**
+ * build-cities.mjs writes a migration with the cities of one dump. A town that
+ * has dropped out of the dump stays in the table, and so must what tells it
+ * apart from another of its name - which is worked out again over the whole
+ * table once the dump's rows are in, not among the dump's rows alone. Among
+ * those alone, a Friedberg whose twin had left the dump had its qualifier
+ * cleared: "Friedberg" beside "Friedberg (near Augsburg)", as if it were the
+ * only one. (Found in review.)
+ */
+describe('a migration build-cities.mjs writes, applied', () => {
+  const NEW_ROSRATH = 990000101;
+  let fresh;
+  let scratch;
+
+  /** One line of cities15000.txt, as the generator reads it. */
+  const line = (id, { name, country_code, latitude, longitude, population }) =>
+    [id, name, name, '', latitude, longitude, 'P', 'PPL', country_code]
+      .concat(['', '', '', '', '', population, '', '', 'Europe/Berlin', '2026-11-21'])
+      .join('\t');
+
+  before(async () => {
+    fresh = await createTestDatabase();
+    scratch = mkdtempSync(join(tmpdir(), 'cities-db-'));
+    const { rows } = await fresh.query(
+      `select name, country_code, latitude, longitude, population
+       from public.cities where id = 2924802`,
+    );
+    const dump = [
+      // The Friedberg in Hessen is in the dump as it is; the one in Bavaria,
+      // 2924803, has dropped out of it.
+      line(2924802, rows[0]),
+      // A second Rösrath, new, in Bavaria; the one beside Köln is not in the dump.
+      line(NEW_ROSRATH, {
+        name: 'Rösrath',
+        country_code: 'DE',
+        latitude: 47.9,
+        longitude: 12.2,
+        population: 20000,
+      }),
+    ];
+    writeFileSync(join(scratch, 'cities15000.txt'), dump.join('\n') + '\n');
+    mkdirSync(join(scratch, 'migrations'));
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        GENERATOR,
+        '--dump',
+        join(scratch, 'cities15000.txt'),
+        '--migrations',
+        join(scratch, 'migrations'),
+        '--fixture',
+        join(scratch, 'fold-parity.fixture.json'),
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const [written] = readdirSync(join(scratch, 'migrations'));
+    await fresh.exec(readFileSync(join(scratch, 'migrations', written), 'utf8'));
+  });
+
+  after(async () => {
+    await fresh?.close();
+    if (scratch) rmSync(scratch, { recursive: true, force: true });
+  });
+
+  const qualifiers = async (name) =>
+    (
+      await fresh.query(
+        `select id, qualifier from public.cities
+         where name = $1 and country_code = 'DE' order by id`,
+        [name],
+      )
+    ).rows.map((row) => [row.id, row.qualifier]);
+
+  it('keeps what tells apart a town whose twin has left the dump', async () => {
+    assert.deepEqual(await qualifiers('Friedberg'), [
+      [2924802, 'near Frankfurt am Main'],
+      [2924803, 'near Augsburg'],
+    ]);
+  });
+
+  it('tells apart a new town from one of its name that is not in the dump', async () => {
+    const [old, added] = await qualifiers('Rösrath');
+
+    assert.equal(old[1], 'near Köln');
+    assert.equal(added[0], NEW_ROSRATH);
+    assert.match(added[1] ?? '', /^near /);
+  });
+
+  it('gives a qualifier to every town that shares its name, and to no other', async () => {
+    const { rows } = await fresh.query(
+      `select count(*) filter (where c.qualifier is not null)::int as qualified,
+              count(*) filter (where (c.qualifier is not null) <> c.shared)::int as wrong
+       from (
+         select c.qualifier,
+                exists (select 1 from public.cities o
+                        where o.name = c.name and o.country_code = c.country_code
+                          and o.id <> c.id) as shared
+         from public.cities c
+       ) c`,
+    );
+
+    assert.deepEqual(rows[0], { qualified: 58, wrong: 0 });
   });
 });
 

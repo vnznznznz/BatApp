@@ -24,10 +24,10 @@
 --     of any size. None is like that today either.
 --
 -- Checked for every pair (cities.db.test.mjs): each of the 56 rows has one,
--- the two rows of a pair read differently, each "near" is within 50 km, and
--- every distance is the one the database measures.
---
--- scripts/build-cities.mjs works out the same for the cities it writes.
+-- the two rows of a pair read differently, each names a larger city of a
+-- name of its own, each "near" is within 50 km, and every distance is the one
+-- the database measures. The rules no real pair reaches are tried on towns
+-- made up for the purpose.
 --
 -- It comes wherever the app reads a city with its country: from the search,
 -- with the courier's own city and the one a move is settling away from (the
@@ -42,71 +42,96 @@ alter table public.cities add column qualifier text;
 comment on column public.cities.qualifier is
   'What tells this city apart from another of the same name in the same country, '
   'shown after its name: "near Augsburg", or "131 km from San Pedro Sula". Null for '
-  'a city whose name is its own in its country.';
+  'a city whose name is its own in its country. Set by private.qualify_cities().';
 
-with twins as (
-  select c.*
-  from public.cities c
-  where exists (
-    select 1
-    from public.cities same
-    where same.name = c.name
-      and same.country_code = c.country_code
-      and same.id <> c.id
+/* -------------------------------------------------------------------------- */
+/* The rule                                                                   */
+/* -------------------------------------------------------------------------- */
+
+-- What tells apart every city that shares its name and country with another,
+-- worked out over the whole table, and null for every other city: as above.
+--
+-- Run here for the rows there are, and again at the end of every migration
+-- scripts/build-cities.mjs writes. Such a migration holds the cities of one
+-- dump, and a town that has dropped out of the dump stays in the table: among
+-- the dump's cities alone, its twin would look like the only town of its
+-- name, and lose what tells it apart. (Found in review.) So the rule lives
+-- here, once, and the generator only calls it.
+create function private.qualify_cities()
+returns void
+language sql
+set search_path = ''
+as $$
+  with twins as (
+    select c.*
+    from public.cities c
+    where exists (
+      select 1
+      from public.cities same
+      where same.name = c.name
+        and same.country_code = c.country_code
+        and same.id <> c.id
+    )
+  ),
+  named as (
+    select t.id, t.name, t.country_code, place.name as place, place.km
+    from twins t
+    cross join lateral (
+      select o.name, o.km
+      from (
+        select o.id, o.name, o.population,
+               private.distance_km(t.latitude, t.longitude, o.latitude, o.longitude) as km
+        from public.cities o
+        where o.country_code = t.country_code
+          and o.name <> t.name
+          and not exists (
+            select 1
+            from public.cities same
+            where same.name = o.name
+              and same.country_code = o.country_code
+              and same.id <> o.id
+          )
+      ) o
+      order by
+        -- A larger city within 30 km, the largest of them first;
+        (o.population > t.population and o.km <= 30) desc,
+        case when o.population > t.population and o.km <= 30 then o.population end desc nulls last,
+        -- then the nearest larger city; then the nearest of any size.
+        (o.population > t.population) desc,
+        o.km,
+        o.population desc,
+        o.id
+      limit 1
+    ) place
+  ),
+  worded as (
+    select n.id, n.name, n.country_code,
+           case
+             when n.km <= 50 then 'near ' || n.place
+             else round(n.km::numeric)::text || ' km from ' || n.place
+           end as near,
+           round(n.km::numeric)::text || ' km from ' || n.place as far
+    from named n
+  ),
+  told_apart as (
+    select w.id,
+           case
+             when count(*) over (partition by w.name, w.country_code, w.near) > 1 then w.far
+             else w.near
+           end as qualifier
+    from worded w
   )
-),
-named as (
-  select t.id, t.name, t.country_code, place.name as place, place.km
-  from twins t
-  cross join lateral (
-    select o.name, o.km
-    from (
-      select o.id, o.name, o.population,
-             private.distance_km(t.latitude, t.longitude, o.latitude, o.longitude) as km
-      from public.cities o
-      where o.country_code = t.country_code
-        and o.name <> t.name
-        and not exists (
-          select 1
-          from public.cities same
-          where same.name = o.name
-            and same.country_code = o.country_code
-            and same.id <> o.id
-        )
-    ) o
-    order by
-      -- A larger city within 30 km, the largest of them first;
-      (o.population > t.population and o.km <= 30) desc,
-      case when o.population > t.population and o.km <= 30 then o.population end desc nulls last,
-      -- then the nearest larger city; then the nearest of any size.
-      (o.population > t.population) desc,
-      o.km,
-      o.population desc,
-      o.id
-    limit 1
-  ) place
-),
-worded as (
-  select n.id, n.name, n.country_code,
-         case
-           when n.km <= 50 then 'near ' || n.place
-           else round(n.km::numeric)::text || ' km from ' || n.place
-         end as near,
-         round(n.km::numeric)::text || ' km from ' || n.place as far
-  from named n
-),
-told_apart as (
-  select w.id,
-         case
-           when count(*) over (partition by w.name, w.country_code, w.near) > 1 then w.far
-           else w.near
-         end as qualifier
-  from worded w
-)
-update public.cities c
-set qualifier = t.qualifier
-from told_apart t
-where t.id = c.id;
+  update public.cities c
+  set qualifier = t.qualifier
+  from public.cities every
+  left join told_apart t on t.id = every.id
+  where every.id = c.id
+    and c.qualifier is distinct from t.qualifier;
+$$;
+
+revoke all on function private.qualify_cities() from public, anon, authenticated;
+
+select private.qualify_cities();
 
 /* -------------------------------------------------------------------------- */
 /* Search                                                                     */

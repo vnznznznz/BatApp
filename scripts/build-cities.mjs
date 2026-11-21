@@ -32,10 +32,13 @@
  * away: a town that has dropped out of the list stays in the table, because a
  * courier may live there.
  *
- * Each city is written with its search index (searchIndex()) and, where
- * another city of its country has the same name, what tells the two apart
- * (qualify()). A city no name of which could be searched for is not written,
- * and nor are the rows a migration took out (LEFT_OUT).
+ * Each city is written with its search index (searchIndex()). A city no name
+ * of which could be searched for is not written, and nor are the rows a
+ * migration took out (LEFT_OUT). What tells apart two towns of the same name
+ * in one country is not written either: the migration ends by having the
+ * database work that out again over the whole table
+ * (private.qualify_cities(), in the city qualifiers migration), so that a
+ * town left in the table keeps it when its twin is no longer in the dump.
  *
  * After a run: commit the new migration and the fold-parity fixture, bring it
  * to the hosted project (`npx supabase@3.2.0 db push --remote --yes`, handed the
@@ -84,13 +87,6 @@ const SOURCE_URL = `https://download.geonames.org/export/dump/${DUMP}.zip`;
  */
 const FULL_COVERAGE = new Set(['DE', 'AT', 'CH']);
 const WORLD_MIN_POPULATION = 200_000;
-
-/**
- * How a town of the same name as another is told apart (see qualify()): by
- * the largest city within NEAR_CHOICE_KM, and only called near within NEAR_KM.
- */
-const NEAR_CHOICE_KM = 30;
-const NEAR_KM = 50;
 
 /**
  * Rows of the dump the list does without, by GeoNames id, and why. A
@@ -267,7 +263,6 @@ if (unfindable.length > 0) {
 }
 
 const cities = [...kept.values()].sort((a, b) => b.population - a.population);
-const qualifiers = qualify(cities);
 
 const OUT = join(MIGRATIONS, `${nextVersion()}_cities_data.sql`);
 
@@ -319,20 +314,26 @@ for (let i = 0; i < cities.length; i += BATCH) {
     .map(
       (c) =>
         `  (${c.id}, ${sql(c.name)}, ${sql(c.country)}, ${c.lat}, ${c.lon}, ` +
-        `${c.population}, ${sql(c.searchIndex)}, ${sql(qualifiers.get(c.id) ?? null)})`,
+        `${c.population}, ${sql(c.searchIndex)})`,
     )
     .join(',\n');
 
   statements.push(
-    `insert into public.cities (id, name, country_code, latitude, longitude, population, search_index, qualifier)\nvalues\n${values}\non conflict (id) do update set\n` +
+    `insert into public.cities (id, name, country_code, latitude, longitude, population, search_index)\nvalues\n${values}\non conflict (id) do update set\n` +
       `  name = excluded.name,\n  country_code = excluded.country_code,\n` +
       `  latitude = excluded.latitude,\n  longitude = excluded.longitude,\n` +
-      `  population = excluded.population,\n  search_index = excluded.search_index,\n` +
-      `  qualifier = excluded.qualifier;`,
+      `  population = excluded.population,\n  search_index = excluded.search_index;`,
   );
 }
 
 if (cities.length === 0) fail('the dump holds no city that would be kept; nothing written');
+
+// Over the whole table, not over this dump's cities: see the opening comment.
+statements.push(
+  `-- What tells apart two towns of the same name in one country, worked out\n` +
+    `-- again over the whole table now that these rows are in it.\n` +
+    `select private.qualify_cities();`,
+);
 
 mkdirSync(MIGRATIONS, { recursive: true });
 // 'wx': never over a file that is there. The name is new by construction; if
@@ -454,92 +455,9 @@ function saintForm(folded) {
     .replace(/(^|[ -])(?:st\.|st(?=[ -])|saint(?=[ -]))/g, '$1sankt');
 }
 
-/**
- * What tells a town apart from another of the same name in the same country,
- * for the app to show after its name: "near Augsburg" for one Friedberg, "near
- * Frankfurt am Main" for the other. The same as the city qualifiers migration
- * worked out for the rows already in the table:
- *
- *   * a larger city near the town, of the same country and of a name of its
- *     own: within NEAR_CHOICE_KM the largest such city, otherwise the nearest
- *     larger one - or, where the country has none larger, the nearest of any
- *     size;
- *   * called near within NEAR_KM, and given with its distance beyond, so that
- *     nothing is called near that is not: "131 km from San Pedro Sula";
- *   * and where two towns of a name would read alike, each with its distance.
- *
- * Worked out among the cities written here: a town left in the table by an
- * earlier run keeps what it was given then.
- */
-function qualify(all) {
-  const key = (city) => `${city.name}\u0000${city.country}`;
-  const byName = Map.groupBy(all, key);
-  const ownName = (city) => byName.get(key(city)).length === 1;
-
-  const qualifiers = new Map();
-  for (const towns of byName.values()) {
-    if (towns.length < 2) continue;
-
-    const worded = towns.map((town) => {
-      const place = landmark(town, all, ownName);
-      if (!place) return { town, near: null, far: null };
-      const far = `${Math.round(place.km)} km from ${place.city.name}`;
-      return { town, near: place.km <= NEAR_KM ? `near ${place.city.name}` : far, far };
-    });
-    for (const { town, near, far } of worded) {
-      const alike = worded.filter((other) => other.near === near).length > 1;
-      qualifiers.set(town.id, near !== null && alike ? far : near);
-    }
-  }
-  return qualifiers;
-}
-
-/** The city a town is named by, with how far it is: see qualify(). */
-function landmark(town, all, ownName) {
-  const rank = ({ city, km }) => {
-    const larger = city.population > town.population;
-    const close = larger && km <= NEAR_CHOICE_KM;
-    return [
-      close ? 0 : 1,
-      close ? -city.population : 0,
-      larger ? 0 : 1,
-      km,
-      -city.population,
-      city.id,
-    ];
-  };
-  const before = (a, b) => {
-    const [x, y] = [rank(a), rank(b)];
-    const i = x.findIndex((value, at) => value !== y[at]);
-    return i !== -1 && x[i] < y[i];
-  };
-
-  let best = null;
-  for (const city of all) {
-    if (city.country !== town.country || city.name === town.name || !ownName(city)) continue;
-    const candidate = { city, km: distanceKm(town, city) };
-    if (!best || before(candidate, best)) best = candidate;
-  }
-  return best;
-}
-
-/**
- * Great-circle distance by the haversine formula, as private.distance_km
- * measures it in the database.
- */
-function distanceKm(from, to) {
-  const radians = (degrees) => (degrees * Math.PI) / 180;
-  const a =
-    Math.sin(radians(to.lat - from.lat) / 2) ** 2 +
-    Math.cos(radians(from.lat)) *
-      Math.cos(radians(to.lat)) *
-      Math.sin(radians(to.lon - from.lon) / 2) ** 2;
-  return 2 * 6371.0088 * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
-/** Single-quoted SQL literal, or null. */
+/** Single-quoted SQL literal. */
 function sql(value) {
-  return value === null ? 'null' : `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function round(value) {
