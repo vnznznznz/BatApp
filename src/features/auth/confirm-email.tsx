@@ -8,7 +8,7 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
-import { CODE_DID_NOT_WORK, useAuth } from '@/features/auth/auth-context';
+import { CODE_DID_NOT_WORK, useAuth, type SignUpDetails } from '@/features/auth/auth-context';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import { EMAIL_CODE_LENGTH, validateEmailCode } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
@@ -16,18 +16,32 @@ import { announce } from '@/lib/announce';
 type ConfirmEmailProps = {
   /** The address the code went to, as it was sent. */
   email: string;
-  /**
-   * How the courier got here: straight from signing up, when a code has gone
-   * to the address if it is new; or from signing in with the right password
-   * to an account whose address is still waiting for its code.
-   */
-  reason: 'signed-up' | 'not-confirmed';
   /** Back to the form the courier came from, everything typed still in it. */
   onBack: () => void;
-};
+} & (
+  | {
+      /**
+       * Straight from signing up, when a code has gone to the address if it is
+       * new - with what was typed, to set the account up with once the code
+       * has confirmed it.
+       */
+      reason: 'signed-up';
+      details: SignUpDetails;
+    }
+  | {
+      /**
+       * From signing in with the right password to an account whose address
+       * is still waiting for its code.
+       */
+      reason: 'not-confirmed';
+    }
+);
 
 const WAIT = 'You can ask for a new code a minute after the last one.';
 const NO_EMAIL = 'No email? Look in your spam folder, then ask for the code again.';
+const UNFINISHED =
+  'Your address is confirmed, and you are signed in, but your account could not be finished ' +
+  'just now. Try again - or sign out, and sign in later with "I forgot my password".';
 
 /**
  * Asks for the code that confirms an account's address. The right one signs
@@ -36,12 +50,24 @@ const NO_EMAIL = 'No email? Look in your spam folder, then ask for the code agai
  * After signing up the screen says only what is true whether or not the
  * address had an account before: the auth server answers for both alike as
  * far as the app lets it, and the screen must not tell a stranger the
- * difference either.
+ * difference either. And the account the code confirms is made the one the
+ * courier set up before the way in opens: an earlier sign-up for the address,
+ * anyone's, may have set it up with a password of its own (see finishSignUp).
  */
-export function ConfirmEmail({ email, reason, onBack }: ConfirmEmailProps) {
+export function ConfirmEmail(props: ConfirmEmailProps) {
+  const { email, onBack } = props;
+  // What was typed at sign-up; nothing from signing in.
+  const details = props.reason === 'signed-up' ? props.details : null;
+  const signedUp = details !== null;
   const router = useRouter();
-  const { confirmEmail, resendConfirmationCode } = useAuth();
-  const signedUp = reason === 'signed-up';
+  const {
+    isSettingPassword,
+    confirmEmail,
+    confirmSignUp,
+    finishSignUp,
+    resendConfirmationCode,
+    signOut,
+  } = useAuth();
 
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -49,6 +75,14 @@ export function ConfirmEmail({ email, reason, onBack }: ConfirmEmailProps) {
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
+  // The code was right, and signed the courier in, but the account could not
+  // be set up as they set it up: that alone is still to be done, for as long
+  // as the code's sign-in holds.
+  const [notFinished, setNotFinished] = useState(false);
+  const unfinished = notFinished && isSettingPassword;
+  // An earlier sign-up's account made way for the courier's, and a new code
+  // has gone out for theirs.
+  const [setUpAgain, setSetUpAgain] = useState(false);
   // A code has just gone - or the address has an account, and none has: the
   // minute is waited for both alike. One from signing in may be days old.
   const { waiting, startWaiting } = useResendWait(signedUp);
@@ -56,30 +90,60 @@ export function ConfirmEmail({ email, reason, onBack }: ConfirmEmailProps) {
   // code sent twice is refused the second time, the first having used it up.
   const inFlight = useRef(false);
 
+  function failed(error: unknown, { atTheCode = false } = {}) {
+    const message = error instanceof Error ? error.message : 'Something went wrong.';
+    // The code field says its own error aloud.
+    if (atTheCode && message === CODE_DID_NOT_WORK) {
+      setCodeError(message);
+      return;
+    }
+    setFormError(message);
+    announce(message);
+  }
+
   async function confirm() {
     if (inFlight.current) return;
-    const invalid = validateEmailCode(code);
-    setCodeError(invalid);
     setFormError(null);
-    if (invalid) return;
+    if (!unfinished) {
+      const invalid = validateEmailCode(code);
+      setCodeError(invalid);
+      if (invalid) return;
+    }
 
     inFlight.current = true;
     setBusy(true);
     try {
-      await confirmEmail(email, code);
-      // Signed in: the root layout sends the courier on (src/app/_layout.tsx).
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
-      // The code field says its own error aloud.
-      if (message === CODE_DID_NOT_WORK) {
-        setCodeError(message);
-      } else {
-        setFormError(message);
-        announce(message);
+      if (!unfinished) {
+        try {
+          // Signed in. From signing in, the root layout sends the courier on
+          // (src/app/_layout.tsx); after signing up it waits for the account.
+          if (details) await confirmSignUp(email, code);
+          else await confirmEmail(email, code);
+        } catch (error) {
+          failed(error, { atTheCode: true });
+          return;
+        }
       }
+      if (details) await finish(details);
     } finally {
       inFlight.current = false;
       setBusy(false);
+    }
+  }
+
+  async function finish(chosen: SignUpDetails) {
+    try {
+      const outcome = await finishSignUp(chosen);
+      // Signed in, the account the courier's: the root layout sends them on.
+      if (outcome === 'signed in') return;
+      setCode('');
+      setResent(false);
+      setSetUpAgain(true);
+      startWaiting();
+      announce(setUpAgainWords(email));
+    } catch (error) {
+      setNotFinished(true);
+      failed(error);
     }
   }
 
@@ -93,22 +157,54 @@ export function ConfirmEmail({ email, reason, onBack }: ConfirmEmailProps) {
       startWaiting();
       announce(resentWords(email, signedUp));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
-      setFormError(message);
-      announce(message);
+      failed(error);
     }
     setSending(false);
   }
 
+  async function leave() {
+    setFormError(null);
+    try {
+      await signOut();
+      router.replace('/sign-in');
+    } catch (error) {
+      failed(error);
+    }
+  }
+
+  if (unfinished) {
+    return (
+      <Screen scroll avoidKeyboard style={styles.screen}>
+        <Text variant="title">Almost there</Text>
+        <Text variant="body" tone="secondary" style={styles.intro}>
+          {UNFINISHED}
+        </Text>
+        <View style={styles.form}>
+          {formError ? (
+            <Text variant="caption" tone="danger">
+              {formError}
+            </Text>
+          ) : null}
+          <Button label="Try again" loading={busy} onPress={confirm} />
+          <Button label="Sign out" variant="ghost" onPress={leave} />
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen scroll avoidKeyboard style={styles.screen}>
-      <Text variant="title">{signedUp ? 'Check your email' : 'Confirm your address'}</Text>
+      <Text variant="title">
+        {setUpAgain ? 'One more code' : signedUp ? 'Check your email' : 'Confirm your address'}
+      </Text>
       <Text variant="body" tone="secondary" style={styles.intro}>
-        {signedUp
-          ? `If ${email} is new here, a code is on its way to it. Type it in below, and your ` +
-            `${BATS_PER_USER} bats will be waiting. If you already have an account, sign in instead.`
-          : `Your account is waiting for the code we sent to ${email}. Type it in below. If you ` +
-            'cannot find it, or it no longer works, ask for a new one.'}
+        {setUpAgain
+          ? setUpAgainWords(email)
+          : signedUp
+            ? `If ${email} is new here, a code is on its way to it. Type it in below, and your ` +
+              `${BATS_PER_USER} bats will be waiting. If you already have an account, sign in instead.`
+            : `Your account is waiting for the code we sent to ${email}. Type it in below. If you ` +
+              'cannot find it, or it no longer works, ask for a new one.'}
       </Text>
 
       <View style={styles.form}>
@@ -174,6 +270,16 @@ const resentWords = (email: string, signedUp: boolean) =>
   signedUp
     ? `If ${email} is new here, a new code is on its way to it. Only the newest code works.`
     : `A new code is on its way to ${email}. Only the newest code works.`;
+
+/**
+ * Said once an account an earlier sign-up for the address had set up - with
+ * another username, by the courier on another day or by someone else - has
+ * been removed, and the courier's own set up in its place.
+ */
+const setUpAgainWords = (email: string) =>
+  'This address had an account waiting for its code already, set up with another username - ' +
+  `perhaps from an earlier try. It has made way for yours, and a new code is on its way to ${email}. ` +
+  'Type the new code in below.';
 
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },

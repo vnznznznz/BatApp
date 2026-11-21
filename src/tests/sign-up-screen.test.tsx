@@ -12,7 +12,10 @@ import { openLink } from '@/lib/links';
 
 const mockSignUp = jest.fn();
 const mockConfirmEmail = jest.fn();
+const mockConfirmSignUp = jest.fn();
+const mockFinishSignUp = jest.fn();
 const mockResendConfirmationCode = jest.fn();
+const mockSignOut = jest.fn();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 
@@ -26,20 +29,45 @@ jest.mock('expo-router', () => ({
  */
 const mockAuth = { real: false, serverSignUp: jest.fn(), serverSettings: jest.fn() };
 
+/**
+ * Whether the stand-in context holds the way in, as the app's does from the
+ * moment a sign-up's code has signed the courier in until the account is set
+ * up. A change is drawn at once, as with the app's own context.
+ */
+const mockHold = {
+  current: false,
+  listeners: new Set<() => void>(),
+  set(next: boolean) {
+    mockHold.current = next;
+    mockHold.listeners.forEach((listener) => listener());
+  },
+};
+
 jest.mock('@/features/auth/auth-context', () => {
   const actual = jest.requireActual<typeof import('@/features/auth/auth-context')>(
     '@/features/auth/auth-context',
   );
+  const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+  const subscribe = (listener: () => void) => {
+    mockHold.listeners.add(listener);
+    return () => mockHold.listeners.delete(listener);
+  };
   return {
     ...actual,
-    useAuth: () =>
-      mockAuth.real
+    useAuth: () => {
+      const isSettingPassword = useSyncExternalStore(subscribe, () => mockHold.current);
+      return mockAuth.real
         ? actual.useAuth()
         : {
+            isSettingPassword,
             signUp: mockSignUp,
             confirmEmail: mockConfirmEmail,
+            confirmSignUp: mockConfirmSignUp,
+            finishSignUp: mockFinishSignUp,
             resendConfirmationCode: mockResendConfirmationCode,
-          },
+            signOut: mockSignOut,
+          };
+    },
   };
 });
 
@@ -161,6 +189,15 @@ beforeEach(() => {
   mockAuth.serverSettings.mockReset().mockImplementation(async () => settings(true));
   mockSignUp.mockReset();
   mockConfirmEmail.mockReset();
+  mockHold.current = false;
+  // The code is right, and signs the courier in, holding the way in; the
+  // account is set up as typed, and the way in opens.
+  mockConfirmSignUp.mockReset().mockImplementation(async () => mockHold.set(true));
+  mockFinishSignUp.mockReset().mockImplementation(async () => {
+    mockHold.set(false);
+    return 'signed in';
+  });
+  mockSignOut.mockReset().mockImplementation(async () => mockHold.set(false));
   mockResendConfirmationCode.mockReset();
   mockPush.mockReset();
   mockReplace.mockReset();
@@ -438,28 +475,165 @@ describe('SignUpScreen', () => {
       expect(button('Sign in instead')).toBeOnTheScreen();
     });
 
-    it('confirms the address with the code typed in', async () => {
-      mockConfirmEmail.mockResolvedValue(undefined);
+    /**
+     * The code confirms the address and signs the courier in; then the account
+     * is made the one they set up, with what they typed, before the way in
+     * opens - an earlier sign-up for the address may have set it up with a
+     * password of someone else's. (Found in review.)
+     */
+    it('confirms the address with the code typed in, and sets the account up as typed', async () => {
       await signedUp();
 
       await user.type(codeField(), '12345678');
       await user.press(button('Confirm'));
 
-      expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '12345678');
+      expect(mockConfirmSignUp).toHaveBeenCalledWith('anna@example.com', '12345678');
+      expect(mockFinishSignUp).toHaveBeenCalledWith({
+        email: 'anna@example.com',
+        password: 'a-good-password',
+        username: 'AnnaWeber',
+        displayName: 'Anna Weber',
+      });
+      expect(mockConfirmSignUp.mock.invocationCallOrder[0]).toBeLessThan(
+        mockFinishSignUp.mock.invocationCallOrder[0] ?? 0,
+      );
+      expect(mockConfirmEmail).not.toHaveBeenCalled();
+    });
+
+    it('sets nothing up when the code did not work', async () => {
+      mockConfirmSignUp.mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+      await signedUp();
+
+      await user.type(codeField(), '12345678');
+      await user.press(button('Confirm'));
+
+      expect(mockFinishSignUp).not.toHaveBeenCalled();
+    });
+
+    describe('when the account could not be set up after the code', () => {
+      const UNFINISHED =
+        'Your address is confirmed, and you are signed in, but your account could not be ' +
+        'finished just now. Try again - or sign out, and sign in later with "I forgot my ' +
+        'password".';
+      const NO_CONNECTION = 'No connection. Check your network and try again.';
+
+      beforeEach(() => {
+        mockFinishSignUp.mockRejectedValueOnce(new Error(NO_CONNECTION));
+      });
+
+      async function confirmedUnfinished() {
+        await signedUp();
+        await user.type(codeField(), '12345678');
+        await user.press(button('Confirm'));
+      }
+
+      it('says so, and why, aloud', async () => {
+        await confirmedUnfinished();
+
+        expect(screen.getByText('Almost there')).toBeOnTheScreen();
+        expect(screen.getByText(UNFINISHED)).toBeOnTheScreen();
+        expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+        expect(mockedAnnounce).toHaveBeenCalledWith(NO_CONNECTION);
+        expect(screen.queryByLabelText('Code')).toBeNull();
+      });
+
+      it('sets the account up when asked again, with no code asked for again', async () => {
+        await confirmedUnfinished();
+
+        await user.press(button('Try again'));
+
+        expect(mockFinishSignUp).toHaveBeenCalledTimes(2);
+        expect(mockFinishSignUp).toHaveBeenLastCalledWith(
+          expect.objectContaining({ password: 'a-good-password' }),
+        );
+        expect(mockConfirmSignUp).toHaveBeenCalledTimes(1);
+      });
+
+      it('tries again once, however often it is asked while it is trying', async () => {
+        await confirmedUnfinished();
+        mockFinishSignUp.mockReturnValue(new Promise(() => {}));
+
+        await user.press(button('Try again'));
+        await user.press(button('Try again'));
+
+        expect(mockFinishSignUp).toHaveBeenCalledTimes(2);
+      });
+
+      it('signs out instead, and goes to sign in', async () => {
+        await confirmedUnfinished();
+
+        await user.press(button('Sign out'));
+
+        expect(mockSignOut).toHaveBeenCalledTimes(1);
+        expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+      });
+
+      it('says so when signing out does not work', async () => {
+        const STUCK = 'This device could not be signed out. Try again.';
+        mockSignOut.mockRejectedValue(new Error(STUCK));
+        await confirmedUnfinished();
+
+        await user.press(button('Sign out'));
+
+        expect(screen.getByText(STUCK)).toBeOnTheScreen();
+        expect(mockReplace).not.toHaveBeenCalled();
+      });
+
+      /** Signed out some other way - the session over - the code is all there is to go on. */
+      it('asks for a code again once the code’s sign-in has ended', async () => {
+        await confirmedUnfinished();
+
+        await act(async () => mockHold.set(false));
+
+        expect(screen.queryByText(UNFINISHED)).toBeNull();
+        expect(codeField()).toBeOnTheScreen();
+      });
+    });
+
+    /**
+     * An earlier sign-up for the address - the courier's own on another day,
+     * or someone else's - had set the account up with another username, which
+     * cannot be changed. It made way for the courier's, and a new code went to
+     * the address for theirs.
+     */
+    it('asks for the new code when the account had to be set up again', async () => {
+      const AGAIN =
+        'This address had an account waiting for its code already, set up with another ' +
+        'username - perhaps from an earlier try. It has made way for yours, and a new code is ' +
+        'on its way to anna@example.com. Type the new code in below.';
+      mockFinishSignUp.mockImplementationOnce(async () => {
+        mockHold.set(false);
+        return 'new code';
+      });
+      await signedUp();
+      await passes(60_000);
+      await user.type(codeField(), '12345678');
+
+      await user.press(button('Confirm'));
+
+      expect(screen.getByText('One more code')).toBeOnTheScreen();
+      expect(screen.getByText(AGAIN)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(AGAIN);
+      expect(codeField().props.value).toBe('');
+      expect(button('Send the code again')).toBeDisabled();
+
+      await user.type(codeField(), '87654321');
+      await user.press(button('Confirm'));
+      expect(mockConfirmSignUp).toHaveBeenLastCalledWith('anna@example.com', '87654321');
     });
 
     it('confirms with the code from the keyboard’s key too, and only once while it is checked', async () => {
-      mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+      mockConfirmSignUp.mockReturnValue(new Promise(() => {}));
       await signedUp();
       expect(codeField()).toHaveProp('returnKeyType', 'go');
 
       await user.type(codeField(), '12345678', { submitEditing: true });
-      expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
+      expect(mockConfirmSignUp).toHaveBeenCalledTimes(1);
       await user.press(button('Confirm'));
       await user.type(codeField(), '', { skipPress: true, submitEditing: true });
 
-      expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
-      expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '12345678');
+      expect(mockConfirmSignUp).toHaveBeenCalledTimes(1);
+      expect(mockConfirmSignUp).toHaveBeenCalledWith('anna@example.com', '12345678');
     });
 
     it('sends nothing until the code is whole, and says why', async () => {
@@ -468,12 +642,12 @@ describe('SignUpScreen', () => {
       await user.type(codeField(), '1234');
       await user.press(button('Confirm'));
 
-      expect(mockConfirmEmail).not.toHaveBeenCalled();
+      expect(mockConfirmSignUp).not.toHaveBeenCalled();
       expect(codeField()).toHaveProp('accessibilityHint', 'The code has 8 digits.');
     });
 
     it('says at the code when the code did not work', async () => {
-      mockConfirmEmail.mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+      mockConfirmSignUp.mockRejectedValue(new Error(CODE_DID_NOT_WORK));
       await signedUp();
 
       await user.type(codeField(), '12345678');
@@ -484,9 +658,7 @@ describe('SignUpScreen', () => {
     });
 
     it('takes another code after one that did not work', async () => {
-      mockConfirmEmail
-        .mockRejectedValueOnce(new Error(CODE_DID_NOT_WORK))
-        .mockResolvedValue(undefined);
+      mockConfirmSignUp.mockRejectedValueOnce(new Error(CODE_DID_NOT_WORK));
       await signedUp();
       await user.type(codeField(), '12345678');
       await user.press(button('Confirm'));
@@ -495,13 +667,13 @@ describe('SignUpScreen', () => {
       await user.type(codeField(), '87654321');
       await user.press(button('Confirm'));
 
-      expect(mockConfirmEmail).toHaveBeenCalledTimes(2);
-      expect(mockConfirmEmail).toHaveBeenLastCalledWith('anna@example.com', '87654321');
+      expect(mockConfirmSignUp).toHaveBeenCalledTimes(2);
+      expect(mockConfirmSignUp).toHaveBeenLastCalledWith('anna@example.com', '87654321');
     });
 
     it('says other failures under the code, aloud', async () => {
       const NO_CONNECTION = 'No connection. Check your network and try again.';
-      mockConfirmEmail.mockRejectedValue(new Error(NO_CONNECTION));
+      mockConfirmSignUp.mockRejectedValue(new Error(NO_CONNECTION));
       await signedUp();
 
       await user.type(codeField(), '12345678');

@@ -29,12 +29,15 @@ export type AuthContextValue = {
   /** True until the stored session has been restored, or found to be absent. */
   isRestoring: boolean;
   /**
-   * True while a password reset is being finished: from the moment its code
-   * goes to be checked until the new password is saved, or the courier signs
-   * out. The code signs them in, and the root layout holds the way into the
-   * app until the password they will sign in with is set.
+   * True while a code from an email is being checked, or has signed the
+   * courier in, and the password they chose is still to be saved: the new one
+   * of a password reset, or the one typed at sign-up, with the rest of the
+   * account as they set it up. From the moment the code goes until that is
+   * done, or the courier signs out. The root layout holds the way into the
+   * app meanwhile: in it they would be signed in with a password they do not
+   * know - and after signing up, perhaps someone else does.
    */
-  isFinishingReset: boolean;
+  isSettingPassword: boolean;
   /**
    * Resolves with whether the address still has to be confirmed with the code
    * emailed to it before the account can be used.
@@ -46,16 +49,35 @@ export type AuthContextValue = {
    * than on anything the app controls, so it is reported rather than assumed.
    */
   signUp: (details: SignUpDetails) => Promise<{ needsEmailConfirmation: boolean }>;
-  /** Confirms an account's address with the code emailed to it, which signs the courier in. */
+  /**
+   * Confirms an account's address with the code emailed to it, which signs the
+   * courier in: from signing in, when the server has found the password right
+   * and the address still waiting for its code.
+   */
   confirmEmail: (email: string, code: string) => Promise<void>;
+  /**
+   * Confirms the address of an account just signed up for, with the code
+   * emailed to it. That signs the courier in, and holds the way in until
+   * `finishSignUp` has made the account the one they set up.
+   */
+  confirmSignUp: (email: string, code: string) => Promise<void>;
+  /**
+   * Makes the account a sign-up's code has confirmed the one set up with
+   * `details`: its password, then its username and name. Resolves 'signed in'
+   * once it is, and the way into the app opens; or 'new code' when an earlier
+   * sign-up had given it another username, and it has been set up again from
+   * `details`, with a new code on its way. Rejects, signed in and held, when
+   * that could not be done.
+   */
+  finishSignUp: (details: SignUpDetails) => Promise<'signed in' | 'new code'>;
   /** Emails a new code for confirming the address. The one before stops working. */
   resendConfirmationCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Emails a code for setting a new password, if the address has an account. */
   sendPasswordReset: (email: string) => Promise<void>;
   /**
-   * Checks the code from a reset email. That signs the courier in, and the
-   * reset is finished by `setNewPassword`.
+   * Checks the code from a reset email. That signs the courier in, holding the
+   * way in, and the reset is finished by `setNewPassword`.
    */
   verifyResetCode: (email: string, code: string) => Promise<void>;
   setNewPassword: (password: string) => Promise<void>;
@@ -98,15 +120,15 @@ const signOutsSoFar = () => signOutsAnnounced;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
-  // How many reset codes are being checked just now, and whether one of them
-  // has signed the courier in with the new password still to be saved. Either
-  // holds the way in. Counted, not one flag: the form can send the same code
-  // twice before it has drawn its spinner, and the second check - refused,
-  // the first having used the code up - must not let go of the hold the
-  // first still needs for the session it brings.
-  const [resetCodesOut, setResetCodesOut] = useState(0);
-  const [signedInByResetCode, setSignedInByResetCode] = useState(false);
-  const isFinishingReset = resetCodesOut > 0 || signedInByResetCode;
+  // How many codes are being checked just now that a password is set after,
+  // and whether one of them has signed the courier in with the password still
+  // to be saved. Either holds the way in. Counted, not one flag: a form can
+  // send the same code twice before it has drawn its spinner, and the second
+  // check - refused, the first having used the code up - must not let go of
+  // the hold the first still needs for the session it brings.
+  const [codesOut, setCodesOut] = useState(0);
+  const [signedInByCode, setSignedInByCode] = useState(false);
+  const isSettingPassword = codesOut > 0 || signedInByCode;
 
   useEffect(() => {
     let active = true;
@@ -135,9 +157,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (event === 'SIGNED_OUT') signOutsAnnounced += 1;
       if (!active) return;
-      // A reset cannot be finished without the session its code brought. Every
-      // sign-out is announced, the app's own included (see signOutsAnnounced).
-      if (event === 'SIGNED_OUT') setSignedInByResetCode(false);
+      // Nothing is finished without the session a code brought. Every sign-out
+      // is announced, the app's own included (see signOutsAnnounced).
+      if (event === 'SIGNED_OUT') setSignedInByCode(false);
       // The client also says "no session" when it only could not renew one
       // just now. Whoever is signed in stays so for as long as the session is
       // on this device; the client removes it before it announces a sign-out.
@@ -194,10 +216,149 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    async function signUp({ email, password, username, displayName }: SignUpDetails) {
+      signedOutUnheard = false;
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          // Read by the handle_new_user() trigger to build the profile row.
+          data: {
+            username: normaliseUsername(username),
+            display_name: displayName.trim(),
+          },
+        },
+      });
+      // An address that has an account already is answered as a new one is,
+      // and the form says what is true of both: a code is on its way if the
+      // address is new, and if it has an account, signing in is the way in.
+      // Telling the two apart would let anyone check who has an account here.
+      // The auth server tells by itself - "User already registered" - while
+      // confirmation by phone is off (GO-LIVE), but at least the app does not.
+      // A code that went to the address a moment ago is one on its way too.
+      if (isAnswer(error, 'user_already_exists', 'user already registered')) {
+        // Unless the server confirms nothing by email. A new address is
+        // signed in at once then, and there is no code to wait for: the plain
+        // answer tells nobody anything that signing in at once has not.
+        if (await signsInAtOnce()) throw new Error(ALREADY_REGISTERED, { cause: error });
+        return { needsEmailConfirmation: true };
+      }
+      if (isCodeJustSent(error)) return { needsEmailConfirmation: true };
+      if (error) throw explained(error);
+
+      // With email confirmation enabled, Supabase creates the user but hands
+      // back no session. With it disabled, the session arrives immediately and
+      // onAuthStateChange signs the user straight in.
+      return { needsEmailConfirmation: data.session === null };
+    }
+
+    async function deleteAccount() {
+      const { error } = await supabase.rpc('delete_own_account');
+      if (error) {
+        // A refusal is an answer: the account is still there, and the
+        // database's reason has words of its own.
+        const refusal = toRpcError(error, COULD_NOT_DELETE);
+        if (refusal.reason) throw refusal;
+
+        // Anything else says nothing about the account. The request may
+        // have been carried out and only its answer lost, and "could not be
+        // deleted" would then leave the courier signed in to nothing. The
+        // auth server knows whether the account is still there.
+        const { data, error: unanswered } = await supabase.auth
+          .getUser()
+          .catch(() => ({ data: { user: null }, error: null }));
+        if (data.user) throw new Error(COULD_NOT_DELETE, { cause: error });
+        if (!isAccountGone(unanswered)) {
+          throw new Error(
+            'Your account may or may not have been deleted - no answer came back. ' +
+              'Check again once you are online.',
+            { cause: error },
+          );
+        }
+      }
+      // The session belongs to a user that no longer exists; ending it on
+      // this device is what returns the app to the welcome screen.
+      await signOut();
+    }
+
+    /**
+     * Checks a code from an email after which a password is set. The way in
+     * is held from before the code goes - the session it brings is announced
+     * while the answer is still arriving - and on past the check, once the
+     * code has signed the courier in, until the password is saved.
+     */
+    async function checkCode(type: 'signup' | 'recovery', email: string, code: string) {
+      signedOutUnheard = false;
+      setCodesOut((count) => count + 1);
+      try {
+        const { error } = await supabase.auth.verifyOtp({ type, email: email.trim(), token: code });
+        if (error) throw explained(error);
+        setSignedInByCode(true);
+      } finally {
+        setCodesOut((count) => count - 1);
+      }
+    }
+
+    async function finishSignUp(details: SignUpDetails): Promise<'signed in' | 'new code'> {
+      // GoTrue leaves an account that is waiting for its code as the first
+      // sign-up for the address made it: a second sign-up sends a new code
+      // and changes nothing else. That first sign-up may have been anyone's -
+      // someone who typed this address, with a password they would go on
+      // knowing once its owner had confirmed the account. So the password is
+      // the one typed now, set at once: the session the code brought is
+      // seconds old, and nobody else holds one. Being the password the
+      // account has already is no refusal.
+      const { error } = await supabase.auth.updateUser({ password: details.password });
+      if (error && !isAnswer(error, 'same_password', 'different from the old password')) {
+        throw explained(error);
+      }
+
+      // And the account as the courier set it up.
+      const { data: held } = await supabase.auth.getSession();
+      const id = held.session?.user.id ?? '';
+      const { data: account, error: unread } = await supabase
+        .from('profiles')
+        .select('username, display_name')
+        .eq('id', id)
+        .maybeSingle();
+      if (unread) throw toRpcError(unread, 'Your account could not be loaded just now. Try again.');
+
+      // A username cannot be changed, so an account an earlier sign-up gave
+      // another one is set up again from what was typed. Nothing can have
+      // been done with it: the code confirmed it only now.
+      if (account && account.username !== normaliseUsername(details.username)) {
+        await deleteAccount();
+        try {
+          const { needsEmailConfirmation } = await signUp(details);
+          return needsEmailConfirmation ? 'new code' : 'signed in';
+        } catch (cause) {
+          throw new Error(
+            'This address had an account waiting for its code already, set up with another ' +
+              'username, and it has been removed to make way for yours. Yours could not be ' +
+              `set up just now: ${cause instanceof Error ? cause.message : String(cause)} ` +
+              'Go back to the form to set it up again.',
+            { cause },
+          );
+        }
+      }
+      // The name can be changed at any time, and is the one typed now. Left
+      // as it was if it cannot be: the profile shows it, and can change it.
+      if (account && account.display_name !== details.displayName.trim()) {
+        await supabase
+          .from('profiles')
+          .update({ display_name: details.displayName.trim() })
+          .eq('id', id);
+      }
+
+      // The account is the courier's, and the way into the app opens.
+      setSignedInByCode(false);
+      return 'signed in';
+    }
+
     return {
       session,
       isRestoring,
-      isFinishingReset,
+      isSettingPassword,
 
       async signIn(email, password) {
         signedOutUnheard = false;
@@ -214,41 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { needsEmailConfirmation: false };
       },
 
-      async signUp({ email, password, username, displayName }) {
-        signedOutUnheard = false;
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            // Read by the handle_new_user() trigger to build the profile row.
-            data: {
-              username: normaliseUsername(username),
-              display_name: displayName.trim(),
-            },
-          },
-        });
-        // An address that has an account already is answered as a new one is,
-        // and the form says what is true of both: a code is on its way if the
-        // address is new, and if it has an account, signing in is the way in.
-        // Telling the two apart would let anyone check who has an account here.
-        // The auth server tells by itself - "User already registered" - while
-        // confirmation by phone is off (GO-LIVE), but at least the app does not.
-        // A code that went to the address a moment ago is one on its way too.
-        if (isAnswer(error, 'user_already_exists', 'user already registered')) {
-          // Unless the server confirms nothing by email. A new address is
-          // signed in at once then, and there is no code to wait for: the plain
-          // answer tells nobody anything that signing in at once has not.
-          if (await signsInAtOnce()) throw new Error(ALREADY_REGISTERED, { cause: error });
-          return { needsEmailConfirmation: true };
-        }
-        if (isCodeJustSent(error)) return { needsEmailConfirmation: true };
-        if (error) throw explained(error);
-
-        // With email confirmation enabled, Supabase creates the user but hands
-        // back no session. With it disabled, the session arrives immediately and
-        // onAuthStateChange signs the user straight in.
-        return { needsEmailConfirmation: data.session === null };
-      },
+      signUp,
 
       async confirmEmail(email, code) {
         signedOutUnheard = false;
@@ -259,6 +386,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (error) throw explained(error);
       },
+
+      confirmSignUp: (email, code) => checkCode('signup', email, code),
+
+      finishSignUp,
 
       async resendConfirmationCode(email) {
         const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
@@ -280,24 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error && !isCodeJustSent(error) && !isSendingFailure(error)) throw explained(error);
       },
 
-      async verifyResetCode(email, code) {
-        signedOutUnheard = false;
-        // Before the code goes: the session it brings is announced while the
-        // answer is still arriving, and must find the way into the app held.
-        setResetCodesOut((count) => count + 1);
-        try {
-          const { error } = await supabase.auth.verifyOtp({
-            type: 'recovery',
-            email: email.trim(),
-            token: code,
-          });
-          if (error) throw explained(error);
-          // Held on past this check, until the new password is saved.
-          setSignedInByResetCode(true);
-        } finally {
-          setResetCodesOut((count) => count - 1);
-        }
-      },
+      verifyResetCode: (email, code) => checkCode('recovery', email, code),
 
       async setNewPassword(password) {
         const { error } = await supabase.auth.updateUser({ password });
@@ -305,39 +419,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // courier can try another password, or sign out.
         if (error) throw explained(error);
         // The reset is finished, and the way into the app opens.
-        setSignedInByResetCode(false);
+        setSignedInByCode(false);
       },
 
-      async deleteAccount() {
-        const { error } = await supabase.rpc('delete_own_account');
-        if (error) {
-          // A refusal is an answer: the account is still there, and the
-          // database's reason has words of its own.
-          const refusal = toRpcError(error, COULD_NOT_DELETE);
-          if (refusal.reason) throw refusal;
-
-          // Anything else says nothing about the account. The request may
-          // have been carried out and only its answer lost, and "could not be
-          // deleted" would then leave the courier signed in to nothing. The
-          // auth server knows whether the account is still there.
-          const { data, error: unanswered } = await supabase.auth
-            .getUser()
-            .catch(() => ({ data: { user: null }, error: null }));
-          if (data.user) throw new Error(COULD_NOT_DELETE, { cause: error });
-          if (!isAccountGone(unanswered)) {
-            throw new Error(
-              'Your account may or may not have been deleted - no answer came back. ' +
-                'Check again once you are online.',
-              { cause: error },
-            );
-          }
-        }
-        // The session belongs to a user that no longer exists; ending it on
-        // this device is what returns the app to the welcome screen.
-        await signOut();
-      },
+      deleteAccount,
     };
-  }, [session, isRestoring, isFinishingReset]);
+  }, [session, isRestoring, isSettingPassword]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
 }

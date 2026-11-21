@@ -728,6 +728,16 @@ describe('signing out', () => {
       expect((await kept())?.refresh_token).toBe('refresh-new');
     });
 
+    it('lets someone confirm the account they have just signed up for with a code on the device', async () => {
+      await signOutUnheard();
+      verifies();
+
+      await asked(() => auth.confirmSignUp('ben@example.test', '12345678'));
+
+      expect(state()).toBe('signed in');
+      expect(sent.filter(isLogout)).toEqual([]);
+    });
+
     it('lets the courier set a new password with a code on the device', async () => {
       await signOutUnheard();
       verifies();
@@ -1806,7 +1816,7 @@ describe('what the courier is told when the auth server says no', () => {
   /**
    * The code from a reset email signs the courier in; the new password is set
    * with that session. Between the two the courier is signed in without a
-   * password they know, and the way into the app waits: `isFinishingReset`.
+   * password they know, and the way into the app waits: `isSettingPassword`.
    */
   describe('on setting a new password with a code', () => {
     const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
@@ -1842,14 +1852,14 @@ describe('what the courier is told when the auth server says no', () => {
         }),
       ]);
       expect(state()).toBe('signed in');
-      expect(auth.isFinishingReset).toBe(true);
+      expect(auth.isSettingPassword).toBe(true);
 
       expect(await outcomeOf(asked(() => auth.setNewPassword('a new password')))).toBe('done');
 
       expect(sent.filter(isPasswordChange).map(({ body, bearer }) => [body, bearer])).toEqual([
         [expect.objectContaining({ password: 'a new password' }), NEW_TOKEN],
       ]);
-      expect(auth.isFinishingReset).toBe(false);
+      expect(auth.isSettingPassword).toBe(false);
       expect(state()).toBe('signed in');
     });
 
@@ -1876,7 +1886,7 @@ describe('what the courier is told when the auth server says no', () => {
 
       const signedIn = rendered.filter((given) => given.session !== null);
       expect(signedIn.length).toBeGreaterThan(0);
-      expect(signedIn.filter((given) => !given.isFinishingReset)).toEqual([]);
+      expect(signedIn.filter((given) => !given.isSettingPassword)).toEqual([]);
     });
 
     it.each<[string, () => Response | Promise<Response>, string]>([
@@ -1900,7 +1910,7 @@ describe('what the courier is told when the auth server says no', () => {
       ).toBe(words);
 
       expect(state()).toBe('signed out');
-      expect(auth.isFinishingReset).toBe(false);
+      expect(auth.isSettingPassword).toBe(false);
     });
 
     /**
@@ -1932,7 +1942,7 @@ describe('what the courier is told when the auth server says no', () => {
       expect(
         await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
       ).toBe(CODE_DID_NOT_WORK);
-      expect(auth.isFinishingReset).toBe(true);
+      expect(auth.isSettingPassword).toBe(true);
 
       await act(async () => {
         answerTheFirst();
@@ -1942,10 +1952,10 @@ describe('what the courier is told when the auth server says no', () => {
 
       expect(await first).toBe('done');
       expect(state()).toBe('signed in');
-      expect(auth.isFinishingReset).toBe(true);
-      expect(rendered.filter((given) => given.session !== null && !given.isFinishingReset)).toEqual(
-        [],
-      );
+      expect(auth.isSettingPassword).toBe(true);
+      expect(
+        rendered.filter((given) => given.session !== null && !given.isSettingPassword),
+      ).toEqual([]);
     });
 
     /** And the other way round: the first check is refused while the second brings the session. */
@@ -1978,7 +1988,7 @@ describe('what the courier is told when the auth server says no', () => {
 
       expect(await first).toBe(CODE_DID_NOT_WORK);
       expect(state()).toBe('signed in');
-      expect(auth.isFinishingReset).toBe(true);
+      expect(auth.isSettingPassword).toBe(true);
     });
 
     /** The code was right, but the session it brought could not be kept on the device. */
@@ -1991,7 +2001,7 @@ describe('what the courier is told when the auth server says no', () => {
         await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
       ).toBe('Could not encrypt the value for SecureStore');
 
-      expect(auth.isFinishingReset).toBe(false);
+      expect(auth.isSettingPassword).toBe(false);
     });
 
     /**
@@ -2035,11 +2045,11 @@ describe('what the courier is told when the auth server says no', () => {
         expect(await outcomeOf(asked(() => auth.setNewPassword('a new password')))).toBe(words);
 
         expect(state()).toBe('signed in');
-        expect(auth.isFinishingReset).toBe(true);
+        expect(auth.isSettingPassword).toBe(true);
 
         codeRightThen(updated);
         expect(await outcomeOf(asked(() => auth.setNewPassword('another password')))).toBe('done');
-        expect(auth.isFinishingReset).toBe(false);
+        expect(auth.isSettingPassword).toBe(false);
         expect(sent.filter(isVerify)).toHaveLength(1);
       },
     );
@@ -2057,8 +2067,282 @@ describe('what the courier is told when the auth server says no', () => {
       expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
 
       expect(state()).toBe('signed out');
-      expect(auth.isFinishingReset).toBe(false);
+      expect(auth.isSettingPassword).toBe(false);
       expect(mockKeychain.size).toBe(0);
     });
+  });
+});
+
+/**
+ * GoTrue leaves an account that is waiting for its code as the first sign-up
+ * for the address made it (v2.197, tried on the local server with
+ * confirmation on): a second sign-up for the address sends a new code and
+ * changes nothing else - not the password, not the username, not the name.
+ * Whoever signed up first, with somebody else's address, kept a password that
+ * worked once that somebody had confirmed the account with the code, and the
+ * account their username. (Found in review: a stranger's account, confirmed
+ * by the owner of the address, and signed in to with the stranger's password.)
+ */
+describe('setting up the account a sign-up’s code has confirmed', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+  const details = {
+    email: ' anna@example.test ',
+    password: 'night-courier',
+    username: '@Anna',
+    displayName: ' Anna ',
+  };
+  const NO_CONNECTION = 'No connection. Check your network and try again.';
+
+  const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+  const isPasswordChange = (request: Sent) =>
+    request.url.endsWith('/auth/v1/user') && request.method === 'PUT';
+  const isProfileRead = (request: Sent) =>
+    request.url.includes('/rest/v1/profiles') && request.method === 'GET';
+  const isNameChange = (request: Sent) =>
+    request.url.includes('/rest/v1/profiles') && request.method === 'PATCH';
+  const isDeletion = (request: Sent) => request.url.includes('/rest/v1/rpc/delete_own_account');
+  const isLogout = (request: Sent) => request.url.includes('/auth/v1/logout');
+  const isSignUp = (request: Sent) => request.url.includes('/auth/v1/signup');
+
+  /** The account's profile, as the database has it. */
+  const profile = (username: string, displayName: string) =>
+    json(200, [{ username, display_name: displayName }]);
+
+  /**
+   * The auth server and the database, answering each request as `answers`
+   * says, and the rest as a server would that has nothing to object to.
+   */
+  function server(answers: Partial<Record<string, () => Response | Promise<Response>>> = {}) {
+    network = (request) => {
+      if (isVerify(request))
+        return (answers.verify ?? (() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600))))();
+      if (isPasswordChange(request))
+        return (
+          answers.password ?? (() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user))
+        )();
+      if (isProfileRead(request)) return (answers.profile ?? (() => profile('anna', 'Anna')))();
+      if (isNameChange(request))
+        return (answers.name ?? (() => new Response(null, { status: 204 })))();
+      if (isDeletion(request))
+        return (answers.deletion ?? (() => new Response(null, { status: 204 })))();
+      if (isLogout(request)) return new Response(null, { status: 204 });
+      if (isSignUp(request))
+        return (
+          answers.signUp ??
+          (() => json(200, { ...sessionOf(NEW_TOKEN, 'refresh-new', 3600).user, id: 'user-new' }))
+        )();
+      return json(200, []);
+    };
+  }
+
+  async function confirmed() {
+    await launch();
+    await passes(A_MOMENT);
+    expect(state()).toBe('signed out');
+    expect(await outcomeOf(asked(() => auth.confirmSignUp(details.email, '12345678')))).toBe(
+      'done',
+    );
+  }
+
+  it('confirms the address with the code, and holds the way in until the account is set up', async () => {
+    server();
+    await confirmed();
+
+    expect(sent.filter(isVerify).map((request) => request.body)).toEqual([
+      expect.objectContaining({ type: 'signup', email: 'anna@example.test', token: '12345678' }),
+    ]);
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+  });
+
+  it('sets the password typed at sign-up, and then lets the courier in', async () => {
+    server();
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(sent.filter(isPasswordChange).map(({ body, bearer }) => [body, bearer])).toEqual([
+      [expect.objectContaining({ password: 'night-courier' }), NEW_TOKEN],
+    ]);
+    expect(sent.filter(isProfileRead).map(({ url }) => url)).toEqual([
+      expect.stringContaining(`id=eq.${ID}`),
+    ]);
+    expect(sent.filter(isNameChange)).toEqual([]);
+    expect(auth.isSettingPassword).toBe(false);
+    expect(state()).toBe('signed in');
+  });
+
+  /** An account set up by this sign-up has the password already, and GoTrue says so. */
+  it('takes the password being the one the account has already for done', async () => {
+    server({
+      password: () =>
+        authRefusal(
+          422,
+          'same_password',
+          'New password should be different from the old password.',
+        ),
+    });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('gives the account the name typed at sign-up, when an earlier sign-up gave it another', async () => {
+    server({ profile: () => profile('anna', 'Stranger') });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(sent.filter(isNameChange).map(({ url, body }) => [url.split('?')[1], body])).toEqual([
+      [`id=eq.${ID}`, { display_name: 'Anna' }],
+    ]);
+  });
+
+  /** The name is the courier's to change at any time; the account is set up all the same. */
+  it('lets the courier in when the name could not be changed', async () => {
+    server({ profile: () => profile('anna', 'Stranger'), name: offline });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /**
+   * A username cannot be changed. An account an earlier sign-up gave another
+   * one is set up again from what was typed: nothing can have been done with
+   * it, the code having confirmed it only now, and a new code goes out.
+   */
+  it('sets the account up again when an earlier sign-up gave it another username', async () => {
+    server({ profile: () => profile('stranger', 'Stranger') });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('new code');
+
+    expect(sent.filter(isDeletion)).toHaveLength(1);
+    expect(sent.filter(isSignUp).map((request) => request.body)).toEqual([
+      expect.objectContaining({
+        email: 'anna@example.test',
+        password: 'night-courier',
+        data: { username: 'anna', display_name: 'Anna' },
+      }),
+    ]);
+    expect(sent.findIndex(isDeletion)).toBeLessThan(sent.findIndex(isSignUp));
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+    expect(mockKeychain.has(SESSION_KEY)).toBe(false);
+  });
+
+  it.each<[string, Partial<Record<string, () => Response | Promise<Response>>>, string]>([
+    ['the password cannot be saved', { password: offline }, NO_CONNECTION],
+    [
+      'the server will not take the password',
+      {
+        password: () =>
+          json(
+            422,
+            {
+              code: 'weak_password',
+              message: 'Password should be at least 10 characters.',
+              weak_password: { reasons: ['length'] },
+            },
+            { 'X-Supabase-Api-Version': '2024-01-01' },
+          ),
+      },
+      'Passwords need at least 10 characters.',
+    ],
+    ['the account cannot be looked at', { profile: offline }, NO_CONNECTION],
+    [
+      'the account an earlier sign-up made cannot be removed',
+      {
+        profile: () => profile('stranger', 'Stranger'),
+        deletion: () => json(500, { message: 'boom' }),
+      },
+      'Your account could not be deleted. Please try again.',
+    ],
+  ])('says why, and holds the way in, signed in, when %s', async (_, answers, words) => {
+    server(answers);
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(words);
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+  });
+
+  it('sets the account up when asked again after it could not be', async () => {
+    let attempts = 0;
+    server({ password: () => (++attempts === 1 ? offline() : json(200, {})) });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(sent.filter(isVerify)).toHaveLength(1);
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /**
+   * Removed to make way for the courier's own, the earlier sign-up's account
+   * is gone; if theirs then cannot be set up, they are signed out, and told
+   * to set it up again from the form.
+   */
+  it('says so when the account was removed to make way, and the new one could not be set up', async () => {
+    server({
+      profile: () => profile('stranger', 'Stranger'),
+      signUp: () => authRefusal(500, 'unexpected_failure', 'Database error saving new user'),
+    });
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(
+      'This address had an account waiting for its code already, set up with another ' +
+        'username, and it has been removed to make way for yours. Yours could not be set ' +
+        'up just now: That username may already be taken. Try another. Go back to the form ' +
+        'to set it up again.',
+    );
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('lets go of the way in when the courier signs out instead', async () => {
+    server({ password: offline });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it.each<[string, () => Response | Promise<Response>, string]>([
+    [
+      'the code is wrong, or has run out',
+      () => authRefusal(403, 'otp_expired', 'Token has expired or is invalid'),
+      'That code did not work. Check it against the newest email, or ask for a new one.',
+    ],
+    ['there is no network', offline, NO_CONNECTION],
+  ])('holds nothing when %s', async (_, verify, words) => {
+    server({ verify });
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(await outcomeOf(asked(() => auth.confirmSignUp(details.email, '12345678')))).toBe(words);
+
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /** From signing in, the password was the account's - found right by the server. */
+  it('sets nothing when an address waiting for its code is confirmed from signing in', async () => {
+    server();
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(await outcomeOf(asked(() => auth.confirmEmail(details.email, '12345678')))).toBe('done');
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(false);
+    expect(sent.filter(isPasswordChange)).toEqual([]);
   });
 });

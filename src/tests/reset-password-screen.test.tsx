@@ -25,9 +25,9 @@ jest.mock('expo-router', () => ({
  * saved lets go of it, signing out ends both.
  */
 const mockAuthState = {
-  current: { session: null as object | null, isFinishingReset: false },
+  current: { session: null as object | null, isSettingPassword: false },
   listeners: new Set<() => void>(),
-  set(next: Partial<{ session: object | null; isFinishingReset: boolean }>) {
+  set(next: Partial<{ session: object | null; isSettingPassword: boolean }>) {
     this.current = { ...this.current, ...next };
     this.listeners.forEach((listener) => listener());
   },
@@ -130,16 +130,16 @@ const keyboard = (event: 'keyboardDidShow' | 'keyboardDidHide', height: number) 
 const SESSION = { user: { id: 'user-anna' } };
 
 beforeEach(() => {
-  mockAuthState.current = { session: null, isFinishingReset: false };
+  mockAuthState.current = { session: null, isSettingPassword: false };
   mockSendPasswordReset.mockReset().mockResolvedValue(undefined);
   mockVerifyResetCode.mockReset().mockImplementation(async () => {
-    mockAuthState.set({ session: SESSION, isFinishingReset: true });
+    mockAuthState.set({ session: SESSION, isSettingPassword: true });
   });
   mockSetNewPassword.mockReset().mockImplementation(async () => {
-    mockAuthState.set({ isFinishingReset: false });
+    mockAuthState.set({ isSettingPassword: false });
   });
   mockSignOut.mockReset().mockImplementation(async () => {
-    mockAuthState.set({ session: null, isFinishingReset: false });
+    mockAuthState.set({ session: null, isSettingPassword: false });
   });
   mockReplace.mockReset();
   mockBack.mockReset();
@@ -352,7 +352,7 @@ describe('ResetPasswordScreen', () => {
       let answer: () => void = () => {};
       let refuse: (error: Error) => void = () => {};
       mockVerifyResetCode.mockImplementation(async () => {
-        mockAuthState.set({ isFinishingReset: true });
+        mockAuthState.set({ isSettingPassword: true });
         await new Promise<void>((resolve) => (answer = resolve));
         mockAuthState.set({ session: SESSION });
       });
@@ -381,7 +381,7 @@ describe('ResetPasswordScreen', () => {
 
     /** Only a code makes these words true; signed in some other way, nobody is told them. */
     it('asks for the code of a courier signed in some other way', async () => {
-      mockAuthState.current = { session: SESSION, isFinishingReset: false };
+      mockAuthState.current = { session: SESSION, isSettingPassword: false };
 
       await askedForACode();
 
@@ -436,7 +436,7 @@ describe('ResetPasswordScreen', () => {
         await typedCodeAndPassword();
         expect(screen.getByText(NOT_SAVED)).toBeOnTheScreen();
 
-        await act(async () => mockAuthState.set({ session: null, isFinishingReset: false }));
+        await act(async () => mockAuthState.set({ session: null, isSettingPassword: false }));
 
         expect(screen.queryByText(NOT_SAVED)).toBeNull();
         expect(screen.getByLabelText('Code')).toBeOnTheScreen();

@@ -57,12 +57,12 @@ jest.mock('expo-splash-screen', () => ({
   hideAsync: jest.fn(() => Promise.resolve(true)),
 }));
 
-type MockAuth = { session: object | null; isRestoring: boolean; isFinishingReset: boolean };
+type MockAuth = { session: object | null; isRestoring: boolean; isSettingPassword: boolean };
 
 const mockAuth: MockAuth = {
   session: null,
   isRestoring: false,
-  isFinishingReset: false,
+  isSettingPassword: false,
 };
 
 /**
@@ -144,7 +144,7 @@ beforeEach(() => {
   mockSegments.current = [];
   mockAuth.session = SESSION;
   mockAuth.isRestoring = false;
-  mockAuth.isFinishingReset = false;
+  mockAuth.isSettingPassword = false;
 });
 
 describe('the root guard', () => {
@@ -236,7 +236,7 @@ describe('the root guard', () => {
    */
   describe('while a password reset is being finished', () => {
     beforeEach(() => {
-      mockAuth.isFinishingReset = true;
+      mockAuth.isSettingPassword = true;
     });
 
     it('leaves the courier on the reset screen until the new password is saved', async () => {
@@ -249,7 +249,7 @@ describe('the root guard', () => {
       await openTheAppOn('reset-password');
       expect(mockNavigation).toEqual([]);
 
-      await authChanges({ isFinishingReset: false });
+      await authChanges({ isSettingPassword: false });
 
       expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
     });
@@ -257,6 +257,33 @@ describe('the root guard', () => {
     /** Gone back from the reset screen, they are signed in, and in the app. */
     it('holds nobody anywhere else', async () => {
       await openTheAppOn('sign-in');
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+  });
+
+  /**
+   * The code that confirms a new account signs the courier in, and the
+   * password they typed at sign-up is set with that session a moment later -
+   * whoever signed up for the address first, their password is gone then.
+   * Sent to the roost in between, they could be signed in to an account
+   * someone else still has the password of. (Found in review.)
+   */
+  describe('while the account a sign-up’s code confirmed is being set up', () => {
+    beforeEach(() => {
+      mockAuth.isSettingPassword = true;
+    });
+
+    it('leaves the courier on the sign-up screen until it is done', async () => {
+      await openTheAppOn('sign-up');
+
+      expect(mockNavigation).toEqual([]);
+    });
+
+    it('takes them to the roost once it is done', async () => {
+      await openTheAppOn('sign-up');
+
+      await authChanges({ isSettingPassword: false });
 
       expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
     });

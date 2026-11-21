@@ -107,7 +107,7 @@ const NO_EMAIL = 'No email? Look in your spam folder, then ask for the code agai
  */
 function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void }) {
   const router = useRouter();
-  const { isFinishingReset, sendPasswordReset, verifyResetCode, setNewPassword, signOut } =
+  const { isSettingPassword, sendPasswordReset, verifyResetCode, setNewPassword, signOut } =
     useAuth();
   // The code was right, and signed the courier in, but the password was
   // refused: it is the password alone that is still to be saved, for as long
@@ -115,7 +115,7 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
   // session arrives while the password is still on its way, and nothing has
   // gone wrong then.
   const [notSaved, setNotSaved] = useState(false);
-  const signedInByCode = notSaved && isFinishingReset;
+  const signedInByCode = notSaved && isSettingPassword;
 
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');

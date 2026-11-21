@@ -87,7 +87,14 @@ export default function SignUpScreen() {
   if (sentTo) {
     // Back from there to this form, with everything typed still in it, for an
     // address that was mistyped.
-    return <ConfirmEmail email={sentTo} reason="signed-up" onBack={() => setSentTo(null)} />;
+    return (
+      <ConfirmEmail
+        email={sentTo}
+        reason="signed-up"
+        details={{ email, password, username, displayName }}
+        onBack={() => setSentTo(null)}
+      />
+    );
   }
 
   return (
