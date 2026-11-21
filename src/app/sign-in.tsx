@@ -50,7 +50,11 @@ export default function SignInScreen() {
 
   async function submit() {
     if (inFlight.current) return;
-    const next = { email: validateEmail(email), password: validatePassword(password) };
+    // The password the courier has: "Choose a password." is signing up's.
+    const next = {
+      email: validateEmail(email),
+      password: validatePassword(password, 'Enter your password.'),
+    };
     setErrors(next);
     setFormError(null);
     setNotice(null);

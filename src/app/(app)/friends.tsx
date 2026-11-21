@@ -68,7 +68,8 @@ export default function FriendsScreen() {
   const suspended = list.reason === 'account_suspended';
 
   async function ask() {
-    const problem = validateUsername(username);
+    // Someone else's username: "Choose a username." is signing up's.
+    const problem = validateUsername(username, 'Enter their username.');
     setFieldError(problem);
     // What the screen says belongs to what was done last: a refusal from a row
     // left up beside this request would read as its answer.

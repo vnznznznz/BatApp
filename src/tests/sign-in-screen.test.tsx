@@ -212,6 +212,22 @@ describe('SignInScreen', () => {
     });
   });
 
+  /**
+   * Signing in asks for the password the courier has. "Choose a password." is
+   * what signing up says, and read here as if a new one were wanted.
+   */
+  it('asks for the password in its own words when it is left out', async () => {
+    const user = userEvent.setup();
+    await renderScreen(<SignInScreen />);
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+
+    await user.press(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(screen.getByText('Enter your password.')).toBeOnTheScreen();
+    expect(screen.queryByText('Choose a password.')).toBeNull();
+    expect(mockSignIn).not.toHaveBeenCalled();
+  });
+
   /** The keyboard's "go" key is not held back by the button's spinner. */
   it('signs in once, however often the form is sent while it is being answered', async () => {
     mockSignIn.mockReturnValue(new Promise(() => {}));

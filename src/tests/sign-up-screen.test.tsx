@@ -326,6 +326,8 @@ describe('SignUpScreen', () => {
     expect(mockSignUp).not.toHaveBeenCalled();
     expect(screen.getByText('Choose a username.')).toBeOnTheScreen();
     expect(screen.getByText('Enter your email address.')).toBeOnTheScreen();
+    // Signing up is where both are chosen: these words are its own.
+    expect(screen.getByText('Choose a password.')).toBeOnTheScreen();
   });
 
   it('passes the typed username through unchanged for the context to normalise', async () => {

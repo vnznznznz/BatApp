@@ -82,8 +82,13 @@ export function validateEmail(value: string): string | null {
   return null;
 }
 
-export function validatePassword(value: string): string | null {
-  if (!value) return 'Choose a password.';
+/**
+ * `empty` is what an empty field is told. The default asks for a password to
+ * be chosen, as signing up and setting a new one do; signing in asks for the
+ * one the courier has, in words of its own.
+ */
+export function validatePassword(value: string, empty = 'Choose a password.'): string | null {
+  if (!value) return empty;
   // Both ends in bytes, as the auth server counts them. In characters the form
   // refused four umlauts, which the server takes. Whoever is told this has
   // typed fewer than eight characters, whatever they were.
@@ -95,9 +100,14 @@ export function validatePassword(value: string): string | null {
   return null;
 }
 
-export function validateUsername(value: string): string | null {
+/**
+ * `empty` is what an empty field is told. The default asks for a username to
+ * be chosen, as signing up does; asking a friend is typing theirs, and says so
+ * in words of its own.
+ */
+export function validateUsername(value: string, empty = 'Choose a username.'): string | null {
   const username = normaliseUsername(value);
-  if (!username) return 'Choose a username.';
+  if (!username) return empty;
   if (username.length < USERNAME_MIN_LENGTH) {
     return `Usernames need at least ${USERNAME_MIN_LENGTH} characters.`;
   }
