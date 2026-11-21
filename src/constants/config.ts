@@ -139,6 +139,14 @@ export const FRIEND_REQUESTS_PER_HOUR = 20;
  * which the parity test checks against this. The app sends a username and a
  * display name, well under a kilobyte; the bound is for requests that are not
  * the app's.
+ *
+ * The bytes include the keys the auth server adds of its own (sub, email,
+ * email_verified, phone_verified), and it adds them with a second write after
+ * the sign-up is stored. So a client's own details pass up to about 3,900
+ * bytes, and between that and the bound they pass the first write and are
+ * refused at the second: the auth server then answers "Unexpected failure",
+ * not "Database error saving new user". Either way nothing of the sign-up is
+ * kept. (Measured on the local stack, GoTrue v2.197.)
  */
 export const SIGN_UP_DETAILS_MAX_BYTES = 4096;
 
