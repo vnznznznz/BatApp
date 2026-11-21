@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:compiled": "jest --config jest.compiled.config.js",
     "test:db": "node --test src/tests/db/*.test.mjs",
     "build:pages": "node scripts/build-store-pages.mjs",
     "check:build-env": "node scripts/check-build-env.js",

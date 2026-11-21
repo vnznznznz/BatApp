@@ -68,6 +68,14 @@ jobs:
       - name: Verify
         run: npm run verify
 
+      # The Jest suite again, with the app compiled by the React Compiler as a
+      # production build compiles it. npm test runs the code as written, which
+      # is not what a phone runs: the compiler can change what a component
+      # does, and leaves out quietly what it cannot compile. What it leaves
+      # out is listed in src/tests/react-compiler.test.ts, which verify runs.
+      - name: Test with the React Compiler on
+        run: npm run test:compiled
+
       - name: Check that the committed artwork matches its source
         run: |
           npm run generate:assets
