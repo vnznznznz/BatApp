@@ -299,6 +299,7 @@ describe('sending', () => {
       'a file separator': '\u001C',
       'a next-line control': '\u0085',
       'a right-to-left override': '\u202E',
+      'Egyptian hieroglyph format controls': '\u{13430}\u{13431}\u{13436}',
       'several of them between line breaks': '\n\u200B \t\u2060\u00A0\n',
     };
 
@@ -317,10 +318,17 @@ describe('sending', () => {
   /** Only a name has to be plain text. A letter needs one thing to see, and may hold anything. */
   it('takes a letter with anything in it to see, whatever else it holds', async () => {
     const { anna, ben } = await berlinAndMunich();
-    const letters = ['\n\u200B.\u2060\n', '\u{1F469}\u200D\u{1F467}', '\u202Eolleh\x07'];
+    const letters = [
+      '\n\u200B.\u2060\n',
+      '\u{1F469}\u200D\u{1F467}',
+      '\u202Eolleh\x07',
+      '\u{13000}\u{13430}\u{13001}',
+    ];
 
-    for (const body of letters) {
-      const sent = await send(anna, ben, body);
+    // Turn about, so that neither runs out of bats.
+    for (const [turn, body] of letters.entries()) {
+      const [from, to] = turn % 2 === 0 ? [anna, ben] : [ben, anna];
+      const sent = await send(from, to, body);
       assert.equal((await messageRow(sent.message_id)).body, body);
     }
   });

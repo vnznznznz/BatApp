@@ -49,12 +49,17 @@
 --   U+FE00-FE0F                variation selectors
 --   U+FEFF                     the byte order mark
 --   U+FFF0-FFFB                unassigned, and the annotation marks
+--   U+13430-1343F              hieroglyph format controls
 --   U+1BCA0-1BCA3              shorthand format controls
 --   U+1D173-1D17A              musical format controls
 --   U+E0000-E0FFF              tags, and more variation selectors
 --
 -- That is Unicode's white space, its control characters and what it calls
--- default-ignorable, with the blank braille pattern and the annotation marks.
+-- default-ignorable, with the blank braille pattern and the annotation marks;
+-- and the format characters that draw nothing although Unicode does not call
+-- them default-ignorable, the hieroglyph format controls, which only arrange
+-- the signs around them (found in review). The other format characters - a
+-- number sign, the end of an ayah - are drawn, and count as something to see.
 -- Written out rather than asked for by name (`\s`), because what a server
 -- takes that name to mean depends on its locale and its version: the three
 -- this project runs on - Postgres 16 for the races, 17 in the local stack, 18
@@ -66,7 +71,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select has_visible_character.value ~ '[^\u0001-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
+  select has_visible_character.value ~ '[^\u0001-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
 $$;
 
 revoke all on function private.has_visible_character(text) from public, anon, authenticated;
@@ -128,7 +133,7 @@ alter table public.profiles
     display_name !~ '[\u0001-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]'
   ),
   add constraint profiles_display_name_visible check (
-    display_name ~ '[^\u0001-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
+    display_name ~ '[^\u0001-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF]'
   );
 
 /* -------------------------------------------------------------------------- */

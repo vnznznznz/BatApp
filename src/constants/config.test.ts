@@ -127,10 +127,38 @@ describe('what a display name and a letter must have in them', () => {
       '\uFE0F',
       '\u{E0061}\u{E007F}',
       '\u200E\u200F\u200C\u200D',
+      '\u{13430}\u{13431}\u{13436}',
       '\u0000',
     ]) {
       expect(hasSomethingToSee(blank)).toBe(false);
     }
+  });
+
+  /**
+   * The list claims to be Unicode's white space, its control characters, what
+   * it calls default-ignorable and the format characters that draw nothing.
+   * Held to that claim here, for every character this runtime's Unicode knows,
+   * so that a class left out - the hieroglyph format controls were, in review
+   * - fails a test rather than a reader. Only the prepended concatenation marks
+   * are format characters that are drawn: a number sign, the end of an ayah.
+   */
+  it('finds nothing to see in any character Unicode says draws nothing', () => {
+    const drawn = /[\u0600-\u0605\u06DD\u070F\u0890\u0891\u08E2\u{110BD}\u{110CD}]/u;
+    const drawsNothing = /[\p{White_Space}\p{Cc}\p{Default_Ignorable_Code_Point}\p{Cf}]/u;
+    const counted: string[] = [];
+    const leftOut: string[] = [];
+    for (let code = 1; code <= 0x10ffff; code++) {
+      if (code >= 0xd800 && code <= 0xdfff) continue;
+      const character = String.fromCodePoint(code);
+      if (drawn.test(character)) {
+        if (!hasSomethingToSee(character)) counted.push(code.toString(16));
+      } else if (drawsNothing.test(character) && hasSomethingToSee(character)) {
+        leftOut.push(code.toString(16));
+      }
+    }
+
+    expect(leftOut).toEqual([]);
+    expect(counted).toEqual([]);
   });
 
   it('finds something to see as soon as one character shows', () => {

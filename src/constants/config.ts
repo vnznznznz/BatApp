@@ -85,7 +85,8 @@ export const USERNAME_PATTERN = /^[a-z0-9_]+$/;
  * VISIBLE_CHARACTER_PATTERN finds a character that is drawn as something:
  * anything but white space, control characters and what Unicode says shows
  * nothing - zero-width spaces and joiners, direction marks, fillers, variation
- * selectors, tags. A name needs one, and so does a letter.
+ * selectors, tags - and the hieroglyph format controls, which only arrange the
+ * signs around them. A name needs one, and so does a letter.
  *
  * Both count U+0000 with the control characters. The database cannot store it
  * at all, so it refuses such a value before either rule is asked.
@@ -93,7 +94,7 @@ export const USERNAME_PATTERN = /^[a-z0-9_]+$/;
 export const DISPLAY_NAME_FORBIDDEN_PATTERN =
   /[\u0000-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]/u;
 export const VISIBLE_CHARACTER_PATTERN =
-  /[^\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
+  /[^\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/u;
 
 /**
  * What a report can say is wrong, as the database records it. The words shown

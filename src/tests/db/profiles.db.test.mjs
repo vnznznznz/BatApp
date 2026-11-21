@@ -207,6 +207,12 @@ const NAMES = [
   ['a name inside direction isolates', '\u2066Anna\u2069', 'no_controls'],
   ['a paragraph separator inside a name', 'An\u2029na', 'no_controls'],
   ['a next-line control inside a name', 'An\u0085na', 'no_controls'],
+  // Format characters that are not default-ignorable. The hieroglyph format
+  // controls only arrange the signs around them and draw nothing themselves;
+  // the end-of-ayah mark is a format character too, and is drawn.
+  ['Egyptian hieroglyph format controls', '\u{13430}\u{13431}\u{13436}', 'visible'],
+  ['two hieroglyphs joined by a format control', '\u{13000}\u{13430}\u{13001}'],
+  ['an Arabic end-of-ayah mark', '\u06dd'],
 ].map(([what, name, refusedBy]) => ({ what, name, refusedBy }));
 
 describe('a display name', () => {
