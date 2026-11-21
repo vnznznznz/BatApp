@@ -12,7 +12,7 @@ import {
   type ReceivedLetter,
   type SentLetter,
 } from '@/features/messages/messages';
-import { fetchBlocked } from '@/features/safety/safety';
+import { fetchBlocked, type BlockedCourier } from '@/features/safety/safety';
 import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
@@ -370,6 +370,42 @@ describe('LettersScreen', () => {
         await screen.findByText(
           'The letters of couriers you have blocked are hidden from you. To see them again, ' +
             'unblock them: Your profile, then Blocked couriers.',
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+    });
+
+    /**
+     * Until it is known whom the courier has blocked, "Nothing has landed yet"
+     * may be untrue: it stood for half a second on every visit, and on every
+     * switch back from Sent, before the words about a block replaced it.
+     * (Found in the browser.)
+     */
+    it('says nothing has landed only once it is known that nobody is blocked', async () => {
+      const blocks = deferred<BlockedCourier[]>();
+      mockedFetchBlocked.mockReturnValue(blocks.promise);
+      await renderScreen(<LettersScreen />);
+      await waitFor(() => expect(mockedFetchBlocked).toHaveBeenCalled());
+
+      expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+      expect(spinners()).toHaveLength(1);
+
+      await act(async () => blocks.resolve([]));
+
+      expect(await screen.findByText(/^Nothing has landed yet\./)).toBeOnTheScreen();
+    });
+
+    /** And if it cannot be found out, "Nothing has landed yet" stood for good. (Found in the browser.) */
+    it('says what is true either way when it cannot be found out whom the courier has blocked', async () => {
+      mockedFetchBlocked.mockRejectedValue(
+        new RpcError('Your blocked couriers could not be loaded.', null),
+      );
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          'No letter to show. When a friend’s bat arrives, the letter will be here; the ' +
+            'letters of couriers you have blocked are hidden from you.',
         ),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();

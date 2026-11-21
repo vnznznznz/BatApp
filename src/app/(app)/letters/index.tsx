@@ -141,16 +141,26 @@ function SentList() {
  * What the received list says when it has no letter to show. A block hides the
  * blocked courier's letters, and "Nothing has landed yet" stood over letters
  * that had landed. (Found in the browser, after a report that also blocked.)
- * Whom the courier has blocked is asked only here, where it matters.
+ * Whom the courier has blocked is asked only here, where it matters - and
+ * nothing is claimed until that is known: "Nothing has landed yet" stood for
+ * half a second on every visit before the words about a block, and for good
+ * when the question failed. (Found in the browser.)
  */
 function EmptyInbox() {
   const blocked = useRemote(fetchBlocked);
+  if (!blocked.data && !blocked.error) {
+    return <ActivityIndicator color={Colors.textMuted} style={styles.message} />;
+  }
   return (
     <Text variant="caption" tone="muted" center style={styles.message}>
       {blocked.data?.length
         ? 'The letters of couriers you have blocked are hidden from you. To see them again, ' +
           'unblock them: Your profile, then Blocked couriers.'
-        : 'Nothing has landed yet. When a friend’s bat arrives, the letter will be here.'}
+        : blocked.data
+          ? 'Nothing has landed yet. When a friend’s bat arrives, the letter will be here.'
+          : // Not known whether anyone is blocked: what is true either way.
+            'No letter to show. When a friend’s bat arrives, the letter will be here; the ' +
+            'letters of couriers you have blocked are hidden from you.'}
     </Text>
   );
 }
