@@ -28,18 +28,16 @@ project_id = "night-courier"
 enabled = true
 
 # The app is a native one and has no website. These are what a link in an auth
-# email is allowed to return to.
+# email would be allowed to return to - and there is none: the emails carry a
+# code to type into the app (the templates under [auth.email], below). A link
+# came back through the app's URL scheme with a whole session in it, for
+# whichever app on the phone answered to the scheme.
 #
 # Each entry stands for itself and nothing longer. Review asked the local stack
 # for links back to nightcourier://reset and to an Expo Go address, and both
-# came back as plain nightcourier://. So the screen that one day finishes a
-# password reset needs "nightcourier://**" here, or its link will quietly land
-# somewhere else. "exp://" is for Expo Go in development and harmless as it
-# stands; with a wildcard it would let a link open any Expo Go project, so it
-# must never be given one on the hosted project.
-#
-# What such a link carries today is a whole session: docs/GO-LIVE.md, "Known
-# gaps already logged".
+# came back as plain nightcourier://. "exp://" is for Expo Go in development and
+# harmless as it stands; with a wildcard it would let a link open any Expo Go
+# project, so it must never be given one on the hosted project.
 site_url = "nightcourier://"
 additional_redirect_urls = ["nightcourier://", "exp://"]
 
@@ -66,7 +64,7 @@ enabled = true
 # Supabase's built-in email service refuses to deliver to any address that is
 # not on the project's team, and caps the project at two messages per hour. With
 # confirmations on and no custom SMTP, a friend's signup fails silently: the
-# account is created and the link never arrives.
+# account is created and the code never arrives.
 #
 # Turn this back on at the same time as configuring custom SMTP, and before
 # anyone but the operator has an account. Password reset is only a recovery
@@ -81,7 +79,34 @@ secure_password_change = true
 
 # No `max_frequency` here. The local stack's own default is one second between
 # two emails to the same address; a push would carry a line here to the hosted
-# project and lower its sixty seconds to that.
+# project and lower its sixty seconds to that. The app waits those sixty
+# seconds itself before it offers a new code (RESEND_WAIT_SECONDS in
+# src/features/auth/use-resend-wait.ts).
+
+# The emails carry a code to type into the app, and no link. Eight digits, as
+# many as the app's code field asks for (EMAIL_CODE_LENGTH in
+# src/features/auth/validation.ts); the auth server takes six to ten.
+otp_length = 8
+
+# A day, in seconds, where the auth server's own is an hour: someone who signs
+# up in the evening may open the email the next morning. The longer life makes
+# guessing no easier. Anyone can ask for a new code for any address at any
+# time, so what holds guessing back is the eight digits and the hosted
+# project's limit on attempts from one network address; each new code replaces
+# the one before, and a code works once. The same life applies to every code
+# by email: for a new account's address, for a new password, and for a changed
+# address.
+otp_expiry = 86400
+
+# Both say what the code is for and what to do with it, in the app's words. The
+# auth server fills in {{ .Token }}, the code; nothing else of its own.
+[auth.email.template.confirmation]
+subject = "Your Night Courier code"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Your Night Courier code"
+content_path = "./supabase/templates/recovery.html"
 
 # No sign-up by phone number, so there is nothing to confirm either.
 [auth.sms]

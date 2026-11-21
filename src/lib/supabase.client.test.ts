@@ -147,6 +147,21 @@ async function settled<T>(promise: PromiseLike<T>, withinSeconds = 120): Promise
   return watched;
 }
 
+/**
+ * A phone has no WebCrypto: neither Hermes nor Expo puts a `crypto` in place
+ * (expo/src/winter installs URL, TextDecoder and others, not it). There
+ * auth-js makes the verifier for its code flow with Math.random and sends it
+ * as its own challenge ("plain"), with a warning in the console each time.
+ * These tests do as a phone does - which also keeps the challenge from being
+ * worked out on another thread while the clock here is a fake one.
+ */
+const webCrypto = (globalThis as { crypto?: unknown }).crypto;
+const cryptoAs = (value: unknown) =>
+  Object.defineProperty(globalThis, 'crypto', { value, configurable: true, writable: true });
+
+beforeAll(() => cryptoAs(undefined));
+afterAll(() => cryptoAs(webCrypto));
+
 beforeEach(() => {
   jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
   jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -527,6 +542,138 @@ describe('signing in and out', () => {
 
     expect(error?.status).toBe(429);
     expect(error?.message).toBe('Request rate limit reached');
+  });
+});
+
+/**
+ * The client asks for the code flow (PKCE). The emails carry a code to type,
+ * and no link; but should a template with a link ever be used, the link then
+ * brings a one-time code that only this device can turn into a session, with
+ * the verifier it keeps for it - not a whole session, handed through the app's
+ * URL scheme to whichever app answers to it.
+ */
+describe('the code flow', () => {
+  const isSignUp = (request: Sent) => request.url.endsWith('/auth/v1/signup');
+  const isResend = (request: Sent) => request.url.endsWith('/auth/v1/resend');
+  const isRecover = (request: Sent) => request.url.includes('/auth/v1/recover');
+  const VERIFIERS = [
+    'night-courier.session-code-verifier',
+    'night-courier.session-flows-code-verifier',
+  ];
+  const isVerifier = (key: string) =>
+    key.startsWith('night-courier.session-') && key.endsWith('code-verifier');
+
+  const answered = () => {
+    network = (request) => {
+      if (isSignUp(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user);
+      if (request.url.endsWith('/auth/v1/verify')) {
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      }
+      if (request.url.includes('/auth/v1/logout')) return new Response(null, { status: 204 });
+      return json(200, {});
+    };
+  };
+
+  /** The challenge is the verifier itself there, which only the auth server is shown. */
+  it('sends a code challenge with a sign-up, a new code and a reset, as a phone makes one', async () => {
+    answered();
+    const { client } = launch();
+
+    await settled(client.auth.signUp({ email: 'mara@example.test', password: 'night-courier' }));
+    await settled(client.auth.resend({ type: 'signup', email: 'mara@example.test' }));
+    await settled(client.auth.resetPasswordForEmail('mara@example.test'));
+
+    const challenges = sent
+      .filter((request) => isSignUp(request) || isResend(request) || isRecover(request))
+      .map(({ body }) => body as { code_challenge?: string; code_challenge_method?: string });
+    expect(challenges).toHaveLength(3);
+    for (const { code_challenge, code_challenge_method } of challenges) {
+      expect(code_challenge).toEqual(expect.stringMatching(/^[\w.~-]{56}$/));
+      expect(code_challenge_method).toBe('plain');
+    }
+    expect(new Set(challenges.map(({ code_challenge }) => code_challenge)).size).toBe(3);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('WebCrypto API is not supported'),
+    );
+  });
+
+  /** In a browser, which has WebCrypto, the challenge is the verifier's hash. */
+  it('sends the verifier’s hash as the challenge where there is WebCrypto', async () => {
+    jest.useRealTimers();
+    cryptoAs(webCrypto);
+    try {
+      answered();
+      const { client } = launch();
+
+      await client.auth.resetPasswordForEmail('mara@example.test');
+
+      expect(sent.find(isRecover)?.body).toMatchObject({
+        code_challenge: expect.stringMatching(/^[\w-]{43}$/),
+        code_challenge_method: 's256',
+      });
+    } finally {
+      cryptoAs(undefined);
+    }
+  });
+
+  /**
+   * The verifier for each code goes into the keychain, under names it takes
+   * and in entries small enough for it, and stays until signing out - which
+   * takes it, as it takes the session.
+   */
+  it('keeps the verifiers in the keychain until signing out, and leaves nothing after it', async () => {
+    answered();
+    const { client } = launch();
+
+    await settled(client.auth.signUp({ email: 'mara@example.test', password: 'night-courier' }));
+    await settled(client.auth.resetPasswordForEmail('mara@example.test'));
+
+    const kept = [...mockKeychain.keys()];
+    expect(kept).toEqual(expect.arrayContaining(VERIFIERS));
+    expect(kept.filter(isVerifier)).toHaveLength(4);
+    expect(kept.filter((key) => !isVerifier(key))).toEqual([]);
+
+    await settled(client.auth.signOut());
+
+    expect(mockKeychain.size).toBe(0);
+  });
+
+  /** A code typed in needs no verifier: the auth server checks the code itself. */
+  it('signs in with a code from an email as before', async () => {
+    answered();
+    const { client, store } = launch();
+
+    const { error } = await settled(
+      client.auth.verifyOtp({ type: 'signup', email: 'mara@example.test', token: '12345678' }),
+    );
+
+    expect(error).toBeNull();
+    expect(sent.find(({ url }) => url.endsWith('/auth/v1/verify'))?.body).not.toHaveProperty(
+      'code_verifier',
+    );
+    expect(store.isSessionStored()).toBe(true);
+    expect([...mockKeychain.keys()].filter(isVerifier)).toEqual([]);
+  });
+
+  it('signs in with a password, and changes a password, with nothing of it', async () => {
+    network = (request) => {
+      if (request.url.includes('grant_type=password')) {
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      }
+      return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user);
+    };
+    const { client } = launch();
+
+    await settled(
+      client.auth.signInWithPassword({ email: 'mara@example.test', password: 'night-courier' }),
+    );
+    const { error } = await settled(client.auth.updateUser({ password: 'a new password' }));
+
+    expect(error).toBeNull();
+    for (const { body } of sent.filter(({ url }) => url.includes('/auth/v1/'))) {
+      expect(body).not.toEqual(expect.objectContaining({ code_challenge: expect.anything() }));
+    }
+    expect([...mockKeychain.keys()].filter(isVerifier)).toEqual([]);
   });
 });
 

@@ -203,6 +203,21 @@ const outcomeOf = (asking: Promise<unknown>) =>
     (error: unknown) => (error instanceof Error ? error.message : String(error)),
   );
 
+/**
+ * A phone has no WebCrypto: neither Hermes nor Expo puts a `crypto` in place
+ * (expo/src/winter installs URL, TextDecoder and others, not it). There
+ * auth-js makes the verifier for its code flow with Math.random and sends it
+ * as its own challenge ("plain"), with a warning in the console each time.
+ * These tests do as a phone does - which also keeps the challenge from being
+ * worked out on another thread while the clock here is a fake one.
+ */
+const webCrypto = (globalThis as { crypto?: unknown }).crypto;
+const cryptoAs = (value: unknown) =>
+  Object.defineProperty(globalThis, 'crypto', { value, configurable: true, writable: true });
+
+beforeAll(() => cryptoAs(undefined));
+afterAll(() => cryptoAs(webCrypto));
+
 beforeEach(() => {
   jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
   // The client warns of every renewal it could not make. Errors are another
