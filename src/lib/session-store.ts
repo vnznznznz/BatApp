@@ -137,8 +137,10 @@ export async function readStoredSession(): Promise<Session | null> {
 /**
  * Removes the stored session, behind the client's back: for signing out on
  * this device when the client could not do it because the server could not be
- * reached. The client announces nothing; whoever calls this knows. Rejects
- * only if the keychain refuses to delete the entry.
+ * reached. The client announces nothing of it, and whoever listens to the
+ * client for a sign-out would never hear of this one: the caller has the
+ * client announce it, which, with nothing stored any more, it does without
+ * asking the server. Rejects only if the keychain refuses to delete the entry.
  */
 export async function clearStoredSession(): Promise<void> {
   await authStorage.removeItem(SESSION_KEY);

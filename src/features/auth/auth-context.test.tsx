@@ -972,6 +972,204 @@ describe('deleting the account', () => {
 });
 
 /**
+ * Whatever else the app keeps for the signed-in account - the letters not sent
+ * yet, held in memory - is let go of when the client announces a sign-out: it
+ * listens to the client, as the provider does, and hears nothing from the
+ * provider. A session that ended on this device without that announcement left
+ * one account's unsent letters to whoever signed in next.
+ */
+describe('what the rest of the app hears when the session ends', () => {
+  const isLogout = (request: Sent) => request.url.includes('/auth/v1/logout');
+  const isDeletion = (request: Sent) => request.url.includes('/rest/v1/rpc/delete_own_account');
+  const isWhoAmI = (request: Sent) => request.url.endsWith('/auth/v1/user');
+  const loggedOut = () => new Response(null, { status: 204 });
+  const noSuchUser = () =>
+    authRefusal(403, 'user_not_found', 'User from sub claim in JWT does not exist');
+  const sessionOver = () =>
+    authRefusal(400, 'refresh_token_not_found', 'Invalid Refresh Token: Refresh Token Not Found');
+
+  /**
+   * What the client has announced to a listener of its own since the app
+   * opened: each event, and whether it came with a session.
+   */
+  let heard: [event: string, withSession: boolean][];
+
+  /** Listens to the client from the start, as a module that keeps something for the account does. */
+  const listening = (client: Client) => {
+    heard = [];
+    client.auth.onAuthStateChange((event, session) => {
+      heard.push([event, session !== null]);
+    });
+  };
+
+  async function opened(session: Session) {
+    await keep(session);
+    const launched = await launch({ beforeOpening: listening });
+    await passes(A_MOMENT);
+    expect(state()).toBe('signed in');
+    return launched;
+  }
+
+  /**
+   * How many sign-outs were heard, and whether a session was announced after
+   * the last of them - someone signed in again, as far as a listener can tell.
+   */
+  function ending() {
+    const events = heard.map(([event]) => event);
+    const last = events.lastIndexOf('SIGNED_OUT');
+    return {
+      signOuts: events.filter((event) => event === 'SIGNED_OUT').length,
+      signedInAfter: heard.slice(last + 1).some(([, withSession]) => withSession),
+    };
+  }
+
+  const ONCE = { signOuts: 1, signedInAfter: false };
+
+  it('hears of a sign-out the server heard of, once', async () => {
+    network = (request) => (isLogout(request) ? loggedOut() : json(200, []));
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+
+    await asked(() => auth.signOut());
+
+    expect(sent.filter(isLogout)).toHaveLength(1);
+    expect(ending()).toEqual(ONCE);
+  });
+
+  /** The client removes the session itself, and says so; the app does not say it again. */
+  it('hears of a sign-out without a network, once', async () => {
+    network = offline;
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(ending()).toEqual(ONCE);
+  });
+
+  /**
+   * The client gives up before it has removed anything, and the app removes the
+   * session itself. The client then had nothing to announce, and the app told
+   * nobody: the unsent letters stayed.
+   */
+  it('hears of a sign-out without a network an hour after the app was last used, once', async () => {
+    network = offline;
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(mockKeychain.size).toBe(0);
+    expect(ending()).toEqual(ONCE);
+    // Announcing it asked nothing more of the network than the attempt to tell the server.
+    expect(sent.filter(isLogout)).toEqual([]);
+  });
+
+  it('hears of a sign-out on a connection that never answers, once', async () => {
+    network = () => new Promise<Response>(() => {});
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(ending()).toEqual(ONCE);
+  });
+
+  it('hears nothing of a sign-out that did not happen', async () => {
+    network = offline;
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    mockRefusal.deletes = true;
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe(
+      'This device could not be signed out. Try again.',
+    );
+
+    expect(state()).toBe('signed in');
+    expect(heard.map(([event]) => event)).not.toContain('SIGNED_OUT');
+  });
+
+  /**
+   * A session that came back afterwards - a renewal that was on its way - is
+   * ended when it arrives, and that is announced too: nothing is left holding
+   * on to the account it brought back.
+   */
+  it('hears of the end of a session that a late renewal brought back', async () => {
+    network = offline;
+    const { client } = await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    await asked(() => auth.signOut());
+    expect(ending()).toEqual(ONCE);
+    network = (request) =>
+      isRenewal(request) ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)) : loggedOut();
+
+    await passes(61_000);
+    await asked(async () => client.auth.refreshSession({ refresh_token: 'refresh-old' }));
+    await passes(1000);
+
+    const events = heard.map(([event]) => event);
+    expect(events.slice(events.indexOf('SIGNED_OUT'))).toEqual([
+      'SIGNED_OUT',
+      'TOKEN_REFRESHED',
+      'SIGNED_OUT',
+    ]);
+    expect(ending()).toEqual({ signOuts: 2, signedInAfter: false });
+    expect(state()).toBe('signed out');
+  });
+
+  it('hears that the auth server has ended the session, once', async () => {
+    network = (request) => (isRenewal(request) ? sessionOver() : json(200, []));
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+
+    await launch({ beforeOpening: listening });
+    await passes(1000);
+
+    expect(state()).toBe('signed out');
+    expect(ending()).toEqual(ONCE);
+  });
+
+  it('hears it once when the database refuses the token and the auth server the renewal', async () => {
+    network = (request) => {
+      if (isRenewal(request)) return sessionOver();
+      return request.url.includes('/rest/v1/')
+        ? json(401, { code: 'PGRST303', details: null, hint: null, message: 'JWT expired' })
+        : authRefusal(403, 'bad_jwt', 'invalid JWT: token has invalid claims: token is expired');
+    };
+    const { client } = await opened(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+
+    await asked(async () => client.rpc('get_roost'));
+
+    expect(state()).toBe('signed out');
+    expect(ending()).toEqual(ONCE);
+  });
+
+  it.each<[string, () => Response | Promise<Response>]>([
+    ['when the server is told', noSuchUser],
+    ['when the server cannot be told', offline],
+  ])('hears of an account deleted, once, %s', async (_, logout) => {
+    network = (request) => {
+      if (isDeletion(request)) return new Response(null, { status: 204 });
+      return isLogout(request) ? logout() : json(200, []);
+    };
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
+
+    expect(ending()).toEqual(ONCE);
+  });
+
+  it('hears of an account found to be gone, once', async () => {
+    network = (request) => {
+      if (isDeletion(request)) return offline();
+      return isWhoAmI(request) || isLogout(request) ? noSuchUser() : json(200, []);
+    };
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+
+    expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(ending()).toEqual(ONCE);
+  });
+});
+
+/**
  * The auth server's answers are written for developers, and until now most of
  * them reached the form as they came: "Database error saving new user" for a
  * username that was taken, "User is banned", "Unexpected token '<'". These are

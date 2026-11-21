@@ -50,6 +50,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  */
 let signedOutUnheard = false;
 
+/**
+ * How many sign-outs the client has announced. Whatever else the app keeps for
+ * the signed-in account - the letters not sent yet - listens to the client,
+ * not to this provider, and lets go of the account when the client announces
+ * a sign-out. So a sign-out the app finishes by itself still has to be
+ * announced by the client, and only once: this says whether it already was.
+ */
+let signOutsAnnounced = 0;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
@@ -79,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Covers sign-in, sign-out, token refresh and expiry from one place, so no
     // screen has to remember to update the session itself.
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
+      if (event === 'SIGNED_OUT') signOutsAnnounced += 1;
       if (!active) return;
       // The client also says "no session" when it only could not renew one
       // just now. Whoever is signed in stays so for as long as the session is
@@ -103,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     async function signOut() {
+      const announcedBefore = signOutsAnnounced;
       // The server is asked first: only that ends the session on the
       // courier's other devices as well.
       const heard = await supabase.auth.signOut().then(
@@ -124,6 +135,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('This device could not be signed out. Try again.', { cause });
       }
       setSession(null);
+
+      // Nor has the client announced anything, then, and whatever listens to
+      // it would go on holding the account. With nothing stored any more,
+      // signing out on this device alone sends nothing and is announced. When
+      // the client had removed the session after all, it has said so.
+      if (signOutsAnnounced === announcedBefore) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      }
     }
 
     return {
