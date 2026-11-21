@@ -13,6 +13,7 @@ import { TextField } from '@/components/text-field';
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
+import { validateDisplayName } from '@/features/auth/validation';
 import { cityName, describeCity } from '@/features/cities/search';
 import {
   fetchFriendships,
@@ -85,8 +86,16 @@ const HELD_BACK =
 export default function ComposeScreen() {
   const router = useRouter();
   // Whom the letter is for, and by what name: "Write back" passes both, so
-  // that someone who is no longer a friend can be named here.
-  const { to, name: named } = useLocalSearchParams<{ to?: string; name?: string }>();
+  // that someone who is no longer a friend can be named here. A param given
+  // twice comes as a list.
+  const { to, name: given } = useLocalSearchParams<{ to?: string; name?: string | string[] }>();
+  // The name is the route's, and a link from anywhere can put any text there:
+  // a line break, characters that turn the sentence round, a paragraph. It is
+  // shown only if the display-name rule takes it - as it takes every name the
+  // app itself puts there, a username with its @ too - and otherwise left out,
+  // as if none had been given. (Found in review.)
+  const named =
+    typeof given === 'string' && validateDisplayName(given) === null ? given.trim() : null;
   const { session } = useAuth();
   const courierId = session?.user.id;
   const { profile, error: profileError, isGone, reload: reloadProfile } = useProfile();

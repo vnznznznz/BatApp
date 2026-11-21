@@ -19,8 +19,11 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockSetParams = jest.fn();
-/** The route's search params, as the screen reads them. */
-const mockParams: { to?: string; name?: string } = {};
+/**
+ * The route's search params, as the screen reads them. A param given twice
+ * comes as a list.
+ */
+const mockParams: { to?: string; name?: string | string[] } = {};
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
@@ -524,6 +527,45 @@ describe('ComposeScreen', () => {
         }
       },
     );
+
+    /**
+     * The name is the route's, and a link from anywhere can put any text there:
+     * a line break, characters that turn the sentence round, a paragraph. The
+     * screen showed it as it came. A name the display-name rule refuses could
+     * be nobody's, and is not shown: the screen says what it says when the
+     * route gives no name.
+     */
+    it.each<[string, string | string[]]>([
+      ['a line break', 'Bruno\nKraft'],
+      ['characters that turn the text round', 'Bruno \u202Eeman'],
+      ['more than a name can hold', 'B'.repeat(41)],
+      ['nothing to see', '\u200B\u200B'],
+      ['two names, from the param given twice', ['Bruno Kraft', 'Someone Else']],
+    ])('names nobody when the route gives what could be nobody’s name: %s', async (_, name) => {
+      mockParams.to = 'user-bruno';
+      mockParams.name = name;
+      await renderScreen(<ComposeScreen />);
+
+      expect(
+        await screen.findByText('You can only write to friends. Choose one below.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/no longer among your friends/)).toBeNull();
+    });
+
+    /** As the rule judges a name: without the blank space around it, and up to 40 characters. */
+    it('names them by a name the rule takes, without the blank space around it', async () => {
+      const longest = 'B'.repeat(40);
+      mockParams.to = 'user-bruno';
+      mockParams.name = `  ${longest}  `;
+      await renderScreen(<ComposeScreen />);
+
+      expect(
+        await screen.findByText(
+          `${longest} is no longer among your friends, so you cannot write to them.`,
+          { exact: true, normalizer: (text: string) => text },
+        ),
+      ).toBeOnTheScreen();
+    });
 
     /** A friend is written to under their own name, whatever name the route gives. */
     it('opens the letter to a friend whatever name the route gives', async () => {
