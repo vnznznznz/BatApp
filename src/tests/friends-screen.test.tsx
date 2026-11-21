@@ -349,6 +349,42 @@ describe('FriendsScreen', () => {
     });
   });
 
+  describe('friends', () => {
+    /**
+     * Beside Write and Remove, on a 360dp phone, a friend's name and username
+     * were cut to a few characters: "Wilhelmina …", "@sowznn_f_ww…". The
+     * buttons sit under the text instead, at every text size.
+     */
+    it('gives a friend’s name and username the whole width, with Write and Remove beneath', async () => {
+      const longName = 'sowznn_f_wwilhelmina';
+      jest
+        .spyOn(Dimensions, 'get')
+        .mockReturnValue({ width: 360, height: 740, scale: 3, fontScale: 1 });
+      serve(() => [
+        {
+          ...anna,
+          friend: { ...anna.friend, username: longName, displayName: 'Wilhelmina Oyelaran-Smith' },
+        },
+      ]);
+      await renderScreen(<FriendsScreen />);
+
+      for (const text of [`@${longName}`, 'Wilhelmina Oyelaran-Smith']) {
+        const rows = rowsAround(await screen.findByText(text));
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+          expect(within(row).queryByRole('button', { name: /^Write to/ })).toBeNull();
+          expect(within(row).queryByRole('button', { name: /^Remove/ })).toBeNull();
+        }
+      }
+      expect(
+        screen.getByRole('button', { name: 'Write to Wilhelmina Oyelaran-Smith' }),
+      ).toBeEnabled();
+      expect(
+        screen.getByRole('button', { name: 'Remove Wilhelmina Oyelaran-Smith' }),
+      ).toBeEnabled();
+    });
+  });
+
   describe('requests waiting for the courier', () => {
     it('lists someone who asked, by name, with when they asked', async () => {
       serve(() => [carla]);

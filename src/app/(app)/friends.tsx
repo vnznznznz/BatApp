@@ -272,6 +272,10 @@ export default function FriendsScreen() {
                 detail={describeRoute(friendship)}
                 onPress={() => open(friendship)}
                 accessibilityHint={OPEN_HINT}
+                // Under the text, which needs the whole width: beside Write
+                // and Remove a name and username were cut to a few characters
+                // on a 360dp phone.
+                actionsBelow
                 actions={
                   <>
                     <Button
