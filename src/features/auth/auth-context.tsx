@@ -27,15 +27,37 @@ export type AuthContextValue = {
   session: Session | null;
   /** True until the stored session has been restored, or found to be absent. */
   isRestoring: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
   /**
-   * Resolves with whether the account still needs an emailed confirmation
-   * before it can be used. That depends on a project setting rather than on
-   * anything the app controls, so it is reported rather than assumed.
+   * True while a password reset is being finished: from the moment its code
+   * goes to be checked until the new password is saved, or the courier signs
+   * out. The code signs them in, and the root layout holds the way into the
+   * app until the password they will sign in with is set.
+   */
+  isFinishingReset: boolean;
+  /**
+   * Resolves with whether the address still has to be confirmed with the code
+   * emailed to it before the account can be used.
+   */
+  signIn: (email: string, password: string) => Promise<{ needsEmailConfirmation: boolean }>;
+  /**
+   * Resolves with whether the account still needs the code emailed to its
+   * address before it can be used. That depends on a project setting rather
+   * than on anything the app controls, so it is reported rather than assumed.
    */
   signUp: (details: SignUpDetails) => Promise<{ needsEmailConfirmation: boolean }>;
+  /** Confirms an account's address with the code emailed to it, which signs the courier in. */
+  confirmEmail: (email: string, code: string) => Promise<void>;
+  /** Emails a new code for confirming the address. The one before stops working. */
+  resendConfirmationCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Emails a code for setting a new password, if the address has an account. */
   sendPasswordReset: (email: string) => Promise<void>;
+  /**
+   * Checks the code from a reset email. That signs the courier in, and the
+   * reset is finished by `setNewPassword`.
+   */
+  verifyResetCode: (email: string, code: string) => Promise<void>;
+  setNewPassword: (password: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
 };
 
@@ -49,8 +71,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * what it brings and announces it, and the device would be signed in again
  * with nobody having signed in. A session announced while this is set is
  * therefore not taken, but ended - with the server, now that it answers.
- * Signing in or up, which the person does, clears it; so must any other way
- * of signing in that is added here.
+ * Signing in or up, which the person does, clears it, as does each code from
+ * an email; so must any other way of signing in that is added here.
  */
 let signedOutUnheard = false;
 
@@ -75,6 +97,7 @@ const signOutsSoFar = () => signOutsAnnounced;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
+  const [isFinishingReset, setIsFinishingReset] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -103,6 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (event === 'SIGNED_OUT') signOutsAnnounced += 1;
       if (!active) return;
+      // A reset cannot be finished without the session its code brought. Every
+      // sign-out is announced, the app's own included (see signOutsAnnounced).
+      if (event === 'SIGNED_OUT') setIsFinishingReset(false);
       // The client also says "no session" when it only could not renew one
       // just now. Whoever is signed in stays so for as long as the session is
       // on this device; the client removes it before it announces a sign-out.
@@ -162,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       session,
       isRestoring,
+      isFinishingReset,
 
       async signIn(email, password) {
         signedOutUnheard = false;
@@ -169,7 +196,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: email.trim(),
           password,
         });
+        // Said only once the password has been found right: the address is
+        // still waiting for its code, and the form asks for it.
+        if (error?.code === 'email_not_confirmed') return { needsEmailConfirmation: true };
         if (error) throw explained(error);
+        return { needsEmailConfirmation: false };
       },
 
       async signUp({ email, password, username, displayName }) {
@@ -185,6 +216,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
           },
         });
+        // An address that has an account already is answered as a new one is,
+        // and the form says what is true of both: a code is on its way if the
+        // address is new, and if it has an account, signing in is the way in.
+        // Telling the two apart would let anyone check who has an account here.
+        // The auth server tells by itself - "User already registered" - while
+        // confirmation by phone is off (GO-LIVE), but at least the app does not.
+        // A code that went to the address a moment ago is one on its way too.
+        if (error?.code === 'user_already_exists' || isCodeJustSent(error)) {
+          return { needsEmailConfirmation: true };
+        }
         if (error) throw explained(error);
 
         // With email confirmation enabled, Supabase creates the user but hands
@@ -193,11 +234,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { needsEmailConfirmation: data.session === null };
       },
 
+      async confirmEmail(email, code) {
+        signedOutUnheard = false;
+        const { error } = await supabase.auth.verifyOtp({
+          type: 'signup',
+          email: email.trim(),
+          token: code,
+        });
+        if (error) throw explained(error);
+      },
+
+      async resendConfirmationCode(email) {
+        const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+        if (error) throw explained(error);
+      },
+
       signOut,
 
       async sendPasswordReset(email) {
+        // No address to return to: the email carries a code to type in, and no
+        // link that could bring a session back through the app's URL scheme.
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+        // For an address without an account the auth server answers alike
+        // every time, and sends nothing. Two answers come only for an address
+        // that has one: a code went to it less than a minute ago, or the email
+        // to it could not be sent. Both are taken for sent, or they would tell
+        // anyone who asked which addresses have an account; the screen that
+        // follows says what to do when no code arrives.
+        if (error && !isCodeJustSent(error) && !isSendingFailure(error)) throw explained(error);
+      },
+
+      async verifyResetCode(email, code) {
+        signedOutUnheard = false;
+        // Before the code goes: the session it brings is announced while the
+        // answer is still arriving, and must find the way into the app held.
+        setIsFinishingReset(true);
+        let error: AuthError | null;
+        try {
+          ({ error } = await supabase.auth.verifyOtp({
+            type: 'recovery',
+            email: email.trim(),
+            token: code,
+          }));
+        } catch (cause) {
+          setIsFinishingReset(false);
+          throw cause;
+        }
+        if (error) {
+          setIsFinishingReset(false);
+          throw explained(error);
+        }
+      },
+
+      async setNewPassword(password) {
+        const { error } = await supabase.auth.updateUser({ password });
+        // Signed in by the code all the same: the screen says so, and the
+        // courier can try another password, or sign out.
         if (error) throw explained(error);
+        // The reset is finished, and the way into the app opens.
+        setIsFinishingReset(false);
       },
 
       async deleteAccount() {
@@ -229,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signOut();
       },
     };
-  }, [session, isRestoring]);
+  }, [session, isRestoring, isFinishingReset]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
 }
@@ -257,6 +352,23 @@ const isAccountGone = (error: AuthError | null) =>
  */
 export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try another.';
 
+/**
+ * Said for a code from an email that was not taken. Mistyped, run out, used
+ * already or replaced by a newer one, the auth server answers each alike, so
+ * the words fit them all. The forms look for them, to show them at the code.
+ */
+export const CODE_DID_NOT_WORK =
+  'That code did not work. Check it against the newest email, or ask for a new one.';
+
+/** The answer for an email asked for within a minute of the last one to the address. */
+const CODE_JUST_SENT = /only request this after (\d+) seconds?/;
+
+const isCodeJustSent = (error: AuthError | null) =>
+  error !== null && CODE_JUST_SENT.test(error.message.toLowerCase());
+
+const isSendingFailure = (error: AuthError) =>
+  error.message.toLowerCase().includes('error sending');
+
 const NO_CONNECTION = 'No connection. Check your network and try again.';
 const NOT_ANSWERING = 'The server is not answering as it should. Try again in a little while.';
 
@@ -275,11 +387,16 @@ function describeAuthError(error: AuthError): string {
   if (said.includes('invalid login credentials')) {
     return 'That email and password do not match an account.';
   }
+  // Signing in and up answer these two with the screen for the code, and
+  // these words are for wherever else they might come from.
   if (said.includes('email not confirmed')) {
     return 'Check your email and confirm your address first.';
   }
   if (said.includes('user already registered')) {
     return 'There is already an account with that email address.';
+  }
+  if (error.code === 'otp_expired' || said.includes('token has expired or is invalid')) {
+    return CODE_DID_NOT_WORK;
   }
   // The profile is made by a trigger as the account is saved, and whatever
   // the trigger refuses, the auth server reports as this, with no reason - a
@@ -295,9 +412,13 @@ function describeAuthError(error: AuthError): string {
 
   // Two limits on emails. One is per address, a minute or so apart; the other
   // is the whole project's allowance, counted by the hour, which no minute's
-  // wait - and nothing the person does - brings back.
-  const wait = /only request this after (\d+) seconds/.exec(said);
-  if (wait) return `An email was sent a moment ago. Ask for another in ${wait[1]} seconds.`;
+  // wait - and nothing the person does - brings back. Every email carries a
+  // code. The local servers wait a second, and count what is left down to 0.
+  const wait = CODE_JUST_SENT.exec(said);
+  if (wait) {
+    const seconds = Number(wait[1]);
+    return `A code was sent a moment ago. Ask for a new one in ${seconds > 1 ? `${seconds} seconds` : 'a second'}.`;
+  }
   if (said.includes('email rate limit')) {
     return 'Too many emails have been sent for now. Try again in an hour.';
   }

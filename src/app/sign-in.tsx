@@ -8,6 +8,7 @@ import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
+import { ConfirmEmail } from '@/features/auth/confirm-email';
 import { validateEmail, validatePassword } from '@/features/auth/validation';
 
 export default function SignInScreen() {
@@ -19,6 +20,8 @@ export default function SignInScreen() {
   const [errors, setErrors] = useState<{ email?: string | null; password?: string | null }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The address, as sent, while it is waiting for the code that confirms it.
+  const [unconfirmed, setUnconfirmed] = useState<string | null>(null);
   const passwordField = useRef<TextInput>(null);
 
   async function submit() {
@@ -29,14 +32,25 @@ export default function SignInScreen() {
 
     setBusy(true);
     try {
-      await signIn(email, password);
-      // The root layout sends the user onward once the session lands (see
-      // RootNavigator in src/app/_layout.tsx); nothing to navigate to from here.
+      const { needsEmailConfirmation } = await signIn(email, password);
+      // Otherwise the root layout sends the user onward once the session lands
+      // (see RootNavigator in src/app/_layout.tsx); nothing to navigate to here.
+      if (needsEmailConfirmation) setUnconfirmed(email.trim());
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
       setBusy(false);
     }
+  }
+
+  if (unconfirmed) {
+    return (
+      <ConfirmEmail
+        email={unconfirmed}
+        reason="not-confirmed"
+        onBack={() => setUnconfirmed(null)}
+      />
+    );
   }
 
   return (

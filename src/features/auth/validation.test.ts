@@ -1,10 +1,12 @@
 import {
+  EMAIL_CODE_LENGTH,
   EMAIL_NOT_ACCEPTED,
   normaliseUsername,
   PASSWORD_MAX_BYTES,
   PASSWORD_MIN_LENGTH,
   validateDisplayName,
   validateEmail,
+  validateEmailCode,
   validatePassword,
   validateUsername,
 } from '@/features/auth/validation';
@@ -191,4 +193,24 @@ describe('validateDisplayName', () => {
     expect(validateDisplayName('\n  Anna Weber \t')).toBeNull();
     expect(validateDisplayName(` ${'a'.repeat(40)} `)).toBeNull();
   });
+});
+
+describe('validateEmailCode', () => {
+  it('asks for the code when there is none', () => {
+    expect(validateEmailCode('')).toBe('Enter the code from the email.');
+  });
+
+  it('takes a code of exactly as many digits as the emails have', () => {
+    expect(EMAIL_CODE_LENGTH).toBe(8);
+    expect(validateEmailCode('12345678')).toBeNull();
+    expect(validateEmailCode('00000000')).toBeNull();
+  });
+
+  /** Asking the server about a code that cannot be one only uses up an attempt. */
+  it.each(['1234567', '123456', '123456789', '1234 5678', '1234567a'])(
+    'refuses %p, which is not a code',
+    (code) => {
+      expect(validateEmailCode(code)).toBe('The code has 8 digits.');
+    },
+  );
 });

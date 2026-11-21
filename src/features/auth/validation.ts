@@ -29,6 +29,12 @@ export const PASSWORD_MAX_BYTES = 72;
 const DISPLAY_NAME_MAX_LENGTH = 40;
 
 /**
+ * How many digits the codes in Night Courier's emails have: otp_length in
+ * supabase/config.toml, which the auth server sends them with.
+ */
+export const EMAIL_CODE_LENGTH = 8;
+
+/**
  * Said for an address the auth server does not take, whether it is the app
  * that sees it first or the server that refuses it.
  */
@@ -94,6 +100,18 @@ export function validateDisplayName(value: string): string | null {
   // Characters as the database counts them, not UTF-16 units: one emoji is two
   // of those, and a name of 21 emoji was refused here and taken there.
   if ([...name].length > DISPLAY_NAME_MAX_LENGTH) return 'That name is a little long.';
+  return null;
+}
+
+/**
+ * A code from an email, as the code field hands it over: digits only. One that
+ * cannot be a code is not sent, where it would only use up an attempt.
+ */
+export function validateEmailCode(code: string): string | null {
+  if (!code) return 'Enter the code from the email.';
+  if (code.length !== EMAIL_CODE_LENGTH || !/^\d+$/.test(code)) {
+    return `The code has ${EMAIL_CODE_LENGTH} digits.`;
+  }
   return null;
 }
 

@@ -4,16 +4,29 @@ import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-nativ
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignInScreen from '@/app/sign-in';
+import { announce } from '@/lib/announce';
+
+const mockedAnnounce = jest.mocked(announce);
 
 const mockSignIn = jest.fn();
+const mockConfirmEmail = jest.fn();
+const mockResendConfirmationCode = jest.fn();
+const mockReplace = jest.fn();
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: mockReplace }),
 }));
 
 jest.mock('@/features/auth/auth-context', () => ({
-  useAuth: () => ({ signIn: mockSignIn }),
+  ...jest.requireActual<object>('@/features/auth/auth-context'),
+  useAuth: () => ({
+    signIn: mockSignIn,
+    confirmEmail: mockConfirmEmail,
+    resendConfirmationCode: mockResendConfirmationCode,
+  }),
 }));
+
+jest.mock('@/lib/announce', () => ({ announce: jest.fn() }));
 
 /** Every KeyboardAvoidingView drawn, by the behaviour it was given. */
 const mockKeyboardAvoidingViews: unknown[] = [];
@@ -75,6 +88,10 @@ const keyboard = (event: 'keyboardDidShow' | 'keyboardDidHide', height: number) 
 
 beforeEach(() => {
   mockSignIn.mockReset();
+  mockConfirmEmail.mockReset();
+  mockResendConfirmationCode.mockReset();
+  mockReplace.mockReset();
+  mockedAnnounce.mockReset();
   mockKeyboardAvoidingViews.length = 0;
 });
 
@@ -119,7 +136,7 @@ describe('SignInScreen', () => {
     });
 
     it('signs in from the password’s key', async () => {
-      mockSignIn.mockResolvedValue(undefined);
+      mockSignIn.mockResolvedValue({ needsEmailConfirmation: false });
       const user = userEvent.setup();
       await renderScreen(<SignInScreen />);
       await user.type(screen.getByLabelText('Email'), 'anna@example.com');
@@ -130,6 +147,82 @@ describe('SignInScreen', () => {
 
       expect(mockSignIn).toHaveBeenCalledWith('anna@example.com', 'a-good-password');
       expect(screen.getByLabelText('Password')).toHaveProp('returnKeyType', 'go');
+    });
+  });
+
+  /**
+   * "Check your email and confirm your address first" was all the form said,
+   * and it led nowhere: a link that had run out could not be sent again. The
+   * auth server says this only for the right password, so the code screen
+   * tells nobody anything they did not know.
+   */
+  describe('an address still waiting for its code', () => {
+    const INTRO =
+      'Your account is waiting for the code we sent to anna@example.com. Type it in below. ' +
+      'If you cannot find it, or it no longer works, ask for a new one.';
+
+    let user: ReturnType<typeof userEvent.setup>;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function signedInUnconfirmed() {
+      mockSignIn.mockResolvedValue({ needsEmailConfirmation: true });
+      await renderScreen(<SignInScreen />);
+      await user.type(screen.getByLabelText('Email'), ' anna@example.com ');
+      await user.type(screen.getByLabelText('Password'), 'a-good-password');
+      await user.press(screen.getByRole('button', { name: 'Sign in' }));
+      expect(screen.getByText('Confirm your address')).toBeOnTheScreen();
+    }
+
+    const button = (name: string) => screen.getByRole('button', { name });
+
+    it('asks for the code sent to the address', async () => {
+      await signedInUnconfirmed();
+
+      expect(screen.getByText(INTRO)).toBeOnTheScreen();
+      expect(screen.getByLabelText('Code')).toHaveProp('textContentType', 'oneTimeCode');
+    });
+
+    it('confirms the address with the code, which signs the courier in', async () => {
+      mockConfirmEmail.mockResolvedValue(undefined);
+      await signedInUnconfirmed();
+
+      await user.type(screen.getByLabelText('Code'), '87654321');
+      await user.press(button('Confirm'));
+
+      expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '87654321');
+    });
+
+    /** The code may be days old, or lost: a new one can be asked for at once. */
+    it('sends a new code at once when asked, and waits a minute before the next', async () => {
+      mockResendConfirmationCode.mockResolvedValue(undefined);
+      await signedInUnconfirmed();
+      expect(button('Send the code again')).toBeEnabled();
+
+      await user.press(button('Send the code again'));
+
+      expect(mockResendConfirmationCode).toHaveBeenCalledWith('anna@example.com');
+      const resent = 'A new code is on its way to anna@example.com. Only the newest code works.';
+      expect(screen.getByText(resent)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(resent);
+      expect(button('Send the code again')).toBeDisabled();
+    });
+
+    it('goes back to the form, with the address still there', async () => {
+      await signedInUnconfirmed();
+
+      await user.press(button('Back'));
+
+      expect(screen.queryByText('Confirm your address')).toBeNull();
+      expect(screen.getByLabelText('Email').props.value).toBe(' anna@example.com ');
+      expect(mockReplace).not.toHaveBeenCalled();
     });
   });
 

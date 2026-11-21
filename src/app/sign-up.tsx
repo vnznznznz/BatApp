@@ -10,6 +10,7 @@ import { ToggleRow } from '@/components/toggle-row';
 import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import { USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
+import { ConfirmEmail } from '@/features/auth/confirm-email';
 import {
   validateDisplayName,
   validateEmail,
@@ -61,10 +62,10 @@ export default function SignUpScreen() {
     setBusy(true);
     try {
       const { needsEmailConfirmation } = await signUp({ email, password, username, displayName });
-      // With confirmation on, no session arrives yet — say so rather than leave
-      // the user on a form that appears to have done nothing. With it off, the
-      // session lands immediately and the route guard takes them onward, so
-      // showing "check your email" would be a lie they would wait on.
+      // With confirmation on, no session arrives yet: the code emailed to the
+      // address is asked for. With it off, the session lands immediately and
+      // the route guard takes them onward, so asking for a code would be a lie
+      // they would wait on.
       if (needsEmailConfirmation) setSentTo(email.trim());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Something went wrong.';
@@ -77,18 +78,9 @@ export default function SignUpScreen() {
   }
 
   if (sentTo) {
-    return (
-      <Screen center scroll style={styles.screen}>
-        <Text variant="title" center>
-          Check your email
-        </Text>
-        <Text variant="body" tone="secondary" center style={styles.confirmBody}>
-          We sent a confirmation link to {sentTo}. Open it, and your {BATS_PER_USER} bats will be
-          waiting.
-        </Text>
-        <Button label="Back to sign in" onPress={() => router.replace('/sign-in')} />
-      </Screen>
-    );
+    // Back from there to this form, with everything typed still in it, for an
+    // address that was mistyped.
+    return <ConfirmEmail email={sentTo} reason="signed-up" onBack={() => setSentTo(null)} />;
   }
 
   return (
@@ -206,6 +198,5 @@ const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
   subtitle: { marginTop: Spacing.xs },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
-  confirmBody: { marginVertical: Spacing.lg },
   rules: { lineHeight: 19 },
 });

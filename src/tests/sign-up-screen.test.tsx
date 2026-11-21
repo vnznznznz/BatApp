@@ -1,4 +1,4 @@
-import { AuthRetryableFetchError } from '@supabase/supabase-js';
+import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
@@ -11,6 +11,8 @@ import { announce } from '@/lib/announce';
 import { openLink } from '@/lib/links';
 
 const mockSignUp = jest.fn();
+const mockConfirmEmail = jest.fn();
+const mockResendConfirmationCode = jest.fn();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 
@@ -30,7 +32,14 @@ jest.mock('@/features/auth/auth-context', () => {
   );
   return {
     ...actual,
-    useAuth: () => (mockAuth.real ? actual.useAuth() : { signUp: mockSignUp }),
+    useAuth: () =>
+      mockAuth.real
+        ? actual.useAuth()
+        : {
+            signUp: mockSignUp,
+            confirmEmail: mockConfirmEmail,
+            resendConfirmationCode: mockResendConfirmationCode,
+          },
   };
 });
 
@@ -139,6 +148,8 @@ beforeEach(() => {
   mockAuth.real = false;
   mockAuth.serverSignUp.mockReset();
   mockSignUp.mockReset();
+  mockConfirmEmail.mockReset();
+  mockResendConfirmationCode.mockReset();
   mockPush.mockReset();
   mockReplace.mockReset();
   mockLinks.privacyPolicy = null;
@@ -259,15 +270,13 @@ describe('SignUpScreen', () => {
   });
 
   it('reports a failure without clearing what was typed', async () => {
-    mockSignUp.mockRejectedValue(new Error('There is already an account with that email address.'));
+    mockSignUp.mockRejectedValue(new Error('The email could not be sent. Try again later.'));
     await renderScreen(<SignUpScreen />);
 
     await fillForm();
     await fireEvent.press(screen.getByText('Create account'));
 
-    expect(
-      screen.getByText('There is already an account with that email address.'),
-    ).toBeOnTheScreen();
+    expect(screen.getByText('The email could not be sent. Try again later.')).toBeOnTheScreen();
     expect(screen.getByLabelText('Email').props.value).toBe('anna@example.com');
   });
 
@@ -324,6 +333,206 @@ describe('SignUpScreen', () => {
 
     expect(screen.queryByText('That username may already be taken. Try another.')).toBeNull();
     expect(screen.getByText('Check your email')).toBeOnTheScreen();
+  });
+
+  /**
+   * With email confirmation on, the account waits for the code emailed to its
+   * address. There was only "Check your email" and a link in the email, which
+   * came back through the app's URL scheme with a whole session that the app
+   * never read; a link that had run out was the end of the road.
+   */
+  describe('confirming the address with the code from the email', () => {
+    const CODE_DID_NOT_WORK =
+      'That code did not work. Check it against the newest email, or ask for a new one.';
+    const INTRO =
+      'If anna@example.com is new here, a code is on its way to it. Type it in below, and your ' +
+      '3 bats will be waiting. If you already have an account, sign in instead.';
+    const WAIT = 'You can ask for a new code a minute after the last one.';
+
+    let user: ReturnType<typeof userEvent.setup>;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function signedUp() {
+      mockSignUp.mockResolvedValue({ needsEmailConfirmation: true });
+      await renderScreen(<SignUpScreen />);
+      await fillForm();
+      await user.press(button('Create account'));
+      expect(screen.getByText('Check your email')).toBeOnTheScreen();
+    }
+
+    const codeField = () => screen.getByLabelText('Code');
+    const passes = (ms: number) => act(async () => jest.advanceTimersByTime(ms));
+
+    it('asks for the code, in words true whether or not the address has an account', async () => {
+      await signedUp();
+
+      expect(screen.getByText(INTRO)).toBeOnTheScreen();
+      expect(codeField()).toHaveProp('keyboardType', 'number-pad');
+      expect(codeField()).toHaveProp('accessibilityHint', 'The 8 digits from the email.');
+      expect(button('Confirm')).toBeOnTheScreen();
+      expect(button('Sign in instead')).toBeOnTheScreen();
+    });
+
+    it('confirms the address with the code typed in', async () => {
+      mockConfirmEmail.mockResolvedValue(undefined);
+      await signedUp();
+
+      await user.type(codeField(), '12345678');
+      await user.press(button('Confirm'));
+
+      expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '12345678');
+    });
+
+    it('sends nothing until the code is whole, and says why', async () => {
+      await signedUp();
+
+      await user.type(codeField(), '1234');
+      await user.press(button('Confirm'));
+
+      expect(mockConfirmEmail).not.toHaveBeenCalled();
+      expect(codeField()).toHaveProp('accessibilityHint', 'The code has 8 digits.');
+    });
+
+    it('says at the code when the code did not work', async () => {
+      mockConfirmEmail.mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+      await signedUp();
+
+      await user.type(codeField(), '12345678');
+      await user.press(button('Confirm'));
+
+      expect(screen.getAllByText(CODE_DID_NOT_WORK)).toHaveLength(1);
+      expect(codeField()).toHaveProp('accessibilityHint', CODE_DID_NOT_WORK);
+    });
+
+    it('says other failures under the code, aloud', async () => {
+      const NO_CONNECTION = 'No connection. Check your network and try again.';
+      mockConfirmEmail.mockRejectedValue(new Error(NO_CONNECTION));
+      await signedUp();
+
+      await user.type(codeField(), '12345678');
+      await user.press(button('Confirm'));
+
+      expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+      expect(codeField()).not.toHaveProp('accessibilityHint', NO_CONNECTION);
+      expect(mockedAnnounce).toHaveBeenCalledWith(NO_CONNECTION);
+    });
+
+    /**
+     * The auth server refuses a new code within a minute of the last one, and
+     * says so only for an address that has an account: for any other it
+     * answers as if it had sent one. So the screen waits its minute itself,
+     * whatever the address, and nobody can learn anything from pressing it.
+     */
+    it('lets a new code be asked for a minute after the last one, and then again a minute later', async () => {
+      mockResendConfirmationCode.mockResolvedValue(undefined);
+      await signedUp();
+
+      expect(button('Send the code again')).toBeDisabled();
+      expect(button('Send the code again')).toHaveProp('accessibilityHint', WAIT);
+      expect(screen.getByText(WAIT)).toBeOnTheScreen();
+      await passes(59_000);
+      expect(button('Send the code again')).toBeDisabled();
+      await passes(1_000);
+      expect(button('Send the code again')).toBeEnabled();
+
+      await user.press(button('Send the code again'));
+
+      expect(mockResendConfirmationCode).toHaveBeenCalledWith('anna@example.com');
+      const resent =
+        'If anna@example.com is new here, a new code is on its way to it. Only the newest code works.';
+      expect(screen.getByText(resent)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(resent);
+      expect(button('Send the code again')).toBeDisabled();
+      await passes(60_000);
+      expect(button('Send the code again')).toBeEnabled();
+    });
+
+    it('says why a new code was not sent', async () => {
+      const JUST_SENT = 'A code was sent a moment ago. Ask for a new one in 43 seconds.';
+      mockResendConfirmationCode.mockRejectedValue(new Error(JUST_SENT));
+      await signedUp();
+      await passes(60_000);
+
+      await user.press(button('Send the code again'));
+
+      expect(screen.getByText(JUST_SENT)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(JUST_SENT);
+      expect(button('Send the code again')).toBeEnabled();
+    });
+
+    it('goes to sign in for an address that has an account', async () => {
+      await signedUp();
+
+      await user.press(button('Sign in instead'));
+
+      expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+    });
+
+    /**
+     * A mistyped address has an account now, waiting for a code that goes to
+     * someone else - with the username, until the tidy-up deletes it a week
+     * later. Said where the way back is, in words that are true whether or not
+     * it was so.
+     */
+    it('goes back to the form to correct the address, with everything typed still there', async () => {
+      await signedUp();
+      expect(
+        screen.getByText(
+          'Wrong address? Go back and correct it. You may need another username then: the one ' +
+            'you chose can stay with this address for about a week.',
+        ),
+      ).toBeOnTheScreen();
+
+      await user.press(button('Change the address'));
+
+      expect(screen.queryByText('Check your email')).toBeNull();
+      expect(screen.getByLabelText('Email').props.value).toBe('anna@example.com');
+      expect(screen.getByLabelText('Username').props.value).toBe('AnnaWeber');
+      expect(mockSignUp).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Under the app's own auth context, over the auth server's real answers: a
+     * new address gets an account and no session; one with a confirmed account
+     * gets "User already registered" (GoTrue v2.197, confirmation on). What the
+     * screen then shows has to be the same, to the last word.
+     */
+    it('shows exactly the same for an address that has an account as for a new one', async () => {
+      mockAuth.real = true;
+      const shownFor = async (answer: unknown) => {
+        mockAuth.serverSignUp.mockResolvedValue(answer);
+        await renderScreen(
+          <AuthProvider>
+            <SignUpScreen />
+          </AuthProvider>,
+        );
+        await fillForm();
+        await user.press(button('Create account'));
+        const tree = JSON.stringify(screen.toJSON());
+        await screen.unmount();
+        return tree;
+      };
+
+      const forNew = await shownFor({
+        data: { user: { id: 'user-anna', identities: [{}] }, session: null },
+        error: null,
+      });
+      const forTaken = await shownFor({
+        data: { user: null, session: null },
+        error: new AuthApiError('User already registered', 422, 'user_already_exists'),
+      });
+
+      expect(forNew).toContain('Check your email');
+      expect(forTaken).toBe(forNew);
+    });
   });
 
   /**
