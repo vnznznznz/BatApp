@@ -66,8 +66,8 @@ export default function ProfileScreen() {
   }
 
   async function leave() {
-    // Busy for as long as it takes: the server is asked first, and without a
-    // network the answer is a while in not coming.
+    // Busy until the device is signed out: the server is asked first, for a
+    // few seconds at most.
     setSigningOut(true);
     try {
       await signOut();
