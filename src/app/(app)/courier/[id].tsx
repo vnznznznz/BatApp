@@ -205,11 +205,14 @@ export default function CourierScreen() {
       </View>
 
       <View style={styles.actions}>
+        {/* With their name, as Write back gives it: if the friendship ends
+            before compose has asked who is a friend, compose can say who it
+            is that can no longer be written to. (Found in the browser.) */}
         {friendship.status === 'accepted' ? (
           <Button
             label="Write a letter"
             disabled={busy !== null || !friendship.route}
-            onPress={() => router.push({ pathname: '/compose', params: { to: friend.id } })}
+            onPress={() => router.push({ pathname: '/compose', params: { to: friend.id, name } })}
           />
         ) : null}
         {noCityOfYourOwn ? (

@@ -355,13 +355,22 @@ describe('CourierScreen', () => {
       expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
     });
 
-    it('opens a letter to them', async () => {
+    /**
+     * With their name, as Write back gives it. A friendship that ended between
+     * this page and the letter left compose saying only "You can only write to
+     * friends", not that the one written to was no longer among them. (Found
+     * in the browser.)
+     */
+    it('opens a letter to them, with their name', async () => {
       await openPageOf(anna);
 
       await fireEvent.press(button('Write a letter'));
 
       expect(mockPush).toHaveBeenCalledTimes(1);
-      expect(mockPush).toHaveBeenCalledWith({ pathname: '/compose', params: { to: 'user-anna' } });
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/compose',
+        params: { to: 'user-anna', name: 'Anna Weber' },
+      });
       expect(alertSpy).not.toHaveBeenCalled();
     });
 

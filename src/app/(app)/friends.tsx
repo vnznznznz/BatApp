@@ -131,8 +131,14 @@ export default function FriendsScreen() {
     });
   }
 
+  // With their name, as Write back gives it: if the friendship ends before
+  // compose has asked who is a friend, compose can say who it is that can no
+  // longer be written to. (Found in the browser.)
   function writeTo(friendship: Friendship) {
-    router.push({ pathname: '/compose', params: { to: friendship.friend.id } });
+    router.push({
+      pathname: '/compose',
+      params: { to: friendship.friend.id, name: friendName(friendship.friend) },
+    });
   }
 
   /** Their page: more about them, and the way to block or report them. */

@@ -771,13 +771,22 @@ describe('FriendsScreen', () => {
       ).toBeOnTheScreen();
     });
 
-    it('opens a letter to a friend from their row', async () => {
+    /**
+     * With their name, as Write back gives it. A friendship that ended between
+     * the list and the letter left compose saying only "You can only write to
+     * friends", not that the one written to was no longer among them. (Found
+     * in the browser.)
+     */
+    it('opens a letter to a friend from their row, with their name', async () => {
       serve(() => [anna]);
       await renderScreen(<FriendsScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Write to Anna Weber' }));
 
-      expect(mockPush).toHaveBeenCalledWith({ pathname: '/compose', params: { to: 'user-anna' } });
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/compose',
+        params: { to: 'user-anna', name: 'Anna Weber' },
+      });
       expect(alertSpy).not.toHaveBeenCalled();
     });
 
