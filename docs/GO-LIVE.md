@@ -81,13 +81,14 @@ Recorded where the work is, not only here:
   which is typed into the app together with the new password (`src/app/reset-password.tsx`). It
   reaches people once custom SMTP exists ("Before a second person can sign up").
 - ~~**The link in an auth email hands a whole sign-in to the URL scheme.**~~ Solved: there is no
-  link. Each of the six emails the auth server sends to confirm an address or a sign-in - the
-  confirmation of a new account, the reset, and four the app never asks for - has a template of
-  the app's, with a code to type into the app and no link (`supabase/templates`, named in
-  `supabase/config.toml`). The app names its sign-in flow itself, `flowType: 'implicit'` in
-  `src/lib/supabase.ts`, and not the code flow (PKCE): with no link in any of them, a verifier
-  kept on the phone would protect nothing. The templates go to the hosted project with its config
-  ("Setting up the hosted project", step 2), before custom SMTP.
+  link. Each of the six emails the auth server sends with a code - the confirmation of a new
+  account, the reset, and four the app never asks for (a sign-in code, a change of address, an
+  invitation, a reauthentication) - has a template of the app's, with the code to type into the
+  app and no link (`supabase/templates`, named in `supabase/config.toml`). The app names its
+  sign-in flow itself, `flowType: 'implicit'` in `src/lib/supabase.ts`, and not the code flow
+  (PKCE): with no link in any of them, a verifier kept on the phone would protect nothing. The
+  templates go to the hosted project with its config ("Setting up the hosted project", step 2),
+  before custom SMTP.
 - **Whether an address has an account can still be found out.** The app answers an address that
   has one as it answers any other, with three exceptions. While email confirmation is off,
   sign-up says so plainly, by design: a new address is signed in at once anyway. While the
@@ -263,8 +264,9 @@ removed.
   Where there is nothing to remove, it says so and changes nothing: `there is no account <id>`
   for an account that is gone - deleted by its owner while you were deciding, say - and
   `account <id> has already been removed: the ban on its sign-in ends <time>` for one removed
-  before. An app still signed in to a removed account says that the account no longer exists,
-  with Sign out and Contact; signing in to it again is answered as for a suspended one (below).
+  before. An app still signed in to a removed account says on its roost and its profile that the
+  account no longer exists, and on Letters and Friends that it has been suspended, each time with
+  Sign out and Contact; signing in to it again is answered as for a suspended one (below).
 
   To delete an account without a ban instead - at its owner's request, a child's account, an
   address that was not the person's to sign up with - there is
@@ -491,12 +493,25 @@ tried on a real project**; go slowly there, and correct this page when you know 
 
    **Not yet tried on a real project:** what a real project's settings look like to `config diff`
    (the list above comes from a stand-in holding Supabase's defaults as far as they are known),
-   the settings endpoint on a hosted project (it was read on the local stack), and whether the
-   project takes everything the push sends - codes that last a day above all. This CLI sends
-   `otp_expiry = 86400` without complaint; whether the project has a ceiling of its own is not
-   known. If the push is refused for it, change `otp_expiry` in `supabase/config.toml`, the words
-   "It works for a day" in each template under `supabase/templates`, and
-   `src/tests/email-codes.test.ts`, which holds the two to each other, in one change.
+   the settings endpoint on a hosted project (it was read on the local stack), the check of the
+   texts by a second push, and whether the project takes everything the push sends - codes that
+   last a day above all.
+
+   The check of the texts assumes that the project hands each text back exactly as it was sent.
+   If the second push of that check names the same text as the first did, the project keeps that
+   text in a form of its own, and every further push would name it as well: stop pushing, compare
+   that template in the dashboard (Authentication → Emails, **to check** where exactly) with its
+   file in `supabase/templates`, and correct this page.
+
+   This CLI sends `otp_expiry = 86400` without complaint; whether the project has a ceiling of its
+   own is not known. If the push is refused for it, change these in one change: `otp_expiry` in
+   `supabase/config.toml`; the words "It works for a day" in each template under
+   `supabase/templates` (in `confirmation.html` they run over two lines);
+   `src/tests/email-codes.test.ts`, which holds the two to each other; and the code's life of a
+   day wherever the privacy policy (section 3.10, both languages), the help page
+   (`docs/store/support-page.md`, both languages), `docs/store/gdpr-records.md` (V10),
+   `README.md`, `docs/ARCHITECTURE.md` and this page give it. Then rebuild the pages with a new
+   `EFFECTIVE_DATE` ("Where the web pages live").
 
 3. **Apply the migrations:**
 
@@ -909,24 +924,38 @@ reset. In this order:
    that has a confirmed account differently from one that has none ("Known gaps already logged").
    The SMTP settings themselves can stay in the dashboard: the file does not declare them, so a
    push leaves them alone.
-3. Try it before anyone depends on it: in the app, "I forgot my password", for the operator's own
-   address. The email must come with the subject "Your Night Courier code", eight digits and no
-   link. Type the code into the app with a new password: the app opens, and from then on that
-   password signs in.
+3. Try it before anyone depends on it, with an account of the operator's own on the hosted
+   project: for an address without one the auth server sends nothing, while the app asks for the
+   code all the same. If there is none yet - step 6 of "Setting up the hosted project" deleted its
+   test accounts - sign one up in the app with the operator's address first; while confirmation
+   is off it is signed in at once, so sign out again (Your profile → Sign out). Then, in the app,
+   "I forgot my password", for that address. The email must come with the subject
+   "Your Night Courier code", eight digits and no link. Type the code into the app with a new
+   password: the app opens, and from then on that password signs in.
 4. Turn email confirmation on: `enable_confirmations = true` under `[auth.email]` in
-   `supabase/config.toml`, pushed and checked as in step 2. In the file, as its own comments say,
-   and not in the dashboard alone: otherwise the next `npx supabase@3.2.0 config push --yes`
-   switches confirmation off again, and section 3.10 of the privacy policy stops being true. In
-   the same change, `enable_confirmations = true` under `[auth.sms]` as well, while sign-up by
-   phone stays off (`enabled = false`): `config diff` then lists `auth.sms.enable_confirmations`
-   too if the project has it off, and the push sends both (tried against the stand-in). While the
+   `supabase/config.toml`. In the file, as its own comments say, and not in the dashboard alone:
+   otherwise the next `npx supabase@3.2.0 config push --yes` switches confirmation off again, and
+   section 3.10 of the privacy policy, once step 6 below has changed it, stops being true. In the
+   same change, `enable_confirmations = true` under `[auth.sms]` as well, while sign-up by phone
+   stays off (`enabled = false`): `config diff` then lists `auth.sms.enable_confirmations` too if
+   the project has it off, and the push sends both (tried against the stand-in). While the
    project has it off, the auth server answers a sign-up for an address that has a confirmed
    account with "User already registered", and so tells whoever asks that the address has one;
    the app passes that on to nobody (seen on the local auth server that has email confirmation
    on, and phone confirmation off). With both on, the auth server should answer such a sign-up as
    it answers one for a new address - **to check**, since no server here has both on.
+
+   Push the change and check it as in "Setting up the hosted project", step 2, with one
+   difference: the project's settings (the `curl` in that step's check) must now contain
+   `"mailer_autoconfirm":false` and `"phone_autoconfirm":false`; `true` in either means the push
+   did not reach the project. Then commit the changed `supabase/config.toml`, so that a config
+   push from any checkout keeps confirmation on.
+
 5. Sign up on a device, with an address whose mail you can read: the code arrives, and typed into
    the app it signs the new account in.
+6. Then change section 3.10 of both privacy policies as their TO CHECK and PRÜFEN comments say,
+   and rebuild the pages with a new `EFFECTIVE_DATE` ("Where the web pages live"). Until then the
+   published policy says that an address is not confirmed at sign-up.
 
 Once confirmation is on, an account confirmed by hand - with
 `update auth.users set email_confirmed_at = now() where id = '<id>'`, or any other way, since
