@@ -39,4 +39,29 @@ module.exports = defineConfig([
       },
     },
   },
+  {
+    // A test focused with `.only` is left in by accident: Jest then runs it
+    // alone in its file, skips the rest without a failure and exits 0, so the
+    // typecheck, the format check and CI all stay green with tests not run.
+    // `node --test` honours it only when asked to, which is no reason to keep
+    // one there either. `fit` and `fdescribe` are Jest's other names for it.
+    files: ['src/**', 'scripts/**'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        ...['describe', 'it', 'test'].map((object) => ({
+          object,
+          property: 'only',
+          message: 'A focused test skips every other test in its file: remove `.only`.',
+        })),
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...['fdescribe', 'fit'].map((name) => ({
+          name,
+          message: 'A focused test skips every other test in its file: use `describe` or `it`.',
+        })),
+      ],
+    },
+  },
 ]);
