@@ -877,3 +877,42 @@ describe('FriendsScreen', () => {
     });
   });
 });
+
+/** The one thing left to do for an account that is suspended, besides writing to Night Courier. */
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
+}));
+
+describe('FriendsScreen for a suspended account', () => {
+  const suspended = () => new RpcError(REFUSALS.account_suspended, 'account_suspended');
+
+  /**
+   * "Send request" stayed on under the suspension, with no way out: a request
+   * would only have been refused. (Found in the browser.)
+   */
+  it('offers the way out, and no request to send', async () => {
+    mockSignOut.mockClear();
+    mockedFetchFriendships.mockRejectedValue(suspended());
+    await renderScreen(<FriendsScreen />);
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(sendRequestButton()).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockedRequestFriend).not.toHaveBeenCalled();
+  });
+
+  it('says so, with the way out, when the list shown before is refused', async () => {
+    await renderScreen(<FriendsScreen />);
+    await screen.findByText('Anna Weber');
+    mockedFetchFriendships.mockRejectedValue(suspended());
+
+    await comeBack();
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    expect(sendRequestButton()).toBeDisabled();
+  });
+});

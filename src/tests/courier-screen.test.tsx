@@ -1027,3 +1027,26 @@ describe('CourierScreen', () => {
     });
   });
 });
+
+/** The one thing left to do for an account that is suspended, besides writing to Night Courier. */
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
+}));
+
+describe('CourierScreen for a suspended account', () => {
+  /** As on every page: "Try again" under the suspension would only be refused again. (Found in the browser.) */
+  it('offers the way out, not Try again', async () => {
+    mockSignOut.mockClear();
+    mockedFetchFriendships.mockRejectedValue(
+      new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+    );
+    await renderScreen(<CourierScreen />);
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    await fireEvent.press(button('Sign out'));
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+});

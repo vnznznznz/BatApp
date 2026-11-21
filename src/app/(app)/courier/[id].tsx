@@ -16,6 +16,7 @@ import {
   withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { useProfile } from '@/features/profile/use-profile';
 import { blockCourier } from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
@@ -70,7 +71,13 @@ export default function CourierScreen() {
               {list.error}
             </Text>
             <View style={styles.actions}>
-              <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
+              {/* Asked again, a suspended account would only be refused
+                  again. (Found in the browser.) */}
+              {list.reason === 'account_suspended' ? (
+                <AccountClosedActions />
+              ) : (
+                <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
+              )}
             </View>
           </>
         ) : (

@@ -22,6 +22,7 @@ import {
   withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
 import { confirmAction, notify } from '@/lib/confirm';
@@ -60,6 +61,10 @@ export default function FriendsScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const groups = groupFriendships(list.data ?? []);
+  // The server refuses a suspended account everything: a request would only
+  // be refused, and "Send request" stood on, with no way out. (Found in the
+  // browser.)
+  const suspended = list.reason === 'account_suspended';
 
   async function ask() {
     const problem = validateUsername(username);
@@ -167,9 +172,15 @@ export default function FriendsScreen() {
           autoCorrect={false}
           autoComplete="off"
           returnKeyType="send"
+          editable={!suspended}
           onSubmitEditing={() => void ask()}
         />
-        <Button label="Send request" loading={asking} onPress={() => void ask()} />
+        <Button
+          label="Send request"
+          loading={asking}
+          disabled={suspended}
+          onPress={() => void ask()}
+        />
         {outcome ? (
           <Text variant="caption" tone="available" accessibilityLiveRegion="polite">
             {outcome}
@@ -183,7 +194,14 @@ export default function FriendsScreen() {
         </Text>
       ) : null}
 
-      {list.error && !list.data ? (
+      {suspended ? (
+        <View style={styles.section}>
+          <Text variant="caption" tone="danger">
+            {list.error}
+          </Text>
+          <AccountClosedActions />
+        </View>
+      ) : list.error && !list.data ? (
         <Text variant="caption" tone="danger" style={styles.section}>
           {list.error}
         </Text>

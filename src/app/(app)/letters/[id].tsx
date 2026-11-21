@@ -10,6 +10,7 @@ import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import { describeCity } from '@/features/cities/search';
 import { correspondentName, readMessage, type Letter } from '@/features/messages/messages';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { blockCourier } from '@/features/safety/safety';
 import { flightProgress } from '@/lib/flight';
 import { announce } from '@/lib/announce';
@@ -79,12 +80,18 @@ export default function LetterScreen() {
               {letter.error}
             </Text>
             <View style={styles.actions}>
-              <Button
-                label="Try again"
-                variant="secondary"
-                loading={letter.isRefreshing}
-                onPress={() => void refresh()}
-              />
+              {/* Asked again, a suspended account would only be refused
+                  again. (Found in the browser.) */}
+              {letter.reason === 'account_suspended' ? (
+                <AccountClosedActions />
+              ) : (
+                <Button
+                  label="Try again"
+                  variant="secondary"
+                  loading={letter.isRefreshing}
+                  onPress={() => void refresh()}
+                />
+              )}
             </View>
           </>
         ) : (
@@ -244,7 +251,7 @@ const styles = StyleSheet.create({
   meta: { marginTop: Spacing.lg, gap: Spacing.xs },
   path: { marginTop: Spacing.lg },
   line: { lineHeight: 19 },
-  actions: { alignSelf: 'stretch', marginTop: Spacing.xl },
+  actions: { alignSelf: 'stretch', marginTop: Spacing.xl, gap: Spacing.sm },
   safety: {
     alignSelf: 'stretch',
     marginTop: Spacing.xl,
