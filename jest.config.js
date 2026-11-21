@@ -28,4 +28,11 @@ module.exports = {
   },
   testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'],
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.test.{ts,tsx}'],
+  // React Native loads its components on first use, and with a cold transform
+  // cache - a fresh checkout, CI - the first render compiles them: seconds of
+  // work, measured at over five on four cores, that count against whichever
+  // test runs first in each file. Which files start first depends on their
+  // size and the number of cores, so the limit is the same for every file
+  // rather than raised in the ones that happened to time out once.
+  testTimeout: 20_000,
 };

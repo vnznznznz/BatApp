@@ -7,11 +7,6 @@ import LettersScreen from '@/app/(app)/letters/index';
 import type { InboxRow, LetterRow } from '@/features/messages/messages';
 import type { ApiError } from '@/lib/rpc-error';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work, measured at over five
-// on four cores, that would otherwise count against whichever test runs first.
-jest.setTimeout(20_000);
-
 const mockPush = jest.fn();
 /** The route's params: the id of the letter that is open. */
 const mockParams: { id: string } = { id: '' };

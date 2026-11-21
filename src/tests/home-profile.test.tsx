@@ -5,11 +5,6 @@ import HomeScreen from '@/app/(app)/home';
 import { fetchBadges } from '@/features/messages/messages';
 import { fetchRoost } from '@/features/roost/roost';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work, measured at over five
-// on four cores, that would otherwise count against whichever test runs first.
-jest.setTimeout(20_000);
-
 /**
  * Stands in for navigation focus. There is no navigator here, so mounting is
  * the first focus, and `comeBack()` is the roost coming into view again from

@@ -510,9 +510,13 @@ describe('reporting a letter', () => {
     await fill('25 hours');
     assert.equal(await reportLetter(anna, letter), 'reported');
 
-    await db.query(`delete from public.reports`);
-    await fill('1 hour');
-    assert.equal(await reportLetter(anna, letter), 'limit_reached');
+    // Made an hour short of a day ago, they still count: a shorter window
+    // would let more through.
+    for (const age of ['23 hours', '1 hour']) {
+      await db.query(`delete from public.reports`);
+      await fill(age);
+      assert.equal(await reportLetter(anna, letter), 'limit_reached', `reports made ${age} ago`);
+    }
     assert.equal(await count(db, `select 1 from public.reports where message_id is not null`), 0);
   });
 

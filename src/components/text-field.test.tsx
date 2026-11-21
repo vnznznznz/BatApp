@@ -12,6 +12,9 @@ describe('TextField', () => {
     const announce = jest
       .spyOn(AccessibilityInfo, 'announceForAccessibility')
       .mockImplementation(() => {});
+    // React Native's test set-up has already made this a mock, and a spy on a
+    // mock is that mock: it still holds what earlier tests announced.
+    announce.mockClear();
     const { rerender } = await render(<TextField label="Username" value="an" />);
     expect(announce).not.toHaveBeenCalled();
 

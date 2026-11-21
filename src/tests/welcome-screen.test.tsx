@@ -71,11 +71,19 @@ describe('WelcomeScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/sign-in');
   });
 
-  it('sends an already signed-in user onward instead of showing the pitch', async () => {
+  /**
+   * A signed-in user who lands here is on their way to the roost: the root
+   * layout sends them, from wherever a session appears, and app-layout.test.tsx
+   * follows them there on the real router. Meanwhile this screen keeps its
+   * pitch and its ways in from them, and sends nobody anywhere itself.
+   */
+  it('shows an already signed-in user nothing, and leaves sending them on to the root layout', async () => {
     mockAuth.session = { user: { id: 'abc' } };
 
     await renderScreen(<WelcomeScreen />);
 
     expect(screen.queryByText('Night Courier')).toBeNull();
+    expect(screen.queryAllByRole('button')).toEqual([]);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

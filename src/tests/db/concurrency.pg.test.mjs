@@ -28,13 +28,27 @@ import { AUTH_STUB, migrationFiles } from './harness.mjs';
  *
  *   DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres npm run test:db
  *
- * Without it they are skipped, loudly, rather than passing by default.
+ * Without it, on CI they fail: a workflow that lost its database would
+ * otherwise stay green with not one race run. Anywhere else they are skipped,
+ * and the summary counts the skip.
  */
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const SKIP = DATABASE_URL
   ? false
   : 'DATABASE_URL is not set: the concurrency tests need a real Postgres (see this file).';
+/** Set by GitHub Actions, as by most CI services. */
+const ON_CI = Boolean(process.env.CI) && process.env.CI !== 'false';
+
+// A skipped suite counts as no test at all - "# skipped 0" - so what is skipped
+// is said by a test of its own.
+if (SKIP && ON_CI) {
+  it('has a real Postgres to race on', () => {
+    assert.fail(`${SKIP} CI must run them: give the job a database and DATABASE_URL.`);
+  });
+} else if (SKIP) {
+  it('has a real Postgres to race on', { skip: SKIP });
+}
 
 const MIGRATIONS_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -1888,6 +1902,46 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       );
       const { rows: kept } = await admin.query(`select count(*)::int as count from public.reports`);
       assert.equal(kept[0].count, 1);
+    });
+
+    /**
+     * The same for a courier, from two phones at once. The second report looks
+     * for an open one before the first is committed, and finds none; then it
+     * waits for the first at the day's limit, whose lock (in
+     * private.over_report_limit) is held until the first request ends. When it
+     * goes on, only the unique index, reports_courier_once, stands between it
+     * and a second report: its insert is refused there, and the courier is
+     * told it was already reported.
+     */
+    it('records the same courier reported twice at once as one report', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const first = await connectAs(anna);
+      const second = await connectAs(anna);
+      await first.query('begin');
+      await second.query('begin');
+      const report = (session) =>
+        session.query(`select public.report_courier($1, 'harassment') as outcome`, [ben]);
+
+      const one = await report(first);
+      const other = report(second);
+      assert.equal(
+        await settlesWithin(other, 300),
+        false,
+        'the second report did not wait for the first',
+      );
+      await first.query('commit');
+      const two = await other;
+      await second.query('commit');
+
+      assert.deepEqual(
+        [one.rows[0].outcome, two.rows[0].outcome],
+        ['reported', 'already_reported'],
+      );
+      const { rows: kept } = await admin.query(
+        `select reporter_id, reported_id from public.reports`,
+      );
+      assert.deepEqual(kept, [{ reporter_id: anna, reported_id: ben }]);
     });
   });
 

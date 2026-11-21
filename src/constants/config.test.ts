@@ -16,6 +16,15 @@ import {
   VISIBLE_CHARACTER_PATTERN,
 } from '@/constants/config';
 
+// Node built-ins, typed by hand: the project's tsconfig deliberately leaves out
+// Node's types, which describe nothing that exists in React Native.
+declare const __dirname: string;
+const { readdirSync, readFileSync } = jest.requireActual<{
+  readdirSync: (path: string) => string[];
+  readFileSync: (path: string, encoding: 'utf8') => string;
+}>('fs');
+const { join } = jest.requireActual<{ join: (...parts: string[]) => string }>('path');
+
 /**
  * These assertions guard the product rules, not the implementation. They exist
  * so that a change which would turn Night Courier into a different product
@@ -172,5 +181,189 @@ describe('who can join', () => {
   it('lets in no one younger than the age that needs a parent’s permission, and that only with it', () => {
     expect(MINIMUM_AGE).toBeGreaterThan(0);
     expect(PARENTAL_PERMISSION_UNDER).toBeGreaterThan(MINIMUM_AGE);
+  });
+
+  /**
+   * The app reads both ages from these constants, but the privacy policy, the
+   * help page and the store listings say them in fixed words - and it is the
+   * documents that say what the operator decided. A constant changed alone,
+   * or a document changed alone, and the sign-up form would admit people the
+   * policy turns away, or the other way round. Each place a document says who
+   * may join is written out below, `{min}` for MINIMUM_AGE and `{parent}` for
+   * PARENTAL_PERMISSION_UNDER, and must say the same as the constants.
+   */
+  const SAID_IN: Record<string, string[]> = {
+    'privacy-policy.en.md': [
+      'Night Courier is for people aged {min} and over. Anyone under {parent} needs the permission of a parent or guardian.',
+      'At sign-up you only confirm that you are at least {min} and, if you are under {parent}, that a parent or guardian has said yes.',
+      'If I learn that someone is younger than {min}, I delete their account',
+    ],
+    'privacy-policy.de.md': [
+      'Night Courier ist ab {min} Jahren. Wer unter {parent} ist, braucht die Erlaubnis der Eltern oder anderer Erziehungsberechtigter.',
+      'Bei der Registrierung bestätigst du nur, dass du mindestens {min} bist und, falls du unter {parent} bist, die Erlaubnis',
+      'Erfahre ich, dass jemand jünger als {min} ist, lösche ich das Konto',
+    ],
+    'support-page.md': [
+      'You must be at least {min}. If you are under {parent}, you need the permission of a parent or guardian.',
+      'If I learn that an account belongs to someone under {min}, I delete it',
+      'Du musst mindestens {min} Jahre alt sein. Wer unter {parent} ist, braucht die Erlaubnis der Eltern',
+      'Erfahre ich, dass ein Konto jemandem unter {min} gehört, lösche ich es',
+    ],
+    'app-store.md': [
+      "You must be at least {min}, and if you are under {parent} you need a parent's or guardian's permission.",
+      'Du musst mindestens {min} Jahre alt sein. Wenn du unter {parent} bist, brauchst du die Erlaubnis',
+      "Night Courier is for people aged {min} and over; under {parent}, only with a parent's or guardian's permission.",
+      'Override to Higher Age Rating → {min}+',
+    ],
+    'google-play.md': [
+      "You must be at least {min}, and if you are under {parent} you need a parent's or guardian's permission.",
+      'Du musst mindestens {min} Jahre alt sein. Wenn du unter {parent} bist, brauchst du die Erlaubnis',
+      "Night Courier is for people aged {min} and over; under {parent}, only with a parent's or guardian's permission.",
+    ],
+  };
+
+  /** A document as one line of plain words: its sentences are wrapped, and some are bold. */
+  const plainText = (file: string) =>
+    readFileSync(join(__dirname, '..', '..', 'docs', 'store', file), 'utf8')
+      .replace(/\*\*/g, '')
+      .replace(/\s+/g, ' ');
+
+  /** Every age each place in `text` gives, in the order the statement names them. */
+  function agesIn(text: string, statement: string) {
+    const names = [...statement.matchAll(/\{(min|parent)\}/g)].map((match) => match[1]);
+    const pattern = statement
+      .replace(/[.*+?^$()|[\]\\]/g, '\\$&')
+      .replace(/\{(min|parent)\}/g, '(\\d+)');
+    return [...text.matchAll(new RegExp(pattern, 'g'))].map((match) =>
+      Object.fromEntries(names.map((name, index) => [name, Number(match[index + 1])])),
+    );
+  }
+
+  it.each(Object.entries(SAID_IN))('is what %s says, in every place it says it', (file, said) => {
+    const text = plainText(file);
+    const ages = { min: MINIMUM_AGE, parent: PARENTAL_PERMISSION_UNDER };
+
+    for (const statement of said) {
+      const found = agesIn(text, statement);
+      expect({ statement, found: found.length > 0 }).toEqual({ statement, found: true });
+      for (const given of found) {
+        expect({ statement, ...given }).toEqual({
+          statement,
+          ...Object.fromEntries(
+            Object.keys(given).map((name) => [name, ages[name as 'min' | 'parent']]),
+          ),
+        });
+      }
+    }
+  });
+
+  /**
+   * The statements above are the ones that matter most, not all there are:
+   * the listings, the records of processing and the operator's notes give the
+   * ages in many more places, and a 13 changed to 14 in one of them passed.
+   * (Found in review.) So every place a store document gives an age is also
+   * found by the words around the number - "at least 13", "under 16", "ab 13
+   * Jahren", "13+" - and must give one of the two; a span, "13–15", must be
+   * the years that need the permission. A new document is searched too. Not
+   * "older than" or "älter als": the documents say how long records are kept
+   * with them.
+   */
+  const NUMBER = String.raw`(\d+)(?![.,:]?\d)`;
+  /** Where a word starts, in any script: `\b` knows only the letters of English. */
+  const START = String.raw`(?<![\p{L}\p{N}_])`;
+  const AGE_GIVEN = new RegExp(
+    [
+      String.raw`aged ${NUMBER}(?: to ${NUMBER})?`,
+      String.raw`${NUMBER} (?:and|or) (?:over|older|up)\b`,
+      String.raw`(?:at least|under|younger than|below) ${NUMBER}`,
+      String.raw`(?:minimum )?age (?:of |is |was |to )?${NUMBER}`,
+      String.raw`minimum of ${NUMBER}`,
+      String.raw`${NUMBER}- to ${NUMBER}-year-old`,
+      String.raw`${NUMBER}-year-old`,
+      String.raw`${NUMBER} ?– ?${NUMBER}`,
+      String.raw`${NUMBER}\+`,
+      String.raw`(?:MINIMUM_AGE|PARENTAL_PERMISSION_UNDER) = ${NUMBER}`,
+      String.raw`(?:ab|unter|mindestens|jünger als) ${NUMBER}`,
+      String.raw`${NUMBER} Jahre alt`,
+      String.raw`${NUMBER} und älter`,
+      String.raw`von ${NUMBER} bis ${NUMBER}`,
+      String.raw`Altersgrenze (?:ist |von )?${NUMBER}`,
+    ]
+      .map((phrase) => START + phrase)
+      .join('|'),
+    'giu',
+  );
+
+  /**
+   * The numbers in such words that are no age of Night Courier's - counts of
+   * other things, the ages of other rules and of the stores' own scales, and
+   * the age it had until 5 November 2026 - each written as the documents
+   * write it. They are taken out before the documents are searched, and each
+   * must still be in one of them, so that this list says what they say.
+   * Apple's scale and Play's groups come before the parts of them named alone.
+   */
+  const OTHER_NUMBERS: [what: string, where: RegExp][] = [
+    ['a flight within a city', /at least 20 minutes|mindestens 20 Minuten/g],
+    ['a password', /at least 8 characters/g],
+    ['the screenshots for Google Play', /At least 2, at most 8/g],
+    ["Google's closed test", /at least 12 testers/g],
+    ["Google's precise location", /at least 3 km²/g],
+    ['when a data protection officer is needed', /ab 20 Personen/g],
+    ['the age of the rule on sexual content', /(?:involving|sent to) anyone under 18/g],
+    ["Apple's age ratings", /4\+, 9\+, 13\+, 16\+ and 18\+/g],
+    [
+      "the rating Apple's tables give the app before the override",
+      /(?:at|under|as|expected:) 4\+/g,
+    ],
+    ["Play's age groups", /5 and under, 6–8, 9–12, 13–15, 16–17, 18 and over/g],
+    ["Play's age groups below the minimum age", /not 5 and under, not 6–8, not 9–12/g],
+    [
+      "Play's age groups from the permission age up",
+      /16–17,? (?:and|und) 18 (?:and over|und älter)/g,
+    ],
+    [
+      'the minimum age until 5 November 2026',
+      /the minimum age was 12|include 9–12|Kindes unter 12/g,
+    ],
+  ];
+
+  const STORE_DOCUMENTS = readdirSync(join(__dirname, '..', '..', 'docs', 'store')).filter((file) =>
+    file.endsWith('.md'),
+  );
+
+  it('is every age the store documents give, wherever they give one', () => {
+    const contradicting: string[] = [];
+    const notFound = new Set(OTHER_NUMBERS.map(([what]) => what));
+
+    for (const file of STORE_DOCUMENTS) {
+      let text = plainText(file);
+      for (const [what, where] of OTHER_NUMBERS) {
+        text = text.replace(where, () => {
+          notFound.delete(what);
+          return '…';
+        });
+      }
+
+      const given = [...text.matchAll(AGE_GIVEN)];
+      // A search that found nothing would pass whatever the documents said.
+      expect({ file, givesAnAge: given.length > 0 }).toEqual({ file, givesAnAge: true });
+      for (const match of given) {
+        const [first, last] = match
+          .slice(1)
+          .filter((age) => age !== undefined)
+          .map(Number);
+        const right =
+          last === undefined
+            ? first === MINIMUM_AGE || first === PARENTAL_PERMISSION_UNDER
+            : first === MINIMUM_AGE && last === PARENTAL_PERMISSION_UNDER - 1;
+        if (!right) {
+          const at = match.index ?? 0;
+          contradicting.push(`${file}: …${text.slice(Math.max(0, at - 40), at + 40)}…`);
+        }
+      }
+    }
+
+    expect(contradicting).toEqual([]);
+    expect([...notFound]).toEqual([]);
   });
 });

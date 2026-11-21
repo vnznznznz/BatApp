@@ -10,11 +10,6 @@ import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roos
 import { formatTimestamp } from '@/lib/format';
 import { RpcError } from '@/lib/rpc-error';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work, measured at over five
-// on four cores, that would otherwise count against whichever test runs first.
-jest.setTimeout(20_000);
-
 const mockPush = jest.fn();
 
 /**
@@ -146,13 +141,14 @@ function deferred<T>() {
 }
 
 /**
- * Lets time pass as it does on a phone: a second at a time, with the screen
- * rendering in between. One long act() would hold every update until its end,
- * so a timer that only a re-render arms would never get the chance to fire.
+ * Lets time pass as it does on a phone: a second at a time, or `step` at a
+ * time, with the screen rendering in between. One long act() would hold every
+ * update until its end, so a timer that only a re-render arms would never get
+ * the chance to fire.
  */
-async function letTimePass(ms: number) {
-  for (let left = ms; left > 0; left -= SECOND) {
-    await act(() => jest.advanceTimersByTimeAsync(Math.min(SECOND, left)));
+async function letTimePass(ms: number, step = SECOND) {
+  for (let left = ms; left > 0; left -= step) {
+    await act(() => jest.advanceTimersByTimeAsync(Math.min(step, left)));
   }
 }
 
@@ -864,7 +860,11 @@ describe('HomeScreen', () => {
       await renderScreen(<HomeScreen />);
       await roostLoaded();
 
-      await letTimePass(5 * MINUTE);
+      // Ten seconds at a time. Nothing here waits for a particular second, a
+      // timer the screen arms as it draws still gets its turn after each step,
+      // and three hundred renders a second apart took over five seconds on a
+      // busy machine - long enough to time out and run on into the next tests.
+      await letTimePass(5 * MINUTE, 10 * SECOND);
 
       expect(mockedFetchRoost).toHaveBeenCalledTimes(1);
     });
