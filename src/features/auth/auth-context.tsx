@@ -569,7 +569,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (checked.ok && !checked.value.error) setSignedInByCode(true);
       setCodesOut((count) => count - 1);
       if (!checked.ok) throw checked.error;
-      if (checked.value.error) throw explained(checked.value.error);
+      const { error } = checked.value;
+      if (error && isUnanswered(error)) {
+        throw new CodeUnanswered(describeAuthError(error), { cause: error });
+      }
+      if (error) throw explained(error);
       return checked.value.data.user;
     }
 
@@ -981,6 +985,20 @@ export const FINISHING_SIGN_OUT =
  * these words, to show them where the username is typed.
  */
 export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try another.';
+
+/**
+ * Thrown when a code's check got no answer. It may have reached the auth
+ * server and been carried out all the same - the code used up, the address
+ * confirmed and its password taken away - with the answer lost on the way
+ * back: every check of the code after it is refused, signing in finds no
+ * password, and asking for a new code sends none. The code screen says so
+ * once the code is refused. (Found in review.)
+ */
+export class CodeUnanswered extends Error {}
+
+/** Whether a request got no answer from the auth server: none at all, or not one of its own. */
+const isUnanswered = (error: AuthError) =>
+  isAuthRetryableFetchError(error) || error instanceof AuthUnknownError;
 
 /**
  * Thrown when finishing what a code was for has left the courier signed out:

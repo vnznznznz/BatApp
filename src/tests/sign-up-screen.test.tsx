@@ -14,7 +14,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
 import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
-import { AuthProvider } from '@/features/auth/auth-context';
+import { AuthProvider, CodeUnanswered } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
 import { openLink } from '@/lib/links';
 
@@ -673,6 +673,52 @@ describe('SignUpScreen', () => {
       await user.press(button('Confirm'));
 
       expect(mockFinishSignUp).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A check whose answer was lost may have been carried out: the code used
+     * up, the address confirmed and its password taken away. The code was
+     * refused from then on, signing in found no password, and a new code was
+     * said to be on its way while none came - nothing on the screen led on.
+     * (Found in review, on the confirmation-on server.)
+     */
+    describe('when the code is refused after a check that got no answer', () => {
+      const NO_CONNECTION = 'No connection. Check your network and try again.';
+      const MAY_BE_CONFIRMED =
+        'That code did not work. If the try before it reached us, it confirmed your address, ' +
+        'and no new code will come: set a password with "I forgot my password", and sign in ' +
+        'with it.';
+
+      async function refusedAfterNoAnswer() {
+        mockConfirmSignUp
+          .mockRejectedValueOnce(new CodeUnanswered(NO_CONNECTION))
+          .mockRejectedValueOnce(new Error(CODE_DID_NOT_WORK));
+        await signedUp();
+        await user.type(codeField(), '12345678');
+        await user.press(button('Confirm'));
+        expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+        await user.press(button('Confirm'));
+      }
+
+      it('says what may have become of the address, and the way on', async () => {
+        await refusedAfterNoAnswer();
+
+        expect(screen.getByText(MAY_BE_CONFIRMED)).toBeOnTheScreen();
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(MAY_BE_CONFIRMED);
+        await user.press(button('I forgot my password'));
+        expect(mockPush).toHaveBeenCalledWith('/reset-password');
+      });
+
+      it('says no more than that the code did not work after one refused outright', async () => {
+        mockConfirmSignUp.mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+        await signedUp();
+        await user.type(codeField(), '12345678');
+        await user.press(button('Confirm'));
+        await user.press(button('Confirm'));
+
+        expect(screen.queryByText(MAY_BE_CONFIRMED)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'I forgot my password' })).toBeNull();
+      });
     });
 
     describe('when the account could not be set up after the code', () => {

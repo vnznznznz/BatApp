@@ -2581,6 +2581,55 @@ describe('what the courier is told when the auth server says no', () => {
       expect(state()).toBe('signed out');
     });
 
+    /**
+     * A check can reach the auth server and be carried out - the code used
+     * up, the address confirmed, and its password taken away - with its
+     * answer lost on the way back. Every check of the code after it is
+     * refused then, signing in finds no password, and no new code comes: the
+     * code screen has to know that the first got no answer to say what may
+     * have become of it. (Found in review, on the confirmation-on server.)
+     */
+    it.each<[string, () => Promise<unknown>, () => Response | Promise<Response>, string]>([
+      [
+        'confirming an address from signing in',
+        () => auth.confirmEmail(details.email, '12345678'),
+        offline,
+        NO_CONNECTION,
+      ],
+      [
+        'confirming the account just signed up for',
+        () => auth.confirmSignUp(details, '12345678'),
+        offline,
+        NO_CONNECTION,
+      ],
+      [
+        'with a page from something in between for an answer',
+        () => auth.confirmSignUp(details, '12345678'),
+        () => html(403, '<html>blocked</html>'),
+        NOT_ANSWERING,
+      ],
+    ])('tells a check that got no answer from one refused, %s', async (_, check, lost, words) => {
+      let checks = 0;
+      await opened(() => {
+        checks += 1;
+        return checks === 1
+          ? lost()
+          : authRefusal(403, 'otp_expired', 'Token has expired or is invalid');
+      });
+      const { CodeUnanswered } = jest.requireActual<typeof import('@/features/auth/auth-context')>(
+        '@/features/auth/auth-context',
+      );
+
+      const unanswered: unknown = await asked(check).catch((caught: unknown) => caught);
+      const refused: unknown = await asked(check).catch((caught: unknown) => caught);
+
+      expect(unanswered).toBeInstanceOf(CodeUnanswered);
+      expect((unanswered as Error).message).toBe(words);
+      expect(refused).not.toBeInstanceOf(CodeUnanswered);
+      expect((refused as Error).message).toBe(CODE_DID_NOT_WORK);
+      expect(state()).toBe('signed out');
+    });
+
     it('signs in with the code, for the address as typed but for the spaces around it', async () => {
       await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
 

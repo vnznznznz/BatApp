@@ -11,7 +11,7 @@ import {
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignInScreen from '@/app/sign-in';
-import { SignedOutUnfinished } from '@/features/auth/auth-context';
+import { CodeUnanswered, SignedOutUnfinished } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
 
 const mockedAnnounce = jest.mocked(announce);
@@ -22,11 +22,12 @@ const mockFinishSignIn = jest.fn();
 const mockResendConfirmationCode = jest.fn();
 const mockSignOut = jest.fn();
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
-    useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: mockReplace }),
+    useRouter: () => ({ push: mockPush, back: jest.fn(), replace: mockReplace }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
       React.useEffect(() => effect(), [effect]),
@@ -151,6 +152,7 @@ beforeEach(() => {
   mockHold.set(false);
   mockHold.signOutUnderWay(false);
   mockReplace.mockReset();
+  mockPush.mockReset();
   mockedAnnounce.mockReset();
   mockKeyboardAvoidingViews.length = 0;
 });
@@ -383,6 +385,37 @@ describe('SignInScreen', () => {
         ]),
       ).toEqual([['focus', `Confirm your address. ${INTRO}`]]);
       focus.mockRestore();
+    });
+
+    /**
+     * The check whose answer was lost may have confirmed the address, and
+     * taken the password signed in with away: signing in finds none, and no
+     * new code comes. (Found in review.)
+     */
+    it('says where a lost answer may have left the address, once the code is refused', async () => {
+      mockConfirmEmail
+        .mockRejectedValueOnce(
+          new CodeUnanswered('No connection. Check your network and try again.'),
+        )
+        .mockRejectedValueOnce(
+          new Error(
+            'That code did not work. Check it against the newest email, or ask for a new one.',
+          ),
+        );
+      await signedInUnconfirmed();
+      await user.type(screen.getByLabelText('Code'), '87654321');
+      await user.press(button('Confirm'));
+      await user.press(button('Confirm'));
+
+      expect(
+        screen.getByText(
+          'That code did not work. If the try before it reached us, it confirmed your address, ' +
+            'and no new code will come: set a password with "I forgot my password", and sign in ' +
+            'with it.',
+        ),
+      ).toBeOnTheScreen();
+      await user.press(button('I forgot my password'));
+      expect(mockPush).toHaveBeenCalledWith('/reset-password');
     });
 
     it('asks for the code sent to the address', async () => {

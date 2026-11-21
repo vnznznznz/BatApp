@@ -11,6 +11,7 @@ import { BATS_PER_USER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import {
   CODE_DID_NOT_WORK,
+  CodeUnanswered,
   FINISHING_SIGN_OUT,
   SignedOutUnfinished,
   useAuth,
@@ -86,6 +87,15 @@ const NOT_SAVED_RESUMED =
   'Your address is confirmed, but your password is not saved yet: confirming the address ' +
   `takes it away until it is saved again. Type it - the one you signed in with, or a new one. ${SIGN_OUT_INSTEAD}`;
 const SIGNED_OUT = 'Signed out. To sign in, set a password with "I forgot my password".';
+/**
+ * Said, in place of the code's refusal, once a check that got no answer has
+ * been followed by a refused one: the first may have used the code up, and
+ * then no new code comes - the address is confirmed - and signing in finds no
+ * password. (Found in review.)
+ */
+const MAY_BE_CONFIRMED =
+  'That code did not work. If the try before it reached us, it confirmed your address, and ' +
+  'no new code will come: set a password with "I forgot my password", and sign in with it.';
 
 /**
  * Asks for the code that confirms an account's address. The right one signs
@@ -143,6 +153,10 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   // An earlier sign-up's account made way for the courier's, and a new code
   // has gone out for theirs.
   const [setUpAgain, setSetUpAgain] = useState(false);
+  // A check of a code got no answer, and so may have been carried out; and
+  // once a check after it was refused, the screen says what that may mean.
+  const [unanswered, setUnanswered] = useState(false);
+  const [mayBeConfirmed, setMayBeConfirmed] = useState(false);
   // A code has just gone - or the address has an account, and none has: the
   // minute is waited for both alike. One from signing in may be days old.
   const { waiting, startWaiting } = useResendWait(signedUp && !resumed);
@@ -210,6 +224,14 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
         chosen ? confirmSignUp(chosen, code) : confirmEmail(email, code),
       );
       if (!checked.ok) {
+        if (checked.error instanceof CodeUnanswered) setUnanswered(true);
+        // "Ask for a new one" would send the courier after a code that never
+        // comes: what may have happened is said instead, and the way on.
+        if (unanswered && wordsOf(checked.error) === CODE_DID_NOT_WORK) {
+          setMayBeConfirmed(true);
+          failed(new Error(MAY_BE_CONFIRMED));
+          return;
+        }
         failed(checked.error, { atTheCode: true });
         return;
       }
@@ -397,6 +419,15 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
           <Text variant="caption" tone="danger">
             {formError}
           </Text>
+        ) : null}
+
+        {mayBeConfirmed ? (
+          <Button
+            label="I forgot my password"
+            variant="secondary"
+            disabled={held}
+            onPress={() => router.push('/reset-password')}
+          />
         ) : null}
 
         <Button label="Confirm" loading={busy} onPress={confirm} />
