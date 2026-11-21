@@ -15,11 +15,6 @@ import {
 import { announce } from '@/lib/announce';
 import { RpcError } from '@/lib/rpc-error';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work that would otherwise
-// count against whichever test runs first.
-jest.setTimeout(20_000);
-
 /**
  * The router: one object for every render, as expo-router's own useRouter()
  * returns. Done and Android's back button ask it whether there is a screen to

@@ -12,11 +12,6 @@ import {
 import { Colors } from '@/constants/theme';
 import { openLink } from '@/lib/links';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work that would otherwise
-// count against whichever test runs first.
-jest.setTimeout(20_000);
-
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 /** Whether there is a screen behind this one to go back to. */

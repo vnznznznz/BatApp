@@ -16,11 +16,6 @@ import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, type Bat } from '@/features/roost/roost';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work, measured at over five
-// on four cores, that would otherwise count against whichever test runs first.
-jest.setTimeout(20_000);
-
 /** The route's params, as the compose screen reads them. */
 const mockParams: { to?: string } = { to: 'user-anna' };
 
