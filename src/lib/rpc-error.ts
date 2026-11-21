@@ -36,6 +36,7 @@ export const REFUSALS = {
   // right for a roost that will not load as well as for a refused deletion.
   account_suspended:
     'This account has been suspended. Write to the contact address on the help page.',
+  too_many_friend_requests: 'That is a lot of requests in a short time. Try again in an hour.',
 } as const;
 
 export type RefusalReason = keyof typeof REFUSALS;

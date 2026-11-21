@@ -247,6 +247,27 @@ describe('blocking', () => {
     await rejectsWithHint(request(ben, 'anna'), 'courier_blocked');
   });
 
+  /**
+   * A block is its maker's to lift, and nobody else's - least of all the
+   * courier it shuts out, who would need nothing but their own id to do it.
+   */
+  it('lets nobody but the courier who made a block lift it', async () => {
+    const { anna, ben } = await friends();
+    const cleo = await createCourier(db, { name: 'cleo' });
+    await block(anna, ben);
+
+    await unblock(ben, ben);
+    await unblock(ben, anna);
+    await unblock(cleo, ben);
+    await unblock(cleo, anna);
+
+    assert.deepEqual(
+      (await listBlocked(anna)).map((row) => row.username),
+      ['ben'],
+    );
+    await rejectsWithHint(request(ben, 'anna'), 'unknown_username');
+  });
+
   it('lifts nothing, harmlessly, when there was no block', async () => {
     const { anna, ben } = await friends();
 
@@ -361,6 +382,19 @@ describe('reporting a letter', () => {
         resolved: null,
       },
     );
+  });
+
+  /** Whatever the lists show of a letter, the operator has to judge all of it. */
+  it('keeps the whole of a long letter, to its last line', async () => {
+    const { anna, ben } = await friends();
+    const body = `${'A long and friendly opening. '.repeat(60)}And then the threat, at the very end.`;
+    const letter = await delivered(ben, anna, body);
+
+    await reportLetter(anna, letter);
+
+    const [report] = await reports();
+    assert.equal(report.letter_body.length, body.length);
+    assert.equal(report.letter_body, body);
   });
 
   it('reports a letter once, however often it is reported', async () => {
@@ -562,6 +596,22 @@ describe('reporting a courier', () => {
     assert.equal(await reportCourier(anna, ben), 'reported');
 
     assert.equal((await reports()).length, 2);
+  });
+
+  /** "Already reported" is about the caller's own report, not about anybody's. */
+  it('takes each courier’s own report of the same person', async () => {
+    const anna = await createCourier(db, { name: 'anna' });
+    const ben = await createCourier(db, { name: 'ben' });
+    const cleo = await createCourier(db, { name: 'cleo' });
+
+    assert.equal(await reportCourier(anna, cleo), 'reported');
+    assert.equal(await reportCourier(ben, cleo), 'reported');
+    assert.equal(await reportCourier(ben, cleo), 'already_reported');
+
+    assert.deepEqual(
+      (await reports()).map((report) => report.reporter_id).sort(),
+      [anna, ben].sort(),
+    );
   });
 
   it('blocks them when asked to', async () => {

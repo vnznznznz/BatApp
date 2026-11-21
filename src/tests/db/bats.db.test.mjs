@@ -115,7 +115,10 @@ describe('direct access', () => {
   it('shows nothing to a signed-out visitor', async () => {
     const anna = await createUser(db, { username: 'anna', displayName: 'Anna' });
 
-    await assert.rejects(() => asAnon(db, () => readBats(anna)));
+    await assert.rejects(
+      () => asAnon(db, () => readBats(anna)),
+      /permission denied for table bats/,
+    );
   });
 
   /** A bat that could be set home by its owner would make the limit meaningless. */

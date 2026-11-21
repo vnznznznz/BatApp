@@ -87,6 +87,28 @@ export async function fastForward(db, messageId) {
   assert.equal(rows.length, 1, `no letter ${messageId} to fast-forward`);
 }
 
+/**
+ * `n` letters from one courier to another, each landed long ago and an hour
+ * apart - more than three bats could be made to carry through the API in a
+ * test. Both couriers need a city.
+ */
+export async function landedLetters(db, from, to, n) {
+  await db.query(
+    `insert into public.messages
+       (sender_id, recipient_id, bat_id, body, origin_city_id, destination_city_id, distance_km,
+        sent_at, deliver_at, delivered_at)
+     select sender.id, recipient.id,
+            (select b.id from public.bats b where b.owner_id = sender.id and b.slot = 1),
+            'letter ' || hours, sender.city_id, recipient.city_id, 505,
+            now() - make_interval(hours => 500 + hours),
+            now() - make_interval(hours => hours),
+            now() - make_interval(hours => hours)
+     from generate_series(1, $3::integer) as hours, public.profiles sender, public.profiles recipient
+     where sender.id = $1 and recipient.id = $2`,
+    [from, to, n],
+  );
+}
+
 /** Runs the scheduled worker the way pg_cron does, and returns how many landed. */
 export async function runWorker(db) {
   const { rows } = await db.query(`select private.deliver_due_messages() as landed`);

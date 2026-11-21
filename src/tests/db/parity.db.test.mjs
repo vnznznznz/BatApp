@@ -4,7 +4,14 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { count, createCourier, makeFriends, rejectsWithHint, rpc } from './fixtures.mjs';
+import {
+  count,
+  createCourier,
+  landedLetters,
+  makeFriends,
+  rejectsWithHint,
+  rpc,
+} from './fixtures.mjs';
 import { createTestDatabase, createUser } from './harness.mjs';
 
 /**
@@ -23,11 +30,18 @@ const CONFIG = readFileSync(
   'utf8',
 );
 
-function constant(name) {
-  const match = CONFIG.match(new RegExp(`export const ${name} = ([0-9.]+)`));
-  assert.ok(match, `${name} not found in src/constants/config.ts`);
+function constant(name, source = CONFIG, file = 'src/constants/config.ts') {
+  const match = source.match(new RegExp(`export const ${name} = ([0-9.]+)`));
+  assert.ok(match, `${name} not found in ${file}`);
   return Number(match[1]);
 }
+
+/** One number lives with the code that uses it rather than in config.ts. */
+const MESSAGES = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'features', 'messages', 'messages.ts'),
+  'utf8',
+);
+const MAX_PAGE_SIZE = constant('MAX_PAGE_SIZE', MESSAGES, 'src/features/messages/messages.ts');
 
 const BATS_PER_USER = constant('BATS_PER_USER');
 const BAT_SPEED_KMH = constant('BAT_SPEED_KMH');
@@ -42,6 +56,18 @@ const REPORT_NOTE_MAX_LENGTH = constant('REPORT_NOTE_MAX_LENGTH');
 const REPORTS_PER_DAY = constant('REPORTS_PER_DAY');
 const REPORT_RETENTION_DAYS = constant('REPORT_RETENTION_DAYS');
 const BAN_PERIOD_YEARS = constant('BAN_PERIOD_YEARS');
+const FRIEND_REQUESTS_PER_HOUR = constant('FRIEND_REQUESTS_PER_HOUR');
+const SIGN_UP_DETAILS_MAX_BYTES = constant('SIGN_UP_DETAILS_MAX_BYTES');
+
+/** A pattern config.ts exports, rebuilt from its source text. */
+function pattern(name) {
+  const match = CONFIG.match(new RegExp(`export const ${name} =\\s*/(.+)/([a-z]*);`));
+  assert.ok(match, `${name} not found in src/constants/config.ts`);
+  return new RegExp(match[1], match[2]);
+}
+
+const DISPLAY_NAME_FORBIDDEN_PATTERN = pattern('DISPLAY_NAME_FORBIDDEN_PATTERN');
+const VISIBLE_CHARACTER_PATTERN = pattern('VISIBLE_CHARACTER_PATTERN');
 
 const REPORT_REASONS = (() => {
   const match = CONFIG.match(/export const REPORT_REASONS = \[([^\]]*)\]/);
@@ -147,8 +173,35 @@ describe('the database agrees with src/constants/config.ts', () => {
     await createUser(db, { username: 'a'.repeat(USERNAME_MIN_LENGTH) });
     await createUser(db, { username: 'b'.repeat(USERNAME_MAX_LENGTH) });
 
-    await assert.rejects(() => createUser(db, { username: 'c'.repeat(USERNAME_MIN_LENGTH - 1) }));
-    await assert.rejects(() => createUser(db, { username: 'd'.repeat(USERNAME_MAX_LENGTH + 1) }));
+    await assert.rejects(
+      () => createUser(db, { username: 'c'.repeat(USERNAME_MIN_LENGTH - 1) }),
+      /profiles_username_length/,
+    );
+    await assert.rejects(
+      () => createUser(db, { username: 'd'.repeat(USERNAME_MAX_LENGTH + 1) }),
+      /profiles_username_length/,
+    );
+  });
+
+  /**
+   * The app stops asking for older letters when a page comes back shorter than
+   * the most a page can hold, so that number has to be the database's.
+   */
+  it('on MAX_PAGE_SIZE, in src/features/messages/messages.ts', async () => {
+    const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
+    const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
+    await landedLetters(db, anna, ben, MAX_PAGE_SIZE + 20);
+
+    for (const [list, who] of [
+      ['list_inbox', ben],
+      ['list_sent', anna],
+    ]) {
+      const page = async (asked) => (await rpc(db, who, list, { max_results: asked })).length;
+
+      assert.equal(await page(MAX_PAGE_SIZE), MAX_PAGE_SIZE, list);
+      assert.equal(await page(MAX_PAGE_SIZE + 1), MAX_PAGE_SIZE, list);
+      assert.equal(await page(MAX_PAGE_SIZE - 1), MAX_PAGE_SIZE - 1, list);
+    }
   });
   it('on REPORT_REASONS, accepting each one and nothing else', async () => {
     const anna = await createCourier(db, { name: 'anna' });
@@ -212,5 +265,136 @@ describe('the database agrees with src/constants/config.ts', () => {
     );
 
     assert.equal(rows[0].same, true);
+  });
+
+  /** The number, and that it is where the database draws the line: to the byte. */
+  it('on SIGN_UP_DETAILS_MAX_BYTES', async () => {
+    const { rows } = await db.query(`select private.sign_up_details_max_bytes() as bytes`);
+    assert.equal(rows[0].bytes, SIGN_UP_DETAILS_MAX_BYTES);
+
+    // As Postgres writes it out, {"junk": "..."} is twelve bytes around the dots.
+    const carrying = (bytes) => ({ metadata: { junk: 'x'.repeat(bytes - 12) } });
+    const atTheLimit = await createUser(db, carrying(SIGN_UP_DETAILS_MAX_BYTES));
+    const { rows: kept } = await db.query(
+      `select octet_length(raw_user_meta_data::text) as bytes from auth.users where id = $1`,
+      [atTheLimit],
+    );
+    assert.equal(kept[0].bytes, SIGN_UP_DETAILS_MAX_BYTES);
+
+    await assert.rejects(
+      createUser(db, carrying(SIGN_UP_DETAILS_MAX_BYTES + 1)),
+      new RegExp(`can be at most ${SIGN_UP_DETAILS_MAX_BYTES} bytes: these are`),
+    );
+  });
+
+  /**
+   * Not numbers but lists of characters, and the app's copy is written in
+   * another language's notation. So they are compared the long way: every
+   * character Postgres can store - all of Unicode but U+0000 - is put to the
+   * database's rule and to the app's pattern, one at a time.
+   */
+  describe('on DISPLAY_NAME_FORBIDDEN_PATTERN and VISIBLE_CHARACTER_PATTERN', () => {
+    const isSurrogate = (code) => code >= 0xd800 && code <= 0xdfff;
+
+    /** The characters for which `condition` holds, asked of each one alone as `display_name`. */
+    const databaseSays = async (condition) => {
+      const { rows } = await db.query(
+        `select coalesce(array_agg(code order by code), '{}') as codes
+         from generate_series(1, 1114111) as code,
+              lateral (select chr(code) as display_name) as one
+         where code not between 55296 and 57343
+           and (${condition})`,
+      );
+      return ranges(rows[0].codes);
+    };
+
+    const appSays = (holds) => {
+      const codes = [];
+      for (let code = 1; code <= 0x10ffff; code++) {
+        if (!isSurrogate(code) && holds(String.fromCodePoint(code))) codes.push(code);
+      }
+      return ranges(codes);
+    };
+
+    /** 'U+0001-001F U+007F ...': short enough to read when two lists differ. */
+    const ranges = (codes) => {
+      const hex = (code) => code.toString(16).toUpperCase().padStart(4, '0');
+      const runs = [];
+      for (const code of codes) {
+        const last = runs.at(-1);
+        if (last && code === last[1] + 1) last[1] = code;
+        else runs.push([code, code]);
+      }
+      return runs
+        .map(([from, to]) => (from === to ? `U+${hex(from)}` : `U+${hex(from)}-${hex(to)}`))
+        .join(' ');
+    };
+
+    const check = async (name) => {
+      const { rows } = await db.query(
+        `select pg_get_expr(conbin, conrelid) as expression from pg_constraint
+         where conrelid = 'public.profiles'::regclass and conname = $1`,
+        [name],
+      );
+      assert.equal(rows.length, 1, `no check ${name} on public.profiles`);
+      return rows[0].expression;
+    };
+
+    it('as what a display name must not hold', async () => {
+      const refused = await databaseSays(
+        `not (${await check('profiles_display_name_no_controls')})`,
+      );
+
+      assert.ok(refused.startsWith('U+0001-001F'), refused);
+      assert.equal(
+        refused,
+        appSays((character) => DISPLAY_NAME_FORBIDDEN_PATTERN.test(character)),
+      );
+    });
+
+    it('as what does not make a display name something to see', async () => {
+      const blank = await databaseSays(`not (${await check('profiles_display_name_visible')})`);
+
+      assert.ok(blank.includes('U+2000-200F'), blank);
+      assert.equal(
+        blank,
+        appSays((character) => !VISIBLE_CHARACTER_PATTERN.test(character)),
+      );
+    });
+
+    it('as what does not make a letter something to see', async () => {
+      const blank = await databaseSays(`not private.has_visible_character(display_name)`);
+
+      assert.ok(blank.includes('U+2000-200F'), blank);
+      assert.equal(
+        blank,
+        appSays((character) => !VISIBLE_CHARACTER_PATTERN.test(character)),
+      );
+    });
+
+    /** The one character the two cannot be compared on. */
+    it('and both count U+0000, which the database cannot store, as neither plain nor visible', async () => {
+      assert.equal(DISPLAY_NAME_FORBIDDEN_PATTERN.test('\u0000'), true);
+      assert.equal(VISIBLE_CHARACTER_PATTERN.test('\u0000'), false);
+      await assert.rejects(db.query(`select chr(0)`), /null character not permitted/);
+    });
+  });
+
+  /** The number, and that it is the number the database acts on. */
+  it('on FRIEND_REQUESTS_PER_HOUR', async () => {
+    const { rows } = await db.query(`select private.friend_requests_per_hour() as limit`);
+    assert.equal(rows[0].limit, FRIEND_REQUESTS_PER_HOUR);
+
+    const anna = await createCourier(db, { name: 'anna' });
+    for (let i = 0; i <= FRIEND_REQUESTS_PER_HOUR; i++) {
+      await createCourier(db, { name: `other${i}` });
+    }
+    for (let i = 0; i < FRIEND_REQUESTS_PER_HOUR; i++) {
+      await rpc(db, anna, 'request_friend', { username: `other${i}` });
+    }
+    await rejectsWithHint(
+      rpc(db, anna, 'request_friend', { username: `other${FRIEND_REQUESTS_PER_HOUR}` }),
+      'too_many_friend_requests',
+    );
   });
 });

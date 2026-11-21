@@ -17,8 +17,9 @@ import { fileURLToPath } from 'node:url';
  *
  * - Supabase's actual `auth` schema. The stub below reproduces only the parts
  *   the migrations depend on — `auth.users`, `auth.uid()`, the `anon` and
- *   `authenticated` roles, and the default privileges Supabase grants them. It
- *   is faithful to the contract, not to Supabase's implementation.
+ *   `authenticated` roles, the role GoTrue itself works as, and the default
+ *   privileges Supabase grants them. It is faithful to the contract, not to
+ *   Supabase's implementation.
  * - Concurrency. PGlite is a single embedded connection, so two transactions
  *   cannot genuinely race here. `concurrency.pg.test.mjs` runs the races that
  *   matter against a real Postgres, using the same stub and migrations.
@@ -39,7 +40,9 @@ export const AUTH_STUB = `
   create table auth.users (
     id uuid primary key default gen_random_uuid(),
     email text unique,
-    raw_user_meta_data jsonb not null default '{}'::jsonb,
+    -- What a sign-up sent along: any JSON at all, or nothing. GoTrue's column
+    -- may be null; the default is this stub's convenience.
+    raw_user_meta_data jsonb default '{}'::jsonb,
     banned_until timestamptz,
     -- GoTrue confirms every address at sign-up while confirmation is off.
     email_confirmed_at timestamptz default now(),
@@ -76,16 +79,36 @@ export const AUTH_STUB = `
 
   -- Supabase resolves the current user from the request's JWT claims. Mirroring
   -- that exactly means the RLS policies are exercised as they will run in
-  -- production, rather than against a convenient stand-in.
+  -- production, rather than against a convenient stand-in. This is the
+  -- platform's function word for word, read from a running stack. It matters
+  -- that it takes the empty string for "nobody": that is what the setting reads
+  -- as on a connection once a request has used it, and what asUser() leaves
+  -- behind here, and a trigger that asks who is calling fires for the operator
+  -- on such a connection too.
   create or replace function auth.uid() returns uuid
   language sql stable
   as $$
-    select nullif(current_setting('request.jwt.claims', true)::json ->> 'sub', '')::uuid
+    select
+    coalesce(
+      nullif(current_setting('request.jwt.claim.sub', true), ''),
+      (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
+    )::uuid
   $$;
 
   do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
   do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
   grant usage on schema auth to anon, authenticated;
+
+  -- GoTrue's own role. Every sign-up, and every change a person makes to their
+  -- sign-in, is written by it, so every trigger on auth.users runs with its
+  -- rights - and it has none on anything the migrations create: no schema of
+  -- theirs but public, no table, no function. A trigger function that is not
+  -- SECURITY DEFINER and reaches for one of those stops every sign-up on the
+  -- platform, and would pass here if the tests signed people up as the
+  -- superuser. createUser() below signs up as this role for that reason.
+  do $$ begin create role supabase_auth_admin nologin noinherit; exception when duplicate_object then null; end $$;
+  grant usage on schema auth to supabase_auth_admin;
+  grant all on all tables in schema auth to supabase_auth_admin;
 
   -- Supabase grants everything created in public to the API roles by default,
   -- and leaves row level security to stop them. Reproducing that here is what
@@ -124,15 +147,22 @@ export async function createTestDatabase({ until } = {}) {
   return db;
 }
 
-/** Inserts an auth user, which fires the trigger that creates the profile. */
+/**
+ * Signs somebody up the way GoTrue does: an insert into auth.users, made as
+ * GoTrue's role, which fires the trigger that creates the profile. `metadata`
+ * adds to, or replaces, what a sign-up sends along.
+ */
 export async function createUser(db, user = {}) {
   const metadata = {};
   if (user.username !== undefined) metadata.username = user.username;
   if (user.displayName !== undefined) metadata.display_name = user.displayName;
+  Object.assign(metadata, user.metadata);
 
-  const result = await db.query(
-    `insert into auth.users (email, raw_user_meta_data) values ($1, $2::jsonb) returning id`,
-    [user.email ?? `u${counter++}@example.test`, JSON.stringify(metadata)],
+  const result = await asAuthServer(db, () =>
+    db.query(
+      `insert into auth.users (email, raw_user_meta_data) values ($1, $2::jsonb) returning id`,
+      [user.email ?? `u${counter++}@example.test`, JSON.stringify(metadata)],
+    ),
   );
 
   const row = result.rows[0];
@@ -141,6 +171,19 @@ export async function createUser(db, user = {}) {
 }
 
 let counter = 0;
+
+/**
+ * Runs `fn` as GoTrue: the role that writes auth.users on the platform, and
+ * can reach nothing the migrations made.
+ */
+export async function asAuthServer(db, fn) {
+  await db.exec(`set role supabase_auth_admin;`);
+  try {
+    return await fn();
+  } finally {
+    await db.exec(`reset role;`);
+  }
+}
 
 /**
  * Runs `fn` as the given signed-in user, with RLS in force.
