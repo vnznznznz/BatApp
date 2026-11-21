@@ -816,6 +816,142 @@ describe('signing out', () => {
         expect(sent.filter(isLogout).map(({ bearer }) => bearer)).not.toContain(THEIR_TOKEN);
       });
     });
+
+    /**
+     * A token over an hour old is renewed before the server can be told, and a
+     * renewal that comes back once the device has let go, the client throws
+     * away: the session is no longer stored. It then told the server nothing,
+     * however soon the network was back. (Found in review.) The server is told
+     * once more with the token the session had, and, when it says that one has
+     * run out, with a renewed one.
+     */
+    describe('with a token over an hour old', () => {
+      const RENEWED_TOKEN = `header.${'d'.repeat(1000)}.signature`;
+      const isLogoutWith = (token: string) => (request: Sent) =>
+        isLogout(request) && request.bearer === token;
+
+      /** The auth server, reachable again, as it answers. */
+      function backOnline({ logoutTakes = 0 } = {}) {
+        network = (request) => {
+          if (isRenewal(request)) {
+            return json(200, sessionOf(RENEWED_TOKEN, 'refresh-renewed', 3600));
+          }
+          if (isLogoutWith(OLD_TOKEN)(request)) {
+            return authRefusal(
+              403,
+              'bad_jwt',
+              'invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired',
+            );
+          }
+          if (isLogout(request)) {
+            return new Promise<Response>((resolve) =>
+              setTimeout(() => resolve(loggedOut()), logoutTakes),
+            );
+          }
+          return json(200, []);
+        };
+      }
+
+      it('tells the server after all when the network is back while the client renews at the start', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        const { ended } = await pressSignOut();
+        expect(mockKeychain.size).toBe(0);
+
+        backOnline();
+        await passes(40_000);
+
+        expect(
+          sent
+            .filter(isLogoutWith(RENEWED_TOKEN))
+            .map(({ url, bearer }) => [url.split('?')[1], bearer]),
+        ).toEqual([['scope=global', RENEWED_TOKEN]]);
+        expect(sent.filter(isRenewal).at(-1)?.body).toEqual({ refresh_token: 'refresh-old' });
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
+        expect(mockKeychain.size).toBe(0);
+        expect(ended()).toBe('done');
+      });
+
+      it('tells the server after all when the network is back while a renewal asked for later is under way', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        const { client } = await launch();
+        await passes(30_000);
+        jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+        void client.rpc('get_roost').then(() => {});
+        await passes(1000);
+        await pressSignOut();
+
+        // The client's next attempt comes within 13 seconds; the logout is
+        // answered 18 seconds after it is sent.
+        backOnline({ logoutTakes: 18_000 });
+        await passes(13_000);
+        // Nothing of the account is kept or shown while the server is told.
+        expect(sent.filter(isLogoutWith(RENEWED_TOKEN))).toHaveLength(1);
+        expect(mockKeychain.size).toBe(0);
+        expect(state()).toBe('signed out');
+        await passes(20_000);
+
+        expect(sent.filter(isLogoutWith(RENEWED_TOKEN))).toHaveLength(1);
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
+        expect(mockKeychain.size).toBe(0);
+      });
+
+      /**
+       * Telling the server ends every session of the account, a session begun
+       * a moment before included. Whoever signs in next waits until it is told.
+       */
+      it('lets whoever signs in next wait until the server has been told', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        backOnline({ logoutTakes: 3000 });
+        const answer = network;
+        network = (request) =>
+          isSignIn(request)
+            ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600))
+            : answer(request);
+        await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+        const order = sent
+          .filter((request) => isSignIn(request) || isLogoutWith(RENEWED_TOKEN)(request))
+          .map((request) => (isSignIn(request) ? 'signed in' : 'told'));
+        expect(order).toEqual(['told', 'signed in']);
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-new');
+      });
+
+      /**
+       * Without a network the one more try fails at once, and the client's
+       * half minute of renewals is not begun again: nobody who signs in next is
+       * kept waiting for it.
+       */
+      it('tries once more, and holds nobody up, when the network stays away', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        const { ended } = await pressSignOut();
+        await passes(30_000);
+        expect(ended()).toBe('done');
+        const renewals = sent.filter(isRenewal).length;
+
+        network = (request) =>
+          isSignIn(request) ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)) : json(200, []);
+        const started = Date.now();
+        await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+        expect(Date.now() - started).toBeLessThan(1000);
+        expect(sent.filter(isRenewal)).toHaveLength(renewals);
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+        expect(state()).toBe('signed in');
+      });
+    });
   });
 
   describe('when the server did not hear of it', () => {
@@ -862,8 +998,10 @@ describe('signing out', () => {
 
       expect(sent.filter(isRenewal).at(-1)?.body).toEqual({ refresh_token: 'refresh-old' });
       expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
-      // Everywhere, as the sign-out it finishes was meant: on the other devices too.
+      // Everywhere, as the sign-out it finishes was meant: on the other devices
+      // too. (The first is the sign-out's own last try, without a network.)
       expect(sent.filter(isLogout).map(({ url, bearer }) => [url.split('?')[1], bearer])).toEqual([
+        ['scope=global', OLD_TOKEN],
         ['scope=global', NEW_TOKEN],
       ]);
       expect(mockKeychain.size).toBe(0);
@@ -883,7 +1021,9 @@ describe('signing out', () => {
           : answer(request);
 
       await aLateRenewalArrives(client);
-      expect(sent.filter(isLogout)).toHaveLength(1);
+      expect(
+        sent.filter((request) => isLogout(request) && request.bearer === NEW_TOKEN),
+      ).toHaveLength(1);
       expect(state()).toBe('signed out');
       await passes(5000);
 
@@ -922,7 +1062,8 @@ describe('signing out', () => {
       await asked(() => auth.signIn('mara@example.test', 'night-courier'));
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout)).toEqual([]);
+      // None but the sign-out's own last try, without a network.
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
       expect((await kept())?.refresh_token).toBe('refresh-new');
     });
 
@@ -943,7 +1084,7 @@ describe('signing out', () => {
       );
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout)).toEqual([]);
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
     });
   });
 
@@ -1350,8 +1491,11 @@ describe('what the rest of the app hears when the session ends', () => {
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
     expect(ending()).toEqual(ONCE);
-    // Announcing it asked nothing more of the network than the attempt to tell the server.
-    expect(sent.filter(isLogout)).toEqual([]);
+    // Announcing it asked nothing of the network: the one logout request is the
+    // last try at telling the server, everywhere, with the token the session had.
+    expect(sent.filter(isLogout).map(({ url, bearer }) => [url.split('?')[1], bearer])).toEqual([
+      ['scope=global', OLD_TOKEN],
+    ]);
   });
 
   it('hears of a sign-out on a connection that never answers, once', async () => {
@@ -1380,6 +1524,38 @@ describe('what the rest of the app hears when the session ends', () => {
 
     expect(sent.filter(isLogout)).toHaveLength(1);
     expect(ending()).toEqual(ONCE);
+  });
+
+  /** Telling the server later stores nothing and announces nothing: nobody is signed in with it. */
+  it('hears of a sign-out once when the server is told after all', async () => {
+    network = offline;
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    await act(async () => {
+      void outcomeOf(auth.signOut());
+      await jest.advanceTimersByTimeAsync(0);
+    });
+    await passes(5500);
+    expect(state()).toBe('signed out');
+
+    network = (request) => {
+      if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+      if (isLogout(request) && request.bearer === OLD_TOKEN) {
+        return authRefusal(
+          403,
+          'bad_jwt',
+          'invalid JWT: token has invalid claims: token is expired',
+        );
+      }
+      return isLogout(request) ? loggedOut() : json(200, []);
+    };
+    await passes(40_000);
+
+    expect(
+      sent.filter((request) => isLogout(request) && request.bearer === NEW_TOKEN),
+    ).toHaveLength(1);
+    expect(heard.slice(heard.findIndex(([event]) => event === 'SIGNED_OUT'))).toEqual([
+      ['SIGNED_OUT', false],
+    ]);
   });
 
   it('hears of a sign-out once while a renewal asked for later is still under way', async () => {
