@@ -45,7 +45,8 @@ begin
   -- While confirmation is off, GoTrue confirms every address at sign-up, but
   -- this still finds an account the operator makes by hand without confirming
   -- its address, in the dashboard or through the auth server's admin API. That
-  -- account cannot sign in either, and it goes too, 7 days after it was made.
+  -- account cannot sign in either, and it goes too: 7 days after it was made,
+  -- or after the last code sent to it, if the app asked for one.
   begin
     select coalesce(array_agg(u.id), '{}') into unconfirmed
     from auth.users u

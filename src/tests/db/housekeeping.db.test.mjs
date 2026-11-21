@@ -202,9 +202,10 @@ describe('the daily tidy-up', () => {
   });
 
   /**
-   * No code was ever sent to these, as to an account the operator makes by
-   * hand without confirming it, even while confirmation is off: their week
-   * counts from when they were made.
+   * No code was ever sent to these - nor is one to an account the operator
+   * makes by hand without confirming it, even while confirmation is off,
+   * until someone asks for one - so their week counts from when they were
+   * made.
    */
   it('deletes a sign-up never confirmed within 7 days, profile and all, and nothing else', async () => {
     const forgotten = await createCourier(db);
