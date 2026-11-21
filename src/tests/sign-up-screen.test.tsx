@@ -1,6 +1,7 @@
 import { AuthRetryableFetchError } from '@supabase/supabase-js';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
+import { DeviceEventEmitter, Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
@@ -70,6 +71,22 @@ const mockedOpenLink = jest.mocked(openLink);
 jest.mock('@/lib/announce', () => ({ announce: jest.fn() }));
 const mockedAnnounce = jest.mocked(announce);
 
+/** Every KeyboardAvoidingView drawn, by the behaviour it was given. */
+const mockKeyboardAvoidingViews: unknown[] = [];
+
+// React Native's own, drawn as it would be; only counted on the way.
+jest.mock('react-native/Libraries/Components/Keyboard/KeyboardAvoidingView', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { default: Real } = jest.requireActual<{
+    default: React.ComponentType<object>;
+  }>('react-native/Libraries/Components/Keyboard/KeyboardAvoidingView');
+  function Counted(props: { behavior?: string }) {
+    mockKeyboardAvoidingViews.push(props.behavior);
+    return React.createElement(Real, props);
+  }
+  return { __esModule: true, default: Counted };
+});
+
 const AGE_SWITCH = `I am ${MINIMUM_AGE} or older`;
 const AGE_RULE =
   `Turn on "I am ${MINIMUM_AGE} or older" to continue. Night Courier is for people aged ` +
@@ -127,6 +144,7 @@ beforeEach(() => {
   mockLinks.privacyPolicy = null;
   mockedOpenLink.mockReset().mockResolvedValue(undefined);
   mockedAnnounce.mockReset();
+  mockKeyboardAvoidingViews.length = 0;
 });
 
 describe('SignUpScreen', () => {
@@ -319,6 +337,76 @@ describe('SignUpScreen', () => {
 
     expect(screen.getByText(hint)).toBeOnTheScreen();
     expect(screen.getByLabelText('Your name').props.accessibilityHint).toBe(hint);
+  });
+
+  describe('the keyboard', () => {
+    const DEFAULT_OS = Platform.OS;
+
+    type HostNode = { type: unknown; props: Record<string, unknown> };
+
+    const hostsOfType = (type: string) =>
+      screen.container.queryAll(
+        (node) => (node as unknown as HostNode).type === type,
+      ) as unknown as HostNode[];
+
+    function scrollView(): Record<string, unknown> {
+      const [view, ...others] = hostsOfType('RCTScrollView');
+      if (!view || others.length > 0) throw new Error('Expected the form to have one scroll view.');
+      return view.props;
+    }
+
+    /** The padding the screen's safe-area view adds below its content, beyond the insets. */
+    function paddingBelow(): number {
+      const [view] = hostsOfType('RNCSafeAreaView');
+      if (!view) throw new Error('The form is not in a screen.');
+      return (
+        (StyleSheet.flatten(view.props.style as never) as { paddingBottom?: number })
+          .paddingBottom ?? 0
+      );
+    }
+
+    const keyboard = (event: 'keyboardDidShow' | 'keyboardDidHide', height: number) =>
+      act(async () => {
+        DeviceEventEmitter.emit(event, {
+          duration: 0,
+          easing: 'keyboard',
+          endCoordinates: { screenX: 0, screenY: 844 - height, width: 390, height },
+        });
+      });
+
+    afterEach(async () => {
+      await keyboard('keyboardDidHide', 0);
+      Platform.OS = DEFAULT_OS;
+    });
+
+    /**
+     * Inside the scroll view a KeyboardAvoidingView has no fixed height: its own
+     * padding made it taller, which made it pad more, on every layout pass for
+     * as long as the keyboard was up - 453pt, 906pt, 1359pt on an iPhone 15 -
+     * and a flick ran on past the form into empty space.
+     */
+    it('puts no KeyboardAvoidingView on the form', async () => {
+      await renderScreen(<SignUpScreen />);
+
+      expect(mockKeyboardAvoidingViews).toHaveLength(0);
+    });
+
+    it('lets the scroll view follow the keyboard on iOS, and a drag put it away', async () => {
+      Platform.OS = 'ios';
+      await renderScreen(<SignUpScreen />);
+
+      expect(scrollView().automaticallyAdjustKeyboardInsets).toBe(true);
+      expect(scrollView().keyboardDismissMode).toBe('interactive');
+    });
+
+    it('makes room for the keyboard on Android', async () => {
+      Platform.OS = 'android';
+      await renderScreen(<SignUpScreen />);
+
+      await keyboard('keyboardDidShow', 280);
+
+      expect(paddingBelow()).toBe(280);
+    });
   });
 
   describe('the house rules', () => {

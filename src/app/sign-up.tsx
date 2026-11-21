@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
@@ -88,98 +88,96 @@ export default function SignUpScreen() {
   }
 
   return (
-    <Screen scroll style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Text variant="title">Join the roost</Text>
-        <Text variant="caption" tone="secondary" style={styles.subtitle}>
-          {BATS_PER_USER} bats come with the account. There is nothing to buy.
-        </Text>
+    <Screen scroll avoidKeyboard style={styles.screen}>
+      <Text variant="title">Join the roost</Text>
+      <Text variant="caption" tone="secondary" style={styles.subtitle}>
+        {BATS_PER_USER} bats come with the account. There is nothing to buy.
+      </Text>
 
-        <View style={styles.form}>
-          <TextField
-            label="Your name"
-            value={displayName}
-            onChangeText={setDisplayName}
-            error={errors.displayName}
-            hint="What your friends, and anyone you ask to be friends, will see."
-            autoCapitalize="words"
-            autoComplete="name"
-            returnKeyType="next"
-          />
-          <TextField
-            label="Username"
-            value={username}
-            onChangeText={setUsername}
-            error={errors.username}
-            hint="How friends find you. Lowercase letters, numbers and underscores."
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="next"
-          />
-          <TextField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            error={errors.email}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            returnKeyType="next"
-          />
-          <TextField
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            error={errors.password}
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="new-password"
-            textContentType="newPassword"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-          />
+      <View style={styles.form}>
+        <TextField
+          label="Your name"
+          value={displayName}
+          onChangeText={setDisplayName}
+          error={errors.displayName}
+          hint="What your friends, and anyone you ask to be friends, will see."
+          autoCapitalize="words"
+          autoComplete="name"
+          returnKeyType="next"
+        />
+        <TextField
+          label="Username"
+          value={username}
+          onChangeText={setUsername}
+          error={errors.username}
+          hint="How friends find you. Lowercase letters, numbers and underscores."
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="next"
+        />
+        <TextField
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          error={errors.email}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          returnKeyType="next"
+        />
+        <TextField
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          error={errors.password}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
 
-          {formError ? (
-            <Text variant="caption" tone="danger">
-              {formError}
-            </Text>
-          ) : null}
-
-          <ToggleRow
-            label={`I am ${MINIMUM_AGE} or older`}
-            hint={`If you are under ${PARENTAL_PERMISSION_UNDER}, a parent or guardian has said yes.`}
-            value={oldEnough}
-            onValueChange={(value) => {
-              setOldEnough(value);
-              setAgeError(null);
-            }}
-            error={ageError}
-          />
-
-          {/* The terms come before the button that agrees to them. */}
-          <Text variant="caption" tone="secondary" style={styles.rules}>
-            By creating an account, you agree to the house rules - the terms of using Night Courier.
-            There is no tolerance for harassment, threats, hate, scams, spam, or sexual content
-            nobody asked for, and none at all for sexual content involving or sent to anyone under
-            18. Accounts that break them may be removed.
+        {formError ? (
+          <Text variant="caption" tone="danger">
+            {formError}
           </Text>
+        ) : null}
+
+        <ToggleRow
+          label={`I am ${MINIMUM_AGE} or older`}
+          hint={`If you are under ${PARENTAL_PERMISSION_UNDER}, a parent or guardian has said yes.`}
+          value={oldEnough}
+          onValueChange={(value) => {
+            setOldEnough(value);
+            setAgeError(null);
+          }}
+          error={ageError}
+        />
+
+        {/* The terms come before the button that agrees to them. */}
+        <Text variant="caption" tone="secondary" style={styles.rules}>
+          By creating an account, you agree to the house rules - the terms of using Night Courier.
+          There is no tolerance for harassment, threats, hate, scams, spam, or sexual content nobody
+          asked for, and none at all for sexual content involving or sent to anyone under 18.
+          Accounts that break them may be removed.
+        </Text>
+        <Button
+          label="Read the house rules"
+          variant="ghost"
+          onPress={() => router.push('/rules')}
+        />
+        {PRIVACY_POLICY_URL ? (
           <Button
-            label="Read the house rules"
+            label="Privacy policy"
             variant="ghost"
-            onPress={() => router.push('/rules')}
+            onPress={() => void openLink(PRIVACY_POLICY_URL)}
           />
-          {PRIVACY_POLICY_URL ? (
-            <Button
-              label="Privacy policy"
-              variant="ghost"
-              onPress={() => void openLink(PRIVACY_POLICY_URL)}
-            />
-          ) : null}
-          <Button label="Create account" loading={busy} onPress={submit} />
-          <Button label="Back" variant="ghost" onPress={() => router.back()} />
-        </View>
-      </KeyboardAvoidingView>
+        ) : null}
+        <Button label="Create account" loading={busy} onPress={submit} />
+        <Button label="Back" variant="ghost" onPress={() => router.back()} />
+      </View>
     </Screen>
   );
 }

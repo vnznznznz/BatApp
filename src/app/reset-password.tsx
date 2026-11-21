@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
@@ -55,37 +55,35 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <Screen scroll style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Text variant="title">Set a new password</Text>
-        <Text variant="caption" tone="secondary" style={styles.subtitle}>
-          We will send a link to your email address.
-        </Text>
+    <Screen scroll avoidKeyboard style={styles.screen}>
+      <Text variant="title">Set a new password</Text>
+      <Text variant="caption" tone="secondary" style={styles.subtitle}>
+        We will send a link to your email address.
+      </Text>
 
-        <View style={styles.form}>
-          <TextField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            error={error}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-          />
+      <View style={styles.form}>
+        <TextField
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          error={error}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
 
-          {formError ? (
-            <Text variant="caption" tone="danger">
-              {formError}
-            </Text>
-          ) : null}
+        {formError ? (
+          <Text variant="caption" tone="danger">
+            {formError}
+          </Text>
+        ) : null}
 
-          <Button label="Send the link" loading={busy} onPress={submit} />
-          <Button label="Back" variant="ghost" onPress={() => router.back()} />
-        </View>
-      </KeyboardAvoidingView>
+        <Button label="Send the link" loading={busy} onPress={submit} />
+        <Button label="Back" variant="ghost" onPress={() => router.back()} />
+      </View>
     </Screen>
   );
 }

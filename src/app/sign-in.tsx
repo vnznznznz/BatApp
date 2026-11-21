@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
@@ -39,53 +39,51 @@ export default function SignInScreen() {
   }
 
   return (
-    <Screen scroll style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Text variant="title">Welcome back</Text>
-        <Text variant="caption" tone="secondary" style={styles.subtitle}>
-          Your bats have been waiting.
-        </Text>
+    <Screen scroll avoidKeyboard style={styles.screen}>
+      <Text variant="title">Welcome back</Text>
+      <Text variant="caption" tone="secondary" style={styles.subtitle}>
+        Your bats have been waiting.
+      </Text>
 
-        <View style={styles.form}>
-          <TextField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            error={errors.email}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            returnKeyType="next"
-          />
-          <TextField
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            error={errors.password}
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="current-password"
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-          />
+      <View style={styles.form}>
+        <TextField
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          error={errors.email}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          returnKeyType="next"
+        />
+        <TextField
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          error={errors.password}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="current-password"
+          textContentType="password"
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
 
-          {formError ? (
-            <Text variant="caption" tone="danger">
-              {formError}
-            </Text>
-          ) : null}
+        {formError ? (
+          <Text variant="caption" tone="danger">
+            {formError}
+          </Text>
+        ) : null}
 
-          <Button label="Sign in" loading={busy} onPress={submit} />
-          <Button
-            label="I forgot my password"
-            variant="ghost"
-            onPress={() => router.push('/reset-password')}
-          />
-          <Button label="Back" variant="ghost" onPress={() => router.back()} />
-        </View>
-      </KeyboardAvoidingView>
+        <Button label="Sign in" loading={busy} onPress={submit} />
+        <Button
+          label="I forgot my password"
+          variant="ghost"
+          onPress={() => router.push('/reset-password')}
+        />
+        <Button label="Back" variant="ghost" onPress={() => router.back()} />
+      </View>
     </Screen>
   );
 }
