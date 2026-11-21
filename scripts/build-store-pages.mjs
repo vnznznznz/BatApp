@@ -427,15 +427,24 @@ function whatLoads(html) {
     const tag = tagName.toLowerCase();
     for (const [, attributeName, quoted = ''] of inside.matchAll(ATTRIBUTE)) {
       const attribute = attributeName.toLowerCase();
-      // Without its quotes and, as a browser reads an address, without blank space.
-      const value = quoted.replace(/^["']|["']$|\s/g, '').toLowerCase();
+      // Without its quotes and, as a browser reads an address, without blank
+      // space - and with its character references read, as a browser reads
+      // them: &#106;avascript: is a javascript: link all the same.
+      const value = quoted
+        .replace(/&#(x?)([0-9a-f]+);?/gi, (_, hex, digits) =>
+          String.fromCodePoint(parseInt(digits, hex ? 16 : 10)),
+        )
+        .replace(/^["']|["']$|\s/g, '')
+        .toLowerCase();
       if (LOADING_ATTRIBUTES.includes(attribute)) return `${attribute}= on <${tag}>`;
       if ((attribute === 'href' || attribute === 'xlink:href') && tag !== 'a') {
         return `${attribute}= on <${tag}>`;
       }
       // An event's handler is a script, and so is a javascript: link.
       if (/^on/.test(attribute)) return `${attribute}= on <${tag}>`;
-      if (attribute === 'href' && value.startsWith('javascript:')) return 'a javascript: link';
+      if ((attribute === 'href' || attribute === 'xlink:href') && value.startsWith('javascript:')) {
+        return 'a javascript: link';
+      }
       // Another page, fetched in this one's place as it is shown.
       if (attribute === 'http-equiv' && value === 'refresh') {
         return `http-equiv=refresh on <${tag}>`;

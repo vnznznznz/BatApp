@@ -351,6 +351,16 @@ describe('what the pages load', () => {
       'a javascript: link',
     ],
     [
+      'a script run by a link in a drawing',
+      '<svg><a xlink:href="javascript:fetch(\'https://example.org/\')"><text>Help</text></a></svg>',
+      'a javascript: link',
+    ],
+    [
+      'a script run by a link written with character references',
+      '<a href="&#106;avascript:fetch(\'https://example.org/\')">Help</a>',
+      'a javascript: link',
+    ],
+    [
       'another page, by a refresh',
       '<meta http-equiv="refresh" content="0; url=https://example.org/">',
       'http-equiv=refresh on <meta>',
