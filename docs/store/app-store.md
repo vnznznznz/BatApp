@@ -6,9 +6,11 @@ App Review.
 
 Researched on 4 November 2026 against Apple's App Store Connect help pages, and brought up to date
 on 5 November 2026 with the operator's decisions of that day: a minimum age of 13, an operator who
-lives in Switzerland as a private individual, and web pages on GitHub Pages. Apple renames fields
-and changes forms; anything marked **to check** has to be confirmed on screen before it is relied
-on.
+lives in Switzerland as a private individual, and web pages on GitHub Pages. Brought up to date
+again on 21 November 2026 against the reviewed code (commit 187439c): codes instead of links in
+emails, moves before the first letter, the limit on friend requests, what stays on the phone, and
+the privacy manifest. Apple renames fields and changes forms; anything marked **to check** has to
+be confirmed on screen before it is relied on.
 
 **Personal data stays out of this file.** This repository is public. Where a field needs the
 operator's details, this file names a placeholder, and the real value is typed straight into App
@@ -267,7 +269,7 @@ never shows Apple's tracking prompt (App Tracking Transparency).
 | Identifiers      | User ID                 | **Yes**   | Yes    | No       | The account id (UUID) and the username. Other users see them only through a friendship, a request, a letter or a block.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Identifiers      | Device ID               | No        |        |          | No advertising identifier, no vendor identifier, no push token.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Purchases        | Purchase History        | No        |        |          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Usage Data       | Product Interaction     | **Yes**   | Yes    | No       | No analytics, but the server does keep: sign-in times, a session refresh about once an hour while the app is open (so a record of when it was in use; the sign-in log keeps 30 days), when each letter was opened (shown only to its recipient), when each bat left or came home, whether a letter has ever gone to or from the account (it decides whether a move counts at once; kept until the account is deleted), and how many new friend requests the account made in the current hour (for the limit of 20 an hour; the daily tidy-up deletes the count once that hour is a day old). That Apple wants these last two here is **to check**.                                                                          |
+| Usage Data       | Product Interaction     | **Yes**   | Yes    | No       | No analytics, but the server does keep: sign-in times, a session refresh about once an hour while the app is open (so a record of when it was in use; the sign-in log keeps 30 days), when each letter was opened (shown only to its recipient), when each bat left or came home, whether a letter has ever gone to or from the account (it decides whether a move counts at once; kept until the account is deleted), and how many new friend requests the account made in the current hour (for the limit of 20 an hour; the daily tidy-up deletes the count once that hour began more than a day ago, at the latest two days after it began). That Apple wants these last two here is **to check**.                      |
 | Usage Data       | Advertising Data        | No        |        |          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Usage Data       | Other Usage Data        | No        |        |          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Diagnostics      | Crash Data              | No        |        |          | No crash reporting in the app. TestFlight's crash reports are Apple's to disclose.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -523,7 +525,7 @@ Danke, dass du Night Courier testest. Das kannst du ausprobieren:
 6. „Block“ und „Report“ (Blockieren und Melden) findest du bei jedem Brief, den du bekommst, und auf der Seite einer befreundeten Person. Probier beides bitte nur mit einem Test-Kontakt aus: Eine Meldung geht wirklich an die Person, die Night Courier betreibt.
 7. Wenn du VoiceOver, größere Schrift oder „Bewegung reduzieren“ nutzt, erzähl uns, wie es lief. Mit „Bewegung reduzieren“ flattern und schweben die Fledermäuse nicht mehr, aber die App zeigt weiter, wo jede gerade unterwegs ist.
 
-Passwort vergessen? Tippe auf dem Anmeldebildschirm auf „I forgot my password“ und gib den Code aus der E-Mail mit einem neuen Passwort in die App ein.
+Passwort vergessen? Tipp auf dem Anmeldebildschirm auf „I forgot my password“ und gib den Code aus der E-Mail mit einem neuen Passwort in die App ein.
 
 Feedback mit Screenshot geht über TestFlight, oder über „Contact“ in deinem Profil. Bitte schick keine Screenshots, auf denen Briefe anderer Leute zu sehen sind.
 ```
@@ -691,11 +693,18 @@ it again from step 1, because Apple wants a demo account that does not expire.
       (UserDefaults `CA92.1`, SystemBootTime `35F9.1`), and pod install merges in the manifests
       the packages bring (React Native, `expo-constants`, `expo-system-ui`, `expo-file-system`).
       The prebuilt Hermes framework (`hermesvm.framework`) is downloaded at pod install and could
-      not be read beforehand: watch for it in particular. Second, that the built app's
-      `PrivacyInfo.xcprivacy` holds the merged list: FileTimestamp `C617.1`, `0A2A.1` and
+      not be read beforehand: watch for it in particular. If the email reports ITMS-91053, it names
+      the API category and the file that uses it. That needs a developer, who adds the category
+      with its reason under `ios.privacyManifests` in `app.json`; then build and upload again. Do
+      not submit a build for review until one uploads without that warning. Second, that the
+      built app's privacy manifest holds the merged list: FileTimestamp `C617.1`, `0A2A.1` and
       `3B52.1`; UserDefaults `CA92.1`; SystemBootTime `35F9.1`; DiskSpace `E174.1` and `85F4.1`.
-      Its `NSPrivacyCollectedDataTypes` stays empty, as Expo and React Native write it: what the
-      app collects is declared in App Privacy (section 3) alone. Third, that the built Info.plist
+      To see it, download the build's `.ipa` from its page on expo.dev, rename it to `.zip` and
+      unpack it. In the folder `Payload`, open the folder whose name ends in `.app` (on a Mac:
+      right-click it, Show Package Contents), open `PrivacyInfo.xcprivacy` in it with a text
+      editor, and search for each code (**to check** on the first build). Its
+      `NSPrivacyCollectedDataTypes` stays empty, as Expo and React Native write it: what the app
+      collects is declared in App Privacy (section 3) alone. Third, that the built Info.plist
       has no `NSFaceIDUsageDescription`. `app.json` already passes `faceIDPermission: false` to
       `expo-secure-store`, and Expo's config plugins delete the key for `false`; confirm it once on
       a real build.
@@ -765,9 +774,9 @@ Collected from above, so none is lost:
 5. That `ITSAppUsesNonExemptEncryption = NO` reaches the build and App Store Connect stops asking,
    and the wording of the encryption questions if it asks anyway.
 6. Upload warnings about the privacy manifest, none expected now that `app.json` declares the two
-   reasons, with an eye on the prebuilt Hermes framework; that the built `PrivacyInfo.xcprivacy`
-   holds the merged list (section 7); and that the built Info.plist really has no Face ID usage
-   string.
+   reasons, with an eye on the prebuilt Hermes framework (section 7 says what to do if one comes);
+   that the built app's privacy manifest holds the merged list, and that it opens in a text editor
+   as section 7 describes; and that the built Info.plist really has no Face ID usage string.
 7. That a free app needs no Paid Apps agreement or banking and tax forms, and what the membership
    costs in Switzerland (CHF 99 a year expected).
 8. Whether the Support URL page must also publish a telephone number, and whether a link from it
