@@ -65,9 +65,15 @@ const mockHold = {
   current: false,
   /** What the code that holds the way in is for, as the app's context says once it has signed in. */
   unfinished: null as object | null,
+  /** Whether a sign-out is still under way, which signing up waits for. */
+  signingOut: false,
   listeners: new Set<() => void>(),
   set(next: boolean) {
     mockHold.current = next;
+    mockHold.listeners.forEach((listener) => listener());
+  },
+  signOutUnderWay(next: boolean) {
+    mockHold.signingOut = next;
     mockHold.listeners.forEach((listener) => listener());
   },
 };
@@ -85,10 +91,12 @@ jest.mock('@/features/auth/auth-context', () => {
     ...actual,
     useAuth: () => {
       const isSettingPassword = useSyncExternalStore(subscribe, () => mockHold.current);
+      const isSigningOut = useSyncExternalStore(subscribe, () => mockHold.signingOut);
       return mockAuth.real
         ? actual.useAuth()
         : {
             isSettingPassword,
+            isSigningOut,
             unfinished: isSettingPassword ? mockHold.unfinished : null,
             signUp: mockSignUp,
             confirmEmail: mockConfirmEmail,
@@ -222,6 +230,7 @@ beforeEach(() => {
   mockSignUp.mockReset();
   mockConfirmEmail.mockReset();
   mockHold.current = false;
+  mockHold.signingOut = false;
   // The code is right, and signs the courier in, holding the way in; the
   // account is set up as typed, and the way in opens.
   mockConfirmSignUp.mockReset().mockImplementation(async () => mockHold.set(true));
@@ -487,6 +496,62 @@ describe('SignUpScreen', () => {
    * came back through the app's URL scheme with a whole session that the app
    * never read; a link that had run out was the end of the road.
    */
+  /**
+   * Signing up waits for a sign-out still under way, and on a connection that
+   * never answers that was up to a minute behind the button's spinner, with
+   * nothing said. (Found in the merged tree.)
+   */
+  describe('while the last sign-out is still under way', () => {
+    const FINISHING =
+      'Finishing the last sign-out first. Without a connection, that can take a minute.';
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function createPressed() {
+      mockSignUp.mockReturnValue(new Promise(() => {}));
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      await renderScreen(<SignUpScreen />);
+      await fillForm();
+      await user.press(button('Create account'));
+    }
+
+    it('says so under the button once it has waited five seconds, aloud as well', async () => {
+      mockHold.signingOut = true;
+      await createPressed();
+
+      await act(() => jest.advanceTimersByTimeAsync(4_999));
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      await act(() => jest.advanceTimersByTimeAsync(1));
+
+      expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(FINISHING);
+      const texts = screen.container
+        .queryAll((node) => (node as unknown as { type: unknown }).type === 'Text')
+        .map((node) =>
+          String((node as unknown as { props: { children: unknown } }).props.children),
+        );
+      expect(texts.indexOf(FINISHING)).toBe(texts.indexOf('Create account') + 1);
+
+      await act(async () => mockHold.signOutUnderWay(false));
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      expect(button('Create account')).toBeBusy();
+    });
+
+    it('says nothing of a sign-out when none is under way, however long it takes', async () => {
+      await createPressed();
+
+      await act(() => jest.advanceTimersByTimeAsync(30_000));
+
+      expect(screen.queryByText(FINISHING)).toBeNull();
+    });
+  });
+
   describe('confirming the address with the code from the email', () => {
     const CODE_DID_NOT_WORK =
       'That code did not work. Check it against the newest email, or ask for a new one.';

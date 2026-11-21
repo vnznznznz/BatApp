@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -7,15 +7,16 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
-import { useAuth } from '@/features/auth/auth-context';
+import { FINISHING_SIGN_OUT, useAuth } from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
 import { settled, wordsOf } from '@/features/auth/settled';
 import { validateEmail, validatePassword } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
+import { useLingering } from '@/lib/use-lingering';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn, unfinished } = useAuth();
+  const { signIn, unfinished, isSigningOut } = useAuth();
   // A sign-in whose code has confirmed the address, with the password not yet
   // saved again - the app closed in between, say - taken up where it was
   // left: the root layout brings the courier here for it.
@@ -34,6 +35,13 @@ export default function SignInScreen() {
   // The keyboard's "go" key is not held back by the button's spinner, and a
   // second tap can come before the spinner is drawn: once is enough.
   const inFlight = useRef(false);
+  // Signing in waits for a sign-out still under way, and on a connection that
+  // never answers that is a minute behind the spinner: said, once it has
+  // taken a while, under the button and aloud.
+  const finishingSignOut = useLingering(busy && isSigningOut);
+  useEffect(() => {
+    if (finishingSignOut) announce(FINISHING_SIGN_OUT);
+  }, [finishingSignOut]);
 
   async function submit() {
     if (inFlight.current) return;
@@ -120,6 +128,11 @@ export default function SignInScreen() {
         ) : null}
 
         <Button label="Sign in" loading={busy} onPress={submit} />
+        {finishingSignOut ? (
+          <Text variant="caption" tone="muted" center>
+            {FINISHING_SIGN_OUT}
+          </Text>
+        ) : null}
         <Button
           label="I forgot my password"
           variant="ghost"

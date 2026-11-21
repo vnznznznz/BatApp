@@ -718,6 +718,30 @@ describe('signing out', () => {
     });
 
     /**
+     * Signing in waits for a sign-out still under way, and on a connection
+     * that never answers that can be a minute: the forms say so (Found in the
+     * merged tree), and are told by this when there is one.
+     */
+    it('says a sign-out is under way after the device has let go, until it is over', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      network = (request) =>
+        isLogout(request)
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 12_000))
+          : json(200, []);
+      await launch();
+      await passes(A_MOMENT);
+      expect(auth.isSigningOut).toBe(false);
+
+      const { took } = await pressSignOut();
+      expect(took).toBeLessThanOrEqual(5_500);
+      expect(state()).toBe('signed out');
+      expect(auth.isSigningOut).toBe(true);
+
+      await passes(7_000);
+      expect(auth.isSigningOut).toBe(false);
+    });
+
+    /**
      * The server is told, only later than the device lets go. Whoever answers
      * last, the sign-out is heard of once.
      */
@@ -938,6 +962,27 @@ describe('signing out', () => {
         expect(ended()).toBe('done');
       });
 
+      /** Told after all, with nothing else drawn as it ends: the forms still hear of it. */
+      it('says a sign-out is under way until the server has been told after all', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+        expect(auth.isSigningOut).toBe(true);
+
+        backOnline({ logoutTakes: 3000 });
+        for (let second = 0; second < 60; second++) {
+          if (sent.some(isLogoutWith(RENEWED_TOKEN))) break;
+          await passes(1000);
+        }
+        expect(sent.filter(isLogoutWith(RENEWED_TOKEN))).toHaveLength(1);
+        expect(auth.isSigningOut).toBe(true);
+
+        await passes(4000);
+        expect(auth.isSigningOut).toBe(false);
+      });
+
       it('tells the server after all when the network is back while a renewal asked for later is under way', async () => {
         await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
         network = offline;
@@ -1069,6 +1114,31 @@ describe('signing out', () => {
         ['scope=global', NEW_TOKEN],
       ]);
       expect(mockKeychain.size).toBe(0);
+    });
+
+    /**
+     * The sign-out finished there, after a renewal came through, changes
+     * nothing else that is drawn: the forms still hear that one is under way,
+     * and when it is over.
+     */
+    it('says a sign-out is under way while the server is told after a renewal came through', async () => {
+      const { client } = await signOutUnheard();
+      online();
+      const answer = network;
+      network = (request) =>
+        isLogout(request)
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(answer(request)), 3000))
+          : answer(request);
+      await passes(61_000);
+      expect(auth.isSigningOut).toBe(false);
+
+      await asked(async () => client.auth.refreshSession({ refresh_token: 'refresh-old' }));
+      await passes(1000);
+      expect(auth.isSigningOut).toBe(true);
+
+      await passes(3000);
+      expect(auth.isSigningOut).toBe(false);
+      expect(state()).toBe('signed out');
     });
 
     /**

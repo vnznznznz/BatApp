@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -9,7 +9,12 @@ import { TextField } from '@/components/text-field';
 import { ToggleRow } from '@/components/toggle-row';
 import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
-import { ALREADY_REGISTERED, USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
+import {
+  ALREADY_REGISTERED,
+  FINISHING_SIGN_OUT,
+  USERNAME_MAY_BE_TAKEN,
+  useAuth,
+} from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
 import { HoldBack } from '@/features/auth/hold-back';
 import { settled, wordsOf } from '@/features/auth/settled';
@@ -20,13 +25,14 @@ import {
   validateUsername,
 } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
+import { useLingering } from '@/lib/use-lingering';
 import { openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
 type Errors = Partial<Record<'email' | 'password' | 'username' | 'displayName', string | null>>;
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp, unfinished } = useAuth();
+  const { signUp, unfinished, isSigningOut } = useAuth();
   // A sign-up whose code has signed the courier in, with the account not yet
   // set up - the app closed in between, say - taken up where it was left: the
   // root layout brings the courier here for it.
@@ -51,6 +57,13 @@ export default function SignUpScreen() {
   // The keyboard's "go" key is not held back by the button's spinner, and a
   // second tap can come before the spinner is drawn: once is enough.
   const inFlight = useRef(false);
+  // Signing up waits for a sign-out still under way, and on a connection that
+  // never answers that is a minute behind the spinner: said, once it has
+  // taken a while, under the button and aloud.
+  const finishingSignOut = useLingering(busy && isSigningOut);
+  useEffect(() => {
+    if (finishingSignOut) announce(FINISHING_SIGN_OUT);
+  }, [finishingSignOut]);
 
   async function submit() {
     if (inFlight.current) return;
@@ -227,6 +240,11 @@ export default function SignUpScreen() {
           />
         ) : null}
         <Button label="Create account" loading={busy} onPress={submit} />
+        {finishingSignOut ? (
+          <Text variant="caption" tone="muted" center>
+            {FINISHING_SIGN_OUT}
+          </Text>
+        ) : null}
         <Button label="Back" variant="ghost" onPress={() => router.back()} />
       </View>
     </Screen>

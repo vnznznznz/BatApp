@@ -8,7 +8,15 @@ import {
   type Session,
   type User,
 } from '@supabase/supabase-js';
-import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  use,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 
 import { settled, wordsOf } from '@/features/auth/settled';
 import {
@@ -60,6 +68,12 @@ export type AuthContextValue = {
    * left.
    */
   unfinished: Unfinished | null;
+  /**
+   * True while a sign-out is still under way: after this device has let go,
+   * the server may still be being told. Every way of signing in waits for it
+   * first, and on a connection that never answers that can be a minute.
+   */
+  isSigningOut: boolean;
   /**
    * Resolves with whether the address still has to be confirmed with the code
    * emailed to it before the account can be used.
@@ -157,9 +171,29 @@ function underWay<T>(work: Promise<T>): Promise<T> {
     () => undefined,
   );
   signOutsUnderWay.add(over);
-  void over.then(() => signOutsUnderWay.delete(over));
+  tellSignOutWatchers();
+  void over.then(() => {
+    signOutsUnderWay.delete(over);
+    tellSignOutWatchers();
+  });
   return work;
 }
+
+/** Whoever draws whether a sign-out is under way (isSigningOut), to be told when it changes. */
+const signOutWatchers = new Set<() => void>();
+
+function tellSignOutWatchers() {
+  signOutWatchers.forEach((watcher) => watcher());
+}
+
+function watchSignOuts(watcher: () => void) {
+  signOutWatchers.add(watcher);
+  return () => {
+    signOutWatchers.delete(watcher);
+  };
+}
+
+const isSignOutUnderWay = () => signOutsUnderWay.size > 0;
 
 /**
  * Waits until no sign-out is under way, and then lets the next session be
@@ -203,6 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSettingPassword = codesOut > 0 || signedInByCode;
   // What the code is for, from the moment it goes to be checked.
   const [unfinished, setUnfinished] = useState<Unfinished | null>(null);
+  const isSigningOut = useSyncExternalStore(watchSignOuts, isSignOutUnderWay, isSignOutUnderWay);
 
   useEffect(() => {
     let active = true;
@@ -473,6 +508,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Once the code has signed the courier in, and only while it holds the
       // way in: a check that was refused leaves it behind.
       unfinished: signedInByCode ? unfinished : null,
+      isSigningOut,
 
       async signIn(email, password) {
         await beforeSigningIn();
@@ -592,7 +628,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       deleteAccount,
     };
-  }, [session, isRestoring, isSettingPassword, signedInByCode, unfinished]);
+  }, [session, isRestoring, isSettingPassword, signedInByCode, unfinished, isSigningOut]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
 }
@@ -753,6 +789,14 @@ const COULD_NOT_DELETE = 'Your account could not be deleted. Please try again.';
 const isAccountGone = (error: AuthError | null) =>
   isAuthApiError(error) &&
   (error.code === 'user_not_found' || /user (not found|.* does not exist)/i.test(error.message));
+
+/**
+ * Said under the sign-in and sign-up buttons once they have waited a while for
+ * a sign-out still under way (isSigningOut): without a connection it can take
+ * a minute, and the spinner alone said nothing of why.
+ */
+export const FINISHING_SIGN_OUT =
+  'Finishing the last sign-out first. Without a connection, that can take a minute.';
 
 /**
  * The one failure of signing up that belongs to a field. The form looks for

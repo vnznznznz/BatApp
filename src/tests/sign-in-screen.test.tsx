@@ -43,10 +43,16 @@ jest.mock('expo-router', () => {
 const mockHold = {
   current: false,
   unfinished: null as object | null,
+  /** Whether a sign-out is still under way, which signing in waits for. */
+  signingOut: false,
   listeners: new Set<() => void>(),
   set(next: boolean, unfinished: object | null = null) {
     mockHold.current = next;
     mockHold.unfinished = unfinished;
+    mockHold.listeners.forEach((listener) => listener());
+  },
+  signOutUnderWay(next: boolean) {
+    mockHold.signingOut = next;
     mockHold.listeners.forEach((listener) => listener());
   },
 };
@@ -61,8 +67,10 @@ jest.mock('@/features/auth/auth-context', () => {
     ...jest.requireActual<object>('@/features/auth/auth-context'),
     useAuth: () => {
       const isSettingPassword = useSyncExternalStore(subscribe, () => mockHold.current);
+      const isSigningOut = useSyncExternalStore(subscribe, () => mockHold.signingOut);
       return {
         isSettingPassword,
+        isSigningOut,
         unfinished: isSettingPassword ? mockHold.unfinished : null,
         signIn: mockSignIn,
         confirmEmail: mockConfirmEmail,
@@ -141,6 +149,7 @@ beforeEach(() => {
   mockResendConfirmationCode.mockReset();
   mockSignOut.mockReset();
   mockHold.set(false);
+  mockHold.signOutUnderWay(false);
   mockReplace.mockReset();
   mockedAnnounce.mockReset();
   mockKeyboardAvoidingViews.length = 0;
@@ -236,6 +245,74 @@ describe('SignInScreen', () => {
 
     expect(mockSignIn).toHaveBeenCalledTimes(2);
     expect(mockSignIn).toHaveBeenLastCalledWith('anna@example.com', 'a-good-password');
+  });
+
+  /**
+   * Signing in waits for a sign-out still under way, and on a connection that
+   * never answers that was up to a minute behind the button's spinner, with
+   * nothing said. (Found in the merged tree.)
+   */
+  describe('while the last sign-out is still under way', () => {
+    const FINISHING =
+      'Finishing the last sign-out first. Without a connection, that can take a minute.';
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function signInPressed() {
+      mockSignIn.mockReturnValue(new Promise(() => {}));
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      await renderScreen(<SignInScreen />);
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+      await user.type(screen.getByLabelText('Password'), 'a-good-password');
+      await user.press(screen.getByRole('button', { name: 'Sign in' }));
+    }
+
+    /** The texts on the screen, in the order they are drawn: the buttons' labels among them. */
+    const drawn = () =>
+      screen.container
+        .queryAll((node) => (node as unknown as HostNode).type === 'Text')
+        .map((node) => String((node as unknown as HostNode).props.children));
+
+    it('says so under the button once it has waited five seconds, aloud as well', async () => {
+      mockHold.signOutUnderWay(true);
+      await signInPressed();
+
+      await act(() => jest.advanceTimersByTimeAsync(4_999));
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      await act(() => jest.advanceTimersByTimeAsync(1));
+
+      expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(FINISHING);
+      const order = drawn();
+      expect(order.indexOf(FINISHING)).toBe(order.indexOf('Sign in') + 1);
+    });
+
+    it('lets go of the words once the sign-out is over, the sign-in still on its way', async () => {
+      mockHold.signOutUnderWay(true);
+      await signInPressed();
+      await act(() => jest.advanceTimersByTimeAsync(5_000));
+      expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+
+      await act(async () => mockHold.signOutUnderWay(false));
+
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeBusy();
+    });
+
+    it('says nothing of a sign-out when none is under way, however long the sign-in takes', async () => {
+      await signInPressed();
+
+      await act(() => jest.advanceTimersByTimeAsync(30_000));
+
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      expect(mockedAnnounce).not.toHaveBeenCalled();
+    });
   });
 
   /**
