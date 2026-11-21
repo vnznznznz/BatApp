@@ -48,6 +48,19 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    Geschichte lesbar. In der App bleiben EXPO_PUBLIC_PRIVACY_POLICY_URL und EXPO_PUBLIC_CONTACT_URL
    Einstellungen der Umgebung und werden nicht eingecheckt. Abschnitt 7 beschreibt GitHub als
    Anbieter der Webseiten.
+9. Die Abschnitte 3.1 bis 3.3, 3.8 bis 3.10, 4, 5, 7, 9 und 11 folgen außerdem dem Code vom
+   21. November 2026: Ein Umzug gilt bis zum ersten Brief eines Kuriers sofort
+   (profiles.has_corresponded, Migration 20261121120003_moves_before_the_first_letter.sql);
+   höchstens 20 neue Freundschaftsanfragen pro Stunde, gezählt in private.friend_request_counts
+   (20261114120001_friend_requests.sql); ein vorläufig gesperrtes Konto ist sofort gestoppt und kann
+   sich nicht selbst löschen (20261114120000_suspended_accounts.sql), und seine Anmeldung
+   beantwortet die App wie ein falsches Passwort (signIn in src/features/auth/auth-context.tsx);
+   jede E-Mail enthält einen Code und keinen Link (supabase/templates; otp_length und otp_expiry in
+   supabase/config.toml); das Bestätigen einer Adresse löscht das Passwort, das das Konto hatte
+   (20261121160000_confirmation_clears_password.sql); die Notiz, wofür ein Code ist, liegt neben
+   der Sitzung (src/features/auth/unfinished.ts); das Abmelden wartet höchstens 5 Sekunden auf den
+   Server (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx). Ändert sich daran etwas,
+   diese Abschnitte anpassen.
 -->
 
 # Datenschutzerklärung für Night Courier
@@ -74,9 +87,10 @@ Diese Datenschutzerklärung gibt es auch auf Englisch. Verbindlich ist diese deu
 - Briefe sind nicht Ende-zu-Ende-verschlüsselt. Technisch könnten ich und Supabase sie lesen. Ich
   lese Briefe nur, wenn sie mir gemeldet werden oder ich anders einen technischen Fehler nicht
   beheben kann.
-- Du kannst dein Konto jederzeit in der App löschen. Dann sind auch alle Briefe weg, die du
-  geschickt oder bekommen hast, auch bei den Freunden, mit denen du geschrieben hast. Einiges bleibt
-  danach noch eine Weile, vor allem Meldungen: bis zu 180 Tage (Abschnitt 11).
+- Du kannst dein Konto jederzeit in der App löschen, außer ich habe es vorläufig gesperrt
+  (Abschnitt 3.8). Dann sind auch alle Briefe weg, die du geschickt oder bekommen hast, auch bei den
+  Freunden, mit denen du geschrieben hast. Einiges bleibt danach noch eine Weile, vor allem
+  Meldungen: bis zu 180 Tage (Abschnitt 11).
 - Night Courier ist ab 13 Jahren. Wer unter 16 ist, braucht die Erlaubnis der Eltern oder anderer
   Erziehungsberechtigter.
 - Du hast Rechte, zum Beispiel auf Auskunft und Löschung. Schreib mir einfach: {{CONTACT_EMAIL}}.
@@ -143,16 +157,16 @@ selbst ist auf Englisch; deshalb nenne ich Knöpfe hier mit ihrem englischen Nam
 Wenn du dich registrierst, gibst du deine E-Mail-Adresse, ein Passwort, einen Benutzernamen und
 einen Anzeigenamen ein.
 
-- **E-Mail-Adresse.** Damit meldest du dich an, und dorthin geht eine E-Mail, wenn du dein Passwort
-  vergessen hast. Ich nutze sie auch, um dir zu schreiben, wenn es nötig ist – zum Beispiel eine
-  Verwarnung nach einer Meldung, eine Nachricht, wenn du eine Drohung gemeldet hast (Abschnitt
-  3.7), oder einen Hinweis auf eine wichtige Änderung dieser Erklärung (Abschnitt 15). Andere Nutzer
-  sehen deine E-Mail-Adresse nie.
+- **E-Mail-Adresse.** Damit meldest du dich an, und dorthin geht die E-Mail mit einem Code, wenn du
+  dein Passwort vergessen hast (Abschnitt 3.10). Ich nutze sie auch, um dir zu schreiben, wenn es
+  nötig ist – zum Beispiel eine Verwarnung nach einer Meldung, eine Nachricht, wenn du eine Drohung
+  gemeldet hast (Abschnitt 3.7), oder einen Hinweis auf eine wichtige Änderung dieser Erklärung
+  (Abschnitt 15). Andere Nutzer sehen deine E-Mail-Adresse nie.
 - **Passwort.** Gespeichert wird nur ein sogenannter Hashwert (bcrypt). Daraus kann niemand dein
   Passwort zurückrechnen, auch ich nicht. Die App selbst speichert dein Passwort nicht.
 - **Kontodaten.** Zu deinem Konto gehören eine zufällige Nutzer-ID und einige Zeitpunkte: wann das
   Konto angelegt wurde, wann du dich zuletzt angemeldet hast, wann deine E-Mail-Adresse als
-  bestätigt gilt und wann zuletzt eine E-Mail zum Zurücksetzen des Passworts verschickt wurde – und
+  bestätigt gilt und wann zuletzt eine E-Mail mit einem Code an sie verschickt wurde – und
   gegebenenfalls eine Sperre (Abschnitt 3.8).
 - **Eine Kopie deiner Namen von der Registrierung.** Den Benutzernamen und den Anzeigenamen, die du
   bei der Registrierung eingibst, legt Supabase zusätzlich in deinem Kontodatensatz ab. Daraus
@@ -167,16 +181,23 @@ beschreiben.
 ### 3.2 Dein Profil und deine Stadt
 
 - **Benutzername.** Damit finden dich Freunde: Wer dir eine Freundschaftsanfrage schicken will, muss
-  deinen Benutzernamen genau kennen. In der App lässt er sich nicht ändern.
+  deinen Benutzernamen genau kennen. Ändern lässt er sich nicht.
 - **Anzeigename.** Der Name, den deine Freunde sehen und alle, denen du eine Anfrage schickst. Du
   kannst ihn jederzeit im Profil ändern.
 - **Deine Stadt.** Du wählst sie aus einer Liste. Die App fragt nie nach deinem Standort und benutzt
   kein GPS. Aus der Entfernung zwischen zwei Städten berechnet der Server, wie lange eine Fledermaus
   fliegt.
-- **Umzüge.** Eine neue Stadt gilt erst nach 24 Stunden als die, von der deine Fledermäuse
-  losfliegen – sonst könnte man sich für einen kurzen Flug die Stadt eines Freundes „leihen“. Dafür
-  speichere ich bei einem Wechsel deine vorherige Stadt und den Zeitpunkt des Wechsels. Sind die 24
-  Stunden vorbei, löscht ein täglicher Auftrag beides, spätestens zwei Tage nach dem Wechsel.
+- **Umzüge.** Solange noch kein Brief an dich oder von dir ging, gilt eine neue Stadt sofort, wie
+  schon deine erste: Es gibt noch keinen Flug, den ein Umzug verkürzen könnte. Danach gilt eine neue
+  Stadt erst nach 24 Stunden als die, von der deine Fledermäuse losfliegen – sonst könnte man sich
+  für einen kurzen Flug die Stadt eines Freundes „leihen“. Dafür vermerke ich in deinem Profil, ob
+  schon einmal ein Brief an dich oder von dir ging; der Vermerk bleibt so lange wie dein Konto, auch
+  wenn die Briefe selbst nicht mehr da sind. Und wechselst du danach die Stadt, speichere ich deine
+  vorherige Stadt und den Zeitpunkt des Wechsels. Sind die 24 Stunden vorbei, löscht ein täglicher
+  Auftrag beides, spätestens zwei Tage nach dem Wechsel.
+- **Zeitpunkte.** Außerdem speichere ich, wann dein Profil angelegt und wann es zuletzt geändert
+  wurde. Als Änderung zählt auch, wenn der Vermerk über deinen ersten Brief gesetzt wird und wenn
+  der tägliche Auftrag nach einem Umzug aufräumt.
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
 
@@ -187,7 +208,19 @@ wann sie angenommen wurde. Eine offene Anfrage bleibt bestehen, bis sie angenomm
 zurückgezogen wird; sie läuft nicht von selbst ab. Wird eine Anfrage abgelehnt oder zurückgezogen,
 eine Freundschaft beendet oder durch eine Blockierung aufgelöst, lösche ich den Eintrag.
 
-**Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
+Du kannst höchstens 20 neue Freundschaftsanfragen pro Stunde stellen. Damit das eingehalten wird,
+speichere ich zu deinem Konto, wann die Stunde deiner letzten Anfragen begann und wie viele neue
+Anfragen du darin gestellt hast – nicht, wen du gefragt hast. Ein täglicher Auftrag löscht das,
+sobald der Beginn dieser Stunde mehr als einen Tag zurückliegt, spätestens zwei Tage nach ihrem
+Beginn; mit deinem Konto geht es ohnehin.
+
+<!-- PRÜFEN (rechtlich): die Rechtsgrundlage für die stündliche Zahl der Freundschaftsanfragen -
+Art. 6 Abs. 1 lit. f DSGVO, wie unten geschrieben (niemand soll andere mit Anfragen überhäufen),
+oder Art. 6 Abs. 1 lit. b DSGVO, als Teil dessen, wie der Dienst funktioniert. Die Zahl ist
+private.friend_request_counts; der tägliche Auftrag ist tidy_up. -->
+
+**Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO; für die Zahl der neuen Anfragen Art. 6 Abs. 1
+lit. f DSGVO – das berechtigte Interesse, dass niemand andere mit Freundschaftsanfragen überhäuft.
 
 ### 3.4 Briefe
 
@@ -321,13 +354,23 @@ Abs. 1 lit. c DSGVO.
 Wenn jemand schwer oder wiederholt gegen die Hausregeln verstößt, entferne ich das Konto. Profil,
 Fledermäuse, Freundschaften, Blockierungen und alle Briefe, die das Konto geschickt oder bekommen
 hat, werden dann gelöscht – auf beiden Seiten. Geht es um eine Drohung, sperre ich das Konto sofort
-vorläufig: Anmelden geht nicht mehr, und die App hört spätestens nach einer Stunde auf zu
-funktionieren; gelöscht wird aber noch nichts. Entfernt wird es eine
-Woche später, damit die Person, die die Drohung gemeldet hat, vorher Kopien machen kann (Abschnitt
-3.7).
+vorläufig; gelöscht wird aber noch nichts. Entfernt wird es eine Woche später, damit die Person, die
+die Drohung gemeldet hat, vorher Kopien machen kann (Abschnitt 3.7).
+
+Ein vorläufig gesperrtes Konto funktioniert sofort nicht mehr: Es kann niemandem mehr schreiben,
+seinen Namen und seine Stadt nicht mehr ändern, keine Briefe lesen und keine Freunde sehen, und es
+lässt sich nicht in der App löschen. Die App sagt, dass das Konto gesperrt ist, und bietet an, sich
+abzumelden oder mir zu schreiben; ist es dein Konto und willst du es löschen lassen, schreib mir.
+Eine Anmeldung bei ihm wird beantwortet, als wäre das Passwort falsch: So verrät die App niemandem,
+der nur die E-Mail-Adresse kennt, was aus dem Konto geworden ist. Dazu braucht es den Code aus
+„I forgot my password“, den nur bekommt, wer das Postfach hat; dann sagt die App, dass das Konto
+gesperrt ist. Briefe, die es geschickt hat und die noch unterwegs sind, landen wie sonst, und seine
+Freunde können ihm weiter Briefe schicken: Würden ihre Briefe abgewiesen, erführen sie von der
+Sperre.
 
 Damit sich dieselbe Person nicht gleich mit derselben E-Mail-Adresse neu anmeldet, sperre ich beim
-Entfernen die Anmeldung des Kontos. Dann bleibt der Kontodatensatz bei Supabase stehen: die
+Entfernen die Anmeldung des Kontos; eine Anmeldung mit dieser Adresse wird dann beantwortet wie bei
+einem vorläufig gesperrten Konto. Der Kontodatensatz bleibt bei Supabase stehen: die
 E-Mail-Adresse, der Hashwert des Passworts und die Zeitpunkte aus Abschnitt 3.1. Er bleibt **zwei
 Jahre ab dem Entfernen** gespeichert; danach löscht ein täglicher Auftrag ihn. Die Sitzungen des
 Kontos enden früher: Ein täglicher Auftrag löscht jede, sobald sie 90 Tage nicht benutzt wurde, und
@@ -350,7 +393,21 @@ Benutzung wie alle anderen (tidy_up); dass eine abgelehnte Erneuerung nicht als 
 exportiert das Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
 sperren nichts: die durch die Person selbst und die durch den Betreiber auf jemandes Bitte, also
 "select private.delete_account('<id>');" (gdpr-records.md 5.4) und nie der Knopf Authentication →
-Users → Delete user im Dashboard. -->
+Users → Delete user im Dashboard. Ein vorläufig gesperrtes Konto: Die Datenbank weist es sofort ab
+(private.caller() und der Trigger auf profiles, Migration 20261114120000_suspended_accounts.sql),
+außer beim Lesen der eigenen Profilzeile, der nackten Zeilen seiner Freundschaften und der
+Städteliste, bis sein Zugangs-Token abläuft, also innerhalb einer Stunde; delete_own_account weist
+es ab; send_message fragt nicht, ob der Empfänger gesperrt ist (Entscheidung des Betreibers: ein
+Abweisen verriete es den Freunden). Die App zeigt REFUSALS.account_suspended (src/lib/rpc-error.ts)
+mit Sign out und Contact (src/features/profile/account-closed.tsx) und beantwortet "user_banned"
+bei der Anmeldung wie ein falsches Passwort (signIn in src/features/auth/auth-context.tsx); GoTrue
+v2.197 schickt einem gesperrten Konto trotzdem einen Code zum Zurücksetzen, und dessen Prüfung
+sagt, dass es gesperrt ist. -->
+
+<!-- PRÜFEN (rechtlich): Bittet jemand mit einem vorläufig gesperrten Konto darum, es zu löschen -
+ob das vor dem Entfernen eine Woche später geschehen muss, oder ob die Briefe und Anmeldedaten, die
+für die meldende Person und die Polizei aufbewahrt werden, bis dahin bleiben dürfen (Art. 17 Abs. 3
+lit. e DSGVO, Rechtsansprüche; ebenso nach dem DSG). -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – das berechtigte Interesse, alle anderen vor
 jemandem zu schützen, der wegen Regelverstößen entfernt wurde.
@@ -362,16 +419,17 @@ Anfrage der App an den Server enthält deine IP-Adresse und eine technische Kenn
 oder Betriebssystems (den sogenannten User-Agent).
 
 - **Sitzungen.** Für jede Anmeldung entsteht eine Sitzung mit IP-Adresse, User-Agent und
-  Zeitpunkten. Wenn du dich abmeldest („Sign out“), werden deine Sitzungen sofort gelöscht, und
-  zwar für alle deine Geräte. Ein anderes Gerät, das noch angemeldet ist, funktioniert weiter, bis
-  seine Anmeldung das nächste Mal erneuert werden müsste – höchstens eine Stunde –, und muss sich
-  dann neu anmelden. Mit deinem Konto werden die Sitzungen ebenfalls gelöscht. Eine Sitzung, die
-  **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem du die App so lange nicht geöffnet
-  hast –, löscht ein täglicher Auftrag; dort meldest du dich dann neu an. Erreicht die Abmeldung den
-  Server nicht, etwa ohne Netz, meldet die App dich auf deinem Gerät trotzdem ab, aber die Sitzungen
-  beim Server bleiben bis dahin; melde dich dann einmal an und wieder ab. Wenn du ein Handy
-  verlierst, melde dich auf einem anderen Gerät an und ab – die Anmeldung auf dem verlorenen Handy
-  funktioniert dann spätestens nach einer Stunde nicht mehr – oder schreib mir.
+  Zeitpunkten. Wenn du dich abmeldest („Sign out“), bittet die App den Server, deine Sitzungen zu
+  löschen, und zwar für alle deine Geräte, und meldet dich auf diesem Gerät innerhalb weniger
+  Sekunden ab, ob der Server bis dahin geantwortet hat oder nicht. Ein anderes Gerät, das noch
+  angemeldet ist, funktioniert weiter, bis seine Anmeldung das nächste Mal erneuert werden müsste –
+  höchstens eine Stunde –, und muss sich dann neu anmelden. Mit deinem Konto werden die Sitzungen
+  ebenfalls gelöscht. Eine Sitzung, die **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem
+  du die App so lange nicht geöffnet hast –, löscht ein täglicher Auftrag; dort meldest du dich dann
+  neu an. Erfährt der Server nichts von deiner Abmeldung, etwa ohne Netz, bleiben deine Sitzungen
+  dort, bis dieser Auftrag sie löscht; willst du sie früher beenden, melde dich einmal an und wieder
+  ab. Wenn du ein Handy verlierst, melde dich auf einem anderen Gerät an und ab – die Anmeldung auf
+  dem verlorenen Handy funktioniert dann spätestens nach einer Stunde nicht mehr – oder schreib mir.
 - **Anmelde-Token.** Während die App geöffnet ist, wird deine Anmeldung etwa einmal pro Stunde
   erneuert. Dabei entsteht jedes Mal ein neues Token, und das alte wird ungültig. Gespeichert bleiben
   die Token höchstens so lange wie die Sitzung, zu der sie gehören.
@@ -394,11 +452,15 @@ oder Betriebssystems (den sogenannten User-Agent).
 - Sitzungen: am 4. November 2026 auf dem lokalen Supabase-Stack geprüft. Jede Anmeldung legt eine
   Zeile in auth.sessions (mit IP-Adresse und User-Agent) und in auth.refresh_tokens an; das Abmelden
   der App (scope "global") löscht beide für alle Geräte. Das gehostete Projekt läuft mit demselben
-  GoTrue; nichts mehr zu tun. "Höchstens eine Stunde": Ein Zugangs-Token, den ein anderes Gerät
-  schon hält, gilt an der Datenbank-API weiter, bis er abläuft (jwt_expiry = 3600 in
-  supabase/config.toml), weil dort nichts nach der Sitzung sieht; am 17. November 2026 am lokalen
-  Stack gezeigt, mit einem signierten Token ganz ohne Sitzung. Supabase Auth selbst lehnt einen
-  solchen Token ab, und erneuern lässt er sich nicht.
+  GoTrue; nichts mehr zu tun. Die App wartet höchstens 5 Sekunden auf diese Antwort
+  (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx) und meldet das Gerät dann
+  trotzdem ab; eine schon gesendete Anfrage kann den Server noch erreichen, und bei einer Sitzung,
+  deren Token abgelaufen war, sagt die App es dem Server noch einmal, wenn der Client fertig ist
+  (tellServerAfterAll) - das erreicht ihn nur, wenn das Netz bis dahin zurück ist. "Höchstens eine
+  Stunde": Ein Zugangs-Token, den ein anderes Gerät schon hält, gilt an der Datenbank-API weiter,
+  bis er abläuft (jwt_expiry = 3600 in supabase/config.toml), weil dort nichts nach der Sitzung
+  sieht; am 17. November 2026 am lokalen Stack gezeigt, mit einem signierten Token ganz ohne
+  Sitzung. Supabase Auth selbst lehnt einen solchen Token ab, und erneuern lässt er sich nicht.
 - Anmelde-Token: GoTrues automatisches Aufräumen (ersetzte Token nach 24 Stunden) ist nur aktiv,
   wenn GOTRUE_DB_CLEANUP_ENABLED gesetzt ist; der Standard ist "false", lokal ist es aus. Ist es auf
   dem gehosteten Projekt an, kann der Satz lauten: "Ersetzte Token löscht Supabase nach 24 Stunden."
@@ -428,26 +490,45 @@ Angriffe und Missbrauch zu erkennen und Fehler zu finden.
 
 ### 3.10 E-Mails von Night Courier
 
-Night Courier schickt dir automatisch nur E-Mails, die dein Konto betreffen: einen Link zum
-Zurücksetzen deines Passworts, wenn du ihn anforderst, und – sobald das eingeschaltet ist – einen
-Link zum Bestätigen deiner E-Mail-Adresse bei der Registrierung. Die E-Mail enthält einen einmaligen
-Link, der über den Server von Supabase zurück in die App führt. Keine Newsletter, keine Werbung.
-Schreibe ich dir selbst (Abschnitt 3.1), kommt die E-Mail aus meinem Postfach (Abschnitt 3.11).
+Night Courier schickt dir automatisch nur E-Mails, die dein Konto betreffen: einen Code zum
+Festlegen eines neuen Passworts, wenn du ihn anforderst, und – sobald das eingeschaltet ist – einen
+Code zum Bestätigen deiner E-Mail-Adresse bei der Registrierung. Den Code tippst du in die App. Er
+hat 8 Ziffern, gilt ein einziges Mal und einen Tag lang, und nur der neueste zählt. Einen Link
+enthalten die E-Mails nicht. Keine Newsletter, keine Werbung. Schreibe ich dir selbst (Abschnitt
+3.1), kommt die E-Mail aus meinem Postfach (Abschnitt 3.11).
 
 Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht bestätigt. Wenn jemand deine
 E-Mail-Adresse ohne dein Wissen für ein Konto benutzt hat, schreib mir; dann lösche ich dieses
 Konto. Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher Auftrag jede Registrierung,
-deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde, samt Profil.
+deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde, samt Profil. Registrierst du
+dich vorher selbst mit deiner Adresse, macht der Code, der sie bestätigt, dieses Konto zu deinem:
+Mit der Bestätigung wird das zuvor gesetzte Passwort gelöscht, und die App gibt dem Konto das
+Passwort und den Anzeigenamen, die du gewählt hast – oder sie löscht es, wenn es einen anderen
+Benutzernamen hat, und richtet an seiner Stelle deines ein, mit einem neuen Code. Benutzt du für ein
+solches Konto stattdessen „I forgot my password“, löscht sein Code das Konto, und du kannst dich
+danach registrieren.
 
 <!-- PRÜFEN: Die E-Mail-Bestätigung ist heute aus (supabase/config.toml, enable_confirmations =
 false), weil Supabases eigener Mailversand bis zum eigenen SMTP nur den Betreiber erreicht
 (docs/GO-LIVE.md, "Before a second person can sign up"). Sobald eigenes SMTP und die
 E-Mail-Bestätigung an sind, "Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht
-bestätigt." ersetzen durch "Bei der Registrierung schicke ich dir einen Link, mit dem du deine
-E-Mail-Adresse bestätigst." und oben "– sobald das eingeschaltet ist –" streichen; im letzten
-Satz des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht" durch "Ein täglicher Auftrag
-löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen. Die 7 Tage sind
-private.unconfirmed_sign_up_lifetime() (tidy_up). -->
+bestätigt." ersetzen durch "Bei der Registrierung schicke ich dir einen Code, mit dem du deine
+E-Mail-Adresse bestätigst." und oben "– sobald das eingeschaltet ist –" streichen; in den
+späteren Sätzen des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht" durch "Ein
+täglicher Auftrag löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen. Die 7 Tage sind
+private.unconfirmed_sign_up_lifetime() (tidy_up). Die 8 Ziffern und der Tag des Codes sind
+otp_length und otp_expiry = 86400 in supabase/config.toml, und die Vorlagen in supabase/templates
+sagen dasselbe. Das gehostete Projekt verschickt sie erst, wenn config push sie dorthin gebracht
+hat (docs/GO-LIVE.md, "Setting up the hosted project"); seine eigenen Vorlagen enthalten einen
+Link. Nach diesem push prüfen, ob das gehostete Projekt den Tag übernommen hat, und wenn es weniger
+erlaubt, das hier, auf der Hilfeseite und in den Vorlagen eintragen. Was ein solches Konto zu
+deinem macht: finishSignUp und verifyResetCode in src/features/auth/auth-context.tsx und die
+Migration 20261121160000_confirmation_clears_password.sql. -->
+
+<!-- PRÜFEN (rechtlich): Das Bestätigen einer Adresse übernimmt oder löscht ein Konto, das eine
+frühere, unbestätigte Registrierung mit ihr angelegt hatte - vielleicht die einer anderen Person -,
+samt Passwort und Namen. Ob das eine eigene Grundlage neben Art. 6 Abs. 1 lit. b DSGVO braucht oder
+ob diese Person davon erfahren muss. -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
 
@@ -537,8 +618,12 @@ Contacts) und google-play.md (Location → Approximate location, Contacts). -->
   geöffnet hast.
 - **Wer dich blockiert hat**, sieht dich nur noch mit deinem Benutzernamen, nicht mit deinem
   Anzeigenamen.
-- **Wer deinen Benutzernamen genau kennt**, kann herausfinden, dass es ihn gibt, indem er dir eine
-  Anfrage schickt. Mehr erfährt er dadurch nicht, bis du annimmst.
+- **Wer deinen Benutzernamen ausprobiert**, kann herausfinden, dass es ihn gibt – indem er eine
+  Freundschaftsanfrage an ihn schickt oder versucht, sich mit ihm zu registrieren. Benutzernamen
+  lassen sich erraten: Eine Anfrage an einen Namen, den niemand hat, wird abgewiesen, aber nicht
+  mitgezählt. Ein Konto kann höchstens 20 neue Anfragen pro Stunde stellen (Abschnitt 3.3), und jede
+  Anfrage zeigt dir Benutzernamen und Anzeigenamen der Person, die sie schickt. Mehr erfährt er
+  dadurch nicht, bis du annimmst.
 - **Andere Nutzer** sehen nicht, wen du blockiert oder gemeldet hast (auch wenn die Person es sich
   denken kann, Abschnitte 3.6 und 3.7), ob du gerade online bist oder ob du gerade schreibst.
 
@@ -548,7 +633,7 @@ haben; in der App angezeigt wird sie nicht.
 
 ## 5. Was auf deinem Gerät gespeichert wird
 
-- Die App speichert auf deinem Gerät nur deine Anmeldung (die „Sitzung“). Sie enthält ein
+- Die App speichert auf deinem Gerät deine Anmeldung (die „Sitzung“). Sie enthält ein
   Zugangs-Token mit deiner Nutzer-ID und deiner E-Mail-Adresse, ein Token zum Erneuern der Anmeldung
   und einige Angaben zu deinem Konto. Bis die Kopie deiner Namen von der Registrierung gelöscht ist
   (Abschnitt 3.1) und deine Anmeldung danach einmal erneuert wurde, stehen auch diese Namen darin.
@@ -558,17 +643,29 @@ haben; in der App angezeigt wird sie nicht.
   App im Schlüsselbund bleibt – melde dich vorher ab, wenn du sichergehen willst.
 - **Auf Android** liegt sie verschlüsselt mit dem Android-Keystore. Sie ist von Backups und von der
   Übertragung auf ein neues Gerät ausgenommen.
-- Beim Abmelden und nach dem Löschen deines Kontos löscht die App die Sitzung von deinem Gerät, auch
-  wenn der Server gerade nicht erreichbar ist.
+- Während du einen Code aus einer E-Mail benutzt (Abschnitt 3.10), hält die App neben der Sitzung
+  in einer Notiz fest, wofür der Code ist: deine E-Mail-Adresse und, wenn du dich registrierst, den
+  Benutzernamen und den Anzeigenamen, die du eingegeben hast – nie dein Passwort. Wird die App
+  geschlossen, nachdem der Code dich angemeldet hat, aber bevor das erledigt ist, macht sie beim
+  nächsten Öffnen dort weiter. Die Notiz liegt dort, wo auch die Sitzung liegt, und wird gelöscht,
+  sobald dein Konto eingerichtet oder dein Passwort gespeichert ist, wenn du dich abmeldest oder mit
+  deinem Passwort anmeldest und wenn die App ohne Anmeldung für diese Adresse geöffnet wird.
+- Beim Abmelden löscht die App die Sitzung und diese Notiz von deinem Gerät, auch wenn der Server
+  gerade nicht erreichbar ist. Nach dem Löschen deines Kontos tut sie das, sobald sie weiß, dass das
+  Löschen geklappt hat.
 - Sonst speichert die App nichts auf deinem Gerät. Briefe, Entwürfe, Freundeslisten und Meldungen
   sind nur so lange auf dem Gerät, wie die App geöffnet ist. Ein angefangener Brief ist weg, wenn du
-  die App schließt.
+  die App schließt oder dich abmeldest.
 - Was dein Gerät selbst tut, liegt außerhalb der App: Die App-Übersicht kann zum Beispiel ein Bild
   eines geöffneten Briefs zeigen, die Tastatur lernt Wörter, die du tippst, und ein Passwort-Manager
   kann anbieten, dein Passwort zu speichern.
 
 <!-- PRÜFEN: ob Schlüsselbund-Einträge das Löschen der App überleben (iOS). Zum iPhone-Satz siehe
-Hinweis 5 oben. -->
+Hinweis 5 oben. Die Notiz, wofür ein Code ist, ist der Eintrag night-courier.unfinished
+(src/features/auth/unfinished.ts), im selben Speicher wie die Sitzung (authStorage in
+src/lib/session-store.ts); sie wird geschrieben, bevor der Code geprüft wird. Ungesendete Briefe
+und die Wahl bei „auch blockieren“ liegen nur im Arbeitsspeicher (src/features/messages/drafts.ts,
+src/features/safety/safety.ts) und werden bei jedem Abmelden vergessen. -->
 
 ## 6. Rechtsgrundlagen im Überblick
 
@@ -579,12 +676,12 @@ Bearbeitung (Abschnitt 1).
   Konto, Profil, Stadt, Freundschaften, Briefe, Fledermäuse, Blockieren, Anmeldung und die E-Mails
   zu deinem Konto.
 - **Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen):** Sicherheit (Sitzungen und Protokolle),
-  der Umgang mit Missbrauch (Meldungen, Verwarnungen, Entfernen von Konten), das Aufbewahren von
-  Meldungen für 180 Tage, das Sperren entfernter Konten für zwei Jahre ab dem Entfernen, die
-  freiwillige Weitergabe einer Meldung an die Polizei, Absturzberichte und der Aufruf der Webseiten
-  bei GitHub Pages (Abschnitt 7). Die Interessen dahinter:
-  eine sichere App, Schutz der Menschen, die sie nutzen – besonders der Kinder und Jugendlichen –,
-  und Beweise für Opfer.
+  der Umgang mit Missbrauch (Meldungen, Verwarnungen, Entfernen von Konten, die stündliche Grenze
+  für Freundschaftsanfragen), das Aufbewahren von Meldungen für 180 Tage, das Sperren entfernter
+  Konten für zwei Jahre ab dem Entfernen, die freiwillige Weitergabe einer Meldung an die Polizei,
+  Absturzberichte und der Aufruf der Webseiten bei GitHub Pages (Abschnitt 7). Die Interessen
+  dahinter: eine sichere App, Schutz der Menschen, die sie nutzen – besonders der Kinder und
+  Jugendlichen –, und Beweise für Opfer.
 - **Art. 6 Abs. 1 lit. c DSGVO (rechtliche Pflicht):** wenn ein Gesetz mich verpflichtet, Daten
   herauszugeben, etwa an Polizei, Staatsanwaltschaft oder Gericht, und wenn ich deine Anfragen zu
   deinen Datenschutzrechten beantworte.
@@ -606,7 +703,7 @@ Ich verkaufe keine Daten und gebe sie nicht für Werbung weiter. Empfänger sind
   https://supabase.com/privacy
 - **E-Mail-Versand.** Die E-Mails zu deinem Konto (Abschnitt 3.10) verschickt Supabase oder ein
   E-Mail-Versanddienst, der als mein Auftragsverarbeiter handelt. Er erhält deine E-Mail-Adresse und
-  den Link in der E-Mail und führt ein Versandprotokoll.
+  den Code in der E-Mail und führt ein Versandprotokoll.
 - **Microsoft.** Microsoft betreibt mein E-Mail-Postfach (Outlook.com) und erhält so, was du mir
   schreibst und was ich dir schreibe – nach seinen eigenen Datenschutzbestimmungen:
   https://privacy.microsoft.com/de-de/privacystatement
@@ -696,25 +793,27 @@ gefragt.
 
 ## 9. Wie lange ich Daten speichere
 
-| Was                                                     | Wie lange                                                                                                               |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Konto, Profil, Stadt, Fledermäuse                       | bis du dein Konto löschst oder ich es entferne                                                                          |
-| Kopie der Namen von der Registrierung                   | höchstens einen Tag (Abschnitt 3.1)                                                                                     |
-| Vorherige Stadt und Zeitpunkt eines Umzugs              | höchstens zwei Tage nach dem Wechsel (Abschnitt 3.2)                                                                    |
-| Briefe                                                  | bis du oder die andere Person das Konto löscht oder ich eines der beiden Konten entferne; eine Frist gibt es nicht      |
-| Freundschaften und Anfragen                             | bis sie beendet, abgelehnt oder zurückgezogen werden, oder bis zur Kontolöschung                                        |
-| Blockierungen                                           | bis du sie aufhebst, oder bis zur Kontolöschung                                                                         |
-| Meldungen                                               | 180 Tage ab der Meldung, auch wenn ein Konto vorher gelöscht wird                                                       |
-| An die Polizei weitergegebene Meldungen                 | bei der Polizei nach deren Regeln; meine Exportkopie lösche ich nach der Übergabe                                       |
-| Kontodatensatz eines gesperrten, entfernten Kontos      | zwei Jahre ab dem Entfernen, dann automatisch gelöscht (Abschnitt 3.8)                                                  |
-| Sitzungen                                               | bis zum Abmelden oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
-| Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                      |
-| Anmeldeprotokoll                                        | 30 Tage; deine Einträge gehen sofort, wenn du dein Konto löschst oder ich es auf deine Bitte lösche (Abschnitt 3.9)     |
-| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                       |
-| Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                         |
-| Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                           |
-| E-Mails an mich                                         | solange ich sie für dein Anliegen brauche                                                                               |
-| Testerliste bei Google Play                             | bis du mir schreibst, dass du nicht mehr testen möchtest                                                                |
+| Was                                                     | Wie lange                                                                                                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Konto, Profil, Stadt, Fledermäuse                       | bis du dein Konto löschst oder ich es entferne                                                                                                          |
+| Kopie der Namen von der Registrierung                   | höchstens einen Tag (Abschnitt 3.1)                                                                                                                     |
+| Vorherige Stadt und Zeitpunkt eines Umzugs              | höchstens zwei Tage nach dem Wechsel (Abschnitt 3.2)                                                                                                    |
+| Ob schon einmal ein Brief an dich oder von dir ging     | so lange wie dein Konto (Abschnitt 3.2)                                                                                                                 |
+| Briefe                                                  | bis du oder die andere Person das Konto löscht oder ich eines der beiden Konten entferne; eine Frist gibt es nicht                                      |
+| Freundschaften und Anfragen                             | bis sie beendet, abgelehnt oder zurückgezogen werden, oder bis zur Kontolöschung                                                                        |
+| Zahl deiner neuen Freundschaftsanfragen in einer Stunde | bis ein täglicher Auftrag sie löscht, spätestens zwei Tage nach Beginn dieser Stunde, oder mit deinem Konto (Abschnitt 3.3)                             |
+| Blockierungen                                           | bis du sie aufhebst, oder bis zur Kontolöschung                                                                                                         |
+| Meldungen                                               | 180 Tage ab der Meldung, auch wenn ein Konto vorher gelöscht wird                                                                                       |
+| An die Polizei weitergegebene Meldungen                 | bei der Polizei nach deren Regeln; meine Exportkopie lösche ich nach der Übergabe                                                                       |
+| Kontodatensatz eines gesperrten, entfernten Kontos      | zwei Jahre ab dem Entfernen, dann automatisch gelöscht (Abschnitt 3.8)                                                                                  |
+| Sitzungen                                               | bis zum Abmelden, wenn der Server davon erfährt, oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
+| Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                                                      |
+| Anmeldeprotokoll                                        | 30 Tage; deine Einträge gehen sofort, wenn du dein Konto löschst oder ich es auf deine Bitte lösche (Abschnitt 3.9)                                     |
+| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                                                       |
+| Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                                                         |
+| Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                                                           |
+| E-Mails an mich                                         | solange ich sie für dein Anliegen brauche                                                                                                               |
+| Testerliste bei Google Play                             | bis du mir schreibst, dass du nicht mehr testen möchtest                                                                                                |
 
 <!-- PRÜFEN: Sicherungskopien - ob und wie lange der gewählte Supabase-Tarif Sicherungen aufbewahrt;
 die Dauer in die Tabelle schreiben (oder die Zeile streichen, wenn es keine gibt). -->
@@ -763,20 +862,27 @@ Du hast nach der DSGVO diese Rechte:
 
 - **Auskunft (Art. 15):** Du kannst erfahren, welche Daten ich über dich habe, und eine Kopie
   bekommen.
-- **Berichtigung (Art. 16):** Anzeigenamen und Stadt kannst du selbst im Profil ändern. Für
-  Benutzername oder E-Mail-Adresse schreib mir.
+- **Berichtigung (Art. 16):** Anzeigenamen und Stadt kannst du selbst im Profil ändern. Der
+  Benutzername lässt sich nicht ändern. Für die E-Mail-Adresse schreib mir.
 - **Löschung (Art. 17):** Dein Konto löschst du selbst in der App: „Your profile“ → „Delete my
   account“. Das geht sofort und endgültig. Gelöscht werden dein Konto, dein Profil, deine
   Fledermäuse, Freundschaften, Blockierungen und alle Briefe, die du geschickt oder bekommen hast –
   auch bei den anderen, und deine Einträge im Anmeldeprotokoll. Was danach noch bleibt: Meldungen
   (bis 180 Tage, Abschnitt 3.7), Server-Protokolle und Sicherungskopien, bis sie automatisch
   gelöscht werden, E-Mails zwischen dir und mir, und was Apple oder Google zu deiner Testversion
-  gespeichert haben (Abschnitt 3.12).
+  gespeichert haben (Abschnitt 3.12). Ein vorläufig gesperrtes Konto lässt sich nicht in der App
+  löschen; schreib mir dann (Abschnitt 3.8).
 - **Einschränkung (Art. 18):** Du kannst verlangen, dass ich Daten vorerst nur noch speichere und
   sonst nicht nutze, zum Beispiel solange geklärt wird, ob sie richtig sind.
 - **Datenübertragbarkeit (Art. 20):** Du kannst die Daten, die du mir gegeben hast, in einem
   gängigen, maschinenlesbaren Format bekommen. Eine Export-Funktion in der App gibt es nicht;
   schreib mir.
+
+<!-- PRÜFEN (rechtlich): Benutzernamen lassen sich nicht ändern (Entscheidung des Betreibers vom
+21. November 2026; die API-Rollen dürfen in profiles nur display_name und city_id ändern, und der
+Betreiber ändert auch keinen). Hier stand früher "Für Benutzername oder E-Mail-Adresse schreib
+mir." Ob das gegenüber einer Bitte um Berichtigung eines Benutzernamens hält (Art. 16 DSGVO, Art.
+32 Abs. 1 DSG): Einer, den die Person selbst gewählt hat, ist als solcher nicht unrichtig. -->
 
 **Nach dem Schweizer DSG** hast du ähnliche Rechte: Auskunft (Art. 25 DSG – kostenlos und in der
 Regel innerhalb von 30 Tagen), Herausgabe oder Übertragung deiner Daten (Art. 28 DSG) und
