@@ -1702,8 +1702,9 @@ describe('deleting the account', () => {
         : json(200, []);
     const session = await signedIn();
 
+    // In a build without a contact address, as the tests are (src/lib/rpc-error.ts).
     expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
-      'This account has been suspended. To ask why, write to the person who runs Night Courier.',
+      'This account has been suspended.',
     );
 
     expect(sent.filter(isWhoAmI)).toEqual([]);
@@ -2832,7 +2833,8 @@ describe('what the courier is told when the auth server says no', () => {
         // code to a banned account, and answers its check 403 user_banned).
         'the account is suspended',
         () => authRefusal(403, 'user_banned', 'User is banned'),
-        'This account has been suspended. To ask why, write to the person who runs Night Courier.',
+        // In a build without a contact address, as the tests are.
+        'This account has been suspended.',
       ],
     ])('says so plainly, and holds nothing, when %s', async (_, answer, words) => {
       network = answer;

@@ -108,12 +108,11 @@ describe('WelcomeScreen', () => {
    * browser.)
    */
   /**
-   * A build without a contact address shows no Contact anywhere. The words
-   * still read right there: they name whom to write to, not a button that is
-   * not there, nor a page the app never names. (Found in review.)
+   * The words name whom to write to, not a button or a page - "the help page"
+   * was one the app never names. (Found in review.) Beside the Contact
+   * button, in a build with a contact address.
    */
-  it('says what has happened, and whom to ask, in a build without a contact address', async () => {
-    mockContact.url = null;
+  it('names whom to ask why, beside the way to write', async () => {
     noteAccountSuspended();
 
     await renderScreen(<WelcomeScreen />);
@@ -123,6 +122,22 @@ describe('WelcomeScreen', () => {
         'This account has been suspended. To ask why, write to the person who runs Night Courier.',
       ),
     ).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Contact' })).toBeOnTheScreen();
+  });
+
+  /**
+   * A build without a contact address shows no Contact anywhere, and told
+   * the courier to write to someone it gave no way to reach. (Found in
+   * review.) It says what has happened, and no more.
+   */
+  it('says what has happened, and no more, in a build without a contact address', async () => {
+    mockContact.url = null;
+    noteAccountSuspended();
+
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText('This account has been suspended.')).toBeOnTheScreen();
+    expect(screen.queryByText(/write to/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
   });
 
