@@ -149,7 +149,9 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
       startWaiting();
       announce(stageWords('One more code', setUpAgainWords(email)));
     } catch (error) {
-      // Signed out, the account gone: the code stage, with the reason.
+      // Signed out, the earlier account gone: the code stage, with the reason.
+      // Or asked again on the screen that says the account is not finished:
+      // the reason is all that is new.
       if (error instanceof SetUpAgainFailed || unfinished) {
         failed(error);
         return;
