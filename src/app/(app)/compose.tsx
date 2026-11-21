@@ -263,9 +263,13 @@ export default function ComposeScreen() {
           The farther away a friend lives, the longer your bat flies.
         </Text>
 
+        {/* Pointing at a list only where there is one: below it, there may be
+            no friend left to choose. (Found in the browser.) */}
         {to && friendships.data ? (
           <Text variant="caption" tone="danger" style={styles.spaced}>
-            You can only write to friends. Choose one below.
+            {friends.length > 0
+              ? 'You can only write to friends. Choose one below.'
+              : 'You can only write to friends.'}
           </Text>
         ) : null}
 

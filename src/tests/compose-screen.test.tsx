@@ -420,6 +420,21 @@ describe('ComposeScreen', () => {
       expect(screen.queryByLabelText('Your letter')).toBeNull();
     });
 
+    /**
+     * "Write back" on the letter of someone who is no longer a friend, with no
+     * friend left: "Choose one below" pointed at nothing, right above "You
+     * have no friends to write to yet". (Found in the browser.)
+     */
+    it('points at no list that is not there when the one in the route is not a friend', async () => {
+      serveFriends(() => [carla, dora]);
+      mockParams.to = 'user-bruno';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText('You can only write to friends.')).toBeOnTheScreen();
+      expect(screen.queryByText(/Choose one below/)).toBeNull();
+      expect(screen.getByText('You have no friends to write to yet.')).toBeOnTheScreen();
+    });
+
     it('sends someone with nobody to write to off to find friends', async () => {
       serveFriends(() => [carla, dora]);
       await renderScreen(<ComposeScreen />);
