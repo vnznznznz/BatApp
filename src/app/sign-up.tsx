@@ -75,9 +75,13 @@ export default function SignUpScreen() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Something went wrong.';
       // The failures that belong to a field are said at that field.
+      // The fields say theirs aloud; the form says its own.
       if (message === USERNAME_MAY_BE_TAKEN) setErrors({ ...next, username: message });
       else if (message === ALREADY_REGISTERED) setErrors({ ...next, email: message });
-      else setFormError(message);
+      else {
+        setFormError(message);
+        announce(message);
+      }
     } finally {
       inFlight.current = false;
       setBusy(false);

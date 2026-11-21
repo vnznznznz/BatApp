@@ -357,6 +357,23 @@ describe('SignUpScreen', () => {
   });
 
   /**
+   * Shown under the form while a screen reader is still on the button that
+   * sent it, and said to nobody: the fields say their own errors aloud, and
+   * so must the form. (Found in review.)
+   */
+  it('says aloud why the account could not be created', async () => {
+    const NO_CONNECTION = 'No connection. Check your network and try again.';
+    mockSignUp.mockRejectedValue(new Error(NO_CONNECTION));
+    await renderScreen(<SignUpScreen />);
+
+    await fillForm();
+    await fireEvent.press(button('Create account'));
+
+    expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+    expect(mockedAnnounce).toHaveBeenCalledWith(NO_CONNECTION);
+  });
+
+  /**
    * The test above hands the form words the app has already made its own,
    * which is how this stayed hidden: what the auth server really answers to a
    * taken username is a 500, "Database error saving new user", and that is

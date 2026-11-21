@@ -10,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
 import { validateEmail, validatePassword } from '@/features/auth/validation';
+import { announce } from '@/lib/announce';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -42,7 +43,10 @@ export default function SignInScreen() {
       // (see RootNavigator in src/app/_layout.tsx); nothing to navigate to here.
       if (needsEmailConfirmation) setUnconfirmed(email.trim());
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Something went wrong.');
+      const message = error instanceof Error ? error.message : 'Something went wrong.';
+      // Shown under the form, while a screen reader is still on the button.
+      setFormError(message);
+      announce(message);
     } finally {
       inFlight.current = false;
       setBusy(false);

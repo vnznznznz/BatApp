@@ -202,6 +202,24 @@ describe('SignInScreen', () => {
   });
 
   /**
+   * Shown under the form while a screen reader is still on the button that
+   * sent it, and said to nobody. (Found in review.)
+   */
+  it('says aloud why it could not sign in', async () => {
+    const NO_MATCH = 'That email and password do not match an account.';
+    mockSignIn.mockRejectedValue(new Error(NO_MATCH));
+    const user = userEvent.setup();
+    await renderScreen(<SignInScreen />);
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.type(screen.getByLabelText('Password'), 'a-wrong-password');
+
+    await user.press(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(screen.getByText(NO_MATCH)).toBeOnTheScreen();
+    expect(mockedAnnounce).toHaveBeenCalledWith(NO_MATCH);
+  });
+
+  /**
    * "Check your email and confirm your address first" was all the form said,
    * and it led nowhere: a link that had run out could not be sent again. The
    * auth server says this only for the right password, so the code screen
