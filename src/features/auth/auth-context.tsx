@@ -1,4 +1,5 @@
 import {
+  AuthApiError,
   AuthUnknownError,
   isAuthApiError,
   isAuthRetryableFetchError,
@@ -371,6 +372,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isAnswer(error, 'email_not_confirmed', 'email not confirmed')) {
           return { needsEmailConfirmation: true };
         }
+        // A suspended account - or the ban an account the operator removed
+        // leaves on its address for two years. The auth server says so before
+        // it has looked at the password, so whoever typed the address would
+        // learn that it had an account, and what became of it: said as a
+        // wrong password is. Someone who proves the address theirs, with the
+        // code from "I forgot my password", is told.
+        if (isAnswer(error, 'user_banned', 'user is banned')) {
+          throw new Error(describeAuthError(NO_MATCH), { cause: error });
+        }
         if (error) throw explained(error);
         return { needsEmailConfirmation: false };
       },
@@ -517,6 +527,9 @@ const isCodeJustSent = (error: AuthError | null) =>
 
 const isSendingFailure = (error: AuthError) =>
   error.message.toLowerCase().includes('error sending');
+
+/** The auth server's answer to a password that does not match the address. */
+const NO_MATCH = new AuthApiError('Invalid login credentials', 400, 'invalid_credentials');
 
 const NO_CONNECTION = 'No connection. Check your network and try again.';
 const NOT_ANSWERING = 'The server is not answering as it should. Try again in a little while.';

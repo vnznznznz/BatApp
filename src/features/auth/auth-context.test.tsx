@@ -1285,9 +1285,15 @@ describe('what the courier is told when the auth server says no', () => {
         'That email and password do not match an account.',
       ],
       [
-        'the account is suspended',
+        // The auth server says so before it has looked at the password - for
+        // any password, right or wrong (GoTrue v2.197, both local servers, 21
+        // November 2026). The ban is a suspension, or what an account the
+        // person who runs Night Courier removed leaves on the address for two
+        // years: told to whoever typed the address, it told anyone that the
+        // address had an account, and what became of it. (Found in review.)
+        'the account is suspended, whatever the password',
         () => authRefusal(400, 'user_banned', 'User is banned'),
-        'This account has been suspended. Write to the contact address on the help page.',
+        'That email and password do not match an account.',
       ],
       [
         'there were too many attempts',
@@ -1901,6 +1907,14 @@ describe('what the courier is told when the auth server says no', () => {
         TOO_MANY_ATTEMPTS,
       ],
       ['there is no network', offline, NO_CONNECTION],
+      [
+        // The right code, from the address's own mailbox: whoever has it may
+        // know what signing in would not tell them (GoTrue v2.197 sends the
+        // code to a banned account, and answers its check 403 user_banned).
+        'the account is suspended',
+        () => authRefusal(403, 'user_banned', 'User is banned'),
+        'This account has been suspended. Write to the contact address on the help page.',
+      ],
     ])('says so plainly, and holds nothing, when %s', async (_, answer, words) => {
       network = answer;
       await openedSignedOut();
