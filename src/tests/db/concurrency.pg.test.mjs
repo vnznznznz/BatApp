@@ -1905,9 +1905,13 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     });
 
     /**
-     * The same for a courier, from two phones at once. Neither request can see
-     * the other's report before it commits, so only the unique index can make
-     * the second wait, and then be told it was already reported.
+     * The same for a courier, from two phones at once. The second report looks
+     * for an open one before the first is committed, and finds none; then it
+     * waits for the first at the day's limit, whose lock (in
+     * private.over_report_limit) is held until the first request ends. When it
+     * goes on, only the unique index, reports_courier_once, stands between it
+     * and a second report: its insert is refused there, and the courier is
+     * told it was already reported.
      */
     it('records the same courier reported twice at once as one report', async () => {
       const anna = await createCourier('anna', ['Berlin', 'DE']);
@@ -1921,7 +1925,11 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
 
       const one = await report(first);
       const other = report(second);
-      assert.equal(await settlesWithin(other, 300), false, 'the second report did not wait');
+      assert.equal(
+        await settlesWithin(other, 300),
+        false,
+        'the second report did not wait for the first',
+      );
       await first.query('commit');
       const two = await other;
       await second.query('commit');
