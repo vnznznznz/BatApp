@@ -65,7 +65,13 @@ export type Outcome =
   /** The letter did not go. `message` says why, or that it did not. */
   | { kind: 'held'; message: string }
   /** No answer, and no way of asking yet. It is noted with the letter as unanswered. */
-  | { kind: 'unknown' };
+  | { kind: 'unknown' }
+  /**
+   * These words did not go, and are kept: other words went out before without
+   * an answer, and what became of them still could not be found out. Until it
+   * is known, these could be a second letter behind the courier's back.
+   */
+  | { kind: 'withheld' };
 
 type Listener = (courierId: string, recipientId: string, outcome: Outcome) => void;
 
@@ -167,7 +173,7 @@ async function carry(
     const found = await ask(open.ref);
     if (found === COULD_NOT_ASK) {
       return {
-        outcome: { kind: 'unknown' },
+        outcome: { kind: 'withheld' },
         unanswered: { ...open, unknown: true, askAt: nextAsk(open.since) },
       };
     }

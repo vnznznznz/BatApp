@@ -293,6 +293,34 @@ describe('sendLetter', () => {
   });
 
   /**
+   * Other words went out before without an answer, and what became of them
+   * still cannot be found out. These do not go - they could be a second letter
+   * behind the courier's back - and whoever pressed Send is told that they were
+   * held back, not merely that something is not known. (Found in review: the
+   * screen could not tell such a press from nothing having happened.)
+   */
+  it('holds changed words back, and says so, while it cannot find out what became of the first', async () => {
+    mockedSendMessage.mockRejectedValueOnce(noAnswer());
+    mockedFetchSentLetter.mockRejectedValue(noAnswer());
+    await writeAndSend(anna, 'Dear Anna,');
+    const first = readSend(MARA, 'user-anna').unanswered!;
+    told = [];
+    jest.setSystemTime(NOW + 10 * SECOND);
+
+    await writeAndSend(anna, 'Dear Anna, one more thing.');
+
+    expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockedFetchSentLetter).toHaveBeenLastCalledWith(first.ref);
+    expect(told).toEqual([['user-anna', { kind: 'withheld' }]]);
+    expect(readDraft(MARA, 'user-anna')).toBe('Dear Anna, one more thing.');
+    // Still the first letter's question, asked again later.
+    expect(readSend(MARA, 'user-anna')).toEqual({
+      busy: false,
+      unanswered: { ...first, askAt: NOW + 15 * SECOND },
+    });
+  });
+
+  /**
    * A refusal answers what was open, too: the server looks for a letter under
    * the reference before anything else, and would have answered with it.
    */

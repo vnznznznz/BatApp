@@ -363,7 +363,7 @@ describe('a send that settles after its screen was left', () => {
     expect(
       letter().getByText(
         'No answer came back, so your letter may or may not have gone. ' +
-          'Night Courier will check again by itself.',
+          'Night Courier will check again while this letter is on screen, and when you come back to it.',
       ),
     ).toBeOnTheScreen();
 

@@ -226,10 +226,23 @@ const dispatchToAnna = (): Dispatch => ({
  */
 const noAnswer = () => new RpcError('No connection. Check your network and try again.', null);
 
-/** What the screen says while it is not known whether a letter went. */
+/**
+ * What the screen says while it is not known whether a letter went. It checks
+ * only while the letter is on screen, and at once when it is opened again: a
+ * letter nobody is looking at is not asked after.
+ */
 const NOT_KNOWN =
   'No answer came back, so your letter may or may not have gone. ' +
-  'Night Courier will check again by itself.';
+  'Night Courier will check again while this letter is on screen, and when you come back to it.';
+
+/**
+ * What the screen says when changed words were not sent, because it is still
+ * not known whether the letter went as it was first written.
+ */
+const HELD_BACK =
+  'What you changed has not been sent: Night Courier first needs to know whether ' +
+  'your letter went as you first wrote it. ' +
+  'It will check again while this letter is on screen, and when you come back to it.';
 
 /**
  * What the screen says when, asked after a send that got no answer, the server
@@ -1532,6 +1545,11 @@ describe('ComposeScreen', () => {
       expect(mockedSendMessage).toHaveBeenCalledTimes(1);
     });
 
+    /**
+     * And it says so. Pressing Send used to leave the screen as it was, saying
+     * only that the first letter may or may not have gone, with nothing about
+     * what had become of the press. (Found in review.)
+     */
     it('does not let a changed letter go while it cannot find out what became of the first', async () => {
       mockedSendMessage.mockRejectedValueOnce(noAnswer());
       mockedFetchSentLetter.mockRejectedValue(noAnswer());
@@ -1542,11 +1560,41 @@ describe('ComposeScreen', () => {
       await fireEvent.changeText(letterField(), 'See you on Friday.');
       await fireEvent.press(sendButton());
 
-      expect(await screen.findByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(await screen.findByText(HELD_BACK)).toBeOnTheScreen();
+      expect(announced().at(-1)).toBe(`Your letter: ${HELD_BACK}`);
       expect(sendButton()).not.toBeBusy();
       expect(mockedSendMessage).toHaveBeenCalledTimes(1);
       expect(letterField()).toHaveDisplayValue('See you on Friday.');
       expect(screen.queryByText('Your bat is on its way')).toBeNull();
+
+      // Touched again, the letter says once more only what is not known.
+      await fireEvent.changeText(letterField(), 'See you on Friday!');
+      expect(screen.queryByText(HELD_BACK)).toBeNull();
+      expect(screen.getByText(NOT_KNOWN)).toBeOnTheScreen();
+    });
+
+    it('says so again, and sends nothing, when Send is pressed once more before it can find out', async () => {
+      mockedSendMessage.mockRejectedValueOnce(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(noAnswer());
+      await openLetterTo('user-anna');
+      await writeAndSend('See you on Fridya.');
+      await screen.findByText(NOT_KNOWN);
+      await fireEvent.changeText(letterField(), 'See you on Friday.');
+      await fireEvent.press(sendButton());
+      await screen.findByText(HELD_BACK);
+
+      await fireEvent.press(sendButton());
+
+      // Said aloud again: the second press is not met with silence either.
+      await waitFor(() =>
+        expect(announced().filter((said) => said === `Your letter: ${HELD_BACK}`)).toHaveLength(2),
+      );
+      expect(screen.getByText(HELD_BACK)).toBeOnTheScreen();
+      expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      // Asked after once more for that press, and only ever about the first letter.
+      const [ref] = refsSent();
+      expect(refsAskedAfter().length).toBeGreaterThanOrEqual(3);
+      expect(new Set(refsAskedAfter())).toEqual(new Set([ref]));
     });
 
     /**
@@ -1564,8 +1612,10 @@ describe('ComposeScreen', () => {
       await fireEvent.changeText(letterField(), 'See you on Friday.');
       await fireEvent.press(sendButton());
 
-      expect(await screen.findByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(await screen.findByText(HELD_BACK)).toBeOnTheScreen();
       expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+      await fireEvent.changeText(letterField(), 'See you on Friday!');
+      expect(screen.getByText(NOT_KNOWN)).toBeOnTheScreen();
 
       // And it goes on to find out by itself, after a pause: the first letter had gone.
       mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());

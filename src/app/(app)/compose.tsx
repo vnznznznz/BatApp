@@ -52,10 +52,22 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
 /** A letter that went, as the server answered for it. */
 type Sent = Extract<Outcome, { kind: 'sent' }>;
 
+/**
+ * When the screen asks again what became of a letter: while it is on screen,
+ * and at once when it is opened again - not while nobody is looking at it.
+ * "By itself" alone promised more than that. (Found in review.)
+ */
+const CHECKS_AGAIN = 'while this letter is on screen, and when you come back to it.';
+
 /** Shown with the letter for as long as it is not known whether it went. */
 const NOT_KNOWN =
   'No answer came back, so your letter may or may not have gone. ' +
-  'Night Courier will check again by itself.';
+  `Night Courier will check again ${CHECKS_AGAIN}`;
+
+/** Said when changed words were not sent, because of what is not known about the letter. */
+const HELD_BACK =
+  'What you changed has not been sent: Night Courier first needs to know whether ' +
+  `your letter went as you first wrote it. It will check again ${CHECKS_AGAIN}`;
 
 /**
  * Writing a letter: choosing a friend, writing, and sending it by bat.
@@ -130,6 +142,11 @@ export default function ComposeScreen() {
           announce(describeSent(outcome));
         } else if (outcome.kind === 'held') {
           setError(outcome.message);
+        } else if (outcome.kind === 'withheld') {
+          // Without a word of its own, a press of Send on changed words looked
+          // like nothing at all: the letter went on saying only that the
+          // first one may have gone. (Found in review.)
+          setError(HELD_BACK);
         }
         // Not knowing needs no word here: the letter says so itself, below,
         // for as long as it lasts and on whichever screen shows it.
