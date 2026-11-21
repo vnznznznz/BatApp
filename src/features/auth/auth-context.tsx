@@ -858,6 +858,11 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
     if (await told) return;
     throw new Error('This device could not be signed out. Try again.', { cause });
   }
+  // The courier is signing out here: a session ended elsewhere meanwhile is no
+  // news to them, and the welcome screen opens now - before the client, still
+  // waiting for the server, announces SIGNED_OUT and the word is taken back
+  // there. (Found in review.)
+  forgetSessionEnded();
   forget();
 
   // The client may still be at it, renewing and then telling the server. If it

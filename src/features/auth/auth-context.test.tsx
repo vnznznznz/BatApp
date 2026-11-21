@@ -161,6 +161,8 @@ let auth: AuthContextValue;
 let shown: string[];
 /** What every render since the app was opened was given, in order. */
 let rendered: AuthContextValue[];
+/** The word left for the welcome screen each time the app came to show it, in order. */
+let farewellOnSignOut: (string | null)[];
 
 /**
  * Opens the app: its client and its provider are loaded anew, as at a launch,
@@ -196,11 +198,17 @@ async function launch({
   beforeOpening?.(client);
   shown = [];
   rendered = [];
+  farewellOnSignOut = [];
+  const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
 
   function Probe() {
     auth = context.useAuth();
     rendered.push(auth);
     const showing = auth.isRestoring ? 'restoring' : auth.session ? 'signed in' : 'signed out';
+    // What the welcome screen would read as it opens.
+    if (showing === 'signed out' && shown.at(-1) !== showing) {
+      farewellOnSignOut.push(farewell.farewellDue());
+    }
     if (shown.at(-1) !== showing) shown.push(showing);
     return <ReactNative.Text testID="state">{showing}</ReactNative.Text>;
   }
@@ -674,6 +682,50 @@ describe('signing out', () => {
     await asked(() => auth.signOut());
 
     expect(state()).toBe('signed out');
+    expect(farewell.farewellDue()).toBeNull();
+  });
+
+  /**
+   * A server slower than the 5 s the device waits: the welcome screen opened
+   * before the client announced SIGNED_OUT, still holding the word, and told
+   * the courier who had just signed out that they were signed out elsewhere.
+   * (Found in review.)
+   */
+  it('leaves no word of a session ended elsewhere when the courier signs out here and the server is slow', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 60));
+    network = (request) => {
+      if (isRenewal(request)) {
+        return authRefusal(
+          400,
+          'refresh_token_not_found',
+          'Invalid Refresh Token: Refresh Token Not Found',
+        );
+      }
+      return isLogout(request)
+        ? new Promise<Response>((answer) =>
+            setTimeout(
+              () =>
+                answer(
+                  authRefusal(
+                    403,
+                    'session_not_found',
+                    'Session from session_id claim in JWT does not exist',
+                  ),
+                ),
+              8000,
+            ),
+          )
+        : json(200, []);
+    };
+    await launch();
+    await passes(1000);
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.farewellDue()).toBe('ended');
+
+    await asked(() => auth.signOut());
+
+    expect(state()).toBe('signed out');
+    expect(farewellOnSignOut).toEqual([null]);
     expect(farewell.farewellDue()).toBeNull();
   });
 
