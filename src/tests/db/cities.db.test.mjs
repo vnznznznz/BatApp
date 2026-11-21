@@ -1,7 +1,57 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-import { asAnon, asUser, createTestDatabase, createUser } from './harness.mjs';
+import { fastForward, rpc } from './fixtures.mjs';
+import {
+  applyMigrations,
+  asAnon,
+  asUser,
+  createTestDatabase,
+  createUser,
+  migrationFiles,
+} from './harness.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * What the client's fold makes of a name or a spelling, as the generator
+ * pinned it: search.test.ts holds the client to these pairs, so they are what
+ * the app sends.
+ */
+const FIXTURE = JSON.parse(
+  readFileSync(join(HERE, '..', '..', 'features', 'cities', 'fold-parity.fixture.json'), 'utf8'),
+);
+
+/** The script that writes a migration of cities from a GeoNames dump. */
+const GENERATOR = join(HERE, '..', '..', '..', 'scripts', 'build-cities.mjs');
+
+/** The query the app sends for `spelling`, from the fixture's spellings. */
+function sent(spelling) {
+  const pair = (FIXTURE.spellings ?? []).find(([raw]) => raw === spelling);
+  assert.ok(pair, `the fixture has no spelling "${spelling}"`);
+  return pair[1];
+}
+
+/** The migration that gave the search one form for the saints, and the one before it. */
+const SPELLINGS_MIGRATION = '20261121120000_city_search_spellings.sql';
+const BEFORE_SPELLINGS = migrationFiles()
+  .filter((file) => file < SPELLINGS_MIGRATION)
+  .at(-1);
+
+/** The migration that settled the rows nothing could find, and the one before it. */
+const DEAD_ROWS_MIGRATION = '20261121120001_dead_city_rows.sql';
+const BEFORE_DEAD_ROWS = migrationFiles()
+  .filter((file) => file < DEAD_ROWS_MIGRATION)
+  .at(-1);
+
+const KOLN = 2886242;
+const NEUSTADT_SUD = 8593856;
+const NEUSTADT_NORD = 8593855;
 
 let db;
 
@@ -143,11 +193,996 @@ describe('search_cities', () => {
     assert.equal((await search(anna, xAt(65)))[0]?.name, 'Berlin');
   });
 
+  /**
+   * The same, with letters that matter: whether the 61st to the 64th
+   * character are read decides between Bern, which "bern" names exactly, and
+   * Berlin, the largest city that "ber" begins. The marks before them are
+   * tidied away once the query has been cut.
+   */
+  it('lets the 61st to the 64th character decide what is found', async () => {
+    const at61 = '!'.repeat(60) + 'bern';
+
+    assert.equal(at61.length, 64);
+    assert.equal((await search(anna, at61))[0]?.name, 'Bern');
+    assert.equal((await search(anna, '!' + at61))[0]?.name, 'Berlin');
+  });
+
   it('is not available to a signed-out visitor', async () => {
     await assert.rejects(
       () => asAnon(db, () => db.query(`select * from public.search_cities('berlin', 20)`)),
       /permission denied for function search_cities/,
     );
+  });
+
+  /**
+   * search_cities runs with its owner's rights, to fold a saint's name with
+   * private.search_form, and reads the cities, whose row level security is
+   * forced on their owner too. These tests run as a superuser, which passes
+   * every policy by, so none of them could show that it still answers when
+   * its owner is no superuser. (Found in review.) On the platform the owner,
+   * postgres, is none: it passes row level security by, and it is also a
+   * member of authenticated, whom cities_select_all lets read every row.
+   * Either is enough. Here the owner is a member and passes nothing by; an
+   * owner that is neither finds nothing at all.
+   */
+  it('answers when its owner is no superuser and passes no policy by, as a member of authenticated', async () => {
+    await db.exec(`
+      begin;
+      create role search_owner nologin nosuperuser nobypassrls;
+      grant authenticated to search_owner;
+      grant usage on schema public, private to search_owner;
+      grant select on public.cities to search_owner;
+      alter function private.search_form(text) owner to search_owner;
+      alter function public.search_cities(text, integer) owner to search_owner;
+    `);
+    try {
+      const { rows } = await db.query(
+        `select r.rolsuper as superuser, r.rolbypassrls as passes_policies_by
+         from pg_proc p
+         join pg_roles r on r.oid = p.proowner
+         where p.oid = 'public.search_cities(text, integer)'::regprocedure`,
+      );
+      assert.deepEqual(rows, [{ superuser: false, passes_policies_by: false }]);
+
+      // A saint's name, so that the owner folds it with private.search_form.
+      const found = await search(anna, sent('St. Ingbert'));
+      assert.equal(found[0]?.name, 'Sankt Ingbert');
+    } finally {
+      // A function's plans are kept, and were made for this owner.
+      await db.exec(`rollback; discard plans;`);
+    }
+  });
+});
+
+/**
+ * The ways people write the names in the list. "St Gallen", "St. Ingbert",
+ * "Halle (Saale)" and "Biel/Bienne" found nothing, although the towns are
+ * there. (Found in review.)
+ */
+describe('search_cities, the way a town is typed', () => {
+  let anna;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'spelling', displayName: 'Spelling' });
+  });
+
+  for (const [spelling, town] of [
+    ['St Gallen', 'Sankt Gallen'],
+    ['St. Gallen', 'Sankt Gallen'],
+    ['St.Gallen', 'Sankt Gallen'],
+    ['Saint Gallen', 'Sankt Gallen'],
+    ['St Pölten', 'Sankt Pölten'],
+    ['St. Augustin', 'Sankt Augustin'],
+    ['St. Ingbert', 'Sankt Ingbert'],
+    ['St. Wendel', 'Sankt Wendel'],
+    ['St. Leonhard', 'Sankt Leonhard'],
+    ['Halle (Saale)', 'Halle (Saale)'],
+    ['Halle/Saale', 'Halle (Saale)'],
+    ['Kempten (Allgäu)', 'Kempten (Allgäu)'],
+    ['Frankfurt (Oder)', 'Frankfurt (Oder)'],
+    ['Biel/Bienne', 'Biel/Bienne'],
+    ['St. Paul', 'Saint Paul'],
+    ['Saint Louis', 'St. Louis'],
+    ['Ra’s Bayrūt', 'Ra’s Bayrūt'],
+  ]) {
+    it(`finds ${town} typed as "${spelling}"`, async () => {
+      const rows = await search(anna, sent(spelling));
+      assert.equal(rows[0]?.name, town, `found ${rows.map((row) => row.name).join(', ')}`);
+    });
+  }
+
+  /** Typed so far, "St" may still become Stuttgart. */
+  it('still finds a town that begins with the letters of a saint', async () => {
+    const rows = await search(anna, sent('St'), 50);
+    assert.ok(rows.some((row) => row.name === 'Stuttgart'));
+  });
+
+  /**
+   * The fixture's names are the generator's own sample of the list, folded
+   * as the client folds them. Each must find its city: this is where the
+   * client and the rows in the database are held together.
+   */
+  it('finds every city in the fixture by the name the client sends for it', async () => {
+    const { rows: names } = await db.query(`select distinct name from public.cities`);
+    const inTable = new Set(names.map((row) => row.name));
+    const listed = [...FIXTURE.pairs, ...(FIXTURE.spellings ?? [])].filter(([raw]) =>
+      inTable.has(raw),
+    );
+    assert.ok(listed.length > 150, `only ${listed.length} of the fixture's names are cities`);
+
+    const missed = [];
+    for (const [raw, folded] of listed) {
+      const rows = await search(anna, folded, 50);
+      if (!rows.some((row) => row.name === raw)) missed.push(`${raw} as "${folded}"`);
+    }
+    assert.deepEqual(missed, []);
+  });
+
+  /**
+   * The rows were brought to the new form in SQL, by private.search_form.
+   * On text that needs no letters folded, it has to say what the client says.
+   */
+  it('agrees with the client on every spelling that needs no letter folded', async () => {
+    const plain = (FIXTURE.spellings ?? []).filter(([raw]) => /^[A-Za-z0-9 .'-]+$/.test(raw));
+    assert.ok(plain.length > 5);
+
+    const { rows } = await db.query(
+      `select raw, private.search_form(lower(raw)) as folded
+       from unnest($1::text[]) as raw`,
+      [plain.map(([raw]) => raw)],
+    );
+    assert.deepEqual(
+      rows.map((row) => [row.raw, row.folded]),
+      plain.map(([raw, folded]) => [raw, folded]),
+    );
+  });
+});
+
+/**
+ * A city whose own name begins with what is typed comes before one where only
+ * an alias does - its own name as it is written. Half-typed, "Sai" is the
+ * start of Saint Paul's name and "St" of St. Louis's; but once the saints had
+ * one form in the index, its first term was "sankt paul", and those towns
+ * ranked as if only an alias began so and fell out of the twenty shown -
+ * while "San" ranked Saint Petersburg as if its name began so, and pushed
+ * Sāngli out. (Found in review.) The form with "sankt" is the town's own name
+ * too, once a whole saint has been typed: "St. P" begins St. Petersburg.
+ */
+describe('search_cities, ranking by the name as it is written', () => {
+  let anna;
+  let older;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'ranking', displayName: 'Ranking' });
+    older = await createTestDatabase({ until: BEFORE_SPELLINGS });
+  });
+
+  after(async () => {
+    await older?.close();
+  });
+
+  /** The client's fold before the spelling rules, and as it is now (see search.ts). */
+  const foldThen = (typed) =>
+    typed
+      .toLowerCase()
+      .replace(/ß/g, 'ss')
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[^a-z0-9 .'-]/g, '');
+  const foldNow = (typed) =>
+    typed
+      .toLowerCase()
+      .replace(/ß/g, 'ss')
+      .replace(/[‘’ʼ]/g, "'")
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[(),/]/g, ' ')
+      .replace(/[^a-z0-9 .'-]/g, '')
+      .replace(/ +/g, ' ')
+      .trim()
+      .replace(/(^|[ -])st\.(?=[a-z0-9])/g, '$1sankt ')
+      .replace(/(^|[ -])(?:st\.|st(?=[ -])|saint(?=[ -]))/g, '$1sankt');
+
+  const shown = async (database, query) =>
+    (
+      await asUser(database, anna, () =>
+        database.query(`select name from public.search_cities($1, 20)`, [query]),
+      )
+    ).rows.map((row) => row.name);
+
+  for (const [typed, town] of [
+    ['Sai', 'Saint Paul'],
+    ['Sain', 'Saint-Louis'],
+    ['Sain', 'Saint-Marc'],
+    ['St', 'St. Louis'],
+    ['St', 'St. Petersburg'],
+    ['Sān', 'Sāngli'],
+  ]) {
+    it(`shows ${town} among the twenty for "${typed}"`, async () => {
+      assert.ok((await shown(db, foldNow(typed))).includes(town));
+    });
+  }
+
+  it('ranks the towns whose own name begins with "Saint" before those only an alias does', async () => {
+    const names = await shown(db, foldNow('Saint'));
+
+    assert.ok(names.indexOf('Saint Paul') !== -1, names.join(', '));
+    assert.ok(names.indexOf('Saint Paul') < names.indexOf('Luanda'), names.join(', '));
+  });
+
+  it('ranks St. Petersburg and Saint Petersburg by their own names for "St. Pe"', async () => {
+    const names = await shown(db, foldNow('St. Pe'));
+
+    assert.deepEqual(names.slice(0, 2), ['Saint Petersburg', 'St. Petersburg']);
+  });
+
+  /**
+   * Every town with a saint in its own name, and whatever part of that name
+   * is typed: where it was among the twenty shown before the spelling rules,
+   * it still is.
+   */
+  it('keeps every town named for a saint among the twenty it was in, however much is typed', async () => {
+    const { rows } = await db.query(
+      `select name from public.cities where name ~* '(^|[ (/-])(st\\.?|saint|sankt)([ -]|$)'`,
+    );
+    assert.equal(rows.length, 16);
+
+    const dropped = [];
+    for (const { name } of rows) {
+      for (let length = 2; length <= name.length; length++) {
+        const typed = name.slice(0, length).trim();
+        if (!(await shown(older, foldThen(typed))).includes(name)) continue;
+        if (!(await shown(db, foldNow(typed))).includes(name))
+          dropped.push(`${name} <- "${typed}"`);
+      }
+    }
+    assert.deepEqual(dropped, []);
+  });
+});
+
+/**
+ * Nothing that found a city before the saints became one form may find it
+ * no longer: every term each of the 4,310 rows had, typed in full or only
+ * the first two letters of it, or anything in between, still finds the row.
+ * What is typed is folded the way the client folds it, which for these
+ * terms - folded already - is private.search_form.
+ */
+describe('search_index, brought to one form for the saints', () => {
+  let before_;
+  let after_;
+
+  before(async () => {
+    before_ = await createTestDatabase({ until: BEFORE_SPELLINGS });
+    after_ = await createTestDatabase({ until: BEFORE_SPELLINGS });
+    // That migration alone, so that every row is still there to be asked about.
+    await applyMigrations(after_, { after: BEFORE_SPELLINGS, until: SPELLINGS_MIGRATION });
+  });
+
+  after(async () => {
+    await before_?.close();
+    await after_?.close();
+  });
+
+  it('loses no row a match it had', async () => {
+    const { rows: old } = await before_.query(
+      `select id, search_index from public.cities order by id`,
+    );
+    assert.equal(old.length, 4310);
+
+    await after_.query(`create temporary table old_index (id integer, search_index text)`);
+    await after_.query(
+      `insert into old_index
+       select * from unnest($1::integer[], $2::text[])`,
+      [old.map((row) => row.id), old.map((row) => row.search_index)],
+    );
+
+    const { rows: still } = await after_.query(`select count(*)::int as rows from public.cities`);
+    assert.equal(still[0].rows, 4310);
+
+    const { rows } = await after_.query(`
+      with typed as (
+        select distinct o.id, btrim(left(term, n)) as typed
+        from old_index o,
+             unnest(string_to_array(o.search_index, '|')) as term,
+             generate_series(2, char_length(term)) as n
+      ),
+      asked as (
+        select id, typed, private.search_form(typed) as query
+        from typed
+        where char_length(typed) >= 2
+      )
+      select count(*)::int as asked,
+             coalesce(array_agg(a.typed || ' -> ' || c.name)
+               filter (where ('|' || c.search_index) not like '%|' || a.query || '%'),
+               '{}') as lost
+      from asked a
+      join public.cities c on c.id = a.id
+    `);
+
+    assert.ok(rows[0].asked > 250_000, `only ${rows[0].asked} were asked`);
+    assert.deepEqual(rows[0].lost, []);
+  });
+
+  /**
+   * The generator gives a city the index this migration gave a row that was
+   * there, given the same names: the table's own rows, written out as a dump
+   * with the terms each had for its alternate names, come out of the
+   * generator as this migration left them. That is as far as the two can be
+   * held together here. The table's terms are folded already, and aliases
+   * with a bracket, a slash, a comma or a typographic apostrophe - which the
+   * generator used to pass over - never reached it: its next run on a real
+   * dump will add those, and no migration could have.
+   */
+  it('gives every row the index the generator writes for the same names', async () => {
+    const { rows: old } = await before_.query(
+      `select id, name, country_code, latitude, longitude, population, search_index
+       from public.cities`,
+    );
+    const scratch = mkdtempSync(join(tmpdir(), 'cities-db-'));
+    try {
+      const dump = old.map((row) =>
+        [row.id, row.name, row.name, row.search_index.split('|').join(','), row.latitude]
+          .concat([row.longitude, 'P', 'PPL', row.country_code, '', '', '', '', ''])
+          .concat([row.population, '', '', 'Europe/Berlin', '2026-11-21'])
+          .join('\t'),
+      );
+      writeFileSync(join(scratch, 'cities15000.txt'), dump.join('\n') + '\n');
+      mkdirSync(join(scratch, 'migrations'));
+      const result = spawnSync(
+        process.execPath,
+        [
+          GENERATOR,
+          '--dump',
+          join(scratch, 'cities15000.txt'),
+          '--migrations',
+          join(scratch, 'migrations'),
+          '--fixture',
+          join(scratch, 'fold-parity.fixture.json'),
+        ],
+        { encoding: 'utf8' },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const [file] = readdirSync(join(scratch, 'migrations'));
+      const sql = readFileSync(join(scratch, 'migrations', file), 'utf8');
+
+      // Each city's line ends with its index, the last quoted value.
+      const generated = new Map(
+        [...sql.matchAll(/^ {2}\((\d+), .*, '((?:[^']|'')*)'\)[,;]?$/gm)].map((match) => [
+          Number(match[1]),
+          match[2].replace(/''/g, "'"),
+        ]),
+      );
+      // All but the two quarters of Köln, which the generator leaves out.
+      assert.equal(generated.size, 4308);
+
+      const { rows: now } = await after_.query(`select id, search_index from public.cities`);
+      const differ = now
+        .filter((row) => generated.has(row.id) && generated.get(row.id) !== row.search_index)
+        .map((row) => `${row.id}: "${row.search_index}" / "${generated.get(row.id)}"`);
+      assert.deepEqual(differ, []);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves no term longer than the 64 characters search_cities reads', async () => {
+    const { rows } = await after_.query(
+      `select max(char_length(term)) as longest
+       from public.cities, unnest(string_to_array(search_index, '|')) as term`,
+    );
+    assert.ok(rows[0].longest <= 64, `a term is ${rows[0].longest} characters long`);
+  });
+});
+
+/**
+ * Sixteen rows had an empty search index and could never be found. (Found in
+ * review.) Fourteen are found by their names now; the two quarters of Köln
+ * called Neustadt are gone, and whatever named them names Köln.
+ */
+/**
+ * 28 pairs of cities share their name and their country - Friedberg in Hessen
+ * and in Bavaria, Hamm in Westphalia and in Hamburg - and were listed as the
+ * same row twice. (Found in review.) Each now says where it is.
+ */
+describe('cities.qualifier, for towns of the same name', () => {
+  let anna;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'twins', displayName: 'Twins' });
+  });
+
+  /** Every city that has a twin, with what tells it apart and what that names. */
+  const twins = async () =>
+    (
+      await db.query(`
+        select c.id, c.name, c.country_code, c.qualifier, c.population,
+               coalesce(substring(c.qualifier from '^near (.*)$'),
+                        substring(c.qualifier from '^[0-9]+ km from (.*)$')) as named,
+               substring(c.qualifier from '^([0-9]+) km from ')::int as km_said
+        from public.cities c
+        where exists (
+          select 1 from public.cities o
+          where o.name = c.name and o.country_code = c.country_code and o.id <> c.id
+        )
+        order by c.name, c.population desc
+      `)
+    ).rows;
+
+  it('tells apart every city that shares its name and country with another', async () => {
+    const rows = await twins();
+    assert.equal(rows.length, 56);
+
+    const groups = Map.groupBy(rows, (row) => `${row.name}, ${row.country_code}`);
+    assert.equal(groups.size, 28);
+    for (const [town, members] of groups) {
+      const said = members.map((member) => member.qualifier);
+      assert.ok(!said.includes(null), `${town} has a row without a qualifier`);
+      assert.equal(new Set(said).size, said.length, `${town}: ${said.join(' / ')}`);
+    }
+
+    const { rows: others } = await db.query(
+      `select count(*)::int as count from public.cities c
+       where c.qualifier is not null
+         and not exists (
+           select 1 from public.cities o
+           where o.name = c.name and o.country_code = c.country_code and o.id <> c.id
+         )`,
+    );
+    assert.equal(others[0].count, 0, 'a city whose name is its own has a qualifier');
+  });
+
+  /**
+   * "Near" names a city of the same country, one of a name of its own, within
+   * 50 km; farther, the qualifier gives the distance instead. Measured again
+   * here for every row.
+   */
+  it('names a city of the same country, near when it says near, as far as it says otherwise', async () => {
+    for (const row of await twins()) {
+      const { rows: named } = await db.query(
+        `select n.name, n.population,
+                private.distance_km(c.latitude, c.longitude, n.latitude, n.longitude) as km,
+                (select count(*) from public.cities o
+                 where o.name = n.name and o.country_code = n.country_code)::int as same_name
+         from public.cities c
+         join public.cities n on n.country_code = c.country_code and n.name = $2
+         where c.id = $1`,
+        [row.id, row.named],
+      );
+      assert.equal(named.length, 1, `${row.name}: "${row.qualifier}" names no one city`);
+      const [place] = named;
+      assert.equal(place.same_name, 1, `${row.name}: ${place.name} has a twin itself`);
+      // Every country with a twin has a larger city for each of them; the rule
+      // for one that has none is tried on made-up towns below.
+      assert.ok(
+        place.population > row.population,
+        `${row.name} (${row.population}) is named by ${place.name} (${place.population})`,
+      );
+
+      if (row.qualifier.startsWith('near ')) {
+        assert.ok(place.km <= 50, `${row.name} is ${place.km} km from ${place.name}`);
+      } else {
+        assert.equal(row.km_said, Math.round(place.km), `${row.name}: ${row.qualifier}`);
+      }
+    }
+  });
+
+  it('says where each of the German and Austrian twins is', async () => {
+    const said = Object.fromEntries(
+      (await twins())
+        .filter((row) => ['DE', 'AT'].includes(row.country_code))
+        .map((row) => [`${row.name} ${row.population}`, row.qualifier]),
+    );
+
+    assert.deepEqual(said, {
+      'Friedberg 29953': 'near Augsburg',
+      'Friedberg 27484': 'near Frankfurt am Main',
+      'Hamm 178967': 'near Dortmund',
+      'Hamm 37989': 'near Hamburg',
+      'Langen 38785': 'near Frankfurt am Main',
+      'Langen 18863': 'near Bremerhaven',
+      'Mülheim 173050': 'near Düsseldorf',
+      'Mülheim 41711': 'near Köln',
+      'Sankt Peter 20320': 'near Klagenfurt am Wörthersee',
+      'Sankt Peter 15187': 'near Graz',
+      'Senden 22275': 'near Ulm',
+      'Senden 20363': 'near Münster',
+    });
+  });
+
+  /** Two rows a few kilometres apart, and no larger city within 130 km. */
+  it('gives the distance where no larger city is near', async () => {
+    const said = (await twins())
+      .filter((row) => row.name === 'La Ceiba')
+      .map((row) => row.qualifier);
+
+    assert.deepEqual(said, ['136 km from San Pedro Sula', '131 km from San Pedro Sula']);
+  });
+
+  it('is what search_cities returns beside the name', async () => {
+    const rows = await search(anna, 'friedberg');
+
+    assert.deepEqual(
+      rows
+        .filter((row) => row.name === 'Friedberg')
+        .map((row) => row.qualifier)
+        .sort(),
+      ['near Augsburg', 'near Frankfurt am Main'],
+    );
+    assert.equal((await search(anna, 'berlin'))[0].qualifier, null);
+  });
+});
+
+/**
+ * The picker told the two Friedbergs apart, and nothing else did: a friend in
+ * one of them was "Friedberg, DE" in the friends list, on their page, on the
+ * compose screen and on every letter - the trouble the picker had, seen from
+ * the friend's side. (Found in review.) Wherever the app reads a city with
+ * its country, what tells it apart comes with it.
+ */
+describe('cities.qualifier, wherever a city is read with its country', () => {
+  const HESSEN = 'near Frankfurt am Main';
+  const BAVARIA = 'near Augsburg';
+  let anna;
+  let ben;
+  let cara;
+  let dora;
+  let letter;
+
+  /** A courier living in one of the two Friedbergs, or in Berlin. */
+  const courier = async (username, qualifier) => {
+    const id = await createUser(db, { username, displayName: username });
+    await db.query(
+      `update public.profiles
+       set city_id = (select c.id from public.cities c
+                      where c.country_code = 'DE'
+                        and (c.name, c.qualifier) is not distinct from ($2, $3))
+       where id = $1`,
+      [id, qualifier ? 'Friedberg' : 'Berlin', qualifier],
+    );
+    return id;
+  };
+  const befriend = (a, b, status = 'accepted') =>
+    db.query(
+      `insert into public.friendships (requester_id, addressee_id, status, accepted_at)
+       values ($1, $2, $3, case when $3 = 'accepted' then now() end)`,
+      [a, b, status],
+    );
+
+  before(async () => {
+    anna = await courier('friedberg_hessen', HESSEN);
+    ben = await courier('friedberg_bavaria', BAVARIA);
+    cara = await courier('berlin_cara', null);
+    dora = await courier('friedberg_dora', BAVARIA);
+    await befriend(anna, ben);
+    await befriend(anna, cara);
+    // Dora has asked Anna, who has not answered: no city is shown either way.
+    await befriend(dora, anna, 'pending');
+
+    [letter] = await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'Grüße aus der Wetterau.',
+    });
+    await fastForward(db, letter.message_id);
+  });
+
+  it('comes with a friend’s city in list_friends, and only once they are friends', async () => {
+    const cities = Object.fromEntries(
+      (await rpc(db, anna, 'list_friends')).map((row) => [
+        row.username,
+        [row.city_name, row.country_code, row.city_qualifier],
+      ]),
+    );
+
+    assert.deepEqual(cities, {
+      friedberg_bavaria: ['Friedberg', 'DE', BAVARIA],
+      berlin_cara: ['Berlin', 'DE', null],
+      friedberg_dora: [null, null, null],
+    });
+    const [annaSeenByBen] = await rpc(db, ben, 'list_friends');
+    assert.equal(annaSeenByBen.city_qualifier, HESSEN);
+  });
+
+  it('comes with where a letter landed in list_sent', async () => {
+    const [sent] = await rpc(db, anna, 'list_sent');
+
+    assert.deepEqual(
+      [sent.destination_city_name, sent.destination_country_code, sent.destination_qualifier],
+      ['Friedberg', 'DE', BAVARIA],
+    );
+  });
+
+  it('comes with where a letter came from in list_inbox', async () => {
+    const [received] = await rpc(db, ben, 'list_inbox');
+
+    assert.deepEqual(
+      [received.origin_city_name, received.origin_country_code, received.origin_qualifier],
+      ['Friedberg', 'DE', HESSEN],
+    );
+  });
+
+  it('comes with both ends of a letter in read_message, for its sender and its recipient', async () => {
+    for (const reader of [anna, ben]) {
+      const [read] = await rpc(db, reader, 'read_message', { message_id: letter.message_id });
+
+      assert.deepEqual(
+        [read.origin_city_name, read.origin_qualifier],
+        ['Friedberg', HESSEN],
+        `as ${reader === anna ? 'its sender' : 'its recipient'}`,
+      );
+      assert.deepEqual(
+        [read.destination_city_name, read.destination_qualifier],
+        ['Friedberg', BAVARIA],
+      );
+    }
+  });
+});
+
+/**
+ * What tells two towns apart is worked out by private.qualify_cities, over the
+ * whole table: by the qualifier migration for the rows there were, and again
+ * by every migration build-cities.mjs writes. The rules the real pairs never
+ * reach are tried here on towns made up for the purpose, in a country of
+ * their own, and taken out again.
+ */
+describe('private.qualify_cities, on towns made up for it', () => {
+  /** What each made-up town is told apart by, once the rules have run over the table. */
+  async function qualified(towns, change = null) {
+    await db.exec('begin');
+    try {
+      for (const [id, name, latitude, longitude, population] of towns) {
+        await db.query(
+          `insert into public.cities
+             (id, name, country_code, latitude, longitude, population, search_index)
+           values ($1, $2, 'ZZ', $3, $4, $5, lower($2))`,
+          [id, name, latitude, longitude, population],
+        );
+      }
+      await db.query(`select private.qualify_cities()`);
+      if (change) {
+        await db.query(change);
+        await db.query(`select private.qualify_cities()`);
+      }
+      const { rows } = await db.query(
+        `select id, qualifier from public.cities where country_code = 'ZZ' order by id`,
+      );
+      return rows.map((row) => [row.id, row.qualifier]);
+    } finally {
+      await db.exec('rollback');
+    }
+  }
+
+  /** "Near Großstadt" twice would tell nothing apart. */
+  it('gives each its distance where both would be near the same city', async () => {
+    assert.deepEqual(
+      await qualified([
+        [990000001, 'Neudorf', 50.0, 10.0, 20000],
+        [990000002, 'Neudorf', 50.1, 10.1, 18000],
+        [990000003, 'Großstadt', 50.05, 10.2, 500000],
+      ]),
+      [
+        [990000001, '15 km from Großstadt'],
+        [990000002, '9 km from Großstadt'],
+        [990000003, null],
+      ],
+    );
+  });
+
+  it('names the nearest city of any size where the country has none larger', async () => {
+    assert.deepEqual(
+      await qualified([
+        [990000001, 'Kleinheim', 50.0, 10.0, 20000],
+        [990000002, 'Kleinheim', 51.0, 11.0, 19000],
+        [990000003, 'Dorf am See', 50.1, 10.0, 16000],
+        [990000004, 'Bergdorf', 50.9, 11.0, 15500],
+      ]),
+      [
+        [990000001, 'near Dorf am See'],
+        [990000002, 'near Bergdorf'],
+        [990000003, null],
+        [990000004, null],
+      ],
+    );
+  });
+
+  /**
+   * Worked out again, two towns that no longer share a name - one of them
+   * renamed in a later dump - lose what they had.
+   */
+  it('takes the qualifier from towns whose names are their own again', async () => {
+    assert.deepEqual(
+      await qualified(
+        [
+          [990000001, 'Neudorf', 50.0, 10.0, 20000],
+          [990000002, 'Neudorf', 50.1, 10.1, 18000],
+          [990000003, 'Großstadt', 50.05, 10.2, 500000],
+        ],
+        `update public.cities set name = 'Neudorf an der Au' where id = 990000002`,
+      ),
+      [
+        [990000001, null],
+        [990000002, null],
+        [990000003, null],
+      ],
+    );
+  });
+});
+
+/**
+ * build-cities.mjs writes a migration with the cities of one dump. A town that
+ * has dropped out of the dump stays in the table, and so must what tells it
+ * apart from another of its name - which is worked out again over the whole
+ * table once the dump's rows are in, not among the dump's rows alone. Among
+ * those alone, a Friedberg whose twin had left the dump had its qualifier
+ * cleared: "Friedberg" beside "Friedberg (near Augsburg)", as if it were the
+ * only one. (Found in review.)
+ */
+describe('a migration build-cities.mjs writes, applied', () => {
+  const NEW_ROSRATH = 990000101;
+  let fresh;
+  let scratch;
+
+  /** One line of cities15000.txt, as the generator reads it. */
+  const line = (id, { name, country_code, latitude, longitude, population }) =>
+    [id, name, name, '', latitude, longitude, 'P', 'PPL', country_code]
+      .concat(['', '', '', '', '', population, '', '', 'Europe/Berlin', '2026-11-21'])
+      .join('\t');
+
+  before(async () => {
+    fresh = await createTestDatabase();
+    scratch = mkdtempSync(join(tmpdir(), 'cities-db-'));
+    const { rows } = await fresh.query(
+      `select name, country_code, latitude, longitude, population
+       from public.cities where id = 2924802`,
+    );
+    const dump = [
+      // The Friedberg in Hessen is in the dump as it is; the one in Bavaria,
+      // 2924803, has dropped out of it.
+      line(2924802, rows[0]),
+      // A second Rösrath, new, in Bavaria; the one beside Köln is not in the dump.
+      line(NEW_ROSRATH, {
+        name: 'Rösrath',
+        country_code: 'DE',
+        latitude: 47.9,
+        longitude: 12.2,
+        population: 20000,
+      }),
+    ];
+    writeFileSync(join(scratch, 'cities15000.txt'), dump.join('\n') + '\n');
+    mkdirSync(join(scratch, 'migrations'));
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        GENERATOR,
+        '--dump',
+        join(scratch, 'cities15000.txt'),
+        '--migrations',
+        join(scratch, 'migrations'),
+        '--fixture',
+        join(scratch, 'fold-parity.fixture.json'),
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const [written] = readdirSync(join(scratch, 'migrations'));
+    await fresh.exec(readFileSync(join(scratch, 'migrations', written), 'utf8'));
+  });
+
+  after(async () => {
+    await fresh?.close();
+    if (scratch) rmSync(scratch, { recursive: true, force: true });
+  });
+
+  const qualifiers = async (name) =>
+    (
+      await fresh.query(
+        `select id, qualifier from public.cities
+         where name = $1 and country_code = 'DE' order by id`,
+        [name],
+      )
+    ).rows.map((row) => [row.id, row.qualifier]);
+
+  it('keeps what tells apart a town whose twin has left the dump', async () => {
+    assert.deepEqual(await qualifiers('Friedberg'), [
+      [2924802, 'near Frankfurt am Main'],
+      [2924803, 'near Augsburg'],
+    ]);
+  });
+
+  it('tells apart a new town from one of its name that is not in the dump', async () => {
+    const [old, added] = await qualifiers('Rösrath');
+
+    assert.equal(old[1], 'near Köln');
+    assert.equal(added[0], NEW_ROSRATH);
+    assert.match(added[1] ?? '', /^near /);
+  });
+
+  it('gives a qualifier to every town that shares its name, and to no other', async () => {
+    const { rows } = await fresh.query(
+      `select count(*) filter (where c.qualifier is not null)::int as qualified,
+              count(*) filter (where (c.qualifier is not null) <> c.shared)::int as wrong
+       from (
+         select c.qualifier,
+                exists (select 1 from public.cities o
+                        where o.name = c.name and o.country_code = c.country_code
+                          and o.id <> c.id) as shared
+         from public.cities c
+       ) c`,
+    );
+
+    assert.deepEqual(rows[0], { qualified: 58, wrong: 0 });
+  });
+});
+
+describe('the rows nothing could find', () => {
+  let anna;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'quarters', displayName: 'Quarters' });
+  });
+
+  it('leaves no city in the list that nothing can find', async () => {
+    const { rows } = await db.query(`select name from public.cities where search_index = ''`);
+    assert.deepEqual(rows, []);
+  });
+
+  for (const [query, town] of [
+    [sent('Zürich (Kreis 11)'), 'Zürich (Kreis 11)'],
+    ['zurich kreis 3', 'Zürich (Kreis 3)'],
+    ['oberwinterthur', 'Oberwinterthur (Kreis 2)'],
+    ['stadt winterthur', 'Stadt Winterthur (Kreis 1)'],
+    ['seen kreis', 'Seen (Kreis 3)'],
+    [sent('Mianzhu, Deyang, Sichuan'), 'Mianzhu, Deyang, Sichuan'],
+    ['mianzhu', 'Mianzhu, Deyang, Sichuan'],
+    [sent('Ra’s Bayrūt'), 'Ra’s Bayrūt'],
+  ]) {
+    it(`finds ${town} as "${query}"`, async () => {
+      const rows = await search(anna, query);
+      assert.equal(rows[0]?.name, town, `found ${rows.map((row) => row.name).join(', ')}`);
+    });
+  }
+
+  it('lists the Neustadts there are, and not the two quarters of Köln', async () => {
+    const names = (await search(anna, 'neustadt')).map((row) => row.name);
+
+    assert.deepEqual(names.filter((name) => name.startsWith('Neustadt')).sort(), [
+      'Neustadt am Rübenberge',
+      'Neustadt an der Weinstraße',
+      'Neustadt in Holstein',
+    ]);
+    const { rows } = await db.query(`select id from public.cities where id = any($1)`, [
+      [NEUSTADT_SUD, NEUSTADT_NORD],
+    ]);
+    assert.deepEqual(rows, []);
+  });
+
+  /**
+   * A profile can name a city the search never offered - the column takes any
+   * id there is - and a letter names the city it flew from and the one it flew
+   * to, which no city can be deleted from under. Taking the two rows out must
+   * not fail on a database where either happened, and must not cost anyone a
+   * day: their city is the same place under another name.
+   */
+  describe('on a database where couriers and letters name them', () => {
+    let older;
+    const couriers = {};
+
+    before(async () => {
+      older = await createTestDatabase({ until: BEFORE_DEAD_ROWS });
+      const courier = async (name, city) => {
+        const id = await createUser(older, { username: name, displayName: name });
+        await older.query(`update public.profiles set city_id = $2 where id = $1`, [id, city]);
+        return id;
+      };
+
+      // Lives in Neustadt/Süd, and has for long.
+      couriers.dora = await courier('dora', NEUSTADT_SUD);
+      // Has moved from Neustadt/Nord to Munich, and is still settling.
+      couriers.emil = await courier('emil', NEUSTADT_NORD);
+      await older.query(
+        `update public.profiles
+         set city_id = (select id from public.cities where name = 'Munich'),
+             settled_city_id = $2, city_changed_at = now() - interval '2 hours'
+         where id = $1`,
+        [couriers.emil, NEUSTADT_NORD],
+      );
+      // Has moved from Köln to Neustadt/Süd, and is still settling.
+      couriers.fritz = await courier('fritz', NEUSTADT_SUD);
+      await older.query(
+        `update public.profiles
+         set settled_city_id = $2, city_changed_at = now() - interval '3 hours'
+         where id = $1`,
+        [couriers.fritz, KOLN],
+      );
+      // Has moved from Munich to Neustadt/Nord, five hours ago.
+      couriers.gerda = await courier('gerda', NEUSTADT_NORD);
+      await older.query(
+        `update public.profiles
+         set settled_city_id = (select id from public.cities where name = 'Munich'),
+             city_changed_at = now() - interval '5 hours'
+         where id = $1`,
+        [couriers.gerda],
+      );
+      couriers.gerdaMovedAt = (
+        await older.query(`select city_changed_at from public.profiles where id = $1`, [
+          couriers.gerda,
+        ])
+      ).rows[0].city_changed_at;
+      // A letter from Neustadt/Süd to Neustadt/Nord, where Emil's bats still are.
+      await older.query(
+        `insert into public.friendships (requester_id, addressee_id, status, accepted_at)
+         values ($1, $2, 'accepted', now())`,
+        [couriers.dora, couriers.emil],
+      );
+      await asUser(older, couriers.dora, () =>
+        older.query(`select public.send_message($1, 'Hallo aus der Südstadt.')`, [couriers.emil]),
+      );
+
+      // This migration alone: a later one settles at once the moves of couriers
+      // who have had no letter, as these have not.
+      await applyMigrations(older, { after: BEFORE_DEAD_ROWS, until: DEAD_ROWS_MIGRATION });
+    });
+
+    after(async () => {
+      await older?.close();
+    });
+
+    const profile = async (id) =>
+      (
+        await older.query(
+          `select city_id, settled_city_id, city_changed_at is not null as settling
+           from public.profiles where id = $1`,
+          [id],
+        )
+      ).rows[0];
+
+    it('moves a courier who lived there to Köln, without a day of settling', async () => {
+      assert.deepEqual(await profile(couriers.dora), {
+        city_id: KOLN,
+        settled_city_id: null,
+        settling: false,
+      });
+    });
+
+    it('lets a courier settling away from there go on settling, from Köln', async () => {
+      const emil = await profile(couriers.emil);
+      assert.equal(emil.settled_city_id, KOLN);
+      assert.equal(emil.settling, true);
+      assert.notEqual(emil.city_id, KOLN);
+    });
+
+    /** Her move is not a new one: the day she waits began when she moved. */
+    it('lets a courier moving there settle in Köln when she would have settled there', async () => {
+      const { rows } = await older.query(
+        `select city_id, city_changed_at from public.profiles where id = $1`,
+        [couriers.gerda],
+      );
+      assert.equal(rows[0].city_id, KOLN);
+      assert.deepEqual(rows[0].city_changed_at, couriers.gerdaMovedAt);
+    });
+
+    it('ends the move of a courier who was moving from Köln to there', async () => {
+      assert.deepEqual(await profile(couriers.fritz), {
+        city_id: KOLN,
+        settled_city_id: null,
+        settling: false,
+      });
+    });
+
+    it('has the letter fly from Köln to Köln, as before to the same places', async () => {
+      const { rows } = await older.query(
+        `select origin_city_id, destination_city_id from public.messages where sender_id = $1`,
+        [couriers.dora],
+      );
+      assert.deepEqual(rows, [{ origin_city_id: KOLN, destination_city_id: KOLN }]);
+    });
+
+    it('takes the two rows out', async () => {
+      const { rows } = await older.query(`select id from public.cities where id = any($1)`, [
+        [NEUSTADT_SUD, NEUSTADT_NORD],
+      ]);
+      assert.deepEqual(rows, []);
+    });
   });
 });
 

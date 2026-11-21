@@ -900,6 +900,7 @@ describe('reading', () => {
         'delivered',
         'destination_city_name',
         'destination_country_code',
+        'destination_qualifier',
         'distance_km',
         'message_id',
         'preview',

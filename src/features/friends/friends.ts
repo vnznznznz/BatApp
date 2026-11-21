@@ -18,7 +18,12 @@ export type FriendshipStatus = 'pending' | 'accepted';
 /** Who asked: `outgoing` if it was you. */
 export type Direction = 'incoming' | 'outgoing';
 
-export type FriendCity = { name: string; countryCode: string };
+export type FriendCity = {
+  name: string;
+  countryCode: string;
+  /** Where it is, if another town in the country has its name: "near Augsburg". */
+  qualifier?: string | null;
+};
 
 export type Friend = {
   id: string;
@@ -54,6 +59,11 @@ export type FriendshipRow = {
   display_name: string | null;
   city_name: string | null;
   country_code: string | null;
+  /**
+   * Null for a city whose name is its own in its country, and withheld with
+   * the name. Absent from a database older than the city qualifiers migration.
+   */
+  city_qualifier?: string | null;
   distance_km: number | null;
   flight_seconds: number | null;
   requested_at: string;
@@ -71,7 +81,7 @@ export function toFriendship(row: FriendshipRow): Friendship {
       displayName: row.display_name,
       city:
         row.city_name && row.country_code
-          ? { name: row.city_name, countryCode: row.country_code }
+          ? { name: row.city_name, countryCode: row.country_code, qualifier: row.city_qualifier }
           : null,
     },
     route:

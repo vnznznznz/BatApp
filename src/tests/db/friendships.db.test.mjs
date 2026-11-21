@@ -639,6 +639,8 @@ describe('list_friends', () => {
     const anna = await createCourier(db, { name: 'anna', city: ['Berlin', 'DE'] });
     const ben = await createCourier(db, { name: 'ben', city: ['Munich', 'DE'] });
     await makeFriends(db, anna, ben);
+    // Before a courier's first letter a move counts at once: Ben has had one.
+    await db.query(`update public.profiles set has_corresponded = true where id = $1`, [ben]);
     await setCity(db, ben, ['Hamburg', 'DE']);
 
     assert.equal((await listFriends(anna))[0].city_name, 'Munich');

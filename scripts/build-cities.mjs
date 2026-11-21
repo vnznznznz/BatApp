@@ -32,6 +32,14 @@
  * away: a town that has dropped out of the list stays in the table, because a
  * courier may live there.
  *
+ * Each city is written with its search index (searchIndex()). A city no name
+ * of which could be searched for is not written, and nor are the rows a
+ * migration took out (LEFT_OUT). What tells apart two towns of the same name
+ * in one country is not written either: the migration ends by having the
+ * database work that out again over the whole table
+ * (private.qualify_cities(), in the city qualifiers migration), so that a
+ * town left in the table keeps it when its twin is no longer in the dump.
+ *
  * After a run: commit the new migration and the fold-parity fixture, bring it
  * to the hosted project (`npx supabase@3.2.0 db push --remote --yes`, handed the
  * database password as docs/GO-LIVE.md, "Setting up the hosted project", step 3,
@@ -80,6 +88,16 @@ const SOURCE_URL = `https://download.geonames.org/export/dump/${DUMP}.zip`;
 const FULL_COVERAGE = new Set(['DE', 'AT', 'CH']);
 const WORLD_MIN_POPULATION = 200_000;
 
+/**
+ * Rows of the dump the list does without, by GeoNames id, and why. A
+ * migration took them out of the table; written into the next one, they would
+ * come back.
+ */
+const LEFT_OUT = new Map([
+  [8593856, 'Neustadt/Süd, a quarter of Köln: see 20261121120001_dead_city_rows.sql'],
+  [8593855, 'Neustadt/Nord, a quarter of Köln: see 20261121120001_dead_city_rows.sql'],
+]);
+
 /** GeoNames column indices, from the readme accompanying the dump. */
 const COL = { id: 0, name: 1, alternates: 3, lat: 4, lon: 5, country: 8, population: 14 };
 
@@ -94,8 +112,55 @@ const COL = { id: 0, name: 1, alternates: 3, lat: 4, lon: 5, country: 8, populat
  * it is filtered to Latin script. That drops Cyrillic, Greek, CJK, Arabic and
  * Hebrew forms - most of the volume and none of the value here - while keeping
  * every European exonym.
+ *
+ * Brackets, slashes and commas are let through, and so are typographic
+ * apostrophes: the list itself writes "Halle (Saale)", "Biel/Bienne",
+ * "Mianzhu, Deyang, Sichuan" and "Ra’s Bayrūt", and a name passed over for
+ * them could not be found by its own name - sixteen towns, by nothing at all.
  */
-const LATIN_NAME = /^[\p{Script=Latin}\p{M}][\p{Script=Latin}\p{M}0-9 .'-]{1,39}$/u;
+const LATIN_NAME = /^[\p{Script=Latin}\p{M}][\p{Script=Latin}\p{M}0-9 .'‘’ʼ(),/-]{1,39}$/u;
+
+/**
+ * Ways of typing a town that the client's folding is held to as well as the
+ * names in the list: each is written into the fixture with what it folds to.
+ * The database's tests look towns up by these, so they say which town each
+ * must find.
+ */
+const SPELLINGS = [
+  'St Gallen',
+  'St. Gallen',
+  'St.Gallen',
+  'ST. GALLEN',
+  'Sankt Gallen',
+  'Saint Gallen',
+  'Saint-Gall',
+  'St Pölten',
+  'St. Augustin',
+  'St. Ingbert',
+  'St. Wendel',
+  'St. Leonhard',
+  'St. Paul',
+  'Saint Louis',
+  'St-Louis',
+  'St Petersburg',
+  'St',
+  'St.',
+  'Saint',
+  'Stuttgart',
+  'Saintes',
+  'Ost-Berlin',
+  'Halle (Saale)',
+  'Halle/Saale',
+  'Kempten (Allgäu)',
+  'Frankfurt (Oder)',
+  'Biel/Bienne',
+  'Zürich (Kreis 11)',
+  'Mianzhu, Deyang, Sichuan',
+  'Ra’s Bayrūt',
+  "Ra's Bayrut",
+  'Val-d’Or',
+  '  Bad   Homburg ',
+];
 
 let dump;
 try {
@@ -149,6 +214,8 @@ function readDump() {
 
 /** Keyed by GeoNames id, which is stable across dumps. */
 const kept = new Map();
+/** Cities no name of which could be searched for: "東京, JP". */
+const unfindable = [];
 
 for (const row of rows) {
   if (!row) continue;
@@ -164,6 +231,16 @@ for (const row of rows) {
   if (!Number.isFinite(id) || !name || !country) continue;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
   if (!FULL_COVERAGE.has(country) && population < WORLD_MIN_POPULATION) continue;
+  if (LEFT_OUT.has(id)) continue;
+
+  // A row with nothing to search by could be chosen by nobody: sixteen such
+  // rows once sat in the table. It is not written; one that is in the table
+  // already keeps what it has, since the migration only adds and updates.
+  const index = searchIndex(name, f[COL.alternates]);
+  if (!index) {
+    unfindable.push(`${name}, ${country}`);
+    continue;
+  }
 
   kept.set(id, {
     id,
@@ -173,8 +250,16 @@ for (const row of rows) {
     lat: round(lat),
     lon: round(lon),
     population,
-    searchIndex: searchIndex(name, f[COL.alternates]),
+    searchIndex: index,
   });
+}
+
+if (unfindable.length > 0) {
+  const cities = unfindable.length === 1 ? 'city' : 'cities';
+  console.log(
+    `Left out ${unfindable.length} ${cities} that no name in the dump could find: ` +
+      unfindable.join('; '),
+  );
 }
 
 const cities = [...kept.values()].sort((a, b) => b.population - a.population);
@@ -243,6 +328,13 @@ for (let i = 0; i < cities.length; i += BATCH) {
 
 if (cities.length === 0) fail('the dump holds no city that would be kept; nothing written');
 
+// Over the whole table, not over this dump's cities: see the opening comment.
+statements.push(
+  `-- What tells apart two towns of the same name in one country, worked out\n` +
+    `-- again over the whole table now that these rows are in it.\n` +
+    `select private.qualify_cities();`,
+);
+
 mkdirSync(MIGRATIONS, { recursive: true });
 // 'wx': never over a file that is there. The name is new by construction; if
 // it is not, something is wrong, and an applied migration must not pay for it.
@@ -282,18 +374,29 @@ function writeFixture(all) {
       {
         note: 'GENERATED by scripts/build-cities.mjs. Pins the folding used to build search_index.',
         pairs: sample,
+        spellings: SPELLINGS.map((spelling) => [spelling, fold(spelling)]),
       },
       null,
       2,
     ) + '\n',
   );
-  console.log(`Wrote ${sample.length} folding pairs to ${relative(ROOT, FIXTURE)}`);
+  console.log(
+    `Wrote ${sample.length} folding pairs and ${SPELLINGS.length} spellings to ` +
+      relative(ROOT, FIXTURE),
+  );
 }
 
 /**
  * Everything the city can be found by, pipe-delimited and folded so that
  * "Zurich" matches "Zürich" and "Koln" matches "Köln" - typing umlauts on a
  * phone keyboard is possible but nobody bothers.
+ *
+ * Each name is there as it was written, and where the saints make that
+ * differ, in the form the client folds a query to after it ("saint
+ * paul|sankt paul"): someone half-way through typing "Saint" has typed
+ * "Sain", which only the written form still begins with. The first term is
+ * the city's own name as it is written, which search_cities ranks "the
+ * city's own name begins with the query" by.
  *
  * Must stay in step with `fold()` in src/features/cities/search.ts. That pairing
  * is asserted by a test, because a silent divergence would make search quietly
@@ -302,27 +405,56 @@ function writeFixture(all) {
 function searchIndex(name, alternates) {
   const seen = new Set();
   const terms = [];
+  const add = (term) => {
+    if (!term || seen.has(term)) return;
+    seen.add(term);
+    terms.push(term);
+  };
 
   for (const candidate of [name, ...(alternates ?? '').split(',')]) {
     const trimmed = candidate.trim();
     if (!trimmed || !LATIN_NAME.test(trimmed)) continue;
 
-    const folded = fold(trimmed);
-    if (!folded || seen.has(folded)) continue;
-    seen.add(folded);
-    terms.push(folded);
+    const written = foldLetters(trimmed);
+    add(written);
+    add(saintForm(written));
   }
 
   return terms.join('|');
 }
 
+/** The folding the client applies to a query: see foldLetters and saintForm. */
 function fold(value) {
+  return saintForm(foldLetters(value));
+}
+
+/**
+ * Lower case without diacritics, sharp s as "ss", a typographic apostrophe as
+ * a plain one, brackets, slashes and commas as the spaces between words, and
+ * one space where there were several.
+ */
+function foldLetters(value) {
   return value
     .toLowerCase()
     .replace(/ß/g, 'ss')
+    .replace(/[‘’ʼ]/g, "'")
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
-    .replace(/[^a-z0-9 .'-]/g, '');
+    .replace(/[(),/]/g, ' ')
+    .replace(/[^a-z0-9 .'-]/g, '')
+    .replace(/ +/g, ' ')
+    .trim();
+}
+
+/**
+ * St, st., sankt and saint at the start of a word as "sankt", the form
+ * GeoNames writes the German-speaking towns in. Only a whole word: "st" at the
+ * end of a query may still become Stuttgart. A dot ends the word.
+ */
+function saintForm(folded) {
+  return folded
+    .replace(/(^|[ -])st\.(?=[a-z0-9])/g, '$1sankt ')
+    .replace(/(^|[ -])(?:st\.|st(?=[ -])|saint(?=[ -]))/g, '$1sankt');
 }
 
 /** Single-quoted SQL literal. */

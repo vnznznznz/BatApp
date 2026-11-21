@@ -90,6 +90,25 @@ const run = (args, env = {}) =>
 
 const fromDump = () => run(['--dump', dump]);
 
+/**
+ * The values the migration writes for city `id`, read back out of it:
+ * numbers, strings with their quotes undone, and null.
+ */
+function written(sql, id) {
+  const line = sql.split('\n').find((text) => text.startsWith(`  (${id}, `));
+  if (!line) return undefined;
+  const values = [];
+  const token = /\s*(?:'((?:[^']|'')*)'|(-?[\d.]+)|(null))\s*(?:,|\)[,;]?$)/gy;
+  token.lastIndex = 3;
+  let match;
+  while ((match = token.exec(line))) {
+    if (match[1] !== undefined) values.push(match[1].replace(/''/g, "'"));
+    else if (match[2] !== undefined) values.push(Number(match[2]));
+    else values.push(null);
+  }
+  return values;
+}
+
 describe('build-cities.mjs', () => {
   it('writes a new migration and leaves the earlier ones as they were', () => {
     const result = fromDump();
@@ -110,7 +129,15 @@ describe('build-cities.mjs', () => {
     const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
 
     assert.match(sql, /insert into public\.cities /);
-    assert.match(sql, /\(2657896, 'Zürich', 'CH', 47\.3667, 8\.55, 341730, 'zurich\|zuerich'\)/);
+    assert.deepEqual(written(sql, 2657896), [
+      2657896,
+      'Zürich',
+      'CH',
+      47.3667,
+      8.55,
+      341730,
+      'zurich|zuerich',
+    ]);
     assert.match(sql, /\(2820973, 'Trossingen', 'DE', /);
     assert.match(sql, /\(2988507, 'Paris', 'FR', /);
     assert.doesNotMatch(sql, /Petiteville/);
@@ -163,6 +190,173 @@ describe('build-cities.mjs', () => {
     // gave the bare command, so it sends the reader to the runbook's way.
     assert.match(result.stdout, /SUPABASE_DB_PASSWORD/);
     assert.match(result.stdout, /docs\/GO-LIVE\.md, "Setting up the hosted project", step 3/);
+  });
+});
+
+describe('build-cities.mjs, folding names', () => {
+  /** Names as GeoNames writes them, and the ways people type them. */
+  const SPELLINGS_DUMP = [
+    line(2658822, 'Sankt Gallen', 'St. Gallen,Saint-Gall,San Gallo', 47.4239, 9.3748, 'CH', 75833),
+    line(2911522, 'Halle (Saale)', 'Halle,Halle an der Saale', 51.4816, 11.9795, 'DE', 237865),
+    line(2661513, 'Biel/Bienne', 'Biel,Bienne', 47.1371, 7.2461, 'CH', 55120),
+    line(5045360, 'Saint Paul', 'St. Paul,St Paul', 44.9444, -93.0933, 'US', 300851),
+    line(268743, 'Ra’s Bayrūt', '', 33.9, 35.4833, 'LB', 1251739),
+    line(12492662, 'Mianzhu, Deyang, Sichuan', '', 31.3379, 104.2206, 'CN', 510000),
+    line(2820973, 'Trossingen', 'Trosingen', 48.07667, 8.64409, 'DE', 15040),
+  ].join('\n');
+
+  const fromSpellings = () => {
+    writeFileSync(dump, SPELLINGS_DUMP + '\n');
+    const result = fromDump();
+    assert.equal(result.status, 0, result.stderr);
+    return readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+  };
+
+  /** The search index the migration gives a city, read back out of it. */
+  const indexOf = (sql, id) => written(sql, id)?.[6];
+
+  /**
+   * One form for st, st., sankt and saint at the start of a word, which is
+   * what the client sends whichever was typed - and before it the form as
+   * written, so that what found the town before, typed half-way, still does,
+   * and the first term is the town's own name as it is written: search_cities
+   * ranks by it.
+   */
+  it('keeps each name as it was written, first, and makes the saints one form after it', () => {
+    const sql = fromSpellings();
+
+    assert.equal(indexOf(sql, 2658822), 'sankt gallen|st. gallen|saint-gall|sankt-gall|san gallo');
+    assert.equal(indexOf(sql, 5045360), 'saint paul|sankt paul|st. paul|st paul');
+  });
+
+  it('indexes a name with brackets, slashes or commas, reading them as spaces', () => {
+    const sql = fromSpellings();
+
+    assert.equal(indexOf(sql, 2911522), 'halle saale|halle|halle an der saale');
+    assert.equal(indexOf(sql, 2661513), 'biel bienne|biel|bienne');
+    assert.equal(indexOf(sql, 12492662), 'mianzhu deyang sichuan');
+  });
+
+  it('indexes a name with a typographic apostrophe, read as a plain one', () => {
+    assert.equal(indexOf(fromSpellings(), 268743), "ra's bayrut");
+  });
+
+  /**
+   * Aliases like these never reached the table: the generator passed them
+   * over, and the migration that brought the rows to these rules could only
+   * rework the terms the rows had. The next run on a real dump adds them.
+   */
+  it('indexes an alias with a bracket, a slash or a typographic apostrophe in it', () => {
+    writeFileSync(
+      dump,
+      [
+        line(
+          2925535,
+          'Frankfurt (Oder)',
+          'Frankfurt an der Oder,Frankfurt/O.',
+          52.34,
+          14.55,
+          'DE',
+          58237,
+        ),
+        line(70225, 'Taiz', 'Ta‘izz,Ta’izz,Taizz (Stadt)', 13.5795, 44.0209, 'YE', 615222),
+      ].join('\n') + '\n',
+    );
+    assert.equal(fromDump().status, 0);
+    const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+
+    assert.equal(indexOf(sql, 2925535), 'frankfurt oder|frankfurt an der oder|frankfurt o.');
+    assert.equal(indexOf(sql, 70225), "taiz|ta'izz|taizz stadt");
+  });
+
+  it('pins how the spellings people type fold, beside the names it wrote', () => {
+    fromSpellings();
+    const { pairs, spellings } = JSON.parse(readFileSync(fixture, 'utf8'));
+
+    assert.deepEqual(
+      pairs.find(([name]) => name === 'Halle (Saale)'),
+      ['Halle (Saale)', 'halle saale'],
+    );
+    const folded = new Map(spellings);
+    assert.equal(folded.get('St Gallen'), 'sankt gallen');
+    assert.equal(folded.get('St.Gallen'), 'sankt gallen');
+    assert.equal(folded.get('Saint Gallen'), 'sankt gallen');
+    assert.equal(folded.get('Biel/Bienne'), 'biel bienne');
+    assert.equal(folded.get('Ra’s Bayrūt'), "ra's bayrut");
+    assert.equal(folded.get('St'), 'st');
+    assert.equal(folded.get('Stuttgart'), 'stuttgart');
+  });
+});
+
+/**
+ * What tells two towns of one name apart is the database's to work out, over
+ * the whole table (private.qualify_cities, in the city qualifiers migration):
+ * worked out among one dump's cities, a town left in the table by an earlier
+ * run would make its twin look like the only town of its name. (Found in
+ * review.) cities.db.test.mjs applies a migration written here to a database
+ * and looks at the result.
+ */
+describe('build-cities.mjs, towns of the same name', () => {
+  it('writes no qualifier, and has the database work them out once every row is in', () => {
+    writeFileSync(
+      dump,
+      [
+        line(2924803, 'Friedberg', '', 48.3569, 10.9846, 'DE', 29953),
+        line(2924802, 'Friedberg', '', 50.3374, 8.7559, 'DE', 27484),
+        line(2954172, 'Augsburg', '', 48.3715, 10.8985, 'DE', 301105),
+      ].join('\n') + '\n',
+    );
+    const result = fromDump();
+    assert.equal(result.status, 0, result.stderr);
+    const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+
+    assert.equal(written(sql, 2924803).length, 7);
+    assert.doesNotMatch(sql, /qualifier =|, qualifier\)/);
+    const call = sql.indexOf('select private.qualify_cities();');
+    assert.ok(call > sql.lastIndexOf('insert into public.cities'), 'called before the rows are in');
+    assert.equal(sql.trimEnd().slice(call), 'select private.qualify_cities();');
+  });
+});
+
+describe('build-cities.mjs, rows nothing could find', () => {
+  const run = (lines) => {
+    writeFileSync(dump, lines.join('\n') + '\n');
+    const result = fromDump();
+    assert.equal(result.status, 0, result.stderr);
+    const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+    return { sql, stdout: result.stdout };
+  };
+
+  /**
+   * The dead rows migration took the two quarters of Köln called Neustadt out
+   * of the table. Written into the next migration, they would come back.
+   */
+  it('leaves out the quarters of Köln that a migration took out', () => {
+    const { sql } = run([
+      line(2886242, 'Köln', 'Cologne', 50.9333, 6.95, 'DE', 1024621),
+      line(8593856, 'Neustadt/Süd', '', 50.9251, 6.9476, 'DE', 37939),
+      line(8593855, 'Neustadt/Nord', '', 50.949, 6.9479, 'DE', 28146),
+    ]);
+
+    assert.match(sql, /\(2886242, 'Köln', /);
+    assert.doesNotMatch(sql, /859385[56]/);
+    assert.match(sql, /-- 1 cities:/);
+  });
+
+  /**
+   * A row with an empty search index can be chosen by nobody. Such a city is
+   * not written, and the run says which it was; one that is in the table
+   * already keeps what it has.
+   */
+  it('writes no city that no name could find, and says which it left out', () => {
+    const { sql, stdout } = run([
+      line(1850147, '東京', 'Токио', 35.6895, 139.6917, 'JP', 9733276),
+      line(2820973, 'Trossingen', '', 48.07667, 8.64409, 'DE', 15040),
+    ]);
+
+    assert.doesNotMatch(sql, /1850147/);
+    assert.match(sql, /\(2820973, 'Trossingen', /);
+    assert.match(stdout, /Left out 1 city that no name in the dump could find: 東京, JP/);
   });
 });
 

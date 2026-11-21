@@ -5,6 +5,13 @@ export type City = {
   name: string;
   countryCode: string;
   population: number;
+  /**
+   * What tells the city apart from another of the same name in the same
+   * country - "near Augsburg" for one Friedberg, "near Frankfurt am Main" for
+   * the other - worked out from where the towns are (see the city qualifiers
+   * migration). Null for a city whose name is its own.
+   */
+  qualifier: string | null;
 };
 
 /** Below this, a search would return most of the table for no useful reason. */
@@ -16,19 +23,42 @@ export const MIN_QUERY_LENGTH = 2;
  * Folding diacritics means "Zurich" finds Zürich and "Koln" finds Köln, which
  * matters because typing umlauts on a phone keyboard is possible but nobody
  * bothers. Sharp s becomes "ss" before the marks are stripped, since NFD leaves
- * it alone and "Gießen" should be reachable as "giessen".
+ * it alone and "Gießen" should be reachable as "giessen". A typographic
+ * apostrophe, which a phone's keyboard may type for a plain one, counts as
+ * the plain one. Brackets, slashes and commas part words, as in "Halle
+ * (Saale)" and "Biel/Bienne", and runs of spaces close up. Then the saints
+ * become one form: see `saintForm`.
  *
  * **This must stay identical to `fold()` in `scripts/build-cities.mjs`.** A
  * divergence would not raise an error; search would simply stop finding cities.
  * `search.test.ts` asserts the two agree against a generated fixture.
  */
 export function fold(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/ß/g, 'ss')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[^a-z0-9 .'-]/g, '');
+  return saintForm(
+    value
+      .toLowerCase()
+      .replace(/ß/g, 'ss')
+      .replace(/[‘’ʼ]/g, "'")
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[(),/]/g, ' ')
+      .replace(/[^a-z0-9 .'-]/g, '')
+      .replace(/ +/g, ' ')
+      .trim(),
+  );
+}
+
+/**
+ * "St Gallen", "St. Gallen", "St.Gallen" and "Saint Gallen" all mean Sankt
+ * Gallen, which is how GeoNames writes it. So st, st., sankt and saint at the
+ * start of a word become "sankt", here and in the search index alike. Only a
+ * whole word does: "st" or "saint" at the very end of what is typed may still
+ * become Stuttgart or Saintes, and is left as it is. A dot ends the word.
+ */
+function saintForm(folded: string): string {
+  return folded
+    .replace(/(^|[ -])st\.(?=[a-z0-9])/g, '$1sankt ')
+    .replace(/(^|[ -])(?:st\.|st(?=[ -])|saint(?=[ -]))/g, '$1sankt');
 }
 
 /**
@@ -55,6 +85,7 @@ export async function searchCities(query: string, limit = 20): Promise<City[]> {
     name: String(row.name),
     countryCode: String(row.country_code),
     population: Number(row.population),
+    qualifier: typeof row.qualifier === 'string' ? row.qualifier : null,
   }));
 }
 
@@ -68,7 +99,14 @@ export const CITY_DATA_CREDIT =
   'City names and places adapted from GeoNames (geonames.org), licensed under ' +
   'CC BY 4.0 (creativecommons.org/licenses/by/4.0).';
 
-/** "Rösrath, DE" — enough to disambiguate two towns sharing a name. */
-export function describeCity(city: Pick<City, 'name' | 'countryCode'>): string {
-  return `${city.name}, ${city.countryCode}`;
+/**
+ * "Rösrath, DE" — and, for one of two towns of the same name in the same
+ * country, where it is: "Friedberg (near Augsburg), DE".
+ */
+export function describeCity(
+  city: Pick<City, 'name' | 'countryCode'> & { qualifier?: string | null },
+): string {
+  return city.qualifier
+    ? `${city.name} (${city.qualifier}), ${city.countryCode}`
+    : `${city.name}, ${city.countryCode}`;
 }

@@ -384,6 +384,22 @@ describe('ProfileScreen', () => {
       expect(mockPush).toHaveBeenCalledWith('/city-picker');
     });
 
+    /** One of two Friedbergs in Germany: the profile says which. */
+    it('says where the city is when another of its name is in the same country', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        city: {
+          id: 2924802,
+          name: 'Friedberg',
+          countryCode: 'DE',
+          qualifier: 'near Frankfurt am Main',
+        },
+      };
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.getByText('Friedberg (near Frankfurt am Main), DE')).toBeOnTheScreen();
+    });
+
     it('asks for a city when none is chosen', async () => {
       mockProfileState.profile = { ...courier, city: null };
       await renderScreen(<ProfileScreen />);

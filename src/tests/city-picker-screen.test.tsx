@@ -5,7 +5,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import CityPickerScreen from '@/app/(app)/city-picker';
 import { CITY_DATA_CREDIT, searchCities, type City } from '@/features/cities/search';
-import type { Profile } from '@/features/profile/use-profile';
+import type { CityCondition, CitySave, Profile } from '@/features/profile/use-profile';
 
 // React Native loads its components on first use, and with a cold transform
 // cache the first render compiles them: seconds of work that would otherwise
@@ -29,7 +29,7 @@ jest.mock('@/features/cities/search', () => ({
 }));
 
 const mockProfileState: { profile: Profile | null } = { profile: null };
-const mockUpdateCity = jest.fn<Promise<void>, [number]>();
+const mockUpdateCity = jest.fn<Promise<CitySave>, [cityId: number, condition?: CityCondition]>();
 
 jest.mock('@/features/profile/use-profile', () => ({
   useProfile: () => ({
@@ -48,8 +48,36 @@ const mockedSearchCities = jest.mocked(searchCities);
  */
 const NOW = new Date(2026, 10, 17, 21, 0).getTime();
 
-const hamburg: City = { id: 2911298, name: 'Hamburg', countryCode: 'DE', population: 1_739_117 };
-const hameln: City = { id: 2911271, name: 'Hameln', countryCode: 'DE', population: 57_510 };
+const hamburg: City = {
+  id: 2911298,
+  name: 'Hamburg',
+  countryCode: 'DE',
+  population: 1_739_117,
+  qualifier: null,
+};
+const hameln: City = {
+  id: 2911271,
+  name: 'Hameln',
+  countryCode: 'DE',
+  population: 57_510,
+  qualifier: null,
+};
+
+/** Two towns of one name in one country, as the search returns them. */
+const friedbergBavaria: City = {
+  id: 2924803,
+  name: 'Friedberg',
+  countryCode: 'DE',
+  population: 29_953,
+  qualifier: 'near Augsburg',
+};
+const friedbergHessen: City = {
+  id: 2924802,
+  name: 'Friedberg',
+  countryCode: 'DE',
+  population: 27_484,
+  qualifier: 'near Frankfurt am Main',
+};
 
 const courier: Profile = {
   id: 'user-mara',
@@ -58,7 +86,11 @@ const courier: Profile = {
   avatarUrl: null,
   city: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
   move: null,
+  hasCorresponded: true,
 };
+
+/** The same courier before any letter has gone to or from her. */
+const newcomer: Profile = { ...courier, hasCorresponded: false };
 
 const TOO_SHORT = 'Type at least two letters.';
 const NO_SUCH_CITY = 'No city by that name. Try the nearest larger town.';
@@ -122,7 +154,7 @@ beforeEach(() => {
   mockBack.mockClear();
   mockFocus.focused = true;
   mockProfileState.profile = courier;
-  mockUpdateCity.mockReset().mockResolvedValue(undefined);
+  mockUpdateCity.mockReset().mockResolvedValue({ saved: true });
   mockedSearchCities.mockReset().mockResolvedValue([hamburg, hameln]);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
@@ -142,6 +174,24 @@ describe('CityPickerScreen', () => {
 
       expect(screen.getByText(TOO_SHORT)).toBeOnTheScreen();
       expect(mockedSearchCities).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Two Friedbergs, two Hamms, two Langens: the same row twice, and a tap
+     * on the wrong one counted at once. (Found in review.)
+     */
+    it('says where each of two towns of the same name is', async () => {
+      mockedSearchCities.mockResolvedValue([friedbergBavaria, friedbergHessen]);
+      await renderScreen(<CityPickerScreen />);
+
+      await type('Friedberg');
+      await pause();
+
+      const rows = screen.getAllByRole('button', { name: /^Friedberg/ });
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveTextContent(/near Augsburg/);
+      expect(rows[1]).toHaveTextContent(/near Frankfurt am Main/);
+      expect(screen.getByText(CITY_DATA_CREDIT)).toBeOnTheScreen();
     });
 
     it('lists the cities found, by name and country', async () => {
@@ -418,6 +468,18 @@ describe('CityPickerScreen', () => {
       });
     });
 
+    it('names the town it asks about by where it is, when another has its name', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      mockedSearchCities.mockResolvedValue([friedbergBavaria, friedbergHessen]);
+      await renderScreen(<CityPickerScreen />);
+      await type('Friedberg');
+      await pause();
+
+      await fireEvent.press(screen.getAllByRole('button', { name: /^Friedberg/ })[1]!);
+
+      expect(lastAlert().title).toBe('Make Friedberg (near Frankfurt am Main), DE your city?');
+    });
+
     it('asks before a move, and says it takes a day, during which letters leave from the old city', async () => {
       await renderScreen(<CityPickerScreen />);
 
@@ -438,14 +500,18 @@ describe('CityPickerScreen', () => {
      * It still says at what time: "Until 1 Jan 2027" alone left the courier to
      * guess. (Found in review.)
      */
-    it('names the time the move settles in the next year, too', async () => {
-      jest.setSystemTime(new Date(2026, 11, 31, 21, 0));
+    it.each([
+      ['on New Year’s Eve', new Date(2026, 11, 31, 21, 0), '1 Jan 2027 21:00'],
+      ['just after midnight on New Year’s Eve', new Date(2026, 11, 31, 0, 30), '1 Jan 2027 00:30'],
+      ['the evening before New Year’s Eve', new Date(2026, 11, 30, 23, 30), '31 Dec 23:30'],
+    ])('names the day and the time the move settles when asked %s', async (_, asked, settles) => {
+      jest.setSystemTime(asked);
       await renderScreen(<CityPickerScreen />);
 
       await choose('Ham', hamburg);
 
       expect(lastAlert().message).toBe(
-        'A move takes a day to count. Until 1 Jan 2027 21:00, your letters leave from Berlin, ' +
+        `A move takes a day to count. Until ${settles}, your letters leave from Berlin, ` +
           "DE, and your friends' letters land there.",
       );
     });
@@ -490,6 +556,94 @@ describe('CityPickerScreen', () => {
       });
     });
 
+    /**
+     * A courier who has had letters can clear her city by hand while a move
+     * is settling, or straight after one: the profile then has no city, but
+     * her bats are still in Berlin, and a new city takes a day from there.
+     * The picker took no city for a first one and said it counted at once.
+     * (Found in review.)
+     */
+    describe('with the city cleared while the bats are still settling', () => {
+      const cleared: Profile = {
+        ...courier,
+        city: null,
+        move: {
+          from: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+          settlesAt: new Date(NOW + 3_600_000),
+        },
+      };
+
+      it('says a new city takes a day, and saves it as such', async () => {
+        mockProfileState.profile = cleared;
+        await renderScreen(<CityPickerScreen />);
+
+        await choose('Ham', hamburg);
+
+        expect(lastAlert()).toEqual({
+          title: 'Move to Hamburg, DE?',
+          message:
+            'A move takes a day to count. Until 18 Nov 21:00, your letters leave from Berlin, ' +
+            "DE, and your friends' letters land there.",
+          buttons: ['Cancel', 'Move'],
+        });
+        await chooseInAlert('Move');
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { departing: 2950159 }]]);
+      });
+
+      it('says the city the bats are in counts at once', async () => {
+        mockProfileState.profile = cleared;
+        const berlin: City = { ...hamburg, id: 2950159, name: 'Berlin', population: 3_426_354 };
+        mockedSearchCities.mockResolvedValue([berlin]);
+        await renderScreen(<CityPickerScreen />);
+
+        await choose('Ber', berlin);
+
+        expect(lastAlert()).toEqual({
+          title: 'Move back to Berlin, DE?',
+          message: 'Your bats are still there, so it counts at once.',
+          buttons: ['Cancel', 'Move'],
+        });
+      });
+
+      /** Once the day is out the bats have nowhere to be, and a new city is a first one. */
+      it('says a new city counts at once once the move would have settled', async () => {
+        mockProfileState.profile = cleared;
+        await renderScreen(<CityPickerScreen />);
+        jest.setSystemTime(NOW + 2 * 3_600_000);
+
+        await choose('Ham', hamburg);
+
+        expect(lastAlert().message).toBe(
+          'It counts at once: your bats fly from Hamburg, DE from now on. If you change it ' +
+            'later, the new city takes a day to count.',
+        );
+      });
+    });
+
+    /**
+     * The picker can be open when the move it read settles. From then on the
+     * bats are in the courier's city, and that is where a move leaves from.
+     */
+    it('reads a move that settled while the picker was open as settled', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        city: { id: 2867714, name: 'Munich', countryCode: 'DE' },
+        move: { from: { ...hamburg }, settlesAt: new Date(NOW + 3_600_000) },
+      };
+      await renderScreen(<CityPickerScreen />);
+      jest.setSystemTime(NOW + 2 * 3_600_000);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'A move takes a day to count. Until 18 Nov 23:00, your letters leave from Munich, DE, ' +
+          "and your friends' letters land there.",
+        buttons: ['Cancel', 'Move'],
+      });
+    });
+
     /** Without the profile, the picker cannot tell which applies, and says both. */
     it('says what holds either way when the profile has not loaded', async () => {
       mockProfileState.profile = null;
@@ -500,10 +654,206 @@ describe('CityPickerScreen', () => {
       expect(lastAlert()).toEqual({
         title: 'Make Hamburg, DE your city?',
         message:
-          'A first city counts at once. If you have one already, a move takes a day to count, ' +
-          'and letters leave from your old city until then.',
+          'A first city counts at once, and so does a change until a letter has gone to or ' +
+          'from you. After that, a move takes a day to count, and letters leave from your old ' +
+          'city until then.',
         buttons: ['Cancel', 'Choose'],
       });
+    });
+
+    /**
+     * A first city chosen by mistake used to stand for a day once put right.
+     * Until a letter has gone to or from the courier there is no flight to
+     * shorten, so a change counts at once - and the question says so. (Found
+     * in review.)
+     */
+    it('says a first city can be changed at once until the first letter', async () => {
+      mockProfileState.profile = { ...newcomer, city: null };
+      await renderScreen(<CityPickerScreen />);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert()).toEqual({
+        title: 'Make Hamburg, DE your city?',
+        message:
+          'It counts at once: your bats fly from Hamburg, DE from now on. Until a letter has ' +
+          'gone to or from you, a change counts at once too; after that, a new city takes a ' +
+          'day to count.',
+        buttons: ['Cancel', 'Choose'],
+      });
+    });
+
+    it('says a move counts at once before the first letter, and saves it only while that holds', async () => {
+      mockProfileState.profile = newcomer;
+      await renderScreen(<CityPickerScreen />);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'It counts at once, since no letter has gone to or from you yet: your bats fly from ' +
+          'Hamburg, DE from now on. From your first letter on, a move takes a day to count.',
+        buttons: ['Cancel', 'Move'],
+      });
+      await chooseInAlert('Move');
+      expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { beforeFirstLetter: true }]]);
+      expect(mockBack).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A letter can come between the question and the answer. The move was
+     * then not saved - it would have taken a day, which is not what was said
+     * - and the picker asks again in the words that hold now.
+     */
+    it('asks again when a letter came or went before a move said to count at once was saved', async () => {
+      mockProfileState.profile = newcomer;
+      mockUpdateCity
+        .mockResolvedValueOnce({ saved: false, profile: courier })
+        .mockResolvedValueOnce({ saved: true });
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+
+      await chooseInAlert('Move');
+
+      expect(mockBack).not.toHaveBeenCalled();
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'A letter has gone to or from you since, so a move now takes a day to count. Until ' +
+          "18 Nov 21:00, your letters leave from Berlin, DE, and your friends' letters land there.",
+        buttons: ['Cancel', 'Move'],
+      });
+      await chooseInAlert('Move');
+      expect(mockUpdateCity.mock.calls).toEqual([
+        [hamburg.id, { beforeFirstLetter: true }],
+        [hamburg.id, { departing: 2950159 }],
+      ]);
+      expect(mockBack).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A profile read a moment before the letter came still says there has
+     * been none. The save that failed says otherwise, and the question asked
+     * again goes by that.
+     */
+    it('asks again as after a letter even when the profile read since does not show it yet', async () => {
+      mockProfileState.profile = newcomer;
+      mockUpdateCity.mockResolvedValueOnce({ saved: false, profile: newcomer });
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+
+      await chooseInAlert('Move');
+
+      expect(lastAlert().message).toBe(
+        'A letter has gone to or from you since, so a move now takes a day to count. Until ' +
+          "18 Nov 21:00, your letters leave from Berlin, DE, and your friends' letters land there.",
+      );
+    });
+
+    /**
+     * The question is worked out when it is asked, from where the bats are
+     * then. A move can settle before the answer comes: "Move back to Hamburg
+     * ... counts at once" was then saved as a move of a day, and a day's move
+     * said to leave from Berlin left from Munich. (Found in review.) Each is
+     * saved only while the bats leave from where the question said, and asked
+     * again, from the profile as it is, when they no longer do.
+     */
+    describe('when the move the question named settles before the answer', () => {
+      const munich = { id: 2867714, name: 'Munich', countryCode: 'DE' };
+      /** Twenty seconds before the move from `from` to Munich settles. */
+      const settling = (from: Profile['city']): Profile => ({
+        ...courier,
+        city: munich,
+        move: { from: from!, settlesAt: new Date(NOW + 20_000) },
+      });
+
+      it('asks a move back again as a move of a day, from where the bats are now', async () => {
+        const profile = settling({ ...hamburg });
+        mockProfileState.profile = profile;
+        mockUpdateCity
+          .mockResolvedValueOnce({ saved: false, profile })
+          .mockResolvedValueOnce({ saved: true });
+        await renderScreen(<CityPickerScreen />);
+        await choose('Ham', hamburg);
+        expect(lastAlert().title).toBe('Move back to Hamburg, DE?');
+
+        // Half a minute to answer.
+        jest.setSystemTime(NOW + 30_000);
+        await chooseInAlert('Move');
+
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { departing: hamburg.id }]]);
+        expect(mockBack).not.toHaveBeenCalled();
+        expect(lastAlert()).toEqual({
+          title: 'Move to Hamburg, DE?',
+          message:
+            'Your bats have finished settling in since. A move takes a day to count. Until 18 ' +
+            "Nov 21:00, your letters leave from Munich, DE, and your friends' letters land there.",
+          buttons: ['Cancel', 'Move'],
+        });
+        await chooseInAlert('Move');
+        expect(mockUpdateCity.mock.lastCall).toEqual([hamburg.id, { departing: munich.id }]);
+        expect(mockBack).toHaveBeenCalledTimes(1);
+      });
+
+      it('asks a move of a day again, naming the city the letters leave from now', async () => {
+        const profile = settling({ id: 2950159, name: 'Berlin', countryCode: 'DE' });
+        mockProfileState.profile = profile;
+        mockUpdateCity.mockResolvedValueOnce({ saved: false, profile });
+        await renderScreen(<CityPickerScreen />);
+        await choose('Ham', hamburg);
+        expect(lastAlert().message).toMatch(/your letters leave from Berlin, DE/);
+
+        jest.setSystemTime(NOW + 30_000);
+        await chooseInAlert('Move');
+
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { departing: 2950159 }]]);
+        expect(lastAlert().message).toBe(
+          'Your bats have finished settling in since. A move takes a day to count. Until 18 ' +
+            "Nov 21:00, your letters leave from Munich, DE, and your friends' letters land there.",
+        );
+      });
+
+      /** With the city cleared, a settled move leaves the bats nowhere: a first city again. */
+      it('asks a move from a cleared city again as a first city', async () => {
+        const profile = {
+          ...settling({ id: 2950159, name: 'Berlin', countryCode: 'DE' }),
+          city: null,
+        };
+        mockProfileState.profile = profile;
+        mockUpdateCity.mockResolvedValueOnce({ saved: false, profile });
+        await renderScreen(<CityPickerScreen />);
+        await choose('Ham', hamburg);
+
+        jest.setSystemTime(NOW + 30_000);
+        await chooseInAlert('Move');
+
+        expect(lastAlert()).toEqual({
+          title: 'Make Hamburg, DE your city?',
+          message:
+            'It counts at once: your bats fly from Hamburg, DE from now on. If you change it ' +
+            'later, the new city takes a day to count.',
+          buttons: ['Cancel', 'Choose'],
+        });
+        await chooseInAlert('Choose');
+        expect(mockUpdateCity.mock.lastCall).toEqual([hamburg.id, { departing: null }]);
+      });
+    });
+
+    /** What each question is saved on: what its words rest on. */
+    it.each<[string, Profile | null, CityCondition | undefined]>([
+      ['a first city', { ...courier, city: null }, { departing: null }],
+      ['a move', courier, { departing: 2950159 }],
+      ['a move before the first letter', newcomer, { beforeFirstLetter: true }],
+      ['the words for an unloaded profile', null, undefined],
+    ])('saves %s on what its question rests on', async (_, profile, condition) => {
+      mockProfileState.profile = profile;
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+
+      await chooseInAlert(lastAlert().buttons[1]!);
+
+      expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, condition]]);
     });
 
     it('saves nothing, and stays, if the courier thinks better of it', async () => {
@@ -535,7 +885,7 @@ describe('CityPickerScreen', () => {
       await chooseInAlert('Move');
 
       expect(mockUpdateCity).toHaveBeenCalledTimes(1);
-      expect(mockUpdateCity).toHaveBeenCalledWith(hamburg.id);
+      expect(mockUpdateCity).toHaveBeenCalledWith(hamburg.id, { departing: 2950159 });
       expect(mockBack).toHaveBeenCalledTimes(1);
     });
 
@@ -545,14 +895,14 @@ describe('CityPickerScreen', () => {
      * would close that letter instead. (Found in review.)
      */
     it('stays where the courier has gone if they left before the save answered', async () => {
-      const saving = deferred<void>();
+      const saving = deferred<CitySave>();
       mockUpdateCity.mockReturnValue(saving.promise);
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
       await chooseInAlert('Move');
 
       mockFocus.focused = false;
-      await act(async () => saving.resolve());
+      await act(async () => saving.resolve({ saved: true }));
 
       expect(mockUpdateCity).toHaveBeenCalledTimes(1);
       expect(mockBack).not.toHaveBeenCalled();
@@ -564,7 +914,7 @@ describe('CityPickerScreen', () => {
 
     /** One save at a time, shown on the row it is for. */
     it('shows the save on the row chosen, and takes no other choice meanwhile', async () => {
-      const saving = deferred<void>();
+      const saving = deferred<CitySave>();
       mockUpdateCity.mockReturnValue(saving.promise);
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
@@ -578,7 +928,7 @@ describe('CityPickerScreen', () => {
       await fireEvent.press(screen.getByRole('button', { name: /^Hameln/ }));
       expect(alertSpy).toHaveBeenCalledTimes(1);
 
-      await act(async () => saving.resolve());
+      await act(async () => saving.resolve({ saved: true }));
     });
 
     it('says why a save failed, and stays so the courier can try again', async () => {
@@ -594,7 +944,7 @@ describe('CityPickerScreen', () => {
     });
 
     it('lets go of a failed save once the courier tries again', async () => {
-      const again = deferred<void>();
+      const again = deferred<CitySave>();
       mockUpdateCity
         .mockRejectedValueOnce(new Error('That city could not be saved.'))
         .mockReturnValueOnce(again.promise);
@@ -607,7 +957,7 @@ describe('CityPickerScreen', () => {
       await chooseInAlert('Move');
 
       expect(screen.queryByText('That city could not be saved.')).toBeNull();
-      await act(async () => again.resolve());
+      await act(async () => again.resolve({ saved: true }));
       expect(mockBack).toHaveBeenCalledTimes(1);
     });
   });
