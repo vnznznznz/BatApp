@@ -234,6 +234,22 @@ describe('how the sending of an unsent letter stands', () => {
   });
 
   /**
+   * The reference a letter may have gone under is the account's as much as
+   * its words are, and goes with them when the client announces a sign-out -
+   * as it does however the session ends, the server told or not.
+   */
+  it('goes with every letter when the client announces a sign-out', async () => {
+    keepDraft(MARA, ANNA, 'Dear Anna,');
+    noteSend(MARA, ANNA, { busy: false, unanswered });
+
+    // Signing out on this device alone: no request, and announced all the same.
+    await supabase.auth.signOut({ scope: 'local' });
+
+    expect(readSend(MARA, ANNA)).toEqual({ busy: false, unanswered: null });
+    expect(readDraft(MARA, ANNA)).toBe('');
+  });
+
+  /**
    * An answer can come back after a sign-out has cleared everything. Noting it
    * then must not bring a letter back for an account that has left.
    */
