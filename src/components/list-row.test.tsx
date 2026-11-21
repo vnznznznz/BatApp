@@ -73,6 +73,19 @@ describe('ListRow', () => {
     expect(sideBySide()).toBe(false);
   });
 
+  /**
+   * Some rows need their text whole more than they need the width: beside two
+   * buttons on a 360dp phone, a friend's name and username were cut to a few
+   * characters. Such a row asks for its actions below at every text size.
+   */
+  it('puts the actions below the text at ordinary text sizes when the row asks for it', async () => {
+    withTextScale(1);
+    await render(<ListRow title="Carla Brandt" subtitle="@carla" actions={actions} actionsBelow />);
+
+    expect(sideBySide()).toBe(false);
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeOnTheScreen();
+  });
+
   it('is not a button at all when it has actions and nothing to open', async () => {
     withTextScale(1);
     await render(<ListRow title="Carla Brandt" subtitle="@carla" actions={actions} />);

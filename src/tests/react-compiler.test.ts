@@ -26,7 +26,8 @@ const { join, relative } = jest.requireActual<{
  * So the app is compiled here as a production build compiles it, and what
  * the compiler leaves out is listed, with why. A change to the list is a
  * decision: either bring the component back (the compose screen was, by
- * writing its `finally` as a `then`), or add it here and say why it may stay.
+ * writing its `finally` as a `then`; the sign-in and sign-up forms, by
+ * waiting with settled()), or add it here and say why it may stay.
  */
 
 const ROOT = join(__dirname, '..', '..');
@@ -114,8 +115,6 @@ describe('the React Compiler', () => {
         'src/app/(app)/letters/[id].tsx LetterScreen: a finally clause',
         'src/app/(app)/profile.tsx ProfileScreen: a finally clause',
         'src/app/(app)/report.tsx ReportScreen: a finally clause',
-        'src/app/sign-in.tsx SignInScreen: a finally clause',
-        'src/app/sign-up.tsx SignUpScreen: a finally clause',
         'src/lib/use-paged.ts usePaged: a finally clause',
         'src/lib/use-remote.ts useRemote: a finally clause',
       ]);

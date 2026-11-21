@@ -12,6 +12,7 @@ import { Colors, Spacing } from '@/constants/theme';
 import { validateUsername } from '@/features/auth/validation';
 import {
   acceptFriend,
+  declineRequest,
   describeRequestOutcome,
   describeRoute,
   fetchFriendships,
@@ -238,9 +239,11 @@ export default function FriendsScreen() {
                   label="Decline"
                   size="compact"
                   variant="ghost"
-                  loading={busyId === friendship.id && busy?.action === removeFriend}
+                  loading={busyId === friendship.id && busy?.action === declineRequest}
                   disabled={busyId !== null}
-                  onPress={() => void act(friendship, removeFriend)}
+                  // Not removeFriend: if they withdrew a moment ago, that
+                  // would say a friendship had ended that never began.
+                  onPress={() => void act(friendship, declineRequest)}
                 />
               </View>
             </View>
@@ -285,6 +288,10 @@ export default function FriendsScreen() {
                 detail={describeRoute(friendship)}
                 onPress={() => open(friendship)}
                 accessibilityHint={OPEN_HINT}
+                // Under the text, which needs the whole width: beside Write
+                // and Remove a name and username were cut to a few characters
+                // on a 360dp phone.
+                actionsBelow
                 actions={
                   <>
                     <Button

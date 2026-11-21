@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { useEffect, useState, type Ref } from 'react';
+import { Platform, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Text } from '@/components/text';
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
@@ -10,6 +10,8 @@ export type TextFieldProps = Omit<TextInputProps, 'style'> & {
   /** Shown beneath the field and announced to assistive technology. */
   error?: string | null;
   hint?: string;
+  /** The text input itself, for a form that moves the focus to it. */
+  ref?: Ref<TextInput>;
 };
 
 export function TextField({
@@ -20,6 +22,7 @@ export function TextField({
   accessibilityHint,
   onFocus,
   onBlur,
+  ref,
   ...rest
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
@@ -37,6 +40,7 @@ export function TextField({
       </Text>
 
       <TextInput
+        ref={ref}
         accessibilityLabel={label}
         // The error, while there is one, is what a screen reader should hear
         // on returning to the field. aria-invalid reaches assistive technology
@@ -44,7 +48,7 @@ export function TextField({
         accessibilityHint={error ?? accessibilityHint ?? hint}
         aria-invalid={Boolean(error)}
         placeholderTextColor={Colors.textMuted}
-        selectionColor={Colors.accent}
+        {...selectionColors()}
         multiline={multiline}
         style={[
           styles.input,
@@ -74,6 +78,27 @@ export function TextField({
       ) : null}
     </View>
   );
+}
+
+/**
+ * The selection's colours. iOS takes the selection colour as the tint of the
+ * caret, the handles and a highlight it draws see-through itself. Android
+ * draws the selection colour, as given, behind the selected words and leaves
+ * their colour alone, so the accent would make a solid cream block with
+ * near-white text on it: there the highlight is the accent at 30% (0x4D of
+ * 0xFF, after the #RRGGBB), and the caret and handles, which would otherwise
+ * take the highlight's colour, keep the accent.
+ */
+function selectionColors(): Pick<
+  TextInputProps,
+  'selectionColor' | 'cursorColor' | 'selectionHandleColor'
+> {
+  if (Platform.OS !== 'android') return { selectionColor: Colors.accent };
+  return {
+    selectionColor: `${Colors.accent}4D`,
+    cursorColor: Colors.accent,
+    selectionHandleColor: Colors.accent,
+  };
 }
 
 const styles = StyleSheet.create({

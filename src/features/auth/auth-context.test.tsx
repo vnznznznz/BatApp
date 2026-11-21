@@ -18,11 +18,8 @@ import { SESSION_KEY } from '@/lib/session-store';
  * told when the auth server says no.
  */
 
-// The first render compiles React Native's components on a cold cache.
-jest.setTimeout(20_000);
-
 const mockKeychain = new Map<string, string>();
-const mockRefusal = { reads: false, deletes: false };
+const mockRefusal = { reads: false, writes: false, deletes: false };
 
 jest.mock('expo-secure-store', () => {
   const valid = (key: string) => {
@@ -36,6 +33,7 @@ jest.mock('expo-secure-store', () => {
       return mockKeychain.get(valid(key)) ?? null;
     }),
     setItemAsync: jest.fn(async (key: string, value: string) => {
+      if (mockRefusal.writes) throw new Error('Could not encrypt the value for SecureStore');
       if (value.length > 2048) throw new Error('value too large for the keychain');
       mockKeychain.set(valid(key), value);
     }),
@@ -68,7 +66,14 @@ function sessionOf(accessToken: string, refreshToken: string, expiresIn: number)
   };
 }
 
-type Sent = { url: string; method: string; bearer: string | null; body: unknown };
+type Sent = {
+  url: string;
+  method: string;
+  bearer: string | null;
+  /** The project's key, which the hosted project's gateway asks of every request. */
+  apikey: string | null;
+  body: unknown;
+};
 
 /** Every request that reached the network, and what the network makes of the next one. */
 let sent: Sent[];
@@ -108,6 +113,8 @@ let supabase: Client | null;
 let auth: AuthContextValue;
 /** Everything the app has shown since it was opened, in order. */
 let shown: string[];
+/** What every render since the app was opened was given, in order. */
+let rendered: AuthContextValue[];
 
 /**
  * Opens the app: its client and its provider are loaded anew, as at a launch,
@@ -142,9 +149,11 @@ async function launch({
   supabase = client;
   beforeOpening?.(client);
   shown = [];
+  rendered = [];
 
   function Probe() {
     auth = context.useAuth();
+    rendered.push(auth);
     const showing = auth.isRestoring ? 'restoring' : auth.session ? 'signed in' : 'signed out';
     if (shown.at(-1) !== showing) shown.push(showing);
     return <ReactNative.Text testID="state">{showing}</ReactNative.Text>;
@@ -198,6 +207,21 @@ const outcomeOf = (asking: Promise<unknown>) =>
     (error: unknown) => (error instanceof Error ? error.message : String(error)),
   );
 
+/**
+ * A phone has no WebCrypto: neither Hermes nor Expo puts a `crypto` in place
+ * (expo/src/winter installs URL, TextDecoder and others, not it). There
+ * auth-js makes the verifier for its code flow with Math.random and sends it
+ * as its own challenge ("plain"), with a warning in the console each time.
+ * These tests do as a phone does - which also keeps the challenge from being
+ * worked out on another thread while the clock here is a fake one.
+ */
+const webCrypto = (globalThis as { crypto?: unknown }).crypto;
+const cryptoAs = (value: unknown) =>
+  Object.defineProperty(globalThis, 'crypto', { value, configurable: true, writable: true });
+
+beforeAll(() => cryptoAs(undefined));
+afterAll(() => cryptoAs(webCrypto));
+
 beforeEach(() => {
   jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
   // The client warns of every renewal it could not make. Errors are another
@@ -206,6 +230,7 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
   mockKeychain.clear();
   mockRefusal.reads = false;
+  mockRefusal.writes = false;
   mockRefusal.deletes = false;
   sent = [];
   network = () => json(200, []);
@@ -214,6 +239,7 @@ beforeEach(() => {
       url: String(input),
       method: init?.method ?? 'GET',
       bearer: new Headers(init?.headers).get('Authorization')?.replace(/^Bearer /, '') ?? null,
+      apikey: new Headers(init?.headers).get('apikey'),
       body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
     };
     sent.push(request);
@@ -815,6 +841,59 @@ describe('signing out', () => {
         expect((await kept())?.refresh_token).toBe('refresh-theirs');
         expect(sent.filter(isLogout).map(({ bearer }) => bearer)).not.toContain(THEIR_TOKEN);
       });
+
+      /**
+       * A code from an email signs the courier in as a password does, and the
+       * sign-out removed the session it brought just the same: each code only
+       * cleared the mark of a sign-out the server had not heard of, and waited
+       * for nothing. (Found in the merge with the codes.) A code a password is
+       * set after holds the way in, and what it is for must outlast the wait:
+       * the sign-out, once over, forgets whatever a code had left to do.
+       */
+      it.each<[string, () => Promise<unknown>, object | null]>([
+        [
+          'confirming an address from signing in',
+          () => auth.confirmEmail('ben@example.test', '12345678'),
+          null,
+        ],
+        [
+          'confirming the account just signed up for',
+          () =>
+            auth.confirmSignUp(
+              {
+                email: 'ben@example.test',
+                password: 'night-courier',
+                username: 'ben',
+                displayName: 'Ben',
+              },
+              '12345678',
+            ),
+          { flow: 'sign-up', email: 'ben@example.test', username: 'ben', displayName: 'Ben' },
+        ],
+        [
+          'checking the code of a password reset',
+          () => auth.verifyResetCode('ben@example.test', '12345678'),
+          { flow: 'reset', email: 'ben@example.test' },
+        ],
+      ])('stays signed in after %s, with what the code is for', async (_, check, left) => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+        network = (request) => {
+          if (isLogout(request)) return answeredLate();
+          return request.url.endsWith('/auth/v1/verify') ? json(200, theirs()) : json(200, []);
+        };
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        await asked(check);
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+        expect(auth.isSettingPassword).toBe(left !== null);
+        expect(auth.unfinished).toEqual(left);
+        expect(JSON.parse(mockKeychain.get('night-courier.unfinished') ?? 'null')).toEqual(left);
+      });
     });
 
     /**
@@ -1082,6 +1161,54 @@ describe('signing out', () => {
           displayName: 'Ben',
         }),
       );
+
+      expect(state()).toBe('signed in');
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+    });
+
+    /**
+     * A code from an email signs in as a password does, and is the courier's
+     * own doing as much: the session it brings is taken, not ended as one that
+     * came back by itself would be.
+     */
+    const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+    const verifies = () => {
+      network = (request) =>
+        isVerify(request) ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)) : json(200, []);
+    };
+
+    it('lets someone confirm a new account with a code on the device', async () => {
+      await signOutUnheard();
+      verifies();
+
+      await asked(() => auth.confirmEmail('ben@example.test', '12345678'));
+
+      expect(state()).toBe('signed in');
+      // None but the sign-out's own last try, without a network.
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      expect((await kept())?.refresh_token).toBe('refresh-new');
+    });
+
+    it('lets someone confirm the account they have just signed up for with a code on the device', async () => {
+      await signOutUnheard();
+      verifies();
+
+      await asked(() =>
+        auth.confirmSignUp(
+          { email: 'ben@example.test', password: 'pw', username: 'ben', displayName: 'Ben' },
+          '12345678',
+        ),
+      );
+
+      expect(state()).toBe('signed in');
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+    });
+
+    it('lets the courier set a new password with a code on the device', async () => {
+      await signOutUnheard();
+      verifies();
+
+      await asked(() => auth.verifyResetCode('mara@example.test', '12345678'));
 
       expect(state()).toBe('signed in');
       expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
@@ -1711,7 +1838,10 @@ describe('what the courier is told when the auth server says no', () => {
   const NOT_ANSWERING = 'The server is not answering as it should. Try again in a little while.';
   const EMAIL_NOT_SENT = 'The email could not be sent. Try again later.';
   const TOO_MANY_EMAILS = 'Too many emails have been sent for now. Try again in an hour.';
-  const EMAIL_JUST_SENT = 'An email was sent a moment ago. Ask for another in 43 seconds.';
+  const CODE_JUST_SENT = 'A code was sent a moment ago. Ask for a new one in 43 seconds.';
+  const TOO_MANY_ATTEMPTS = 'Too many attempts. Wait a minute and try again.';
+  const CODE_DID_NOT_WORK =
+    'That code did not work. Check it against the newest email, or ask for a new one.';
 
   const html = (status: number, page: string) =>
     new Response(page, { status, headers: { 'content-type': 'text/html' } });
@@ -1728,6 +1858,20 @@ describe('what the courier is told when the auth server says no', () => {
     await passes(A_MOMENT);
   }
 
+  /** The auth server's settings, which anyone may read. */
+  const isSettings = (request: Sent) => request.url.endsWith('/auth/v1/settings');
+
+  /** Settings as GoTrue v2.197 gives them, for a server that confirms new accounts by email or not. */
+  const confirmsByEmail = (confirms: boolean) =>
+    json(200, {
+      external: { email: true, phone: false },
+      disable_signup: false,
+      mailer_autoconfirm: !confirms,
+      phone_autoconfirm: true,
+      sms_provider: '',
+      saml_enabled: false,
+    });
+
   describe('on signing in', () => {
     it.each<[string, () => Response | Promise<Response>, string]>([
       [
@@ -1736,14 +1880,15 @@ describe('what the courier is told when the auth server says no', () => {
         'That email and password do not match an account.',
       ],
       [
-        'the address has not been confirmed',
-        () => authRefusal(400, 'email_not_confirmed', 'Email not confirmed'),
-        'Check your email and confirm your address first.',
-      ],
-      [
-        'the account is suspended',
+        // The auth server says so before it has looked at the password - for
+        // any password, right or wrong (GoTrue v2.197, both local servers, 21
+        // November 2026). The ban is a suspension, or what an account the
+        // person who runs Night Courier removed leaves on the address for two
+        // years: told to whoever typed the address, it told anyone that the
+        // address had an account, and what became of it. (Found in review.)
+        'the account is suspended, whatever the password',
         () => authRefusal(400, 'user_banned', 'User is banned'),
-        'This account has been suspended. Write to the contact address on the help page.',
+        'That email and password do not match an account.',
       ],
       [
         'there were too many attempts',
@@ -1800,9 +1945,9 @@ describe('what the courier is told when the auth server says no', () => {
     it('signs in with the address as typed but for the spaces around it, and the password as it is', async () => {
       await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
 
-      expect(
-        await outcomeOf(asked(() => auth.signIn(' anna@example.test ', ' night courier '))),
-      ).toBe('done');
+      expect(await asked(() => auth.signIn(' anna@example.test ', ' night courier '))).toEqual({
+        needsEmailConfirmation: false,
+      });
 
       const request = sent.find(({ url }) => url.includes('/auth/v1/token?grant_type=password'));
       expect(request?.body).toMatchObject({
@@ -1812,6 +1957,35 @@ describe('what the courier is told when the auth server says no', () => {
       expect(state()).toBe('signed in');
       expect((await kept())?.refresh_token).toBe('refresh-new');
     });
+
+    /**
+     * The auth server says this only once the password has been found right
+     * (tried on GoTrue v2.197: a wrong one is "Invalid login credentials" for
+     * an unconfirmed address too). So nobody learns from it whether an address
+     * has an account, and the form can ask for the code at once: "Check your
+     * email" was all it said, with no way to a code that had run out.
+     */
+    it.each<[string, () => Response]>([
+      ['', () => authRefusal(400, 'email_not_confirmed', 'Email not confirmed')],
+      [
+        ', said in other words',
+        () => authRefusal(400, 'email_not_confirmed', 'Confirm your address first'),
+      ],
+      [
+        ', said as a server said it before it had codes',
+        () => json(400, { error: 'invalid_grant', error_description: 'Email not confirmed' }),
+      ],
+    ])(
+      'asks for the code instead when the address has not been confirmed yet%s',
+      async (_, answer) => {
+        await opened(answer);
+
+        expect(await asked(() => auth.signIn('anna@example.test', 'night-courier'))).toEqual({
+          needsEmailConfirmation: true,
+        });
+        expect(state()).toBe('signed out');
+      },
+    );
 
     it('keeps what the server said, for whoever has to find out what went wrong', async () => {
       await opened(() => json(401, { message: 'Invalid API key' }));
@@ -1839,16 +2013,17 @@ describe('what the courier is told when the auth server says no', () => {
         'That username may already be taken. Try another.',
       ],
       [
-        'the address has an account',
-        () => authRefusal(422, 'user_already_exists', 'User already registered'),
-        'There is already an account with that email address.',
-      ],
-      [
         'the address is one the server does not take',
         () =>
           authRefusal(400, 'validation_failed', 'Unable to validate email address: invalid format'),
-        'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
-          'cannot be used.',
+        'That email address was not accepted. Check it for mistakes - letters such as ä or é, ' +
+          'and signs such as quotes or brackets, cannot be used.',
+      ],
+      [
+        // Past 255 characters. The form says the same before it asks.
+        'the address is longer than the server takes',
+        () => authRefusal(400, 'validation_failed', 'An email address is too long'),
+        'That email address is too long: it can have at most 255 characters.',
       ],
       [
         'the password is shorter than the server allows',
@@ -1865,9 +2040,12 @@ describe('what the courier is told when the auth server says no', () => {
         'Passwords need at least 10 characters.',
       ],
       [
+        // Bytes, in fact, not characters: 40 umlauts are refused with these
+        // words. The form says the same before it asks.
         'the password is longer than the server allows',
         () => authRefusal(400, 'validation_failed', 'Password cannot be longer than 72 characters'),
-        'Passwords can be at most 72 characters.',
+        'Passwords can be at most 72 characters long. Letters such as ä or é count as two, ' +
+          'and emoji as four.',
       ],
       [
         'new accounts are switched off',
@@ -1890,6 +2068,17 @@ describe('what the courier is told when the auth server says no', () => {
 
       expect(await outcomeOf(asked(() => auth.signUp(details)))).toBe(words);
       expect(state()).toBe('signed out');
+    });
+
+    /** The app writes usernames with an @, and people share them that way. */
+    it('sends a username typed with its @ without it', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      await asked(() => auth.signUp({ ...details, username: ' @Anna ' }));
+
+      expect(sent.find((request) => request.url.includes('/auth/v1/signup'))?.body).toMatchObject({
+        data: { username: 'anna' },
+      });
     });
 
     it('sends the username as the database stores it, with the name', async () => {
@@ -1915,14 +2104,215 @@ describe('what the courier is told when the auth server says no', () => {
       expect(needsEmailConfirmation).toBe(true);
       expect(state()).toBe('signed out');
     });
+
+    /**
+     * What the auth server answers, with confirmation on, for an address that
+     * has an account already (GoTrue v2.197, 21 November 2026): "User already
+     * registered" once it has been confirmed - while confirmation by phone is
+     * off, as it is - and for one still waiting for its code a new code, or
+     * within a minute of the last one, this. A new address gets an account and
+     * a code. The form says the same for all of them, which is true for all of
+     * them: a code is on its way if the address is new, and if it has an
+     * account, the way in is signing in. "There is already an account with
+     * that email address" told anyone who asked.
+     */
+    it.each<[string, () => Response]>([
+      [
+        'the address has an account',
+        () => authRefusal(422, 'user_already_exists', 'User already registered'),
+      ],
+      [
+        'the address has an account, said in other words',
+        () => authRefusal(422, 'user_already_exists', 'A user with this email exists'),
+      ],
+      [
+        'the address has an account, said as a server said it before it had codes',
+        () => json(422, { code: 422, msg: 'User already registered' }),
+      ],
+      [
+        'a code went to the address a moment ago',
+        () =>
+          authRefusal(
+            429,
+            'over_email_send_rate_limit',
+            'For security purposes, you can only request this after 43 seconds.',
+          ),
+      ],
+    ])('answers as it does for a new address when %s', async (_, answer) => {
+      // A server that confirms new accounts by email, as both say it does.
+      network = (request) => (isSettings(request) ? confirmsByEmail(true) : answer());
+      await launch();
+      await passes(A_MOMENT);
+
+      expect(await asked(() => auth.signUp(details))).toEqual({ needsEmailConfirmation: true });
+      expect(state()).toBe('signed out');
+    });
+
+    /**
+     * With confirmation off - as the app runs until GO-LIVE - a new address is
+     * signed in at once, and one that has an account is answered "User
+     * already registered" (the normal local stack, 21 November 2026). There is
+     * no code to wait for then, and nothing to keep from anyone that signing
+     * in at once has not told already. Which way the server works it says in
+     * its settings, which anyone may read. (Found in review: the code screen
+     * waited for a code that never came.)
+     */
+    it('says plainly that the address has an account when the server signs new accounts in at once', async () => {
+      network = (request) =>
+        isSettings(request)
+          ? confirmsByEmail(false)
+          : authRefusal(422, 'user_already_exists', 'User already registered');
+      await launch();
+      await passes(A_MOMENT);
+
+      expect(await outcomeOf(asked(() => auth.signUp(details)))).toBe(
+        'There is already an account with that email address. Sign in instead.',
+      );
+
+      // With the project's key, as every request to the hosted project needs:
+      // its gateway refuses one without, where the local servers answer it.
+      expect(sent.filter(isSettings).map(({ method, apikey }) => [method, apikey])).toEqual([
+        ['GET', 'sb_publishable_test_key'],
+      ]);
+      expect(state()).toBe('signed out');
+    });
+
+    it.each<[string, () => Response | Promise<Response>]>([
+      ['cannot be reached', offline],
+      ['answers with an error', () => json(500, {})],
+      ['says nothing of it', () => json(200, {})],
+    ])(
+      'answers as for a new address when the server’s settings %s, which is true whichever way it works',
+      async (_, settings) => {
+        network = (request) =>
+          isSettings(request)
+            ? settings()
+            : authRefusal(422, 'user_already_exists', 'User already registered');
+        await launch();
+        await passes(A_MOMENT);
+
+        expect(await asked(() => auth.signUp(details))).toEqual({ needsEmailConfirmation: true });
+      },
+    );
+
+    /** A code a moment ago means the server confirms by email: nothing to ask. */
+    it('asks nothing more of a server that has just sent a code', async () => {
+      await opened(() =>
+        authRefusal(
+          429,
+          'over_email_send_rate_limit',
+          'For security purposes, you can only request this after 43 seconds.',
+        ),
+      );
+
+      expect(await asked(() => auth.signUp(details))).toEqual({ needsEmailConfirmation: true });
+      expect(sent.filter(isSettings)).toEqual([]);
+    });
+
+    /** A new address, and every refusal but one, need no settings either. */
+    it('asks for the settings only when the address has an account', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      await asked(() => auth.signUp(details));
+
+      expect(sent.filter(isSettings)).toEqual([]);
+    });
   });
 
-  describe('on asking for a new password', () => {
-    it.each<[string, () => Response, string]>([
+  /**
+   * The code in the email that confirms a new account. Wrong, run out, or
+   * replaced by a newer one, the auth server answers each alike: 403,
+   * otp_expired, "Token has expired or is invalid" (GoTrue v2.197 with
+   * confirmation on and 8-digit codes, 21 November 2026; the expired one by an
+   * hour's age put on the code in the database). Too many attempts are counted
+   * by address on the hosted project only, where it answers with its rate
+   * limit; the local servers count none.
+   */
+  describe('on confirming an address with a code', () => {
+    const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+
+    it.each<[string, () => Response | Promise<Response>, string]>([
       [
-        'the email could not be sent',
-        () => authRefusal(500, 'unexpected_failure', 'Error sending recovery email'),
-        EMAIL_NOT_SENT,
+        'the code is wrong',
+        () => authRefusal(403, 'otp_expired', 'Token has expired or is invalid'),
+        CODE_DID_NOT_WORK,
+      ],
+      [
+        // The same answer, word for word, as for a wrong one.
+        'the code has run out',
+        () => authRefusal(403, 'otp_expired', 'Token has expired or is invalid'),
+        CODE_DID_NOT_WORK,
+      ],
+      [
+        'the server says so in other words',
+        () => authRefusal(403, 'otp_expired', 'Email link is invalid or has expired'),
+        CODE_DID_NOT_WORK,
+      ],
+      [
+        'there were too many attempts',
+        () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached'),
+        TOO_MANY_ATTEMPTS,
+      ],
+      ['there is no network', offline, NO_CONNECTION],
+    ])('says so plainly when %s', async (_, answer, words) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.confirmEmail('anna@example.test', '12345678')))).toBe(
+        words,
+      );
+      expect(state()).toBe('signed out');
+    });
+
+    it('signs in with the code, for the address as typed but for the spaces around it', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      expect(
+        await outcomeOf(asked(() => auth.confirmEmail(' anna@example.test ', '12345678'))),
+      ).toBe('done');
+
+      expect(sent.filter(isVerify).map((request) => request.body)).toEqual([
+        expect.objectContaining({ type: 'signup', email: 'anna@example.test', token: '12345678' }),
+      ]);
+      expect(state()).toBe('signed in');
+      expect((await kept())?.refresh_token).toBe('refresh-new');
+    });
+  });
+
+  describe('on asking for a new code', () => {
+    const isResend = (request: Sent) => request.url.endsWith('/auth/v1/resend');
+
+    it.each<[string, () => Response | Promise<Response>, string]>([
+      [
+        // Within the minute after the last one. The local servers wait a
+        // second, and count what is left of it down to nothing.
+        'one was sent a moment ago',
+        () =>
+          authRefusal(
+            429,
+            'over_email_send_rate_limit',
+            'For security purposes, you can only request this after 43 seconds.',
+          ),
+        CODE_JUST_SENT,
+      ],
+      [
+        'one was sent less than a second ago',
+        () =>
+          authRefusal(
+            429,
+            'over_email_send_rate_limit',
+            'For security purposes, you can only request this after 0 seconds.',
+          ),
+        'A code was sent a moment ago. Ask for a new one in a second.',
+      ],
+      [
+        'one second is left to wait',
+        () =>
+          authRefusal(
+            429,
+            'over_email_send_rate_limit',
+            'For security purposes, you can only request this after 1 seconds.',
+          ),
+        'A code was sent a moment ago. Ask for a new one in a second.',
       ],
       [
         'the server has sent all the emails it may',
@@ -1930,17 +2320,313 @@ describe('what the courier is told when the auth server says no', () => {
         TOO_MANY_EMAILS,
       ],
       [
-        'one was asked for a moment ago',
+        'the email could not be sent',
+        () => authRefusal(500, 'unexpected_failure', 'Error sending confirmation email'),
+        EMAIL_NOT_SENT,
+      ],
+      ['there is no network', offline, NO_CONNECTION],
+    ])('says so plainly when %s', async (_, answer, words) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.resendConfirmationCode('anna@example.test')))).toBe(
+        words,
+      );
+    });
+
+    it('asks for a code to confirm the address as typed but for the spaces around it', async () => {
+      await opened(() => json(200, {}));
+
+      expect(await outcomeOf(asked(() => auth.resendConfirmationCode(' anna@example.test ')))).toBe(
+        'done',
+      );
+
+      expect(sent.filter(isResend).map((request) => request.body)).toEqual([
+        expect.objectContaining({ type: 'signup', email: 'anna@example.test' }),
+      ]);
+    });
+  });
+
+  describe('on asking for a new password', () => {
+    it.each<[string, () => Response | Promise<Response>, string]>([
+      [
+        'there were too many attempts',
+        () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached'),
+        TOO_MANY_ATTEMPTS,
+      ],
+      ['there is no network', offline, NO_CONNECTION],
+    ])('says so plainly when %s', async (_, answer, words) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.sendPasswordReset(' anna@example.test ')))).toBe(
+        words,
+      );
+    });
+
+    /**
+     * For an address with no account the auth server answers every request
+     * alike, and sends nothing: it answers before it comes to sending
+     * (GoTrue v2.197). Three answers come only for an address that has one: a
+     * code went to it less than a minute ago, the email to it could not be
+     * sent, or the project has sent all the emails it may this hour - a limit
+     * on sending, so never met for an address nothing is sent to. "Check your
+     * email" for the first, "Error sending recovery email" for the second
+     * and "Too many emails" for the third told anyone who asked which
+     * addresses have an account. All three are taken for sent; the screen
+     * that follows says what to do when no code arrives. (The third found in
+     * review.)
+     */
+    it.each<[string, () => Response]>([
+      ['the address has no account', () => json(200, {})],
+      [
+        'a code went to the address a moment ago',
         () =>
           authRefusal(
             429,
             'over_email_send_rate_limit',
             'For security purposes, you can only request this after 43 seconds.',
           ),
-        EMAIL_JUST_SENT,
       ],
       [
-        // What changing a password answers; said here in the server's place.
+        'the email to it could not be sent',
+        () => authRefusal(500, 'unexpected_failure', 'Error sending recovery email'),
+      ],
+      [
+        'the project has sent all the emails it may for now',
+        () => authRefusal(429, 'over_email_send_rate_limit', 'email rate limit exceeded'),
+      ],
+    ])('answers alike when %s', async (_, answer) => {
+      await opened(answer);
+
+      expect(await outcomeOf(asked(() => auth.sendPasswordReset('anna@example.test')))).toBe(
+        'done',
+      );
+    });
+
+    /**
+     * A code to type, not a link to follow: the link came back through the
+     * app's address, which any app on the phone can answer to, with a whole
+     * session in it.
+     */
+    it('asks for a code, with no address to come back to, for the address as typed but for the spaces around it', async () => {
+      await opened(() => json(200, {}));
+
+      expect(await outcomeOf(asked(() => auth.sendPasswordReset(' anna@example.test ')))).toBe(
+        'done',
+      );
+
+      const [request, ...others] = sent.filter(({ url }) => url.includes('/auth/v1/recover'));
+      expect(others).toEqual([]);
+      expect(request?.url).not.toContain('redirect_to');
+      expect(request?.body).toMatchObject({ email: 'anna@example.test' });
+    });
+  });
+
+  /**
+   * The code from a reset email signs the courier in; the new password is set
+   * with that session. Between the two the courier is signed in without a
+   * password they know, and the way into the app waits: `isSettingPassword`.
+   */
+  describe('on setting a new password with a code', () => {
+    const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+    const isPasswordChange = (request: Sent) =>
+      request.url.endsWith('/auth/v1/user') && request.method === 'PUT';
+    const updated = () => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user);
+
+    /** The auth server checks the code, and then answers the password change with `change`. */
+    function codeRightThen(change: () => Response | Promise<Response>) {
+      network = (request) => {
+        if (isVerify(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        return isPasswordChange(request) ? change() : json(200, []);
+      };
+    }
+
+    async function openedSignedOut() {
+      await launch();
+      await passes(A_MOMENT);
+      expect(state()).toBe('signed out');
+    }
+
+    it('signs in with the code, holds the way in, and lets go once the password is saved', async () => {
+      codeRightThen(updated);
+      await openedSignedOut();
+
+      await asked(() => auth.verifyResetCode(' anna@example.test ', '87654321'));
+
+      expect(sent.filter(isVerify).map((request) => request.body)).toEqual([
+        expect.objectContaining({
+          type: 'recovery',
+          email: 'anna@example.test',
+          token: '87654321',
+        }),
+      ]);
+      expect(state()).toBe('signed in');
+      expect(auth.isSettingPassword).toBe(true);
+
+      expect(await outcomeOf(asked(() => auth.setNewPassword('a new password')))).toBe('done');
+
+      expect(sent.filter(isPasswordChange).map(({ body, bearer }) => [body, bearer])).toEqual([
+        [expect.objectContaining({ password: 'a new password' }), NEW_TOKEN],
+      ]);
+      expect(auth.isSettingPassword).toBe(false);
+      expect(state()).toBe('signed in');
+    });
+
+    /**
+     * Set before the code goes to be checked, not after: the session it
+     * brings is announced while the request is still being answered, and the
+     * root layout would take the courier into the app in that moment.
+     */
+    it('holds the way in from before the session arrives', async () => {
+      codeRightThen(updated);
+      // Something else listening to the client takes its time over the
+      // announcement, as a listener may: the code's answer reaches the app
+      // only after the session has been taken and drawn.
+      await launch({
+        beforeOpening: (client) => {
+          client.auth.onAuthStateChange(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          });
+        },
+      });
+      await passes(A_MOMENT);
+
+      await asked(() => auth.verifyResetCode('anna@example.test', '87654321'));
+
+      const signedIn = rendered.filter((given) => given.session !== null);
+      expect(signedIn.length).toBeGreaterThan(0);
+      expect(signedIn.filter((given) => !given.isSettingPassword)).toEqual([]);
+    });
+
+    it.each<[string, () => Response | Promise<Response>, string]>([
+      [
+        'the code is wrong, or has run out',
+        () => authRefusal(403, 'otp_expired', 'Token has expired or is invalid'),
+        CODE_DID_NOT_WORK,
+      ],
+      [
+        'there were too many attempts',
+        () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached'),
+        TOO_MANY_ATTEMPTS,
+      ],
+      ['there is no network', offline, NO_CONNECTION],
+      [
+        // The right code, from the address's own mailbox: whoever has it may
+        // know what signing in would not tell them (GoTrue v2.197 sends the
+        // code to a banned account, and answers its check 403 user_banned).
+        'the account is suspended',
+        () => authRefusal(403, 'user_banned', 'User is banned'),
+        'This account has been suspended. Write to the contact address on the help page.',
+      ],
+    ])('says so plainly, and holds nothing, when %s', async (_, answer, words) => {
+      network = answer;
+      await openedSignedOut();
+
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
+      ).toBe(words);
+
+      expect(state()).toBe('signed out');
+      expect(auth.isSettingPassword).toBe(false);
+    });
+
+    /**
+     * Two checks of the same code at once: the form sent again before it had
+     * drawn its spinner. The second is refused, the first having used the
+     * code up, and its refusal let go of the way in while the first was still
+     * bringing the session the code was right for - and the root layout took
+     * the courier into the app before the new password was saved. (Found in
+     * review.)
+     */
+    it('holds the way in while any check of a code is out, whatever another one is answered', async () => {
+      let answerTheFirst: () => void = () => {};
+      let checks = 0;
+      network = (request) => {
+        if (!isVerify(request)) return json(200, []);
+        checks += 1;
+        if (checks > 1) return authRefusal(403, 'otp_expired', 'Token has expired or is invalid');
+        return new Promise<Response>((resolve) => {
+          answerTheFirst = () => resolve(json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+        });
+      };
+      await openedSignedOut();
+      let first: Promise<string> = Promise.resolve('never asked');
+      await act(async () => {
+        first = outcomeOf(auth.verifyResetCode('anna@example.test', '87654321'));
+        await jest.advanceTimersByTimeAsync(0);
+      });
+
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
+      ).toBe(CODE_DID_NOT_WORK);
+      expect(auth.isSettingPassword).toBe(true);
+
+      await act(async () => {
+        answerTheFirst();
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      await passes(A_MOMENT);
+
+      expect(await first).toBe('done');
+      expect(state()).toBe('signed in');
+      expect(auth.isSettingPassword).toBe(true);
+      expect(
+        rendered.filter((given) => given.session !== null && !given.isSettingPassword),
+      ).toEqual([]);
+    });
+
+    /** And the other way round: the first check is refused while the second brings the session. */
+    it('holds the way in for a check still out when an earlier one is refused', async () => {
+      let refuseTheFirst: () => void = () => {};
+      let checks = 0;
+      network = (request) => {
+        if (!isVerify(request)) return json(200, []);
+        checks += 1;
+        if (checks > 1) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        return new Promise<Response>((resolve) => {
+          refuseTheFirst = () =>
+            resolve(authRefusal(403, 'otp_expired', 'Token has expired or is invalid'));
+        });
+      };
+      await openedSignedOut();
+      let first: Promise<string> = Promise.resolve('never asked');
+      await act(async () => {
+        first = outcomeOf(auth.verifyResetCode('anna@example.test', '87654321'));
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
+      ).toBe('done');
+
+      await act(async () => {
+        refuseTheFirst();
+        await jest.advanceTimersByTimeAsync(0);
+      });
+
+      expect(await first).toBe(CODE_DID_NOT_WORK);
+      expect(state()).toBe('signed in');
+      expect(auth.isSettingPassword).toBe(true);
+    });
+
+    /** The code was right, but the session it brought could not be kept on the device. */
+    it('holds nothing when the session the code brings cannot be kept', async () => {
+      codeRightThen(updated);
+      await openedSignedOut();
+      mockRefusal.writes = true;
+
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
+      ).toBe('Could not encrypt the value for SecureStore');
+
+      expect(auth.isSettingPassword).toBe(false);
+    });
+
+    /**
+     * The code is used up by then, and the courier signed in with it. They are
+     * told why the password was not taken, and can try another; the way in
+     * stays held until one is saved.
+     */
+    it.each<[string, () => Response | Promise<Response>, string]>([
+      [
         'the new password is the old one',
         () =>
           authRefusal(
@@ -1950,24 +2636,702 @@ describe('what the courier is told when the auth server says no', () => {
           ),
         'The new password has to differ from the old one.',
       ],
-    ])('says so plainly when %s', async (_, answer, words) => {
-      await opened(answer);
+      [
+        'the new password is too short for the server',
+        () =>
+          json(
+            422,
+            {
+              code: 'weak_password',
+              message: 'Password should be at least 10 characters.',
+              weak_password: { reasons: ['length'] },
+            },
+            { 'X-Supabase-Api-Version': '2024-01-01' },
+          ),
+        'Passwords need at least 10 characters.',
+      ],
+      ['there is no network', offline, NO_CONNECTION],
+    ])(
+      'says why when the password is not saved after the code, and stays signed in, held: %s',
+      async (_, change, words) => {
+        codeRightThen(change);
+        await openedSignedOut();
+        await asked(() => auth.verifyResetCode('anna@example.test', '87654321'));
 
-      expect(await outcomeOf(asked(() => auth.sendPasswordReset(' anna@example.test ')))).toBe(
-        words,
+        expect(await outcomeOf(asked(() => auth.setNewPassword('a new password')))).toBe(words);
+
+        expect(state()).toBe('signed in');
+        expect(auth.isSettingPassword).toBe(true);
+
+        codeRightThen(updated);
+        expect(await outcomeOf(asked(() => auth.setNewPassword('another password')))).toBe('done');
+        expect(auth.isSettingPassword).toBe(false);
+        expect(sent.filter(isVerify)).toHaveLength(1);
+      },
+    );
+
+    it.each<[string, () => Response | Promise<Response>]>([
+      ['the server hears of it', () => new Response(null, { status: 204 })],
+      ['the server cannot be reached', offline],
+    ])('lets go of the reset when the courier signs out instead, and %s', async (_, logout) => {
+      codeRightThen(() => offline());
+      await openedSignedOut();
+      await asked(() => auth.verifyResetCode('anna@example.test', '87654321'));
+      await outcomeOf(asked(() => auth.setNewPassword('a new password')));
+      network = logout;
+
+      expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+      expect(state()).toBe('signed out');
+      expect(auth.isSettingPassword).toBe(false);
+      expect(mockKeychain.size).toBe(0);
+    });
+  });
+});
+
+/**
+ * GoTrue leaves an account that is waiting for its code as the first sign-up
+ * for the address made it (v2.197, tried on the local server with
+ * confirmation on): a second sign-up for the address sends a new code and
+ * changes nothing else - not the password, not the username, not the name.
+ * Whoever signed up first, with somebody else's address, kept a password that
+ * worked once that somebody had confirmed the account with the code, and the
+ * account their username. (Found in review: a stranger's account, confirmed
+ * by the owner of the address, and signed in to with the stranger's password.)
+ */
+describe('setting up the account a sign-up’s code has confirmed', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+  const details = {
+    email: ' anna@example.test ',
+    password: 'night-courier',
+    username: '@Anna',
+    displayName: ' Anna ',
+  };
+  const NO_CONNECTION = 'No connection. Check your network and try again.';
+
+  const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+  const isPasswordChange = (request: Sent) =>
+    request.url.endsWith('/auth/v1/user') && request.method === 'PUT';
+  const isProfileRead = (request: Sent) =>
+    request.url.includes('/rest/v1/profiles') && request.method === 'GET';
+  const isNameChange = (request: Sent) =>
+    request.url.includes('/rest/v1/profiles') && request.method === 'PATCH';
+  const isDeletion = (request: Sent) => request.url.includes('/rest/v1/rpc/delete_own_account');
+  const isLogout = (request: Sent) => request.url.includes('/auth/v1/logout');
+  const isSignUp = (request: Sent) => request.url.includes('/auth/v1/signup');
+
+  /** The account's profile, as the database has it. */
+  const profile = (username: string, displayName: string) =>
+    json(200, [{ username, display_name: displayName }]);
+
+  /**
+   * The auth server and the database, answering each request as `answers`
+   * says, and the rest as a server would that has nothing to object to.
+   */
+  function server(answers: Partial<Record<string, () => Response | Promise<Response>>> = {}) {
+    network = (request) => {
+      if (isVerify(request))
+        return (answers.verify ?? (() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600))))();
+      if (isPasswordChange(request))
+        return (
+          answers.password ?? (() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user))
+        )();
+      if (isProfileRead(request)) return (answers.profile ?? (() => profile('anna', 'Anna')))();
+      if (isNameChange(request))
+        return (answers.name ?? (() => new Response(null, { status: 204 })))();
+      if (isDeletion(request))
+        return (answers.deletion ?? (() => new Response(null, { status: 204 })))();
+      if (isLogout(request)) return new Response(null, { status: 204 });
+      if (isSignUp(request))
+        return (
+          answers.signUp ??
+          (() => json(200, { ...sessionOf(NEW_TOKEN, 'refresh-new', 3600).user, id: 'user-new' }))
+        )();
+      return json(200, []);
+    };
+  }
+
+  async function confirmed() {
+    await launch();
+    await passes(A_MOMENT);
+    expect(state()).toBe('signed out');
+    expect(await outcomeOf(asked(() => auth.confirmSignUp(details, '12345678')))).toBe('done');
+  }
+
+  it('confirms the address with the code, and holds the way in until the account is set up', async () => {
+    server();
+    await confirmed();
+
+    expect(sent.filter(isVerify).map((request) => request.body)).toEqual([
+      expect.objectContaining({ type: 'signup', email: 'anna@example.test', token: '12345678' }),
+    ]);
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+  });
+
+  it('sets the password typed at sign-up, and then lets the courier in', async () => {
+    server();
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(sent.filter(isPasswordChange).map(({ body, bearer }) => [body, bearer])).toEqual([
+      [expect.objectContaining({ password: 'night-courier' }), NEW_TOKEN],
+    ]);
+    expect(sent.filter(isProfileRead).map(({ url }) => url)).toEqual([
+      expect.stringContaining(`id=eq.${ID}`),
+    ]);
+    expect(sent.filter(isNameChange)).toEqual([]);
+    expect(auth.isSettingPassword).toBe(false);
+    expect(state()).toBe('signed in');
+  });
+
+  /** An account set up by this sign-up has the password already, and GoTrue says so. */
+  it('takes the password being the one the account has already for done', async () => {
+    server({
+      password: () =>
+        authRefusal(
+          422,
+          'same_password',
+          'New password should be different from the old password.',
+        ),
+    });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('gives the account the name typed at sign-up, when an earlier sign-up gave it another', async () => {
+    server({ profile: () => profile('anna', 'Stranger') });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(sent.filter(isNameChange).map(({ url, body }) => [url.split('?')[1], body])).toEqual([
+      [`id=eq.${ID}`, { display_name: 'Anna' }],
+    ]);
+  });
+
+  /** The name is the courier's to change at any time; the account is set up all the same. */
+  it('lets the courier in when the name could not be changed', async () => {
+    server({ profile: () => profile('anna', 'Stranger'), name: offline });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /**
+   * A username cannot be changed. An account an earlier sign-up gave another
+   * one is set up again from what was typed: nothing can have been done with
+   * it, the code having confirmed it only now, and a new code goes out.
+   */
+  it('sets the account up again when an earlier sign-up gave it another username', async () => {
+    server({ profile: () => profile('stranger', 'Stranger') });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('new code');
+
+    expect(sent.filter(isDeletion)).toHaveLength(1);
+    expect(sent.filter(isSignUp).map((request) => request.body)).toEqual([
+      expect.objectContaining({
+        email: 'anna@example.test',
+        password: 'night-courier',
+        data: { username: 'anna', display_name: 'Anna' },
+      }),
+    ]);
+    expect(sent.findIndex(isDeletion)).toBeLessThan(sent.findIndex(isSignUp));
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+    expect(mockKeychain.has(SESSION_KEY)).toBe(false);
+  });
+
+  it.each<[string, Partial<Record<string, () => Response | Promise<Response>>>, string]>([
+    ['the password cannot be saved', { password: offline }, NO_CONNECTION],
+    [
+      'the server will not take the password',
+      {
+        password: () =>
+          json(
+            422,
+            {
+              code: 'weak_password',
+              message: 'Password should be at least 10 characters.',
+              weak_password: { reasons: ['length'] },
+            },
+            { 'X-Supabase-Api-Version': '2024-01-01' },
+          ),
+      },
+      'Passwords need at least 10 characters.',
+    ],
+    ['the account cannot be looked at', { profile: offline }, NO_CONNECTION],
+    [
+      'the account an earlier sign-up made cannot be removed',
+      {
+        profile: () => profile('stranger', 'Stranger'),
+        deletion: () => json(500, { message: 'boom' }),
+      },
+      'Your account could not be deleted. Please try again.',
+    ],
+  ])('says why, and holds the way in, signed in, when %s', async (_, answers, words) => {
+    server(answers);
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(words);
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+  });
+
+  it('sets the account up when asked again after it could not be', async () => {
+    let attempts = 0;
+    server({ password: () => (++attempts === 1 ? offline() : json(200, {})) });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(sent.filter(isVerify)).toHaveLength(1);
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /**
+   * Removed to make way for the courier's own, the earlier sign-up's account
+   * is gone; if theirs then cannot be set up, they are signed out, and told
+   * to set it up again from the form.
+   */
+  it('says so when the account was removed to make way, and the new one could not be set up', async () => {
+    server({
+      profile: () => profile('stranger', 'Stranger'),
+      signUp: () => authRefusal(500, 'unexpected_failure', 'Database error saving new user'),
+    });
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(
+      'This address had an account waiting for its code already, set up with another ' +
+        'username, and it has been removed to make way for yours. Yours could not be set ' +
+        'up just now: That username may already be taken. Try another. Go back to the form ' +
+        'to set it up again.',
+    );
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('lets go of the way in when the courier signs out instead', async () => {
+    server({ password: offline });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it.each<[string, () => Response | Promise<Response>, string]>([
+    [
+      'the code is wrong, or has run out',
+      () => authRefusal(403, 'otp_expired', 'Token has expired or is invalid'),
+      'That code did not work. Check it against the newest email, or ask for a new one.',
+    ],
+    ['there is no network', offline, NO_CONNECTION],
+  ])('holds nothing when %s', async (_, verify, words) => {
+    server({ verify });
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(await outcomeOf(asked(() => auth.confirmSignUp(details, '12345678')))).toBe(words);
+
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+    // Nothing for the screens to take up: the code signed nobody in.
+    expect(auth.unfinished).toBeNull();
+  });
+
+  /**
+   * Starting over, where the account could not be set up: it is removed, and
+   * the courier signed out. Signing out alone left it confirmed by the code,
+   * with the password of whoever signed up for the address first. (Found in
+   * review.)
+   */
+  it('removes the account and signs out when the courier starts over instead', async () => {
+    server({ password: offline });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+
+    expect(await outcomeOf(asked(() => auth.removeUnfinishedAccount()))).toBe('done');
+
+    expect(sent.filter(isDeletion).map(({ bearer }) => bearer)).toEqual([NEW_TOKEN]);
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('holds the way in, signed in, when the account cannot be removed to start over', async () => {
+    server({ password: offline, deletion: () => json(500, { message: 'boom' }) });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+
+    expect(await outcomeOf(asked(() => auth.removeUnfinishedAccount()))).toBe(
+      'Your account could not be deleted. Please try again.',
+    );
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+  });
+
+  /**
+   * An account a code had only just confirmed, removed to start again, is no
+   * deletion the courier asked for: the welcome screen's "Your account has
+   * been deleted." is for the one asked for in the profile. Nor is the server
+   * asked to end a session: removing the account ended them all. (Found in
+   * the merge with the codes.)
+   */
+  it('leaves the welcome screen no word of a deletion, and the server no sign-out, on starting over', async () => {
+    server({ password: offline });
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignUp(details)));
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+
+    expect(await outcomeOf(asked(() => auth.removeUnfinishedAccount()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(farewell.isFarewellDue()).toBe(false);
+    expect(sent.filter(isLogout)).toEqual([]);
+  });
+
+  it('leaves the welcome screen no word of a deletion, and the server no sign-out, on setting up again', async () => {
+    server({ profile: () => profile('stranger', 'Stranger') });
+    await confirmed();
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('new code');
+
+    expect(farewell.isFarewellDue()).toBe(false);
+    expect(sent.filter(isLogout)).toEqual([]);
+  });
+
+  /**
+   * Where the auth server signs a new account in at once, the account set up
+   * again is signed in to. The removal before it signed the device out with
+   * nothing told to the server, and a session that arrives after such a
+   * sign-out is ended, as one that came back by itself would be - unless
+   * someone signs in, as signing up again is the courier's doing.
+   */
+  it('takes the session of the account set up again, where the server signs it in at once', async () => {
+    const AGAIN_TOKEN = `header.${'e'.repeat(1000)}.signature`;
+    server({
+      profile: () => profile('stranger', 'Stranger'),
+      signUp: () => json(200, sessionOf(AGAIN_TOKEN, 'refresh-again', 3600)),
+    });
+    await confirmed();
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+    await passes(A_MOMENT);
+
+    expect(state()).toBe('signed in');
+    expect((await kept())?.refresh_token).toBe('refresh-again');
+    expect(sent.filter(isLogout)).toEqual([]);
+  });
+
+  /**
+   * Whoever signed up first, and knows their password, can sign in the moment
+   * the code has confirmed the account - and change the password before the
+   * courier's own is set, which ends every other session: the courier's
+   * password change is then answered 403 session_not_found (GoTrue v2.197 at
+   * the local confirmation-on server, 21 November 2026). "Try again" could
+   * never work. (Found in review.)
+   */
+  it('says so, signed out, when the session the code brought has been ended elsewhere', async () => {
+    server({ password: () => authRefusal(403, 'session_not_found', 'Session not found') });
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(
+      'Your sign-in ended before your account was finished: someone who knew a password set ' +
+        'for this address before yours may have changed it. Write to the contact address on ' +
+        'the help page, and the account can be removed so that you can sign up again.',
+    );
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /** From signing in, the password was the account's - found right by the server. */
+  it('sets nothing when an address waiting for its code is confirmed from signing in', async () => {
+    server();
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(await outcomeOf(asked(() => auth.confirmEmail(details.email, '12345678')))).toBe('done');
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(false);
+    expect(sent.filter(isPasswordChange)).toEqual([]);
+  });
+});
+
+/**
+ * The session a code brings is kept on the device the moment the code is
+ * answered. What the code was for - the account a sign-up's code confirmed,
+ * to be set up as typed; a reset's new password - was kept in memory only, so
+ * an app closed in between opened in the roost: after signing up, perhaps on
+ * an account with someone else's password, username and name. (Found in
+ * review.) It is kept beside the session now, never with the password, and
+ * taken up again at launch.
+ */
+describe('what a code leaves to do, kept on the device', () => {
+  const MARKER = 'night-courier.unfinished';
+  const details = {
+    email: 'mara@example.test',
+    password: 'night-courier',
+    username: 'mara',
+    displayName: 'Mara',
+  };
+  const LEFT = {
+    flow: 'sign-up',
+    email: 'mara@example.test',
+    username: 'mara',
+    displayName: 'Mara',
+  };
+
+  const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+  const isPasswordChange = (request: Sent) =>
+    request.url.endsWith('/auth/v1/user') && request.method === 'PUT';
+  const isDeletion = (request: Sent) => request.url.includes('/rest/v1/rpc/delete_own_account');
+  const isLogout = (request: Sent) => request.url.includes('/auth/v1/logout');
+
+  /** What the keychain holds of it, as written. */
+  const marker = () => mockKeychain.get(MARKER) ?? null;
+  const markerKept = () => {
+    const value = marker();
+    return value === null ? null : (JSON.parse(value) as unknown);
+  };
+
+  /** A right code's session, for an account whose address was confirmed at `confirmedAt`. */
+  const codeSession = (confirmedAt: string, recoverySentAt?: string) => {
+    const session = sessionOf(NEW_TOKEN, 'refresh-new', 3600);
+    return {
+      ...session,
+      user: { ...session.user, email_confirmed_at: confirmedAt, recovery_sent_at: recoverySentAt },
+    };
+  };
+
+  /** Everything answered as a server would that has nothing to object to. */
+  function server(answers: Partial<Record<string, () => Response | Promise<Response>>> = {}) {
+    network = (request) => {
+      if (isVerify(request))
+        return (answers.verify ?? (() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600))))();
+      if (isPasswordChange(request)) return (answers.password ?? (() => json(200, {})))();
+      if (request.url.includes('/rest/v1/profiles') && request.method === 'GET')
+        return json(200, [{ username: 'mara', display_name: 'Mara' }]);
+      if (isDeletion(request))
+        return (answers.deletion ?? (() => new Response(null, { status: 204 })))();
+      if (isLogout(request)) return new Response(null, { status: 204 });
+      return json(200, []);
+    };
+  }
+
+  async function openedSignedOut() {
+    await launch();
+    await passes(A_MOMENT);
+    expect(state()).toBe('signed out');
+  }
+
+  it('keeps what a sign-up’s code is for before the code goes, and never the password', async () => {
+    let keptWhenChecked: string | null = null;
+    server({
+      verify: () => {
+        keptWhenChecked = marker();
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      },
+    });
+    await openedSignedOut();
+
+    await asked(() => auth.confirmSignUp({ ...details, email: ' mara@example.test ' }, '12345678'));
+
+    expect(JSON.parse(keptWhenChecked ?? 'null')).toEqual(LEFT);
+    expect(keptWhenChecked).not.toContain('night-courier');
+    expect(auth.unfinished).toEqual(LEFT);
+  });
+
+  it('holds the way in again at launch, signed in by a sign-up’s code, the account not set up', async () => {
+    server();
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+    mockKeychain.set(MARKER, JSON.stringify(LEFT));
+
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+    expect(auth.unfinished).toEqual(LEFT);
+    // Held from the first moment it is signed in: the root layout would take
+    // the courier into the app at any other.
+    expect(rendered.filter((given) => given.session !== null && !given.isSettingPassword)).toEqual(
+      [],
+    );
+  });
+
+  it('lets go of the way in, and forgets it, once the account is set up', async () => {
+    server();
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+    mockKeychain.set(MARKER, JSON.stringify(LEFT));
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(await asked(() => auth.finishSignUp(details))).toBe('signed in');
+
+    expect(auth.isSettingPassword).toBe(false);
+    expect(auth.unfinished).toBeNull();
+    expect(marker()).toBeNull();
+  });
+
+  it.each([
+    ['no session is kept beside it', null],
+    ['the session kept is another address’s', { ...LEFT, email: 'anna@example.test' }],
+  ])('holds nothing, and forgets it, when %s', async (_, other) => {
+    if (other) {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      mockKeychain.set(MARKER, JSON.stringify(other));
+    } else {
+      mockKeychain.set(MARKER, JSON.stringify(LEFT));
+    }
+
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(auth.isSettingPassword).toBe(false);
+    expect(auth.unfinished).toBeNull();
+    expect(marker()).toBeNull();
+  });
+
+  it('forgets it when the courier signs in with a password', async () => {
+    mockKeychain.set(MARKER, JSON.stringify(LEFT));
+    server();
+    await openedSignedOut();
+    mockKeychain.set(MARKER, JSON.stringify(LEFT));
+    network = () => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+
+    await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+    expect(marker()).toBeNull();
+  });
+
+  it('forgets it when the courier signs out', async () => {
+    server({ password: offline });
+    await openedSignedOut();
+    await asked(() => auth.confirmSignUp(details, '12345678'));
+    expect(markerKept()).toEqual(LEFT);
+
+    await asked(() => auth.signOut());
+
+    expect(auth.isSettingPassword).toBe(false);
+    expect(marker()).toBeNull();
+  });
+
+  it('keeps a reset’s too, and takes it up again at launch', async () => {
+    server();
+    await openedSignedOut();
+
+    expect(await asked(() => auth.verifyResetCode(' mara@example.test ', '12345678'))).toBe(
+      'signed in',
+    );
+    expect(markerKept()).toEqual({ flow: 'reset', email: 'mara@example.test' });
+
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(auth.isSettingPassword).toBe(true);
+    expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test', remove: false });
+
+    await asked(() => auth.setNewPassword('a new password'));
+
+    expect(auth.isSettingPassword).toBe(false);
+    expect(marker()).toBeNull();
+  });
+
+  /**
+   * GoTrue confirms an address with a reset's code too (v2.197). An account
+   * a sign-up had left waiting for its code - someone else's, with their
+   * password, username and name - became the courier's that way, all of it
+   * kept but the password. (Found in review.)
+   */
+  describe('a reset’s code that confirms an account nobody had confirmed', () => {
+    const NEVER = codeSession('2026-11-21T10:10:10.188Z', '2026-11-21T10:10:10.177Z');
+
+    it('removes the account, and signs out', async () => {
+      server({ verify: () => json(200, NEVER) });
+      await openedSignedOut();
+
+      expect(await asked(() => auth.verifyResetCode('mara@example.test', '12345678'))).toBe(
+        'removed',
       );
+
+      expect(sent.filter(isDeletion).map(({ bearer }) => bearer)).toEqual([NEW_TOKEN]);
+      expect(sent.filter(isPasswordChange)).toEqual([]);
+      expect(state()).toBe('signed out');
+      expect(auth.isSettingPassword).toBe(false);
+      expect(marker()).toBeNull();
     });
 
-    it('asks for the link, for the address as typed but for the spaces around it', async () => {
-      await opened(() => json(200, {}));
+    /** No deletion the courier asked for, and the server ended its sessions with the account. */
+    it('leaves the welcome screen no word of a deletion, and the server no sign-out', async () => {
+      server({ verify: () => json(200, NEVER) });
+      await openedSignedOut();
+      const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
 
-      expect(await outcomeOf(asked(() => auth.sendPasswordReset(' anna@example.test ')))).toBe(
-        'done',
+      expect(await asked(() => auth.verifyResetCode('mara@example.test', '12345678'))).toBe(
+        'removed',
       );
 
-      expect(sent.find((request) => request.url.includes('/auth/v1/recover'))?.body).toMatchObject({
-        email: 'anna@example.test',
+      expect(farewell.isFarewellDue()).toBe(false);
+      expect(sent.filter(isLogout)).toEqual([]);
+    });
+
+    it('holds the way in until it is removed, after a relaunch too', async () => {
+      server({ verify: () => json(200, NEVER), deletion: () => json(500, { message: 'boom' }) });
+      await openedSignedOut();
+
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('mara@example.test', '12345678'))),
+      ).toBe('Your account could not be deleted. Please try again.');
+      expect(auth.isSettingPassword).toBe(true);
+      expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test', remove: true });
+
+      await launch();
+      await passes(A_MOMENT);
+      expect(auth.isSettingPassword).toBe(true);
+      expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test', remove: true });
+
+      server({ verify: () => json(200, NEVER) });
+      expect(await outcomeOf(asked(() => auth.removeUnfinishedAccount()))).toBe('done');
+      expect(state()).toBe('signed out');
+      expect(marker()).toBeNull();
+    });
+
+    /** The app closed between the code and the removal, before it could say what was left. */
+    it('takes the removal up at launch from the session the code brought', async () => {
+      server();
+      await keep({ ...NEVER, access_token: OLD_TOKEN });
+      mockKeychain.set(MARKER, JSON.stringify({ flow: 'reset', email: 'mara@example.test' }));
+
+      await launch();
+      await passes(A_MOMENT);
+
+      expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test', remove: true });
+    });
+
+    it('leaves an account confirmed before the code was sent alone', async () => {
+      server({
+        verify: () => json(200, codeSession('2026-11-01T10:00:00Z', '2026-11-21T10:10:10.177Z')),
       });
+      await openedSignedOut();
+
+      expect(await asked(() => auth.verifyResetCode('mara@example.test', '12345678'))).toBe(
+        'signed in',
+      );
+
+      expect(sent.filter(isDeletion)).toEqual([]);
+      expect(auth.isSettingPassword).toBe(true);
     });
   });
 });

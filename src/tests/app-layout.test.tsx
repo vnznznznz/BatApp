@@ -21,8 +21,16 @@ import WelcomeScreen from '@/app/index';
  * Only the session is made up: the auth stack is tested in its own files.
  */
 
+/** No code from an email holds the way in here: the hold has tests of its own. */
+const SIGNED_OUT = {
+  session: null as object | null,
+  isRestoring: false,
+  isSettingPassword: false,
+  unfinished: null,
+};
+
 const mockAuth = {
-  state: { session: null as object | null, isRestoring: false },
+  state: { ...SIGNED_OUT },
   listeners: new Set<() => void>(),
 };
 
@@ -88,7 +96,7 @@ const theWelcomeScreen = () => screen.queryByText('Messages that take their time
 const theRoost = () => screen.queryByText('The roost');
 
 beforeEach(() => {
-  mockAuth.state = { session: null, isRestoring: false };
+  mockAuth.state = { ...SIGNED_OUT };
   mockedHideSplash.mockClear();
 });
 

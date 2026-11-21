@@ -31,6 +31,12 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
    * at all.
    */
   actions?: ReactNode;
+  /**
+   * Puts the actions below the text at every text size, for a row whose text
+   * has to be read whole: beside two buttons on a 360dp phone, a name and a
+   * username are cut to a few characters.
+   */
+  actionsBelow?: boolean;
   /** Draws the title in the heading weight, for unread or otherwise new rows. */
   emphasised?: boolean;
 };
@@ -49,12 +55,13 @@ export function ListRow({
   leading,
   trailing,
   actions,
+  actionsBelow = false,
   emphasised = false,
   onPress,
   ...rest
 }: ListRowProps) {
   const { fontScale } = useWindowDimensions();
-  const stacked = Boolean(actions) && fontScale >= LARGE_TEXT_SCALE;
+  const stacked = Boolean(actions) && (actionsBelow || fontScale >= LARGE_TEXT_SCALE);
 
   const content = (
     <>

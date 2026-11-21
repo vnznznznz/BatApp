@@ -29,6 +29,14 @@ export const supabase = createClient<Database>(url, anonKey, {
     // No URL to read a session out of in a native app, and leaving this on
     // makes the client parse deep links it has no business parsing.
     detectSessionInUrl: false,
+    // The code flow, as a defence. The emails carry a code to type, and no
+    // link; but a template with a link would, by the default flow, bring a
+    // whole session back through the app's URL scheme, to whichever app on
+    // the phone answers to it. With this, a link brings a one-time code that
+    // only this device can exchange, with the verifier it keeps in the
+    // keychain from the request until signing out. Signing in, codes typed
+    // in and password changes are as before.
+    flowType: 'pkce',
   },
   global: {
     fetch: createGuardedFetch({ anonKey, isSessionStored, renewSession }),
