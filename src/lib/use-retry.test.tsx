@@ -59,7 +59,7 @@ const sessionRenewed = () => act(async () => mockRenewalListeners.forEach((renew
 const passes = (ms: number) => act(() => jest.advanceTimersByTimeAsync(ms));
 
 /** An attempt that got no answer, and so is worth making again. */
-const unanswered = () => Promise.resolve(true);
+const unanswered = (_visible: boolean) => Promise.resolve(true);
 
 /** An attempt that settles only when the test says so. */
 function later() {
