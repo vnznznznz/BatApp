@@ -638,6 +638,27 @@ describe('useProfile', () => {
       expect(mockDatabase.changeRows).not.toHaveBeenCalled();
     });
 
+    /**
+     * A name asked to be saved with nobody signed in came back as if it had
+     * been, and the profile said "Saved." over a name that went nowhere.
+     */
+    it('says the session has ended when asked to save a name with nobody signed in', async () => {
+      mockSignedIn.userId = null;
+      const { result } = await renderHook(() => useProfile());
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.updateDisplayName('Anna B.').then(
+          () => 'saved',
+          (error: unknown) => error,
+        );
+      });
+
+      expect(outcome).toEqual(new Error('Your session has ended. Sign in again.'));
+      expect(mockDatabase.change).not.toHaveBeenCalled();
+      expect(mockDatabase.read).not.toHaveBeenCalled();
+    });
+
     it('saves to the row of the courier who is signed in, whoever that is', async () => {
       mockSignedIn.userId = 'user-ben';
       mockDatabase.read.mockResolvedValue(found({ id: 'user-ben', username: 'ben' }));

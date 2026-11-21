@@ -212,7 +212,9 @@ export function useProfile() {
 
   const updateDisplayName = useCallback(
     async (displayName: string) => {
-      if (!userId) return;
+      // With nobody signed in there is no row to save to. Returning quietly
+      // let the profile say "Saved." over a name that went nowhere.
+      if (!userId) throw new Error('Your session has ended. Sign in again.');
       const { error: failure } = await supabase
         .from('profiles')
         .update({ display_name: displayName.trim() })
