@@ -38,9 +38,10 @@ Notes for the operator - remove before publishing, like every comment in this fi
    is switched on (enable_confirmations in supabase/config.toml); until then the app asks for no
    such code. A code's day is otp_expiry = 86400: if the hosted project allows less, change "a day"
    here, in the privacy policy (3.10) and in the templates together. Confirming an address by hand
-   also takes its password away when a code to confirm it had been emailed
-   (supabase/migrations/20261121160000_confirmation_clears_password.sql), which is what the last
-   sentence of "No email?" says.
+   does not help someone whose emails do not arrive, so this page does not offer it: it takes the
+   password away when a code to confirm the address had been emailed
+   (supabase/migrations/20261121160000_confirmation_clears_password.sql), and setting a new one
+   needs an email of its own (GO-LIVE, end of "Before a second person can sign up: custom SMTP").
 6. "Your account has been suspended" follows signIn and verifyResetCode in
    src/features/auth/auth-context.tsx and the words of REFUSALS.account_suspended in
    src/lib/rpc-error.ts, which send a suspended courier to "the person who runs Night Courier";
@@ -88,9 +89,9 @@ removed, with nothing in it: sign up with the address to make it yours.
 
 If the app asks for a code after you sign up or sign in, it is in an email to your address: type it
 in. It works for a day, and only the newest code counts. After signing in, the app then saves your
-password again, because confirming the address takes it away. If it then shows _One more code_, an
-earlier sign-up for your address had another username: that account has made way for yours, and
-the new code finishes it.
+password again, because confirming the address takes it away. If the app shows _One more code_
+after a sign-up, an earlier sign-up for your address had another username: that account has made
+way for yours, and the new code finishes it.
 
 If the app opens on _Almost there_, your address is confirmed, but your password is not saved yet.
 Type it – the one you chose before, or a new one – and tap _Finish_. After a sign-up you can tap
@@ -102,8 +103,7 @@ in, you can tap _Sign out_ instead, and set a password with _I forgot my passwor
 Look in your spam folder, then ask for the code again: the app lets you a minute after the last
 one. A code comes only where it can be used: none for a new password if the address has no
 account, and none after a sign-up if you already have an account – sign in instead. If none comes
-at all, write to {{CONTACT_EMAIL}} from that address. If I then confirm your address by hand, your
-password goes with it: set one with _I forgot my password_.
+at all, write to {{CONTACT_EMAIL}} from that address, and I will find out why.
 
 ## Your account has been suspended
 
@@ -208,8 +208,9 @@ dieses Konto entfernt, ohne Inhalt: Registriere dich mit der Adresse, dann gehö
 Fragt die App nach der Registrierung oder beim Anmelden nach einem Code, steht er in einer E-Mail an
 deine Adresse: Tippe ihn ein. Er gilt einen Tag, und nur der neueste Code zählt. Beim Anmelden
 speichert die App danach dein Passwort noch einmal, weil das Bestätigen der Adresse es wegnimmt.
-Zeigt sie danach „One more code“, hatte eine frühere Registrierung mit deiner Adresse einen anderen
-Benutzernamen: Dieses Konto hat deinem Platz gemacht, und der neue Code schließt deines ab.
+Zeigt die App nach einer Registrierung „One more code“, hatte eine frühere Registrierung mit deiner
+Adresse einen anderen Benutzernamen: Dieses Konto hat deinem Platz gemacht, und der neue Code
+schließt deines ab.
 
 Öffnet die App mit „Almost there“, ist deine Adresse bestätigt, aber dein Passwort noch nicht
 gespeichert. Gib es ein – das, das du gewählt hattest, oder ein neues – und tippe auf „Finish“. Nach
@@ -222,8 +223,8 @@ entfernt, und du kannst dich neu registrieren. Nach dem Anmelden kannst du dich 
 Schau im Spam-Ordner nach und fordere den Code noch einmal an; das geht eine Minute nach dem
 letzten. Ein Code kommt nur, wo er etwas nützt: keiner für ein neues Passwort, wenn es zu der
 Adresse kein Konto gibt, und keiner nach einer Registrierung, wenn du schon ein Konto hast – melde
-dich dann an. Kommt gar keiner, schreib an {{CONTACT_EMAIL}}, von dieser Adresse. Bestätige ich
-deine Adresse dann von Hand, geht dein Passwort mit: Leg mit „I forgot my password“ eines fest.
+dich dann an. Kommt gar keiner, schreib an {{CONTACT_EMAIL}}, von dieser Adresse; ich finde dann
+heraus, woran es liegt.
 
 ## Dein Konto ist gesperrt
 
