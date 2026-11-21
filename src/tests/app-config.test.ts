@@ -1,4 +1,5 @@
 import type { Href } from 'expo-router';
+import withRouter from 'expo-router/plugin/build/withRouter';
 
 import appJson from '../../app.json';
 
@@ -69,5 +70,27 @@ describe('what the typecheck relies on', () => {
     const somewhere: Href = '/sign-in';
 
     expect([nowhere, somewhere]).toHaveLength(2);
+  });
+});
+
+describe('what a production build leaves out', () => {
+  /**
+   * Expo Router's sitemap lists every screen of the app, and its address
+   * worked in a production build as well. The router's own plugin checks its
+   * options against a list of the ones it knows, so a misspelt option fails
+   * here instead of quietly doing nothing.
+   */
+  it('switches off the router’s sitemap', () => {
+    const router = expo.plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-router',
+    );
+    expect(router).toEqual(['expo-router', { sitemap: false }]);
+
+    const options = (Array.isArray(router) ? router[1] : undefined) as Parameters<
+      typeof withRouter
+    >[1];
+    const config = withRouter({ name: expo.name, slug: expo.slug }, options);
+
+    expect(config.extra?.router).toEqual({ sitemap: false });
   });
 });

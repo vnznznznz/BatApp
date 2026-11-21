@@ -153,6 +153,18 @@ describe('the root guard', () => {
       expect(mockNavigation).toEqual([]);
     });
 
+    /**
+     * A link that leads nowhere lands on a page that says so. Sent on to the
+     * roost at once, the courier would only have seen it flash past, and not
+     * known why they were not where the link pointed; its button takes them
+     * to the start, and from there to the roost.
+     */
+    it('lets a signed-in courier read that a link leads nowhere', async () => {
+      await openTheAppOn('+not-found');
+
+      expect(mockNavigation).toEqual([]);
+    });
+
     it('leaves a courier already in the app where they are', async () => {
       await openTheAppOn('(app)', 'letters');
 
@@ -184,6 +196,7 @@ describe('the root guard', () => {
     it.each([
       ['the house rules', 'rules'],
       ['the sign-in form', 'sign-in'],
+      ['the page for a link that leads nowhere', '+not-found'],
     ])('leaves someone signed out on %s', async (_, segment) => {
       mockAuth.session = null;
 

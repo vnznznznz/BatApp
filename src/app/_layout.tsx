@@ -47,8 +47,11 @@ function RootNavigator() {
   const segment = useSegments()[0];
   const inApp = segment === '(app)';
   // The house rules are read from the sign-up form and from the profile alike,
-  // so a signed-in courier may stay on them.
-  const forAnyone = segment === 'rules';
+  // so a signed-in courier may stay on them. So on the page a link that leads
+  // nowhere lands on: sent on at once, the courier would see it flash past
+  // without learning why they are not where the link pointed. Its button leads
+  // to the start, and from there this guard takes them to the roost.
+  const forAnyone = segment === 'rules' || segment === '+not-found';
 
   useEffect(() => {
     // Holding the splash until the stored session has been read is what stops
