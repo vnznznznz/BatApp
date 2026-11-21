@@ -89,13 +89,22 @@ describe('toRpcError', () => {
    * A suspended account is refused by every function, so the same words are
    * shown for a roost that would not load and for a deletion that was refused.
    * They say what has happened and where to turn, and blame neither.
+   *
+   * They are shown beside Sign out and Contact where a screen could not
+   * load, on the welcome screen after the sign-out, under a save or a
+   * request that was refused, where nothing is beside them - and by a build
+   * without a contact address, which shows no Contact at all. So they name
+   * whom to write to, and no button or page: they sent the courier to "the
+   * contact address on the help page", a page the app never names. (Found in
+   * review.)
    */
-  it('tells a suspended courier what has happened and where to turn', () => {
+  it('tells a suspended courier what has happened and whom to ask, in words true wherever they show', () => {
     const result = toRpcError(refusal('account_suspended'), FALLBACK);
 
     expect(result.message).toBe(
-      'This account has been suspended. Write to the contact address on the help page.',
+      'This account has been suspended. To ask why, write to the person who runs Night Courier.',
     );
+    expect(result.message).not.toMatch(/contact|help page|below|above/i);
     expect(result.reason).toBe('account_suspended');
   });
 

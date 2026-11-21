@@ -33,9 +33,14 @@ export const REFUSALS = {
   note_too_long: `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`,
   try_again: 'That did not go through. Try again.',
   // The answer of every function to a suspended account, so it has to read
-  // right for a roost that will not load as well as for a refused deletion.
+  // right for a roost that will not load as well as for a refused deletion:
+  // beside Sign out and Contact, under a save or a request with nothing
+  // beside it, after the sign-out, and in a build without a contact address,
+  // which shows no Contact at all. So it names whom to write to rather than a
+  // button or a page - "the help page" was one the app never names. (Found in
+  // review.)
   account_suspended:
-    'This account has been suspended. Write to the contact address on the help page.',
+    'This account has been suspended. To ask why, write to the person who runs Night Courier.',
   too_many_friend_requests: 'That is a lot of requests in a short time. Try again in an hour.',
 } as const;
 
