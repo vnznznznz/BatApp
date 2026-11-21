@@ -45,6 +45,16 @@ const BEFORE_SPELLINGS = migrationFiles()
   .filter((file) => file < SPELLINGS_MIGRATION)
   .at(-1);
 
+/** The migration that settled the rows nothing could find, and the one before it. */
+const DEAD_ROWS_MIGRATION = '20261121120001_dead_city_rows.sql';
+const BEFORE_DEAD_ROWS = migrationFiles()
+  .filter((file) => file < DEAD_ROWS_MIGRATION)
+  .at(-1);
+
+const KOLN = 2886242;
+const NEUSTADT_SUD = 8593856;
+const NEUSTADT_NORD = 8593855;
+
 let db;
 
 before(async () => {
@@ -342,6 +352,181 @@ describe('search_index, brought to one form for the saints', () => {
        from public.cities, unnest(string_to_array(search_index, '|')) as term`,
     );
     assert.ok(rows[0].longest <= 64, `a term is ${rows[0].longest} characters long`);
+  });
+});
+
+/**
+ * Sixteen rows had an empty search index and could never be found. (Found in
+ * review.) Fourteen are found by their names now; the two quarters of Köln
+ * called Neustadt are gone, and whatever named them names Köln.
+ */
+describe('the rows nothing could find', () => {
+  let anna;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'quarters', displayName: 'Quarters' });
+  });
+
+  it('leaves no city in the list that nothing can find', async () => {
+    const { rows } = await db.query(`select name from public.cities where search_index = ''`);
+    assert.deepEqual(rows, []);
+  });
+
+  for (const [query, town] of [
+    [sent('Zürich (Kreis 11)'), 'Zürich (Kreis 11)'],
+    ['zurich kreis 3', 'Zürich (Kreis 3)'],
+    ['oberwinterthur', 'Oberwinterthur (Kreis 2)'],
+    ['stadt winterthur', 'Stadt Winterthur (Kreis 1)'],
+    ['seen kreis', 'Seen (Kreis 3)'],
+    [sent('Mianzhu, Deyang, Sichuan'), 'Mianzhu, Deyang, Sichuan'],
+    ['mianzhu', 'Mianzhu, Deyang, Sichuan'],
+    [sent('Ra’s Bayrūt'), 'Ra’s Bayrūt'],
+  ]) {
+    it(`finds ${town} as "${query}"`, async () => {
+      const rows = await search(anna, query);
+      assert.equal(rows[0]?.name, town, `found ${rows.map((row) => row.name).join(', ')}`);
+    });
+  }
+
+  it('lists the Neustadts there are, and not the two quarters of Köln', async () => {
+    const names = (await search(anna, 'neustadt')).map((row) => row.name);
+
+    assert.deepEqual(names.filter((name) => name.startsWith('Neustadt')).sort(), [
+      'Neustadt am Rübenberge',
+      'Neustadt an der Weinstraße',
+      'Neustadt in Holstein',
+    ]);
+    const { rows } = await db.query(`select id from public.cities where id = any($1)`, [
+      [NEUSTADT_SUD, NEUSTADT_NORD],
+    ]);
+    assert.deepEqual(rows, []);
+  });
+
+  /**
+   * A profile can name a city the search never offered - the column takes any
+   * id there is - and a letter names the city it flew from and the one it flew
+   * to, which no city can be deleted from under. Taking the two rows out must
+   * not fail on a database where either happened, and must not cost anyone a
+   * day: their city is the same place under another name.
+   */
+  describe('on a database where couriers and letters name them', () => {
+    let older;
+    const couriers = {};
+
+    before(async () => {
+      older = await createTestDatabase({ until: BEFORE_DEAD_ROWS });
+      const courier = async (name, city) => {
+        const id = await createUser(older, { username: name, displayName: name });
+        await older.query(`update public.profiles set city_id = $2 where id = $1`, [id, city]);
+        return id;
+      };
+
+      // Lives in Neustadt/Süd, and has for long.
+      couriers.dora = await courier('dora', NEUSTADT_SUD);
+      // Has moved from Neustadt/Nord to Munich, and is still settling.
+      couriers.emil = await courier('emil', NEUSTADT_NORD);
+      await older.query(
+        `update public.profiles
+         set city_id = (select id from public.cities where name = 'Munich'),
+             settled_city_id = $2, city_changed_at = now() - interval '2 hours'
+         where id = $1`,
+        [couriers.emil, NEUSTADT_NORD],
+      );
+      // Has moved from Köln to Neustadt/Süd, and is still settling.
+      couriers.fritz = await courier('fritz', NEUSTADT_SUD);
+      await older.query(
+        `update public.profiles
+         set settled_city_id = $2, city_changed_at = now() - interval '3 hours'
+         where id = $1`,
+        [couriers.fritz, KOLN],
+      );
+      // Has moved from Munich to Neustadt/Nord, five hours ago.
+      couriers.gerda = await courier('gerda', NEUSTADT_NORD);
+      await older.query(
+        `update public.profiles
+         set settled_city_id = (select id from public.cities where name = 'Munich'),
+             city_changed_at = now() - interval '5 hours'
+         where id = $1`,
+        [couriers.gerda],
+      );
+      couriers.gerdaMovedAt = (
+        await older.query(`select city_changed_at from public.profiles where id = $1`, [
+          couriers.gerda,
+        ])
+      ).rows[0].city_changed_at;
+      // A letter from Neustadt/Süd to Neustadt/Nord, where Emil's bats still are.
+      await older.query(
+        `insert into public.friendships (requester_id, addressee_id, status, accepted_at)
+         values ($1, $2, 'accepted', now())`,
+        [couriers.dora, couriers.emil],
+      );
+      await asUser(older, couriers.dora, () =>
+        older.query(`select public.send_message($1, 'Hallo aus der Südstadt.')`, [couriers.emil]),
+      );
+
+      await applyMigrations(older, { after: BEFORE_DEAD_ROWS });
+    });
+
+    after(async () => {
+      await older?.close();
+    });
+
+    const profile = async (id) =>
+      (
+        await older.query(
+          `select city_id, settled_city_id, city_changed_at is not null as settling
+           from public.profiles where id = $1`,
+          [id],
+        )
+      ).rows[0];
+
+    it('moves a courier who lived there to Köln, without a day of settling', async () => {
+      assert.deepEqual(await profile(couriers.dora), {
+        city_id: KOLN,
+        settled_city_id: null,
+        settling: false,
+      });
+    });
+
+    it('lets a courier settling away from there go on settling, from Köln', async () => {
+      const emil = await profile(couriers.emil);
+      assert.equal(emil.settled_city_id, KOLN);
+      assert.equal(emil.settling, true);
+      assert.notEqual(emil.city_id, KOLN);
+    });
+
+    /** Her move is not a new one: the day she waits began when she moved. */
+    it('lets a courier moving there settle in Köln when she would have settled there', async () => {
+      const { rows } = await older.query(
+        `select city_id, city_changed_at from public.profiles where id = $1`,
+        [couriers.gerda],
+      );
+      assert.equal(rows[0].city_id, KOLN);
+      assert.deepEqual(rows[0].city_changed_at, couriers.gerdaMovedAt);
+    });
+
+    it('ends the move of a courier who was moving from Köln to there', async () => {
+      assert.deepEqual(await profile(couriers.fritz), {
+        city_id: KOLN,
+        settled_city_id: null,
+        settling: false,
+      });
+    });
+
+    it('has the letter fly from Köln to Köln, as before to the same places', async () => {
+      const { rows } = await older.query(
+        `select origin_city_id, destination_city_id from public.messages where sender_id = $1`,
+        [couriers.dora],
+      );
+      assert.deepEqual(rows, [{ origin_city_id: KOLN, destination_city_id: KOLN }]);
+    });
+
+    it('takes the two rows out', async () => {
+      const { rows } = await older.query(`select id from public.cities where id = any($1)`, [
+        [NEUSTADT_SUD, NEUSTADT_NORD],
+      ]);
+      assert.deepEqual(rows, []);
+    });
   });
 });
 

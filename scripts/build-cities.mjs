@@ -80,6 +80,16 @@ const SOURCE_URL = `https://download.geonames.org/export/dump/${DUMP}.zip`;
 const FULL_COVERAGE = new Set(['DE', 'AT', 'CH']);
 const WORLD_MIN_POPULATION = 200_000;
 
+/**
+ * Rows of the dump the list does without, by GeoNames id, and why. A
+ * migration took them out of the table; written into the next one, they would
+ * come back.
+ */
+const LEFT_OUT = new Map([
+  [8593856, 'Neustadt/Süd, a quarter of Köln: see 20261121120001_dead_city_rows.sql'],
+  [8593855, 'Neustadt/Nord, a quarter of Köln: see 20261121120001_dead_city_rows.sql'],
+]);
+
 /** GeoNames column indices, from the readme accompanying the dump. */
 const COL = { id: 0, name: 1, alternates: 3, lat: 4, lon: 5, country: 8, population: 14 };
 
@@ -196,6 +206,8 @@ function readDump() {
 
 /** Keyed by GeoNames id, which is stable across dumps. */
 const kept = new Map();
+/** Cities no name of which could be searched for: "東京, JP". */
+const unfindable = [];
 
 for (const row of rows) {
   if (!row) continue;
@@ -211,6 +223,16 @@ for (const row of rows) {
   if (!Number.isFinite(id) || !name || !country) continue;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
   if (!FULL_COVERAGE.has(country) && population < WORLD_MIN_POPULATION) continue;
+  if (LEFT_OUT.has(id)) continue;
+
+  // A row with nothing to search by could be chosen by nobody: sixteen such
+  // rows once sat in the table. It is not written; one that is in the table
+  // already keeps what it has, since the migration only adds and updates.
+  const index = searchIndex(name, f[COL.alternates]);
+  if (!index) {
+    unfindable.push(`${name}, ${country}`);
+    continue;
+  }
 
   kept.set(id, {
     id,
@@ -220,8 +242,16 @@ for (const row of rows) {
     lat: round(lat),
     lon: round(lon),
     population,
-    searchIndex: searchIndex(name, f[COL.alternates]),
+    searchIndex: index,
   });
+}
+
+if (unfindable.length > 0) {
+  const cities = unfindable.length === 1 ? 'city' : 'cities';
+  console.log(
+    `Left out ${unfindable.length} ${cities} that no name in the dump could find: ` +
+      unfindable.join('; '),
+  );
 }
 
 const cities = [...kept.values()].sort((a, b) => b.population - a.population);

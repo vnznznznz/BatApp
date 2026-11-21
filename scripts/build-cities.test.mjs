@@ -232,6 +232,48 @@ describe('build-cities.mjs, folding names', () => {
   });
 });
 
+describe('build-cities.mjs, rows nothing could find', () => {
+  const run = (lines) => {
+    writeFileSync(dump, lines.join('\n') + '\n');
+    const result = fromDump();
+    assert.equal(result.status, 0, result.stderr);
+    const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+    return { sql, stdout: result.stdout };
+  };
+
+  /**
+   * The dead rows migration took the two quarters of Köln called Neustadt out
+   * of the table. Written into the next migration, they would come back.
+   */
+  it('leaves out the quarters of Köln that a migration took out', () => {
+    const { sql } = run([
+      line(2886242, 'Köln', 'Cologne', 50.9333, 6.95, 'DE', 1024621),
+      line(8593856, 'Neustadt/Süd', '', 50.9251, 6.9476, 'DE', 37939),
+      line(8593855, 'Neustadt/Nord', '', 50.949, 6.9479, 'DE', 28146),
+    ]);
+
+    assert.match(sql, /\(2886242, 'Köln', /);
+    assert.doesNotMatch(sql, /859385[56]/);
+    assert.match(sql, /-- 1 cities:/);
+  });
+
+  /**
+   * A row with an empty search index can be chosen by nobody. Such a city is
+   * not written, and the run says which it was; one that is in the table
+   * already keeps what it has.
+   */
+  it('writes no city that no name could find, and says which it left out', () => {
+    const { sql, stdout } = run([
+      line(1850147, '東京', 'Токио', 35.6895, 139.6917, 'JP', 9733276),
+      line(2820973, 'Trossingen', '', 48.07667, 8.64409, 'DE', 15040),
+    ]);
+
+    assert.doesNotMatch(sql, /1850147/);
+    assert.match(sql, /\(2820973, 'Trossingen', /);
+    assert.match(stdout, /Left out 1 city that no name in the dump could find: 東京, JP/);
+  });
+});
+
 describe('build-cities.mjs, downloading', () => {
   let bin;
   let calls;
