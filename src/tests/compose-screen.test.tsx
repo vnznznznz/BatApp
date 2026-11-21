@@ -763,6 +763,24 @@ describe('ComposeScreen', () => {
       expect(mockedSendMessage).not.toHaveBeenCalled();
     });
 
+    /**
+     * A NUL, or half of an emoji, pasted in: the server refuses such a letter
+     * before it looks at it, and the screen said to check the connection, for
+     * a letter that could never go. It is kept back here, with what to do.
+     */
+    it.each([
+      ['a NUL', 'Dear Anna,\u0000 see you soon.'],
+      ['half of an emoji', 'Dear Anna, see you soon \uD83E'],
+    ])('does not send a letter with %s, and says what to do', async (_, text) => {
+      await openLetterTo('user-anna');
+
+      await writeAndSend(text);
+
+      expect(screen.getByText(/cannot be sent: half of an emoji/)).toBeOnTheScreen();
+      expect(screen.queryByText(/connection/i)).toBeNull();
+      expect(mockedSendMessage).not.toHaveBeenCalled();
+    });
+
     it('lets go of a complaint once the letter is changed', async () => {
       await openLetterTo('user-anna');
       await writeAndSend('   ');
