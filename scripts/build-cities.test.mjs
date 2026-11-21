@@ -166,6 +166,72 @@ describe('build-cities.mjs', () => {
   });
 });
 
+describe('build-cities.mjs, folding names', () => {
+  /** Names as GeoNames writes them, and the ways people type them. */
+  const SPELLINGS_DUMP = [
+    line(2658822, 'Sankt Gallen', 'St. Gallen,Saint-Gall,San Gallo', 47.4239, 9.3748, 'CH', 75833),
+    line(2911522, 'Halle (Saale)', 'Halle,Halle an der Saale', 51.4816, 11.9795, 'DE', 237865),
+    line(2661513, 'Biel/Bienne', 'Biel,Bienne', 47.1371, 7.2461, 'CH', 55120),
+    line(5045360, 'Saint Paul', 'St. Paul,St Paul', 44.9444, -93.0933, 'US', 300851),
+    line(268743, 'Ra’s Bayrūt', '', 33.9, 35.4833, 'LB', 1251739),
+    line(12492662, 'Mianzhu, Deyang, Sichuan', '', 31.3379, 104.2206, 'CN', 510000),
+    line(2820973, 'Trossingen', 'Trosingen', 48.07667, 8.64409, 'DE', 15040),
+  ].join('\n');
+
+  const fromSpellings = () => {
+    writeFileSync(dump, SPELLINGS_DUMP + '\n');
+    const result = fromDump();
+    assert.equal(result.status, 0, result.stderr);
+    return readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+  };
+
+  /** The search index the migration gives a city, read back out of it. */
+  const indexOf = (sql, id) =>
+    sql.match(new RegExp(`^  \\(${id}, .*, '([^']*(?:''[^']*)*)'\\)[,;]?$`, 'm'))?.[1];
+
+  /**
+   * One form for st, st., sankt and saint at the start of a word, which is
+   * what the client sends whichever was typed - and beside it the form as
+   * written, so that what found the town before, typed half-way, still does.
+   */
+  it('makes the saints one form, and keeps the form each was written in', () => {
+    const sql = fromSpellings();
+
+    assert.equal(indexOf(sql, 2658822), 'sankt gallen|st. gallen|sankt-gall|saint-gall|san gallo');
+    assert.equal(indexOf(sql, 5045360), 'sankt paul|saint paul|st. paul|st paul');
+  });
+
+  it('indexes a name with brackets, slashes or commas, reading them as spaces', () => {
+    const sql = fromSpellings();
+
+    assert.equal(indexOf(sql, 2911522), 'halle saale|halle|halle an der saale');
+    assert.equal(indexOf(sql, 2661513), 'biel bienne|biel|bienne');
+    assert.equal(indexOf(sql, 12492662), 'mianzhu deyang sichuan');
+  });
+
+  it('indexes a name with a typographic apostrophe, read as a plain one', () => {
+    assert.equal(indexOf(fromSpellings(), 268743), "ra''s bayrut");
+  });
+
+  it('pins how the spellings people type fold, beside the names it wrote', () => {
+    fromSpellings();
+    const { pairs, spellings } = JSON.parse(readFileSync(fixture, 'utf8'));
+
+    assert.deepEqual(
+      pairs.find(([name]) => name === 'Halle (Saale)'),
+      ['Halle (Saale)', 'halle saale'],
+    );
+    const folded = new Map(spellings);
+    assert.equal(folded.get('St Gallen'), 'sankt gallen');
+    assert.equal(folded.get('St.Gallen'), 'sankt gallen');
+    assert.equal(folded.get('Saint Gallen'), 'sankt gallen');
+    assert.equal(folded.get('Biel/Bienne'), 'biel bienne');
+    assert.equal(folded.get('Ra’s Bayrūt'), "ra's bayrut");
+    assert.equal(folded.get('St'), 'st');
+    assert.equal(folded.get('Stuttgart'), 'stuttgart');
+  });
+});
+
 describe('build-cities.mjs, downloading', () => {
   let bin;
   let calls;

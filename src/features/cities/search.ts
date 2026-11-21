@@ -16,19 +16,42 @@ export const MIN_QUERY_LENGTH = 2;
  * Folding diacritics means "Zurich" finds Zürich and "Koln" finds Köln, which
  * matters because typing umlauts on a phone keyboard is possible but nobody
  * bothers. Sharp s becomes "ss" before the marks are stripped, since NFD leaves
- * it alone and "Gießen" should be reachable as "giessen".
+ * it alone and "Gießen" should be reachable as "giessen". A typographic
+ * apostrophe, which a phone's keyboard may type for a plain one, counts as
+ * the plain one. Brackets, slashes and commas part words, as in "Halle
+ * (Saale)" and "Biel/Bienne", and runs of spaces close up. Then the saints
+ * become one form: see `saintForm`.
  *
  * **This must stay identical to `fold()` in `scripts/build-cities.mjs`.** A
  * divergence would not raise an error; search would simply stop finding cities.
  * `search.test.ts` asserts the two agree against a generated fixture.
  */
 export function fold(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/ß/g, 'ss')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[^a-z0-9 .'-]/g, '');
+  return saintForm(
+    value
+      .toLowerCase()
+      .replace(/ß/g, 'ss')
+      .replace(/[‘’ʼ]/g, "'")
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[(),/]/g, ' ')
+      .replace(/[^a-z0-9 .'-]/g, '')
+      .replace(/ +/g, ' ')
+      .trim(),
+  );
+}
+
+/**
+ * "St Gallen", "St. Gallen", "St.Gallen" and "Saint Gallen" all mean Sankt
+ * Gallen, which is how GeoNames writes it. So st, st., sankt and saint at the
+ * start of a word become "sankt", here and in the search index alike. Only a
+ * whole word does: "st" or "saint" at the very end of what is typed may still
+ * become Stuttgart or Saintes, and is left as it is. A dot ends the word.
+ */
+function saintForm(folded: string): string {
+  return folded
+    .replace(/(^|[ -])st\.(?=[a-z0-9])/g, '$1sankt ')
+    .replace(/(^|[ -])(?:st\.|st(?=[ -])|saint(?=[ -]))/g, '$1sankt');
 }
 
 /**

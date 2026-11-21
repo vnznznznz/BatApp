@@ -1,7 +1,49 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-import { asAnon, asUser, createTestDatabase, createUser } from './harness.mjs';
+import {
+  applyMigrations,
+  asAnon,
+  asUser,
+  createTestDatabase,
+  createUser,
+  migrationFiles,
+} from './harness.mjs';
+
+/**
+ * What the client's fold makes of a name or a spelling, as the generator
+ * pinned it: search.test.ts holds the client to these pairs, so they are what
+ * the app sends.
+ */
+const FIXTURE = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'features',
+      'cities',
+      'fold-parity.fixture.json',
+    ),
+    'utf8',
+  ),
+);
+
+/** The query the app sends for `spelling`, from the fixture's spellings. */
+function sent(spelling) {
+  const pair = (FIXTURE.spellings ?? []).find(([raw]) => raw === spelling);
+  assert.ok(pair, `the fixture has no spelling "${spelling}"`);
+  return pair[1];
+}
+
+/** The migration that gave the search one form for the saints, and the one before it. */
+const SPELLINGS_MIGRATION = '20261121120000_city_search_spellings.sql';
+const BEFORE_SPELLINGS = migrationFiles()
+  .filter((file) => file < SPELLINGS_MIGRATION)
+  .at(-1);
 
 let db;
 
@@ -148,6 +190,158 @@ describe('search_cities', () => {
       () => asAnon(db, () => db.query(`select * from public.search_cities('berlin', 20)`)),
       /permission denied for function search_cities/,
     );
+  });
+});
+
+/**
+ * The ways people write the names in the list. "St Gallen", "St. Ingbert",
+ * "Halle (Saale)" and "Biel/Bienne" found nothing, although the towns are
+ * there. (Found in review.)
+ */
+describe('search_cities, the way a town is typed', () => {
+  let anna;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'spelling', displayName: 'Spelling' });
+  });
+
+  for (const [spelling, town] of [
+    ['St Gallen', 'Sankt Gallen'],
+    ['St. Gallen', 'Sankt Gallen'],
+    ['St.Gallen', 'Sankt Gallen'],
+    ['Saint Gallen', 'Sankt Gallen'],
+    ['St Pölten', 'Sankt Pölten'],
+    ['St. Augustin', 'Sankt Augustin'],
+    ['St. Ingbert', 'Sankt Ingbert'],
+    ['St. Wendel', 'Sankt Wendel'],
+    ['St. Leonhard', 'Sankt Leonhard'],
+    ['Halle (Saale)', 'Halle (Saale)'],
+    ['Halle/Saale', 'Halle (Saale)'],
+    ['Kempten (Allgäu)', 'Kempten (Allgäu)'],
+    ['Frankfurt (Oder)', 'Frankfurt (Oder)'],
+    ['Biel/Bienne', 'Biel/Bienne'],
+    ['St. Paul', 'Saint Paul'],
+    ['Saint Louis', 'St. Louis'],
+    ['Ra’s Bayrūt', 'Ra’s Bayrūt'],
+  ]) {
+    it(`finds ${town} typed as "${spelling}"`, async () => {
+      const rows = await search(anna, sent(spelling));
+      assert.equal(rows[0]?.name, town, `found ${rows.map((row) => row.name).join(', ')}`);
+    });
+  }
+
+  /** Typed so far, "St" may still become Stuttgart. */
+  it('still finds a town that begins with the letters of a saint', async () => {
+    const rows = await search(anna, sent('St'), 50);
+    assert.ok(rows.some((row) => row.name === 'Stuttgart'));
+  });
+
+  /**
+   * The fixture's names are the generator's own sample of the list, folded
+   * as the client folds them. Each must find its city: this is where the
+   * client and the rows in the database are held together.
+   */
+  it('finds every city in the fixture by the name the client sends for it', async () => {
+    const { rows: names } = await db.query(`select distinct name from public.cities`);
+    const inTable = new Set(names.map((row) => row.name));
+    const listed = [...FIXTURE.pairs, ...(FIXTURE.spellings ?? [])].filter(([raw]) =>
+      inTable.has(raw),
+    );
+    assert.ok(listed.length > 150, `only ${listed.length} of the fixture's names are cities`);
+
+    const missed = [];
+    for (const [raw, folded] of listed) {
+      const rows = await search(anna, folded, 50);
+      if (!rows.some((row) => row.name === raw)) missed.push(`${raw} as "${folded}"`);
+    }
+    assert.deepEqual(missed, []);
+  });
+
+  /**
+   * The rows were brought to the new form in SQL, by private.search_form.
+   * On text that needs no letters folded, it has to say what the client says.
+   */
+  it('agrees with the client on every spelling that needs no letter folded', async () => {
+    const plain = (FIXTURE.spellings ?? []).filter(([raw]) => /^[A-Za-z0-9 .'-]+$/.test(raw));
+    assert.ok(plain.length > 5);
+
+    const { rows } = await db.query(
+      `select raw, private.search_form(lower(raw)) as folded
+       from unnest($1::text[]) as raw`,
+      [plain.map(([raw]) => raw)],
+    );
+    assert.deepEqual(
+      rows.map((row) => [row.raw, row.folded]),
+      plain.map(([raw, folded]) => [raw, folded]),
+    );
+  });
+});
+
+/**
+ * Nothing that found a city before the saints became one form may find it
+ * no longer: every term each of the 4,310 rows had, typed in full or only
+ * the first two letters of it, or anything in between, still finds the row.
+ * What is typed is folded the way the client folds it, which for these
+ * terms - folded already - is private.search_form.
+ */
+describe('search_index, brought to one form for the saints', () => {
+  let before_;
+  let after_;
+
+  before(async () => {
+    before_ = await createTestDatabase({ until: BEFORE_SPELLINGS });
+    after_ = await createTestDatabase({ until: BEFORE_SPELLINGS });
+    await applyMigrations(after_, { after: BEFORE_SPELLINGS });
+  });
+
+  after(async () => {
+    await before_?.close();
+    await after_?.close();
+  });
+
+  it('loses no row a match it had', async () => {
+    const { rows: old } = await before_.query(
+      `select id, search_index from public.cities order by id`,
+    );
+    assert.equal(old.length, 4310);
+
+    await after_.query(`create temporary table old_index (id integer, search_index text)`);
+    await after_.query(
+      `insert into old_index
+       select * from unnest($1::integer[], $2::text[])`,
+      [old.map((row) => row.id), old.map((row) => row.search_index)],
+    );
+
+    const { rows } = await after_.query(`
+      with typed as (
+        select distinct o.id, btrim(left(term, n)) as typed
+        from old_index o,
+             unnest(string_to_array(o.search_index, '|')) as term,
+             generate_series(2, char_length(term)) as n
+      ),
+      asked as (
+        select id, typed, private.search_form(typed) as query
+        from typed
+        where char_length(typed) >= 2
+      )
+      select count(*)::int as asked,
+             coalesce(array_agg(a.typed || ' -> ' || c.name)
+               filter (where ('|' || c.search_index) not like '%|' || a.query || '%'),
+               '{}') as lost
+      from asked a
+      join public.cities c on c.id = a.id
+    `);
+
+    assert.ok(rows[0].asked > 250_000, `only ${rows[0].asked} were asked`);
+    assert.deepEqual(rows[0].lost, []);
+  });
+
+  it('leaves no term longer than the 64 characters search_cities reads', async () => {
+    const { rows } = await after_.query(
+      `select max(char_length(term)) as longest
+       from public.cities, unnest(string_to_array(search_index, '|')) as term`,
+    );
+    assert.ok(rows[0].longest <= 64, `a term is ${rows[0].longest} characters long`);
   });
 });
 
