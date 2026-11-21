@@ -88,12 +88,20 @@ the built-in email service cannot reach anyone outside the project team anyway, 
 untestable end to end until custom SMTP exists. Both get finished together, before anyone else
 has an account. Tracked here so it is not discovered by a locked-out user.
 
+**Finished in November 2026, without a deep link:** every email the auth server sends carries an
+8-digit code to type into the app, and the reset screen takes the code and the new password
+together; confirming a new account's address works the same way (see "Codes, not links" in
+[`ARCHITECTURE.md`](ARCHITECTURE.md)). What is left is custom SMTP, before anyone else has an
+account (GO-LIVE).
+
 ## Phase 3 - Profiles and city selection (done)
 
 Delivered:
 
 - A `cities` table of 4,310 real cities from GeoNames, seeded by a generated migration, with
-  coordinates the client cannot choose - `profiles.city_id` is a foreign key
+  coordinates the client cannot choose - `profiles.city_id` is a foreign key (4,308 since November
+  2026, when two quarters of Köln that no search could find were taken out, and Köln put in their
+  place)
 - `search_cities`, a server-side search over folded names and aliases, so "wien" finds Vienna and
   "koln" finds Köln
 - A profile screen (display name, username, city) and a debounced city picker
@@ -153,7 +161,8 @@ product, each finding checked by someone trying to refute it. What it found in t
 code, all fixed and each with a test that fails without the fix:
 
 - A courier could borrow a friend's city for one twenty-minute flight and move straight back. A new
-  city now takes a day to count (`RELOCATION_HOURS`).
+  city now takes a day to count (`RELOCATION_HOURS`) - from a courier's first letter on, since
+  November 2026.
 - A direct read of the bats table could reveal when a friend opened the app. It is gone.
 - Account deletion could deadlock with a landing, a send, or another deletion.
 - A send retried after its answer was lost went out twice, on two bats. Sends are now idempotent.
@@ -205,7 +214,11 @@ Every one of them now exists in `src/tests/db` - all but the push test, which ha
 test - and most under the very name in the table. The two about bats are worded differently:
 `gives a new user exactly three bats`, and a group of three tests headed `a fourth bat`. The two
 concurrency tests run only where `DATABASE_URL` points at a real Postgres - CI provides one, and
-locally they are skipped with a message saying so.
+fails the run without it; locally they are skipped with a message saying so.
+
+The review of November 2026 found that "A user cannot read another user's message" passed without
+testing it: the letter was never landed, and before it lands nobody but its sender can see it
+anyway. It is landed now.
 
 ## Open questions for later phases
 
@@ -226,7 +239,8 @@ Recorded rather than guessed at:
   at most 180 days (Phase 13a).
 - ~~**Changing city.**~~ Decided in review, and confirmed by the operator on 2 November 2026: a new
   city takes a day (`RELOCATION_HOURS`) to become where a courier's bats fly from, so nobody can
-  borrow a friend's city for one short flight.
+  borrow a friend's city for one short flight. Since November 2026 that holds from a courier's
+  first letter on: before it there is no flight to shorten, and a move counts at once.
 - ~~**Push notifications.**~~ Dropped by the operator on 2 November 2026; see Phase 10 above.
 - ~~**Contact address for store listings.**~~ Decided: a personal postal address will be used.
   It is deliberately **not** recorded in this repository, which is public — it goes straight into
@@ -316,3 +330,95 @@ names removed from Supabase Auth once the profile exists, a removed account bann
 and then deleted, a session unused for 90 days ended, the old city forgotten once a move has
 settled - one daily job - and the iOS session kept on the device only. Decisions under "Keeping less, for less long" in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+## The whole-project review (done; what it left open is below)
+
+In November 2026 the whole project was reviewed at once - the database, signing in, the screens,
+the tests, the setup and the documents - and each finding was verified before it was fixed. The
+fixes were made in groups, each reviewed and checked again, and merged; the seams between them were
+checked against the local stack and in the browser. The decisions are under "The whole-project
+review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
+
+- **Sessions.** Who is signed in is read from the keychain at launch, so a phone without a network
+  no longer shows half a minute of splash and then the welcome screen. The client's fetch keeps a
+  session through a failed renewal, gives a request 20 seconds, and renews a token the database
+  refused; the keychain keeps a session whole whatever a write does. Signing out waits for the
+  server five seconds at most and tells it after all once it can, and every way of signing in
+  waits for a sign-out still under way.
+- **Loading.** A load that got no answer is made again by itself, a screen with nothing to show has
+  Try again, a long first load says it is still trying, and Try again renews the session first.
+- **Accounts that end.** The database refuses a suspended account at once. The screens give an
+  account that is gone or suspended the way out, Sign out and Contact; deleting an account says
+  that it happened; signing in to a suspended account is answered as a wrong password.
+- **Sign-up and reset by emailed code**, which finishes what Phase 2 left incomplete. Every email
+  carries an 8-digit code and no link, and the code flow (PKCE) is gone. A code holds the way in
+  until the password is saved, across a relaunch too; a stranger's earlier sign-up for the address
+  makes way for the courier's; and confirming an address takes its password away until the
+  courier's own is set (migration `20261121160000`).
+- **Database.** One lock order for everything that ends an account, the nightly tidy-up included,
+  and a gate for each courier; twenty new friend requests an hour per account, friends listed
+  before requests, and a Withdraw that cannot end a friendship; bounds on what a sign-in carries,
+  on a city search, and on what a name or a letter may be; a letter read in the one order; and a
+  send that answers its repeat with the letter that went, with `sent_letter` to ask what became of
+  one.
+- **Compose.** A letter not sent yet survives leaving the screen, a send outlives its screen, a
+  send without an answer is asked after rather than taken for failed, and changed words wait until
+  it is known what became of the first. Write back names a former friend.
+- **Cities.** Saints' towns and names with brackets and slashes are found as people type them; 28
+  pairs of towns of the same name are told apart wherever a city is shown; the sixteen rows nothing
+  could find are settled, and the table holds 4,308 cities; a move counts at once until the first
+  letter; and the city picker asks before it saves.
+- **Forms and layout.** The forms stay reachable above the keyboard on iOS and Android and check
+  what the server checks; a link that leads nowhere lands on a page of the app's own; rows keep
+  names and routes whole at a narrow phone's width.
+- **Tests.** The suite runs again compiled by the React Compiler, in CI, and what the compiler
+  leaves out is listed; presses go through the real controls; the scheduled jobs run in a test; the
+  races fail CI when there is no database; a focused test fails lint; and the ages every document
+  gives are held to the two constants.
+
+Verified on the merged tree: the typecheck, lint and format check; 2,095 app tests, run as written
+and again compiled; 554 database tests, 73 of them races on a real Postgres; and the 90 tests of
+the scripts and the runbooks. The groups also checked their parts against the local stack, and the
+screens in the web build. None of it has been run on a phone.
+
+Still open:
+
+- **Seen on no phone.** The keyboard's room on Android and iOS, the code field's autofill and
+  number pad, the swipe and the back button held on the code screens, an app closed with a code
+  half done, VoiceOver and TalkBack on the code screens, Hermes reading the auth server's times, and
+  the twin towns' lines in a phone's own fonts were tried in Jest and, where they could be, against
+  the local stack and in the web build - not on a device.
+- **The hosted project.** Everything above goes with its first `db push` and `config push`, and
+  whether it takes a code life of a day (`otp_expiry = 86400`) shows at that push. Custom SMTP, and
+  email confirmation on, before anyone else signs up (GO-LIVE).
+- **Who can tell whether an address has an account.** A taken username at sign-up, the project's
+  emails for the hour used up, and the auth server's own answers still tell (ARCHITECTURE, "Who can
+  tell whether an address has an account"). Closing the first needs a database change; the rest is
+  the operator's to weigh.
+- **A sign-out on a dead connection** can hold signing in back for about a minute. Sign in and
+  Create account say so after five seconds; the code screens' Confirm and "Set the new password"
+  show their spinner alone. Whether they should say so too is the operator's call.
+- **"Almost there" can only try the same password again.** If the auth server refuses the password
+  typed at sign-up or at sign-in - under a stricter rule, say - the way on is Start over, or Sign
+  out and "I forgot my password".
+- **A lost answer to a sign-up's code.** If the server confirmed the account and the answer never
+  came, nothing holds the way in: the account has no password until "I forgot my password" sets
+  one, and keeps the username and name of the first sign-up for the address - perhaps someone
+  else's - until the operator removes it.
+- **A letter could still go twice** if the first send is still on its way to the database both
+  times the app asks after it, and changed words go in between. The window is normally
+  milliseconds.
+- **Friend requests from many accounts**, each making its own, are still possible, and usernames
+  can be guessed while the guesses miss. A cap per person asked, a wait after a decline, or a
+  CAPTCHA are the operator's choices.
+- **An account deleted on another phone** keeps its token on this one for up to an hour. The app
+  shows it as gone, but a friend request, a block or a report sent from it fails with a database
+  error rather than as an account that has ended.
+- **The longest twin-town names** are still cut in the letters list, where they push the time or
+  the countdown off the line, and on the flight path, at 360 and 390 px. Write on the friends list
+  and on a courier's page passes no name to compose, so a friendship that ends in between gets the
+  general words rather than the friend's name.
+- **A read of the profile on a connection that never answers** takes about a minute and a half to
+  fail: the profile is the only table the app reads directly, and postgrest-js repeats such a read
+  three times by itself, each attempt with its own 20 seconds. `db: { retry: false }` in
+  `createClient` would make it fail as the rest do.
