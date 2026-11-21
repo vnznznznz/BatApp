@@ -11,13 +11,16 @@ import {
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignInScreen from '@/app/sign-in';
+import { SignedOutUnfinished } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
 
 const mockedAnnounce = jest.mocked(announce);
 
 const mockSignIn = jest.fn();
 const mockConfirmEmail = jest.fn();
+const mockFinishSignIn = jest.fn();
 const mockResendConfirmationCode = jest.fn();
+const mockSignOut = jest.fn();
 const mockReplace = jest.fn();
 
 jest.mock('expo-router', () => {
@@ -31,14 +34,45 @@ jest.mock('expo-router', () => {
   };
 });
 
-jest.mock('@/features/auth/auth-context', () => ({
-  ...jest.requireActual<object>('@/features/auth/auth-context'),
-  useAuth: () => ({
-    signIn: mockSignIn,
-    confirmEmail: mockConfirmEmail,
-    resendConfirmationCode: mockResendConfirmationCode,
-  }),
-}));
+/**
+ * Whether the stand-in context holds the way in, as the app's does from the
+ * moment the code from signing in has signed the courier in until the
+ * password is saved again; and what for. A change is drawn at once, as with
+ * the app's own context.
+ */
+const mockHold = {
+  current: false,
+  unfinished: null as object | null,
+  listeners: new Set<() => void>(),
+  set(next: boolean, unfinished: object | null = null) {
+    mockHold.current = next;
+    mockHold.unfinished = unfinished;
+    mockHold.listeners.forEach((listener) => listener());
+  },
+};
+
+jest.mock('@/features/auth/auth-context', () => {
+  const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+  const subscribe = (listener: () => void) => {
+    mockHold.listeners.add(listener);
+    return () => mockHold.listeners.delete(listener);
+  };
+  return {
+    ...jest.requireActual<object>('@/features/auth/auth-context'),
+    useAuth: () => {
+      const isSettingPassword = useSyncExternalStore(subscribe, () => mockHold.current);
+      return {
+        isSettingPassword,
+        unfinished: isSettingPassword ? mockHold.unfinished : null,
+        signIn: mockSignIn,
+        confirmEmail: mockConfirmEmail,
+        finishSignIn: mockFinishSignIn,
+        resendConfirmationCode: mockResendConfirmationCode,
+        signOut: mockSignOut,
+      };
+    },
+  };
+});
 
 jest.mock('@/lib/announce', () => ({ announce: jest.fn() }));
 
@@ -103,7 +137,10 @@ const keyboard = (event: 'keyboardDidShow' | 'keyboardDidHide', height: number) 
 beforeEach(() => {
   mockSignIn.mockReset();
   mockConfirmEmail.mockReset();
+  mockFinishSignIn.mockReset();
   mockResendConfirmationCode.mockReset();
+  mockSignOut.mockReset();
+  mockHold.set(false);
   mockReplace.mockReset();
   mockedAnnounce.mockReset();
   mockKeyboardAvoidingViews.length = 0;
@@ -278,14 +315,118 @@ describe('SignInScreen', () => {
       expect(screen.getByLabelText('Code')).toHaveProp('textContentType', 'oneTimeCode');
     });
 
-    it('confirms the address with the code, which signs the courier in', async () => {
-      mockConfirmEmail.mockResolvedValue(undefined);
+    /** As the app's context does: the code signs the courier in, and holds the way in. */
+    const codeSignsIn = () =>
+      mockConfirmEmail.mockImplementation(async () =>
+        mockHold.set(true, { flow: 'sign-in', email: 'anna@example.com' }),
+      );
+
+    /**
+     * Confirming the address takes the account's password away (the database
+     * does, as the code confirms it), so that nobody's password from before
+     * signs in to it: the one the courier has just signed in with is set
+     * again.
+     */
+    it('confirms the address with the code, and then saves the password signed in with again', async () => {
+      codeSignsIn();
+      mockFinishSignIn.mockResolvedValue(undefined);
       await signedInUnconfirmed();
 
       await user.type(screen.getByLabelText('Code'), '87654321');
       await user.press(button('Confirm'));
 
       expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '87654321');
+      expect(mockFinishSignIn).toHaveBeenCalledWith('a-good-password');
+    });
+
+    describe('when the password could not be saved again after the code', () => {
+      const NOT_SAVED =
+        'Your address is confirmed, but your password is not saved yet: confirming the address ' +
+        'takes it away until it is saved again. Try again. Or sign out, and set a password ' +
+        'with "I forgot my password".';
+
+      async function notSaved() {
+        codeSignsIn();
+        mockFinishSignIn.mockRejectedValueOnce(
+          new Error('No connection. Check your network and try again.'),
+        );
+        await signedInUnconfirmed();
+        await user.type(screen.getByLabelText('Code'), '87654321');
+        await user.press(button('Confirm'));
+      }
+
+      it('says so, and why, aloud, and offers no way back to the form', async () => {
+        await notSaved();
+
+        expect(screen.getByText('Almost there')).toBeOnTheScreen();
+        expect(screen.getByText(NOT_SAVED)).toBeOnTheScreen();
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(
+          `Almost there. ${NOT_SAVED} No connection. Check your network and try again.`,
+        );
+        expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+        expect(screen.queryByLabelText('Code')).toBeNull();
+      });
+
+      it('saves it when asked again, with no code asked for again', async () => {
+        await notSaved();
+        mockFinishSignIn.mockResolvedValue(undefined);
+
+        await user.press(button('Try again'));
+
+        expect(mockFinishSignIn).toHaveBeenCalledTimes(2);
+        expect(mockFinishSignIn).toHaveBeenLastCalledWith('a-good-password');
+        expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
+      });
+
+      it('signs out instead, and goes back to the form, saying how to sign in now', async () => {
+        await notSaved();
+        mockSignOut.mockImplementation(async () => mockHold.set(false));
+
+        await user.press(button('Sign out'));
+
+        expect(mockSignOut).toHaveBeenCalledTimes(1);
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(
+          'Signed out. To sign in, set a password with "I forgot my password".',
+        );
+        expect(screen.getByRole('button', { name: 'Sign in' })).toBeOnTheScreen();
+        expect(mockFinishSignIn).toHaveBeenCalledTimes(1);
+      });
+
+      it('asks for a code again, with the reason, once the code’s sign-in has ended', async () => {
+        codeSignsIn();
+        const ended = 'Your sign-in ended before your password was saved again.';
+        mockFinishSignIn.mockImplementation(async () => {
+          mockHold.set(false);
+          throw new SignedOutUnfinished(ended);
+        });
+        await signedInUnconfirmed();
+        await user.type(screen.getByLabelText('Code'), '87654321');
+
+        await user.press(button('Confirm'));
+
+        expect(screen.getByText(ended)).toBeOnTheScreen();
+        expect(screen.getByLabelText('Code')).toBeOnTheScreen();
+        expect(screen.queryByText('Almost there')).toBeNull();
+      });
+    });
+
+    /**
+     * The code had signed the courier in, and the app was closed before the
+     * password was saved again: the root layout brings them back here, and
+     * the password, never kept, is asked for.
+     */
+    it('asks for the password at launch when the code had signed the courier in, and saves it', async () => {
+      mockHold.set(true, { flow: 'sign-in', email: 'anna@example.com' });
+      mockFinishSignIn.mockResolvedValue(undefined);
+      await renderScreen(<SignInScreen />);
+
+      expect(screen.getByText('Almost there')).toBeOnTheScreen();
+      expect(screen.queryByLabelText('Code')).toBeNull();
+      await user.type(screen.getByLabelText('Password'), 'another-password');
+      await user.press(button('Finish'));
+
+      expect(mockFinishSignIn).toHaveBeenCalledWith('another-password');
+      expect(mockConfirmEmail).not.toHaveBeenCalled();
     });
 
     it('confirms with the code from the keyboard’s key too, and only once while it is checked', async () => {

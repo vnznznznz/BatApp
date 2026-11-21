@@ -57,7 +57,7 @@ type MockAuth = {
   isRestoring: boolean;
   isSettingPassword: boolean;
   /** What the code that holds the way in is for, once it has signed the courier in. */
-  unfinished: { flow: 'sign-up' | 'reset' } | null;
+  unfinished: { flow: 'sign-up' | 'sign-in' | 'reset' } | null;
 };
 
 const mockAuth: MockAuth = {
@@ -336,6 +336,40 @@ describe('the root guard', () => {
       await openTheAppOn('sign-up');
 
       expect(mockNavigation).toEqual([]);
+    });
+  });
+
+  /**
+   * Confirming an address takes the account's password away, and the code
+   * from signing in signs the courier in: the password they signed in with is
+   * set again a moment later. Sent to the roost in between, the account would
+   * be left with no password at all.
+   */
+  describe('while the password signed in with is being set again', () => {
+    beforeEach(() => {
+      mockAuth.isSettingPassword = true;
+    });
+
+    it.each([
+      ['the welcome screen, as the app opens', []],
+      ['the sign-up form', ['sign-up']],
+      ['the app itself', ['(app)', 'home']],
+    ])('takes a courier back to the sign-in screen from %s', async (_, segments) => {
+      mockAuth.unfinished = { flow: 'sign-in' };
+
+      await openTheAppOn(...segments);
+
+      expect(mockNavigation).toEqual(['replace /sign-in']);
+    });
+
+    it('leaves a courier on the sign-in screen there, and takes them in once it is set', async () => {
+      mockAuth.unfinished = { flow: 'sign-in' };
+      await openTheAppOn('sign-in');
+      expect(mockNavigation).toEqual([]);
+
+      await authChanges({ isSettingPassword: false, unfinished: null });
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
     });
   });
 

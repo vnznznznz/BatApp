@@ -15,15 +15,21 @@ import { announce } from '@/lib/announce';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, unfinished } = useAuth();
+  // A sign-in whose code has confirmed the address, with the password not yet
+  // saved again - the app closed in between, say - taken up where it was
+  // left: the root layout brings the courier here for it.
+  const [resumed] = useState(() => (unfinished?.flow === 'sign-in' ? unfinished : null));
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(resumed?.email ?? '');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string | null; password?: string | null }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The address, as sent, while it is waiting for the code that confirms it.
-  const [unconfirmed, setUnconfirmed] = useState<string | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState<string | null>(resumed?.email ?? null);
+  // Until the courier goes back to the form from it.
+  const [resuming, setResuming] = useState(resumed !== null);
   const passwordField = useRef<TextInput>(null);
   // The keyboard's "go" key is not held back by the button's spinner, and a
   // second tap can come before the spinner is drawn: once is enough.
@@ -54,11 +60,18 @@ export default function SignInScreen() {
   }
 
   if (unconfirmed) {
+    // With the password signed in with: confirming the address takes it away,
+    // and it is set again once the code has confirmed it.
     return (
       <ConfirmEmail
         email={unconfirmed}
         reason="not-confirmed"
-        onBack={() => setUnconfirmed(null)}
+        password={password}
+        resumed={resuming}
+        onBack={() => {
+          setResuming(false);
+          setUnconfirmed(null);
+        }}
       />
     );
   }

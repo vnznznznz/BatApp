@@ -44,11 +44,12 @@ export type AuthContextValue = {
   /**
    * True while a code from an email is being checked, or has signed the
    * courier in, and the password they chose is still to be saved: the new one
-   * of a password reset, or the one typed at sign-up, with the rest of the
-   * account as they set it up. From the moment the code goes until that is
-   * done, or the courier signs out. The root layout holds the way into the
-   * app meanwhile: in it they would be signed in with a password they do not
-   * know - and after signing up, perhaps someone else does.
+   * of a password reset, the one typed at sign-up, with the rest of the
+   * account as they set it up, or the one signed in with, which confirming
+   * the address took away. From the moment the code goes until that is done,
+   * or the courier signs out. The root layout holds the way into the app
+   * meanwhile: in it they would be signed in with a password they do not know
+   * - and after signing up, perhaps someone else does - or with none.
    */
   isSettingPassword: boolean;
   /**
@@ -73,9 +74,17 @@ export type AuthContextValue = {
   /**
    * Confirms an account's address with the code emailed to it, which signs the
    * courier in: from signing in, when the server has found the password right
-   * and the address still waiting for its code.
+   * and the address still waiting for its code. Confirming the address takes
+   * the account's password away (the database does it, as the code confirms
+   * the address), and the way in is held until `finishSignIn` has set it again.
    */
   confirmEmail: (email: string, code: string) => Promise<void>;
+  /**
+   * Sets the password signed in with again on the account `confirmEmail` has
+   * confirmed, and the way into the app opens. Rejects, signed in and held,
+   * when it could not be saved - or with `SignedOutUnfinished`, signed out.
+   */
+  finishSignIn: (password: string) => Promise<void>;
   /**
    * Confirms the address of an account just signed up for with `details`, with
    * the code emailed to it. That signs the courier in, and holds the way in
@@ -89,7 +98,7 @@ export type AuthContextValue = {
    * once it is, and the way into the app opens; or 'new code' when an earlier
    * sign-up had given it another username, and it has been set up again from
    * `details`, with a new code on its way. Rejects, signed in and held, when
-   * that could not be done - or with `SetUpAgainFailed`, signed out.
+   * that could not be done - or with `SignedOutUnfinished`, signed out.
    */
   finishSignUp: (details: SignUpDetails) => Promise<'signed in' | 'new code'>;
   /**
@@ -393,20 +402,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // sign-up for the address made it: a second sign-up sends a new code
       // and changes nothing else. That first sign-up may have been anyone's -
       // someone who typed this address, with a password they would go on
-      // knowing once its owner had confirmed the account. So the password is
-      // the one typed now, set at once: the session the code brought is
-      // seconds old, and nobody else holds one. Being the password the
-      // account has already is no refusal.
+      // knowing once its owner had confirmed the account. The database takes
+      // that password away as the code confirms the address (migration
+      // 20261121160000), and the password is the one typed now, set at once:
+      // the session the code brought is seconds old, and nobody else holds
+      // one. Being the password the account has already - on a server
+      // without that migration - is no refusal.
       const { error } = await supabase.auth.updateUser({ password: details.password });
       // The session the code brought has been ended elsewhere: by a change of
       // the password, which ends every other session - and nobody but whoever
       // knew a password for the account could have made one. It may well be
-      // theirs now. The auth server allows that for as long as it takes to set
-      // the courier's own password, one request, and the app can do no more
-      // than say so, signed out. (Found in review.)
+      // theirs now. Without the migration the auth server allows that for as
+      // long as it takes to set the courier's own password, one request, and
+      // the app can do no more than say so, signed out. (Found in review.)
       if (isAuthSessionMissingError(error)) {
         await signOut().catch(() => {});
-        throw new SetUpAgainFailed(SIGN_IN_ENDED, { cause: error });
+        throw new SignedOutUnfinished(SIGN_IN_ENDED, { cause: error });
       }
       if (error && !isAnswer(error, 'same_password', 'different from the old password')) {
         throw explained(error);
@@ -431,7 +442,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // still under way, as every way of signing in must.
         const again = await settled(signUp(details));
         if (!again.ok) {
-          throw new SetUpAgainFailed(
+          throw new SignedOutUnfinished(
             'This address had an account waiting for its code already, set up with another ' +
               'username, and it has been removed to make way for yours. Yours could not be ' +
               `set up just now: ${wordsOf(again.error)} ` +
@@ -493,15 +504,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
 
       async confirmEmail(email, code) {
-        await beforeSigningIn();
-        const { error } = await supabase.auth.verifyOtp({
-          type: 'signup',
-          email: email.trim(),
-          token: code,
-        });
-        if (error) throw explained(error);
-        // The password signed in with is the account's, and nothing is left.
-        await forgetUnfinished();
+        await checkCode('signup', code, { flow: 'sign-in', email: email.trim() });
+      },
+
+      async finishSignIn(password) {
+        // Confirming the address took the account's password away, so that
+        // nobody's password from before it was confirmed signs in to it. The
+        // courier's own is the one the server has just found right, and is
+        // set again. A server that still has it answers that it is the same:
+        // done all the same.
+        const { error } = await supabase.auth.updateUser({ password });
+        if (isAuthSessionMissingError(error)) {
+          await signOut().catch(() => {});
+          throw new SignedOutUnfinished(SIGN_IN_ENDED_BEFORE_SAVED, { cause: error });
+        }
+        if (error && !isAnswer(error, 'same_password', 'different from the old password')) {
+          throw explained(error);
+        }
+        await finished();
       },
 
       async confirmSignUp(details, code) {
@@ -741,17 +761,22 @@ const isAccountGone = (error: AuthError | null) =>
 export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try another.';
 
 /**
- * Thrown by `finishSignUp` when it has left the courier signed out: the
- * account an earlier sign-up made has been removed to make way for theirs,
- * and theirs could not be set up; or the session the code brought was ended
- * elsewhere. The code screen is the way on, with the reason.
+ * Thrown when finishing what a code was for has left the courier signed out:
+ * by `finishSignUp` when the account an earlier sign-up made has been removed
+ * to make way for theirs, and theirs could not be set up; by it and by
+ * `finishSignIn` when the session the code brought was ended elsewhere. The
+ * code screen is the way on, with the reason.
  */
-export class SetUpAgainFailed extends Error {}
+export class SignedOutUnfinished extends Error {}
 
 const SIGN_IN_ENDED =
   'Your sign-in ended before your account was finished: someone who knew a password set ' +
   'for this address before yours may have changed it. Write to the contact address on the ' +
   'help page, and the account can be removed so that you can sign up again.';
+
+const SIGN_IN_ENDED_BEFORE_SAVED =
+  'Your sign-in ended before your password was saved again. Your address is confirmed: ' +
+  'set a password with "I forgot my password", and sign in with it.';
 
 /**
  * What is left to do as it is to be taken up: for a reset, with whether its

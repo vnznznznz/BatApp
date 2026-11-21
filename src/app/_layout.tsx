@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-context';
+import type { Unfinished } from '@/features/auth/unfinished';
 
 // Both splash calls reject if the splash screen has already been dismissed —
 // on a fast reload, for instance. That is harmless, but an uncaught rejection
@@ -53,15 +54,16 @@ function RootNavigator() {
   // to the start, and from there this guard takes them to the roost.
   const forAnyone = segment === 'rules' || segment === '+not-found';
   // A code from an email signs the courier in before the password they chose
-  // is saved: the new one of a reset, or the one typed at sign-up - which
+  // is saved: the new one of a reset, the one typed at sign-up - which
   // replaces whatever password an earlier sign-up for the address gave the
-  // account. Saving it can fail. Until it is saved they are held: nowhere but
+  // account - or the one signed in with, which confirming the address took
+  // away. Saving it can fail. Until it is saved they are held: nowhere but
   // on the screen that asked for the code, which says what happened and asks
   // again - taken back to it from anywhere else they find themselves, gone
   // back in a browser or with the app opened again after it was closed.
   // (Found in review: held only on those two screens, the courier left the
   // hold behind by any other way off them.)
-  const holdOn = unfinished?.flow === 'reset' ? 'reset-password' : unfinished ? 'sign-up' : null;
+  const holdOn = unfinished ? HOLD_ON[unfinished.flow] : null;
 
   useEffect(() => {
     // Holding the splash until the stored session has been read is what stops
@@ -83,9 +85,7 @@ function RootNavigator() {
   useEffect(() => {
     if (isRestoring || !session) return;
     if (isSettingPassword) {
-      if (holdOn && segment !== holdOn) {
-        router.replace(holdOn === 'reset-password' ? '/reset-password' : '/sign-up');
-      }
+      if (holdOn && segment !== holdOn.slice(1)) router.replace(holdOn);
       return;
     }
     if (inApp || forAnyone) return;
@@ -97,5 +97,12 @@ function RootNavigator() {
 
   return <Stack screenOptions={{ headerShown: false, contentStyle: styles.content }} />;
 }
+
+/** The screen that asked for the code, by what the code is for. */
+const HOLD_ON = {
+  'sign-up': '/sign-up',
+  'sign-in': '/sign-in',
+  reset: '/reset-password',
+} as const satisfies Record<Unfinished['flow'], string>;
 
 const styles = { content: { backgroundColor: Colors.background } } as const;

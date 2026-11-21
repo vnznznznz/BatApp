@@ -854,7 +854,7 @@ describe('signing out', () => {
         [
           'confirming an address from signing in',
           () => auth.confirmEmail('ben@example.test', '12345678'),
-          null,
+          { flow: 'sign-in', email: 'ben@example.test' },
         ],
         [
           'confirming the account just signed up for',
@@ -3054,18 +3054,123 @@ describe('setting up the account a sign-up’s code has confirmed', () => {
     expect(state()).toBe('signed out');
     expect(auth.isSettingPassword).toBe(false);
   });
+});
 
-  /** From signing in, the password was the account's - found right by the server. */
-  it('sets nothing when an address waiting for its code is confirmed from signing in', async () => {
+/**
+ * Signing in with the right password to an account whose address is still
+ * waiting for its code, and then confirming it with the code. Confirming an
+ * address takes the account's password away - the database does it, in the
+ * statement that confirms it (migration 20261121160000), so that nobody's
+ * password from before signs in to it - and the password the courier has just
+ * signed in with is set again, the way in held until it is saved.
+ */
+describe('confirming an address from signing in', () => {
+  const isVerify = (request: Sent) => request.url.endsWith('/auth/v1/verify');
+  const isPasswordChange = (request: Sent) =>
+    request.url.endsWith('/auth/v1/user') && request.method === 'PUT';
+  const NO_CONNECTION = 'No connection. Check your network and try again.';
+
+  function server(password: () => Response | Promise<Response> = () => json(200, {})) {
+    network = (request) => {
+      if (isVerify(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      if (isPasswordChange(request)) return password();
+      if (request.url.includes('/auth/v1/logout')) return new Response(null, { status: 204 });
+      return json(200, []);
+    };
+  }
+
+  async function confirmed() {
+    await launch();
+    await passes(A_MOMENT);
+    expect(await outcomeOf(asked(() => auth.confirmEmail(' anna@example.test ', '12345678')))).toBe(
+      'done',
+    );
+  }
+
+  it('signs in with the code, and holds the way in until the password is set again', async () => {
     server();
+    await confirmed();
+
+    expect(sent.filter(isVerify).map((request) => request.body)).toEqual([
+      expect.objectContaining({ type: 'signup', email: 'anna@example.test', token: '12345678' }),
+    ]);
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+    expect(auth.unfinished).toEqual({ flow: 'sign-in', email: 'anna@example.test' });
+
+    expect(await outcomeOf(asked(() => auth.finishSignIn('night-courier')))).toBe('done');
+
+    expect(sent.filter(isPasswordChange).map(({ body, bearer }) => [body, bearer])).toEqual([
+      [expect.objectContaining({ password: 'night-courier' }), NEW_TOKEN],
+    ]);
+    expect(auth.isSettingPassword).toBe(false);
+    expect(auth.unfinished).toBeNull();
+    expect(state()).toBe('signed in');
+  });
+
+  /** A server without the migration keeps the password, and says the new one is the same. */
+  it('takes the password being the one the account has already for done', async () => {
+    server(() =>
+      authRefusal(422, 'same_password', 'New password should be different from the old password.'),
+    );
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignIn('night-courier')))).toBe('done');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('says why, and holds the way in, signed in, when the password cannot be saved', async () => {
+    server(offline);
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignIn('night-courier')))).toBe(NO_CONNECTION);
+
+    expect(state()).toBe('signed in');
+    expect(auth.isSettingPassword).toBe(true);
+
+    server();
+    expect(await outcomeOf(asked(() => auth.finishSignIn('night-courier')))).toBe('done');
+    expect(auth.isSettingPassword).toBe(false);
+    expect(sent.filter(isVerify)).toHaveLength(1);
+  });
+
+  it('says so, signed out, when the session the code brought has been ended elsewhere', async () => {
+    server(() => authRefusal(403, 'session_not_found', 'Session not found'));
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignIn('night-courier')))).toBe(
+      'Your sign-in ended before your password was saved again. Your address is confirmed: ' +
+        'set a password with "I forgot my password", and sign in with it.',
+    );
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+  });
+
+  it('lets go of the way in when the courier signs out instead', async () => {
+    server(offline);
+    await confirmed();
+    await outcomeOf(asked(() => auth.finishSignIn('night-courier')));
+    server();
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(auth.isSettingPassword).toBe(false);
+    expect(mockKeychain.size).toBe(0);
+  });
+
+  it('holds nothing when the code did not work', async () => {
+    network = () => authRefusal(403, 'otp_expired', 'Token has expired or is invalid');
     await launch();
     await passes(A_MOMENT);
 
-    expect(await outcomeOf(asked(() => auth.confirmEmail(details.email, '12345678')))).toBe('done');
+    expect(await outcomeOf(asked(() => auth.confirmEmail('anna@example.test', '12345678')))).toBe(
+      'That code did not work. Check it against the newest email, or ask for a new one.',
+    );
 
-    expect(state()).toBe('signed in');
+    expect(state()).toBe('signed out');
     expect(auth.isSettingPassword).toBe(false);
-    expect(sent.filter(isPasswordChange)).toEqual([]);
+    expect(auth.unfinished).toBeNull();
   });
 });
 
@@ -3233,6 +3338,40 @@ describe('what a code leaves to do, kept on the device', () => {
 
     await asked(() => auth.signOut());
 
+    expect(auth.isSettingPassword).toBe(false);
+    expect(marker()).toBeNull();
+  });
+
+  it('keeps a sign-in’s too, and takes it up again at launch, until the password is set', async () => {
+    let keptWhenChecked: string | null = null;
+    server({
+      verify: () => {
+        keptWhenChecked = marker();
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      },
+    });
+    await openedSignedOut();
+
+    await asked(() => auth.confirmEmail(' mara@example.test ', '12345678'));
+    expect(JSON.parse(keptWhenChecked ?? 'null')).toEqual({
+      flow: 'sign-in',
+      email: 'mara@example.test',
+    });
+
+    await launch();
+    await passes(A_MOMENT);
+
+    expect(auth.isSettingPassword).toBe(true);
+    expect(auth.unfinished).toEqual({ flow: 'sign-in', email: 'mara@example.test' });
+    expect(rendered.filter((given) => given.session !== null && !given.isSettingPassword)).toEqual(
+      [],
+    );
+
+    await asked(() => auth.finishSignIn('night-courier'));
+
+    expect(sent.filter(isPasswordChange).map(({ body }) => body)).toEqual([
+      expect.objectContaining({ password: 'night-courier' }),
+    ]);
     expect(auth.isSettingPassword).toBe(false);
     expect(marker()).toBeNull();
   });

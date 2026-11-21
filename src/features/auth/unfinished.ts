@@ -5,11 +5,15 @@ import { authStorage } from '@/lib/session-store';
 /**
  * What a code from an email that has signed the courier in is for, and is
  * left to do: the account a sign-up's code confirmed, to be set up as the
- * courier typed it; or the new password of a reset - unless the reset's code
- * confirmed an account nobody had confirmed before, which is to be removed.
+ * courier typed it; the password signed in with, set again on the account
+ * the code from signing in confirmed (confirming an address takes its
+ * password away: supabase/migrations/20261121160000); or the new password of
+ * a reset - unless the reset's code confirmed an account nobody had confirmed
+ * before, which is to be removed.
  */
 export type Unfinished =
   | { flow: 'sign-up'; email: string; username: string; displayName: string }
+  | { flow: 'sign-in'; email: string }
   | { flow: 'reset'; email: string; remove?: boolean };
 
 /**
@@ -65,6 +69,7 @@ function toUnfinished(value: unknown): Unfinished | null {
   if (flow === 'sign-up' && typeof username === 'string' && typeof displayName === 'string') {
     return { flow, email, username, displayName };
   }
+  if (flow === 'sign-in') return { flow, email };
   if (flow === 'reset') return { flow, email, remove: remove === true };
   return null;
 }
