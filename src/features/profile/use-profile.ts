@@ -226,10 +226,12 @@ export function useProfile() {
   /**
    * Saves a city - on `condition`, when one is given - and resolves with
    * whether it was saved. The condition is checked by the database in the
-   * same statement that saves, so nothing can come between the two. If it no
-   * longer held - a letter came or went, or a move settled, between the
-   * picker's question and the answer - nothing is saved, and this resolves
-   * with the profile as it is now, for the question to be asked again.
+   * same statement that saves, so no letter or other change can come between
+   * the two; only the end of a settling move's day is told by this device's
+   * clock (see `departingFrom`). If the condition no longer held - a letter
+   * came or went, or a move settled, between the picker's question and the
+   * answer - nothing is saved, and this resolves with the profile as it is
+   * now, for the question to be asked again.
    *
    * With nobody signed in, or with the account gone - deleted on another
    * device while the picker asked - there is no row to save to, and that is
