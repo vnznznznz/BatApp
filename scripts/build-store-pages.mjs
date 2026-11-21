@@ -380,9 +380,79 @@ for (const [name, html] of Object.entries(pages)) {
   }
 }
 
+/**
+ * The elements that are there to run or to embed something, refused whatever
+ * their attributes say: a script without src runs all the same.
+ */
+const LOADING_ELEMENTS =
+  /<(applet|base|embed|frame|frameset|iframe|img|link|object|portal|script)\b/i;
+
+/**
+ * The attributes that fetch what they name, on whichever element they stand:
+ * an image's src or srcset, a video's poster, a table's background, the
+ * address a followed link pings, an <object>'s data.
+ */
+const LOADING_ATTRIBUTES = [
+  'archive',
+  'background',
+  'codebase',
+  'data',
+  'dynsrc',
+  'imagesrcset',
+  'lowsrc',
+  'manifest',
+  'ping',
+  'poster',
+  'src',
+  'srcset',
+];
+
+/** A tag: its name, and what stands in it, a quoted value read whole - a > in one ends nothing. */
+const TAG = /<([a-z][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+/** An attribute in what stands in a tag: its name, and its value if it has one. */
+const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
+
+/**
+ * What in `html` would have a browser fetch something, or run a script that
+ * could, as the page is shown - said as the build says it - or null. A link
+ * fetches nothing until it is followed: <a href> is how the pages lead to each
+ * other and to the sites they name, and stays. On anything else - an SVG
+ * <image> or <use>, a <base> - href fetches, and so does xlink:href.
+ */
+function whatLoads(html) {
+  const element = LOADING_ELEMENTS.exec(html);
+  if (element) return `<${element[1].toLowerCase()}>`;
+  for (const [, tagName, inside] of html.matchAll(TAG)) {
+    const tag = tagName.toLowerCase();
+    for (const [, attributeName, quoted = ''] of inside.matchAll(ATTRIBUTE)) {
+      const attribute = attributeName.toLowerCase();
+      // Without its quotes and, as a browser reads an address, without blank space.
+      const value = quoted.replace(/^["']|["']$|\s/g, '').toLowerCase();
+      if (LOADING_ATTRIBUTES.includes(attribute)) return `${attribute}= on <${tag}>`;
+      if ((attribute === 'href' || attribute === 'xlink:href') && tag !== 'a') {
+        return `${attribute}= on <${tag}>`;
+      }
+      // An event's handler is a script, and so is a javascript: link.
+      if (/^on/.test(attribute)) return `${attribute}= on <${tag}>`;
+      if (attribute === 'href' && value.startsWith('javascript:')) return 'a javascript: link';
+      // Another page, fetched in this one's place as it is shown.
+      if (attribute === 'http-equiv' && value === 'refresh') {
+        return `http-equiv=refresh on <${tag}>`;
+      }
+    }
+  }
+  // A style that reaches out, in a <style> or a style= alike.
+  return /@import|url\(|image-set\(/i.exec(html)?.[0].toLowerCase() ?? null;
+}
+
 for (const [name, html] of Object.entries(pages)) {
-  if (/<script|<link\b|<iframe|<img|\ssrc=|@import|url\(/i.test(html)) {
-    fail(`${name} would load something from elsewhere; the privacy policy promises it does not`);
+  const loads = whatLoads(html);
+  if (loads) {
+    fail(
+      `${name} would load something from elsewhere (${loads}); the privacy policy promises it ` +
+        'does not',
+    );
   }
   if (/\{\{|<!--/.test(html)) fail(`${name} still has a placeholder or a note`);
 }

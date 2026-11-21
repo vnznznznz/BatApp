@@ -286,6 +286,112 @@ describe('the help page', () => {
 });
 
 /**
+ * The privacy policy promises that the pages load nothing from other sites.
+ * The build looked for scripts, style sheets, frames, images and src= alone,
+ * and let through an embedded document, an SVG image, a video's poster and
+ * the other ways a page fetches something as it is shown.
+ */
+describe('what the pages load', () => {
+  const HEADING = '# Night Courier – help and contact\n';
+
+  /** The help page's source, with `html` under its first heading. */
+  const sourcesWithHtml = (html) =>
+    sourcesWith('support-page.md', (text) => text.replace(HEADING, `${HEADING}\n${html}\n`));
+
+  for (const [what, html, said] of [
+    [
+      'an embedded document, by <object data>',
+      '<object data="https://example.org/a.pdf"></object>',
+      '<object>',
+    ],
+    ['an embed', '<embed src="https://example.org/a.svg">', '<embed>'],
+    [
+      'an SVG image, by its href',
+      '<svg><image href="https://example.org/a.png" width="8" height="8"/></svg>',
+      'href= on <image>',
+    ],
+    [
+      'an SVG image, by its xlink:href',
+      '<svg><image xlink:href="https://example.org/a.png"/></svg>',
+      'xlink:href= on <image>',
+    ],
+    [
+      'a picture, by its srcset',
+      '<picture><source srcset="https://example.org/a.webp 1x"></picture>',
+      'srcset= on <source>',
+    ],
+    [
+      'a video’s poster',
+      '<video poster="https://example.org/a.jpg"></video>',
+      'poster= on <video>',
+    ],
+    [
+      'a table’s background',
+      '<table background="https://example.org/a.png"><tr><td>x</td></tr></table>',
+      'background= on <table>',
+    ],
+    [
+      'a link that pings another site when it is followed',
+      '<a href="index.html" ping="https://example.org/count">Help</a>',
+      'ping= on <a>',
+    ],
+    [
+      'an image behind a quoted >, which ends no tag',
+      '<svg><image title="1 > 0" href="https://example.org/a.png"/></svg>',
+      'href= on <image>',
+    ],
+    [
+      'a script run by an attribute',
+      '<svg onload="fetch(\'https://example.org/\')"></svg>',
+      'onload= on <svg>',
+    ],
+    [
+      'a script run by a link',
+      '<a href="javascript:fetch(\'https://example.org/\')">Help</a>',
+      'a javascript: link',
+    ],
+    [
+      'another page, by a refresh',
+      '<meta http-equiv="refresh" content="0; url=https://example.org/">',
+      'http-equiv=refresh on <meta>',
+    ],
+    [
+      'an image set in a style',
+      '<p style="background-image: image-set(\'https://example.org/a.png\' 1x)">x</p>',
+      'image-set(',
+    ],
+  ]) {
+    it(`are not built with ${what}`, () => {
+      const sources = sourcesWithHtml(html);
+
+      assert.throws(
+        () => build(DETAILS, out, ['--sources', sources]),
+        (error) =>
+          error.stderr.includes(
+            `index.html would load something from elsewhere (${said}); the privacy policy ` +
+              'promises it does not',
+          ),
+      );
+      assert.deepEqual(readdirSync(out), []);
+    });
+  }
+
+  /** A link loads nothing until it is followed, and the pages lead to each other with links. */
+  it('are built with plain links, to each other and to other sites', () => {
+    const sources = sourcesWithHtml(
+      '<p><a href="privacy-policy.en.html" title="1 > 0">The policy</a>, ' +
+        '<a href="https://example.org/">a site</a>, ' +
+        '<a href="#night-courier--hilfe-und-kontakt">Deutsch</a>, ' +
+        '<a href="mailto:operator@example.test">mail</a>.</p>',
+    );
+
+    build(DETAILS, out, ['--sources', sources]);
+
+    assert.match(read(out, 'index.html'), /<a href="https:\/\/example\.org\/">a site<\/a>/);
+  });
+});
+
+/**
  * Google is given the account deletion text in docs/store/google-play.md and
  * checks the help page against it. What is kept, and for how long, is the part
  * that changes - a new period, another way an account is deleted - and it is
