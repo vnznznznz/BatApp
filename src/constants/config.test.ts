@@ -19,7 +19,8 @@ import {
 // Node built-ins, typed by hand: the project's tsconfig deliberately leaves out
 // Node's types, which describe nothing that exists in React Native.
 declare const __dirname: string;
-const { readFileSync } = jest.requireActual<{
+const { readdirSync, readFileSync } = jest.requireActual<{
+  readdirSync: (path: string) => string[];
   readFileSync: (path: string, encoding: 'utf8') => string;
 }>('fs');
 const { join } = jest.requireActual<{ join: (...parts: string[]) => string }>('path');
@@ -254,5 +255,112 @@ describe('who can join', () => {
         });
       }
     }
+  });
+
+  /**
+   * The statements above are the ones that matter most, not all there are:
+   * the listings, the records of processing and the operator's notes give the
+   * ages in many more places, and a 13 changed to 14 in one of them passed.
+   * (Found in review.) So every place a store document gives an age is also
+   * found by the words around the number - "at least 13", "under 16", "ab 13
+   * Jahren", "13+" - and must give one of the two; a span, "13–15", must be
+   * the years that need the permission. A new document is searched too. Not
+   * "older than" or "älter als": the documents say how long records are kept
+   * with them.
+   */
+  const NUMBER = String.raw`(\d+)(?![.,:]?\d)`;
+  /** Where a word starts, in any script: `\b` knows only the letters of English. */
+  const START = String.raw`(?<![\p{L}\p{N}_])`;
+  const AGE_GIVEN = new RegExp(
+    [
+      String.raw`aged ${NUMBER}(?: to ${NUMBER})?`,
+      String.raw`${NUMBER} (?:and|or) (?:over|older|up)\b`,
+      String.raw`(?:at least|under|younger than|below) ${NUMBER}`,
+      String.raw`(?:minimum )?age (?:of |is |was |to )?${NUMBER}`,
+      String.raw`minimum of ${NUMBER}`,
+      String.raw`${NUMBER}- to ${NUMBER}-year-old`,
+      String.raw`${NUMBER}-year-old`,
+      String.raw`${NUMBER} ?– ?${NUMBER}`,
+      String.raw`${NUMBER}\+`,
+      String.raw`(?:MINIMUM_AGE|PARENTAL_PERMISSION_UNDER) = ${NUMBER}`,
+      String.raw`(?:ab|unter|mindestens|jünger als) ${NUMBER}`,
+      String.raw`${NUMBER} Jahre alt`,
+      String.raw`${NUMBER} und älter`,
+      String.raw`von ${NUMBER} bis ${NUMBER}`,
+      String.raw`Altersgrenze (?:ist |von )?${NUMBER}`,
+    ]
+      .map((phrase) => START + phrase)
+      .join('|'),
+    'giu',
+  );
+
+  /**
+   * The numbers in such words that are no age of Night Courier's - counts of
+   * other things, the ages of other rules and of the stores' own scales, and
+   * the age it had until 5 November 2026 - each written as the documents
+   * write it. They are taken out before the documents are searched, and each
+   * must still be in one of them, so that this list says what they say.
+   * Apple's scale and Play's groups come before the parts of them named alone.
+   */
+  const OTHER_NUMBERS: [what: string, where: RegExp][] = [
+    ['a flight within a city', /at least 20 minutes|mindestens 20 Minuten/g],
+    ['a password', /at least 8 characters/g],
+    ['the screenshots for Google Play', /At least 2, at most 8/g],
+    ["Google's closed test", /at least 12 testers/g],
+    ["Google's precise location", /at least 3 km²/g],
+    ['when a data protection officer is needed', /ab 20 Personen/g],
+    ['the age of the rule on sexual content', /anyone under 18/g],
+    ["Apple's age ratings", /4\+, 9\+, 13\+, 16\+ and 18\+/g],
+    ["the rating Apple's tables give the app before the override", /\b4\+/g],
+    ["Play's age groups", /5 and under, 6–8, 9–12, 13–15, 16–17, 18 and over/g],
+    ["Play's age groups below the minimum age", /not 5 and under, not 6–8, not 9–12/g],
+    [
+      "Play's age groups from the permission age up",
+      /16–17,? (?:and|und) 18 (?:and over|und älter)/g,
+    ],
+    [
+      'the minimum age until 5 November 2026',
+      /the minimum age was 12|include 9–12|Kindes unter 12/g,
+    ],
+  ];
+
+  const STORE_DOCUMENTS = readdirSync(join(__dirname, '..', '..', 'docs', 'store')).filter((file) =>
+    file.endsWith('.md'),
+  );
+
+  it('is every age the store documents give, wherever they give one', () => {
+    const contradicting: string[] = [];
+    const notFound = new Set(OTHER_NUMBERS.map(([what]) => what));
+
+    for (const file of STORE_DOCUMENTS) {
+      let text = plainText(file);
+      for (const [what, where] of OTHER_NUMBERS) {
+        text = text.replace(where, () => {
+          notFound.delete(what);
+          return '…';
+        });
+      }
+
+      const given = [...text.matchAll(AGE_GIVEN)];
+      // A search that found nothing would pass whatever the documents said.
+      expect({ file, givesAnAge: given.length > 0 }).toEqual({ file, givesAnAge: true });
+      for (const match of given) {
+        const [first, last] = match
+          .slice(1)
+          .filter((age) => age !== undefined)
+          .map(Number);
+        const right =
+          last === undefined
+            ? first === MINIMUM_AGE || first === PARENTAL_PERMISSION_UNDER
+            : first === MINIMUM_AGE && last === PARENTAL_PERMISSION_UNDER - 1;
+        if (!right) {
+          const at = match.index ?? 0;
+          contradicting.push(`${file}: …${text.slice(Math.max(0, at - 40), at + 40)}…`);
+        }
+      }
+    }
+
+    expect(contradicting).toEqual([]);
+    expect([...notFound]).toEqual([]);
   });
 });
