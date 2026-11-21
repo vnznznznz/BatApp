@@ -9,6 +9,7 @@ import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
+import { settled, wordsOf } from '@/features/auth/settled';
 import { validateEmail, validatePassword } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
 
@@ -37,20 +38,19 @@ export default function SignInScreen() {
 
     inFlight.current = true;
     setBusy(true);
-    try {
-      const { needsEmailConfirmation } = await signIn(email, password);
-      // Otherwise the root layout sends the user onward once the session lands
-      // (see RootNavigator in src/app/_layout.tsx); nothing to navigate to here.
-      if (needsEmailConfirmation) setUnconfirmed(email.trim());
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
+    const answer = await settled(signIn(email, password));
+    inFlight.current = false;
+    setBusy(false);
+
+    if (!answer.ok) {
       // Shown under the form, while a screen reader is still on the button.
-      setFormError(message);
-      announce(message);
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
+      setFormError(wordsOf(answer.error));
+      announce(wordsOf(answer.error));
+      return;
     }
+    // Otherwise the root layout sends the user onward once the session lands
+    // (see RootNavigator in src/app/_layout.tsx); nothing to navigate to here.
+    if (answer.value.needsEmailConfirmation) setUnconfirmed(email.trim());
   }
 
   if (unconfirmed) {

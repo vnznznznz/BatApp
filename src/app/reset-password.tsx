@@ -10,6 +10,7 @@ import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
 import { CODE_DID_NOT_WORK, useAuth } from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
+import { settled, wordsOf } from '@/features/auth/settled';
 import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import {
@@ -44,19 +45,18 @@ export default function ResetPasswordScreen() {
 
     inFlight.current = true;
     setBusy(true);
-    try {
-      await sendPasswordReset(email);
-      // Shown whether or not the address is registered: telling the difference
-      // would let anyone check who has an account here.
-      setSentTo(email.trim());
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Something went wrong.';
-      setFormError(message);
-      announce(message);
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
+    const answer = await settled(sendPasswordReset(email));
+    inFlight.current = false;
+    setBusy(false);
+
+    if (!answer.ok) {
+      setFormError(wordsOf(answer.error));
+      announce(wordsOf(answer.error));
+      return;
     }
+    // Shown whether or not the address is registered: telling the difference
+    // would let anyone check who has an account here.
+    setSentTo(email.trim());
   }
 
   if (sentTo) {
@@ -142,9 +142,8 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
   const inFlight = useRef(false);
 
   function failed(caught: unknown) {
-    const message = caught instanceof Error ? caught.message : 'Something went wrong.';
-    setFormError(message);
-    announce(message);
+    setFormError(wordsOf(caught));
+    announce(wordsOf(caught));
   }
 
   async function submit() {
@@ -159,41 +158,39 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
 
     inFlight.current = true;
     setBusy(true);
-    try {
-      if (!signedInByCode) {
-        try {
-          await verifyResetCode(email, code);
-        } catch (caught) {
-          // The code field says its own error aloud.
-          if (caught instanceof Error && caught.message === CODE_DID_NOT_WORK) {
-            setErrors({ code: caught.message });
-          } else {
-            failed(caught);
-          }
-          return;
-        }
+    await saveWithCode();
+    inFlight.current = false;
+    setBusy(false);
+  }
+
+  /** The code, unless it has signed the courier in already, and then the password. */
+  async function saveWithCode() {
+    if (!signedInByCode) {
+      const checked = await settled(verifyResetCode(email, code));
+      if (!checked.ok) {
+        // The code field says its own error aloud.
+        if (wordsOf(checked.error) === CODE_DID_NOT_WORK) setErrors({ code: CODE_DID_NOT_WORK });
+        else failed(checked.error);
+        return;
       }
-      try {
-        await setNewPassword(password);
-        setSaved(true);
-      } catch (caught) {
-        // Asked again for the password alone, the reason is all that is new.
-        if (signedInByCode) {
-          failed(caught);
-          return;
-        }
-        // The screen becomes the one that asks for the password alone. The
-        // button pressed stays where it was, under another name, and a screen
-        // reader on it hears what has become of the screen, and why.
-        const message = caught instanceof Error ? caught.message : 'Something went wrong.';
-        setNotSaved(true);
-        setFormError(message);
-        announce(`${stageWords('Your new password', NOT_SAVED)} ${message}`);
-      }
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
     }
+
+    const changed = await settled(setNewPassword(password));
+    if (changed.ok) {
+      setSaved(true);
+      return;
+    }
+    // Asked again for the password alone, the reason is all that is new.
+    if (signedInByCode) {
+      failed(changed.error);
+      return;
+    }
+    // The screen becomes the one that asks for the password alone. The
+    // button pressed stays where it was, under another name, and a screen
+    // reader on it hears what has become of the screen, and why.
+    setNotSaved(true);
+    setFormError(wordsOf(changed.error));
+    announce(`${stageWords('Your new password', NOT_SAVED)} ${wordsOf(changed.error)}`);
   }
 
   async function sendAgain() {

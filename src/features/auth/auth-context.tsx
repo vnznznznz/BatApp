@@ -14,6 +14,7 @@ import {
   normaliseUsername,
   PASSWORD_TOO_LONG,
 } from '@/features/auth/validation';
+import { settled, wordsOf } from '@/features/auth/settled';
 import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
@@ -291,13 +292,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function checkCode(type: 'signup' | 'recovery', email: string, code: string) {
       signedOutUnheard = false;
       setCodesOut((count) => count + 1);
-      try {
-        const { error } = await supabase.auth.verifyOtp({ type, email: email.trim(), token: code });
-        if (error) throw explained(error);
-        setSignedInByCode(true);
-      } finally {
-        setCodesOut((count) => count - 1);
-      }
+      const checked = await settled(
+        supabase.auth.verifyOtp({ type, email: email.trim(), token: code }),
+      );
+      if (checked.ok && !checked.value.error) setSignedInByCode(true);
+      setCodesOut((count) => count - 1);
+      if (!checked.ok) throw checked.error;
+      if (checked.value.error) throw explained(checked.value.error);
     }
 
     async function finishSignUp(details: SignUpDetails): Promise<'signed in' | 'new code'> {
@@ -329,18 +330,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // been done with it: the code confirmed it only now.
       if (account && account.username !== normaliseUsername(details.username)) {
         await deleteAccount();
-        try {
-          const { needsEmailConfirmation } = await signUp(details);
-          return needsEmailConfirmation ? 'new code' : 'signed in';
-        } catch (cause) {
+        const again = await settled(signUp(details));
+        if (!again.ok) {
           throw new SetUpAgainFailed(
             'This address had an account waiting for its code already, set up with another ' +
               'username, and it has been removed to make way for yours. Yours could not be ' +
-              `set up just now: ${cause instanceof Error ? cause.message : String(cause)} ` +
+              `set up just now: ${wordsOf(again.error)} ` +
               'Go back to the form to set it up again.',
-            { cause },
+            { cause: again.error },
           );
         }
+        return again.value.needsEmailConfirmation ? 'new code' : 'signed in';
       }
       // The name can be changed at any time, and is the one typed now. Left
       // as it was if it cannot be: the profile shows it, and can change it.

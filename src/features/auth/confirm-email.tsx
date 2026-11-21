@@ -15,6 +15,7 @@ import {
   type SignUpDetails,
 } from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
+import { settled } from '@/features/auth/settled';
 import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import { EMAIL_CODE_LENGTH, validateEmailCode } from '@/features/auth/validation';
@@ -119,23 +120,25 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
 
     inFlight.current = true;
     setBusy(true);
-    try {
-      if (!unfinished) {
-        try {
-          // Signed in. From signing in, the root layout sends the courier on
-          // (src/app/_layout.tsx); after signing up it waits for the account.
-          if (details) await confirmSignUp(email, code);
-          else await confirmEmail(email, code);
-        } catch (error) {
-          failed(error, { atTheCode: true });
-          return;
-        }
+    await confirmThenFinish();
+    inFlight.current = false;
+    setBusy(false);
+  }
+
+  /** The code, unless it has signed the courier in already, and then the account. */
+  async function confirmThenFinish() {
+    if (!unfinished) {
+      // Signed in. From signing in, the root layout sends the courier on
+      // (src/app/_layout.tsx); after signing up it waits for the account.
+      const checked = await settled(
+        details ? confirmSignUp(email, code) : confirmEmail(email, code),
+      );
+      if (!checked.ok) {
+        failed(checked.error, { atTheCode: true });
+        return;
       }
-      if (details) await finish(details);
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
     }
+    if (details) await finish(details);
   }
 
   async function finish(chosen: SignUpDetails) {

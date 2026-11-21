@@ -11,6 +11,7 @@ import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constan
 import { Spacing } from '@/constants/theme';
 import { ALREADY_REGISTERED, USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
+import { settled, wordsOf } from '@/features/auth/settled';
 import {
   validateDisplayName,
   validateEmail,
@@ -65,15 +66,12 @@ export default function SignUpScreen() {
 
     inFlight.current = true;
     setBusy(true);
-    try {
-      const { needsEmailConfirmation } = await signUp({ email, password, username, displayName });
-      // With confirmation on, no session arrives yet: the code emailed to the
-      // address is asked for. With it off, the session lands immediately and
-      // the route guard takes them onward, so asking for a code would be a lie
-      // they would wait on.
-      if (needsEmailConfirmation) setSentTo(email.trim());
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
+    const answer = await settled(signUp({ email, password, username, displayName }));
+    inFlight.current = false;
+    setBusy(false);
+
+    if (!answer.ok) {
+      const message = wordsOf(answer.error);
       // The failures that belong to a field are said at that field.
       // The fields say theirs aloud; the form says its own.
       if (message === USERNAME_MAY_BE_TAKEN) setErrors({ ...next, username: message });
@@ -82,10 +80,13 @@ export default function SignUpScreen() {
         setFormError(message);
         announce(message);
       }
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
+      return;
     }
+    // With confirmation on, no session arrives yet: the code emailed to the
+    // address is asked for. With it off, the session lands immediately and
+    // the route guard takes them onward, so asking for a code would be a lie
+    // they would wait on.
+    if (answer.value.needsEmailConfirmation) setSentTo(email.trim());
   }
 
   if (sentTo) {
