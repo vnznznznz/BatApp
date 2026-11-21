@@ -878,7 +878,8 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
   // Not waited for here - the device is signed out - but whoever signs in next
   // waits for it. Unless someone has signed in meanwhile, in another tab of the
   // browser: ending every session of the account could end theirs, and the
-  // session let go is told by itself, at the next sign-in here.
+  // session let go is told by itself instead, at the next sign-in, here or in
+  // another tab (tellServerOwed).
   if (hasRunOut(left)) {
     if (!signedOutUnheard) owedToServer.push(left);
     else {
