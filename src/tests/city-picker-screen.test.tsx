@@ -48,8 +48,36 @@ const mockedSearchCities = jest.mocked(searchCities);
  */
 const NOW = new Date(2026, 10, 17, 21, 0).getTime();
 
-const hamburg: City = { id: 2911298, name: 'Hamburg', countryCode: 'DE', population: 1_739_117 };
-const hameln: City = { id: 2911271, name: 'Hameln', countryCode: 'DE', population: 57_510 };
+const hamburg: City = {
+  id: 2911298,
+  name: 'Hamburg',
+  countryCode: 'DE',
+  population: 1_739_117,
+  qualifier: null,
+};
+const hameln: City = {
+  id: 2911271,
+  name: 'Hameln',
+  countryCode: 'DE',
+  population: 57_510,
+  qualifier: null,
+};
+
+/** Two towns of one name in one country, as the search returns them. */
+const friedbergBavaria: City = {
+  id: 2924803,
+  name: 'Friedberg',
+  countryCode: 'DE',
+  population: 29_953,
+  qualifier: 'near Augsburg',
+};
+const friedbergHessen: City = {
+  id: 2924802,
+  name: 'Friedberg',
+  countryCode: 'DE',
+  population: 27_484,
+  qualifier: 'near Frankfurt am Main',
+};
 
 const courier: Profile = {
   id: 'user-mara',
@@ -142,6 +170,24 @@ describe('CityPickerScreen', () => {
 
       expect(screen.getByText(TOO_SHORT)).toBeOnTheScreen();
       expect(mockedSearchCities).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Two Friedbergs, two Hamms, two Langens: the same row twice, and a tap
+     * on the wrong one counted at once. (Found in review.)
+     */
+    it('says where each of two towns of the same name is', async () => {
+      mockedSearchCities.mockResolvedValue([friedbergBavaria, friedbergHessen]);
+      await renderScreen(<CityPickerScreen />);
+
+      await type('Friedberg');
+      await pause();
+
+      const rows = screen.getAllByRole('button', { name: /^Friedberg/ });
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveTextContent(/near Augsburg/);
+      expect(rows[1]).toHaveTextContent(/near Frankfurt am Main/);
+      expect(screen.getByText(CITY_DATA_CREDIT)).toBeOnTheScreen();
     });
 
     it('lists the cities found, by name and country', async () => {
@@ -416,6 +462,18 @@ describe('CityPickerScreen', () => {
           'later, the new city takes a day to count.',
         buttons: ['Cancel', 'Choose'],
       });
+    });
+
+    it('names the town it asks about by where it is, when another has its name', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      mockedSearchCities.mockResolvedValue([friedbergBavaria, friedbergHessen]);
+      await renderScreen(<CityPickerScreen />);
+      await type('Friedberg');
+      await pause();
+
+      await fireEvent.press(screen.getAllByRole('button', { name: /^Friedberg/ })[1]!);
+
+      expect(lastAlert().title).toBe('Make Friedberg (near Frankfurt am Main), DE your city?');
     });
 
     it('asks before a move, and says it takes a day, during which letters leave from the old city', async () => {

@@ -90,6 +90,25 @@ const run = (args, env = {}) =>
 
 const fromDump = () => run(['--dump', dump]);
 
+/**
+ * The values the migration writes for city `id`, read back out of it:
+ * numbers, strings with their quotes undone, and null.
+ */
+function written(sql, id) {
+  const line = sql.split('\n').find((text) => text.startsWith(`  (${id}, `));
+  if (!line) return undefined;
+  const values = [];
+  const token = /\s*(?:'((?:[^']|'')*)'|(-?[\d.]+)|(null))\s*(?:,|\)[,;]?$)/gy;
+  token.lastIndex = 3;
+  let match;
+  while ((match = token.exec(line))) {
+    if (match[1] !== undefined) values.push(match[1].replace(/''/g, "'"));
+    else if (match[2] !== undefined) values.push(Number(match[2]));
+    else values.push(null);
+  }
+  return values;
+}
+
 describe('build-cities.mjs', () => {
   it('writes a new migration and leaves the earlier ones as they were', () => {
     const result = fromDump();
@@ -110,7 +129,16 @@ describe('build-cities.mjs', () => {
     const sql = readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
 
     assert.match(sql, /insert into public\.cities /);
-    assert.match(sql, /\(2657896, 'Zürich', 'CH', 47\.3667, 8\.55, 341730, 'zurich\|zuerich'\)/);
+    assert.deepEqual(written(sql, 2657896), [
+      2657896,
+      'Zürich',
+      'CH',
+      47.3667,
+      8.55,
+      341730,
+      'zurich|zuerich',
+      null,
+    ]);
     assert.match(sql, /\(2820973, 'Trossingen', 'DE', /);
     assert.match(sql, /\(2988507, 'Paris', 'FR', /);
     assert.doesNotMatch(sql, /Petiteville/);
@@ -186,8 +214,7 @@ describe('build-cities.mjs, folding names', () => {
   };
 
   /** The search index the migration gives a city, read back out of it. */
-  const indexOf = (sql, id) =>
-    sql.match(new RegExp(`^  \\(${id}, .*, '([^']*(?:''[^']*)*)'\\)[,;]?$`, 'm'))?.[1];
+  const indexOf = (sql, id) => written(sql, id)?.[6];
 
   /**
    * One form for st, st., sankt and saint at the start of a word, which is
@@ -210,7 +237,7 @@ describe('build-cities.mjs, folding names', () => {
   });
 
   it('indexes a name with a typographic apostrophe, read as a plain one', () => {
-    assert.equal(indexOf(fromSpellings(), 268743), "ra''s bayrut");
+    assert.equal(indexOf(fromSpellings(), 268743), "ra's bayrut");
   });
 
   it('pins how the spellings people type fold, beside the names it wrote', () => {
@@ -229,6 +256,61 @@ describe('build-cities.mjs, folding names', () => {
     assert.equal(folded.get('Ra’s Bayrūt'), "ra's bayrut");
     assert.equal(folded.get('St'), 'st');
     assert.equal(folded.get('Stuttgart'), 'stuttgart');
+  });
+});
+
+/**
+ * Towns of the same name in the same country, told apart the way the city
+ * qualifiers migration tells apart the rows already in the table.
+ */
+describe('build-cities.mjs, towns of the same name', () => {
+  const run = (lines) => {
+    writeFileSync(dump, lines.join('\n') + '\n');
+    const result = fromDump();
+    assert.equal(result.status, 0, result.stderr);
+    return readFileSync(join(migrations, readdirSync(migrations).sort().at(-1)), 'utf8');
+  };
+  const qualifierOf = (sql, id) => written(sql, id)?.[7];
+
+  it('names a larger city near each, the largest within 30 km', () => {
+    const sql = run([
+      line(2924803, 'Friedberg', '', 48.3569, 10.9846, 'DE', 29953),
+      line(2924802, 'Friedberg', '', 50.3374, 8.7559, 'DE', 27484),
+      line(2954172, 'Augsburg', '', 48.3715, 10.8985, 'DE', 301105),
+      line(2925533, 'Frankfurt am Main', '', 50.1155, 8.6842, 'DE', 650000),
+      // Nearer to the Friedberg in Hessen, and larger, but small beside Frankfurt.
+      line(2953395, 'Bad Nauheim', '', 50.3646, 8.7386, 'DE', 30291),
+      line(2867714, 'Munich', 'München', 48.1374, 11.5755, 'DE', 1260391),
+    ]);
+
+    assert.equal(qualifierOf(sql, 2924803), 'near Augsburg');
+    assert.equal(qualifierOf(sql, 2924802), 'near Frankfurt am Main');
+    assert.equal(qualifierOf(sql, 2954172), null);
+    assert.equal(qualifierOf(sql, 2867714), null);
+    assert.match(sql, /\n {2}qualifier = excluded\.qualifier;/);
+  });
+
+  it('gives the distance to the city it names where that is not near', () => {
+    const sql = run([
+      line(3608248, 'La Ceiba', '', 15.7597, -86.7822, 'HN', 222055),
+      line(8556321, 'La Ceiba', '', 15.7667, -86.8333, 'HN', 215973),
+      line(3601782, 'San Pedro Sula', '', 15.5059, -88.0259, 'HN', 801259),
+    ]);
+
+    assert.equal(qualifierOf(sql, 3608248), '136 km from San Pedro Sula');
+    assert.equal(qualifierOf(sql, 8556321), '131 km from San Pedro Sula');
+  });
+
+  /** Both near the same city: "near Großstadt" twice would tell nothing apart. */
+  it('gives each its distance where both would be near the same city', () => {
+    const sql = run([
+      line(9000001, 'Neudorf', '', 50.0, 10.0, 'DE', 20000),
+      line(9000002, 'Neudorf', '', 50.1, 10.1, 'DE', 18000),
+      line(9000003, 'Großstadt', '', 50.05, 10.2, 'DE', 500000),
+    ]);
+
+    assert.equal(qualifierOf(sql, 9000001), '15 km from Großstadt');
+    assert.equal(qualifierOf(sql, 9000002), '9 km from Großstadt');
   });
 });
 

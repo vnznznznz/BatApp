@@ -15,7 +15,7 @@ const row = (overrides: Partial<Row> = {}): Row => ({
   display_name: 'Anna',
   avatar_url: null,
   city_changed_at: null,
-  cities: { id: 2950159, name: 'Munich', country_code: 'DE' },
+  cities: { id: 2950159, name: 'Munich', country_code: 'DE', qualifier: null },
   settled: null,
   ...overrides,
 });
@@ -70,8 +70,8 @@ const ownRow = (userId = 'user-anna'): Asked => ({ table: 'profiles', where: ['i
  */
 const COLUMNS =
   'id, username, display_name, avatar_url, city_changed_at, ' +
-  'cities!profiles_city_id_fkey(id, name, country_code), ' +
-  'settled:cities!profiles_settled_city_id_fkey(id, name, country_code)';
+  'cities!profiles_city_id_fkey(id, name, country_code, qualifier), ' +
+  'settled:cities!profiles_settled_city_id_fkey(id, name, country_code, qualifier)';
 
 /**
  * Stands in for navigation focus: an effect that runs while the screen is in
@@ -141,6 +141,29 @@ describe('toProfile', () => {
       id: 2950159,
       name: 'Munich',
       countryCode: 'DE',
+      qualifier: null,
+    });
+  });
+
+  /** One of two Friedbergs in Germany, and what tells it apart. */
+  it('keeps what tells the city apart from another of its name', () => {
+    const { city } = toProfile(
+      row({
+        cities: {
+          id: 2924802,
+          name: 'Friedberg',
+          country_code: 'DE',
+          qualifier: 'near Frankfurt am Main',
+        },
+      }),
+      NOW,
+    );
+
+    expect(city).toEqual({
+      id: 2924802,
+      name: 'Friedberg',
+      countryCode: 'DE',
+      qualifier: 'near Frankfurt am Main',
     });
   });
 
@@ -155,13 +178,13 @@ describe('toProfile', () => {
     const { move } = toProfile(
       row({
         city_changed_at: changedAt.toISOString(),
-        settled: { id: 2950159, name: 'Berlin', country_code: 'DE' },
+        settled: { id: 2950159, name: 'Berlin', country_code: 'DE', qualifier: null },
       }),
       NOW,
     );
 
     expect(move).toEqual({
-      from: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+      from: { id: 2950159, name: 'Berlin', countryCode: 'DE', qualifier: null },
       settlesAt: new Date(changedAt.getTime() + RELOCATION_HOURS * HOUR),
     });
   });
@@ -170,7 +193,7 @@ describe('toProfile', () => {
     const { move } = toProfile(
       row({
         city_changed_at: new Date(NOW - (RELOCATION_HOURS + 1) * HOUR).toISOString(),
-        settled: { id: 2950159, name: 'Berlin', country_code: 'DE' },
+        settled: { id: 2950159, name: 'Berlin', country_code: 'DE', qualifier: null },
       }),
       NOW,
     );
@@ -341,7 +364,9 @@ describe('useProfile', () => {
     it('saves a city by its id alone, and reads the profile back', async () => {
       mockDatabase.read
         .mockResolvedValueOnce(found())
-        .mockResolvedValue(found({ cities: { id: 2911298, name: 'Hamburg', country_code: 'DE' } }));
+        .mockResolvedValue(
+          found({ cities: { id: 2911298, name: 'Hamburg', country_code: 'DE', qualifier: null } }),
+        );
       const { result } = await renderHook(() => useProfile());
       await waitFor(() => expect(result.current.profile?.city?.name).toBe('Munich'));
 

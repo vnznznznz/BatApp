@@ -108,6 +108,7 @@ export type Database = {
           longitude: number;
           name: string;
           population: number;
+          qualifier: string | null;
           search_index: string;
         };
         ComputedFields: never;
@@ -118,6 +119,7 @@ export type Database = {
           longitude: number;
           name: string;
           population?: number;
+          qualifier?: string | null;
           search_index: string;
         };
         Update: {
@@ -127,6 +129,7 @@ export type Database = {
           longitude?: number;
           name?: string;
           population?: number;
+          qualifier?: string | null;
           search_index?: string;
         };
         Relationships: [];
@@ -499,6 +502,7 @@ export type Database = {
           id: number;
           name: string;
           population: number;
+          qualifier: string;
         }[];
       };
       send_message: {

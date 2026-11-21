@@ -190,7 +190,15 @@ export default function CityPickerScreen() {
             onPress={() => choose(item)}
             style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           >
-            <Text variant="body">{item.name}</Text>
+            {/* Where one of two towns of the same name is: "near Augsburg". */}
+            <View style={styles.rowName}>
+              <Text variant="body">{item.name}</Text>
+              {item.qualifier ? (
+                <Text variant="caption" tone="muted">
+                  {item.qualifier}
+                </Text>
+              ) : null}
+            </View>
             <View style={styles.rowMeta}>
               <Text variant="caption" tone="muted">
                 {item.countryCode}
@@ -266,6 +274,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   rowPressed: { backgroundColor: Colors.surface },
+  rowName: { flexShrink: 1, gap: Spacing.xs },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
   empty: { marginTop: Spacing.lg, textAlign: 'center' },

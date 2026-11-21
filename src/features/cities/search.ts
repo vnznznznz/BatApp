@@ -5,6 +5,13 @@ export type City = {
   name: string;
   countryCode: string;
   population: number;
+  /**
+   * What tells the city apart from another of the same name in the same
+   * country - "near Augsburg" for one Friedberg, "near Frankfurt am Main" for
+   * the other - worked out from where the towns are (see the city qualifiers
+   * migration). Null for a city whose name is its own.
+   */
+  qualifier: string | null;
 };
 
 /** Below this, a search would return most of the table for no useful reason. */
@@ -78,6 +85,7 @@ export async function searchCities(query: string, limit = 20): Promise<City[]> {
     name: String(row.name),
     countryCode: String(row.country_code),
     population: Number(row.population),
+    qualifier: typeof row.qualifier === 'string' ? row.qualifier : null,
   }));
 }
 
@@ -91,7 +99,14 @@ export const CITY_DATA_CREDIT =
   'City names and places adapted from GeoNames (geonames.org), licensed under ' +
   'CC BY 4.0 (creativecommons.org/licenses/by/4.0).';
 
-/** "Rösrath, DE" — enough to disambiguate two towns sharing a name. */
-export function describeCity(city: Pick<City, 'name' | 'countryCode'>): string {
-  return `${city.name}, ${city.countryCode}`;
+/**
+ * "Rösrath, DE" — and, for one of two towns of the same name in the same
+ * country, where it is: "Friedberg (near Augsburg), DE".
+ */
+export function describeCity(
+  city: Pick<City, 'name' | 'countryCode'> & { qualifier?: string | null },
+): string {
+  return city.qualifier
+    ? `${city.name} (${city.qualifier}), ${city.countryCode}`
+    : `${city.name}, ${city.countryCode}`;
 }

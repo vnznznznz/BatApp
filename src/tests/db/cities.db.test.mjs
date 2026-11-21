@@ -195,6 +195,20 @@ describe('search_cities', () => {
     assert.equal((await search(anna, xAt(65)))[0]?.name, 'Berlin');
   });
 
+  /**
+   * The same, with letters that matter: whether the 61st to the 64th
+   * character are read decides between Bern, which "bern" names exactly, and
+   * Berlin, the largest city that "ber" begins. The marks before them are
+   * tidied away once the query has been cut.
+   */
+  it('lets the 61st to the 64th character decide what is found', async () => {
+    const at61 = '!'.repeat(60) + 'bern';
+
+    assert.equal(at61.length, 64);
+    assert.equal((await search(anna, at61))[0]?.name, 'Bern');
+    assert.equal((await search(anna, '!' + at61))[0]?.name, 'Berlin');
+  });
+
   it('is not available to a signed-out visitor', async () => {
     await assert.rejects(
       () => asAnon(db, () => db.query(`select * from public.search_cities('berlin', 20)`)),
@@ -360,6 +374,133 @@ describe('search_index, brought to one form for the saints', () => {
  * review.) Fourteen are found by their names now; the two quarters of Köln
  * called Neustadt are gone, and whatever named them names Köln.
  */
+/**
+ * 28 pairs of cities share their name and their country - Friedberg in Hessen
+ * and in Bavaria, Hamm in Westphalia and in Hamburg - and were listed as the
+ * same row twice. (Found in review.) Each now says where it is.
+ */
+describe('cities.qualifier, for towns of the same name', () => {
+  let anna;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'twins', displayName: 'Twins' });
+  });
+
+  /** Every city that has a twin, with what tells it apart and what that names. */
+  const twins = async () =>
+    (
+      await db.query(`
+        select c.id, c.name, c.country_code, c.qualifier, c.population,
+               coalesce(substring(c.qualifier from '^near (.*)$'),
+                        substring(c.qualifier from '^[0-9]+ km from (.*)$')) as named,
+               substring(c.qualifier from '^([0-9]+) km from ')::int as km_said
+        from public.cities c
+        where exists (
+          select 1 from public.cities o
+          where o.name = c.name and o.country_code = c.country_code and o.id <> c.id
+        )
+        order by c.name, c.population desc
+      `)
+    ).rows;
+
+  it('tells apart every city that shares its name and country with another', async () => {
+    const rows = await twins();
+    assert.equal(rows.length, 56);
+
+    const groups = Map.groupBy(rows, (row) => `${row.name}, ${row.country_code}`);
+    assert.equal(groups.size, 28);
+    for (const [town, members] of groups) {
+      const said = members.map((member) => member.qualifier);
+      assert.ok(!said.includes(null), `${town} has a row without a qualifier`);
+      assert.equal(new Set(said).size, said.length, `${town}: ${said.join(' / ')}`);
+    }
+
+    const { rows: others } = await db.query(
+      `select count(*)::int as count from public.cities c
+       where c.qualifier is not null
+         and not exists (
+           select 1 from public.cities o
+           where o.name = c.name and o.country_code = c.country_code and o.id <> c.id
+         )`,
+    );
+    assert.equal(others[0].count, 0, 'a city whose name is its own has a qualifier');
+  });
+
+  /**
+   * "Near" names a city of the same country, one of a name of its own, within
+   * 50 km; farther, the qualifier gives the distance instead. Measured again
+   * here for every row.
+   */
+  it('names a city of the same country, near when it says near, as far as it says otherwise', async () => {
+    for (const row of await twins()) {
+      const { rows: named } = await db.query(
+        `select n.name, n.population,
+                private.distance_km(c.latitude, c.longitude, n.latitude, n.longitude) as km,
+                (select count(*) from public.cities o
+                 where o.name = n.name and o.country_code = n.country_code)::int as same_name
+         from public.cities c
+         join public.cities n on n.country_code = c.country_code and n.name = $2
+         where c.id = $1`,
+        [row.id, row.named],
+      );
+      assert.equal(named.length, 1, `${row.name}: "${row.qualifier}" names no one city`);
+      const [place] = named;
+      assert.equal(place.same_name, 1, `${row.name}: ${place.name} has a twin itself`);
+
+      if (row.qualifier.startsWith('near ')) {
+        assert.ok(place.km <= 50, `${row.name} is ${place.km} km from ${place.name}`);
+      } else {
+        assert.equal(row.km_said, Math.round(place.km), `${row.name}: ${row.qualifier}`);
+      }
+    }
+  });
+
+  it('says where each of the German and Austrian twins is', async () => {
+    const said = Object.fromEntries(
+      (await twins())
+        .filter((row) => ['DE', 'AT'].includes(row.country_code))
+        .map((row) => [`${row.name} ${row.population}`, row.qualifier]),
+    );
+
+    assert.deepEqual(said, {
+      'Friedberg 29953': 'near Augsburg',
+      'Friedberg 27484': 'near Frankfurt am Main',
+      'Hamm 178967': 'near Dortmund',
+      'Hamm 37989': 'near Hamburg',
+      'Langen 38785': 'near Frankfurt am Main',
+      'Langen 18863': 'near Bremerhaven',
+      'Mülheim 173050': 'near Düsseldorf',
+      'Mülheim 41711': 'near Köln',
+      'Sankt Peter 20320': 'near Klagenfurt am Wörthersee',
+      'Sankt Peter 15187': 'near Graz',
+      'Senden 22275': 'near Ulm',
+      'Senden 20363': 'near Münster',
+    });
+  });
+
+  /** Two rows a few kilometres apart, and no larger city within 130 km. */
+  it('gives the distance where no larger city is near', async () => {
+    const said = (await twins())
+      .filter((row) => row.name === 'La Ceiba')
+      .map((row) => row.qualifier);
+
+    assert.deepEqual(said, ['136 km from San Pedro Sula', '131 km from San Pedro Sula']);
+  });
+
+  it('is what search_cities returns beside the name', async () => {
+    const rows = await search(anna, 'friedberg');
+
+    assert.deepEqual(
+      rows
+        .filter((row) => row.name === 'Friedberg')
+        .map((row) => row.qualifier)
+        .sort(),
+      ['near Augsburg', 'near Frankfurt am Main'],
+    );
+    assert.equal((await search(anna, 'berlin'))[0].qualifier, null);
+  });
+});
+
 describe('the rows nothing could find', () => {
   let anna;
 

@@ -11,6 +11,8 @@ export type ProfileCity = {
   id: number;
   name: string;
   countryCode: string;
+  /** Where it is, if another town in the country has its name: "near Augsburg". */
+  qualifier?: string | null;
 };
 
 /**
@@ -34,7 +36,7 @@ export type Profile = {
   move: ProfileMove | null;
 };
 
-type CityRow = { id: number; name: string; country_code: string };
+type CityRow = { id: number; name: string; country_code: string; qualifier: string | null };
 
 type Row = {
   id: string;
@@ -51,13 +53,14 @@ type Row = {
 // PostgREST refuses an embed it cannot attribute to exactly one of them.
 const SELECT =
   'id, username, display_name, avatar_url, city_changed_at, ' +
-  'cities!profiles_city_id_fkey(id, name, country_code), ' +
-  'settled:cities!profiles_settled_city_id_fkey(id, name, country_code)';
+  'cities!profiles_city_id_fkey(id, name, country_code, qualifier), ' +
+  'settled:cities!profiles_settled_city_id_fkey(id, name, country_code, qualifier)';
 
 const toCity = (row: CityRow): ProfileCity => ({
   id: row.id,
   name: row.name,
   countryCode: row.country_code,
+  qualifier: row.qualifier,
 });
 
 export function toProfile(row: Row, now: number = Date.now()): Profile {

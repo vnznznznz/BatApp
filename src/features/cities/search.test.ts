@@ -124,6 +124,16 @@ describe('fold', () => {
 describe('describeCity', () => {
   it('names the city and its country', () => {
     expect(describeCity({ name: 'Rösrath', countryCode: 'DE' })).toBe('Rösrath, DE');
+    expect(describeCity({ name: 'Rösrath', countryCode: 'DE', qualifier: null })).toBe(
+      'Rösrath, DE',
+    );
+  });
+
+  /** Two Friedbergs in Germany: what tells them apart goes beside the name. */
+  it('says where a city is that shares its name and country with another', () => {
+    expect(describeCity({ name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' })).toBe(
+      'Friedberg (near Augsburg), DE',
+    );
   });
 });
 
