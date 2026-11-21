@@ -96,8 +96,10 @@ export default function HomeScreen() {
 
   const unread = badges.data?.unreadLetters ?? 0;
   const requests = badges.data?.friendRequests ?? 0;
-  // Never counted, which is not the same as nothing waiting.
-  const uncounted = Boolean(badges.error) && !badges.data;
+  // Never counted, which is not the same as nothing waiting. Refused for a
+  // suspension is not that: the roost says why, and "Could not check" read
+  // like a fault of the network. (Found in the browser.)
+  const uncounted = Boolean(badges.error) && !badges.data && !suspended;
 
   // Everything on this screen, asked for again: by a pull, and by "Try again".
   const refreshAll = () => {
@@ -178,61 +180,65 @@ export default function HomeScreen() {
         </Card>
       ) : null}
 
-      <Card style={styles.card}>
-        <View style={styles.roostHeading}>
-          <Text variant="heading">Your roost</Text>
-          {roost.data ? (
-            <Text variant="caption" tone="secondary">
-              {atHome} of {bats.length} at home
-            </Text>
-          ) : null}
-        </View>
-
-        {roost.data ? (
-          <View style={styles.tiles}>
-            {bats.map((bat) => (
-              <BatTile
-                key={bat.id}
-                bat={bat}
-                now={now}
-                active={focused}
-                onPress={
-                  bat.flight
-                    ? () =>
-                        router.push({
-                          pathname: '/letters/[id]',
-                          params: { id: bat.flight!.messageId },
-                        })
-                    : canWrite
-                      ? () => router.push('/compose')
-                      : undefined
-                }
-              />
-            ))}
-          </View>
-        ) : roost.error ? null : (
-          <View style={styles.loading}>
-            <ActivityIndicator color={Colors.textMuted} />
-            {stillTrying ? (
-              <Text variant="caption" tone="muted" center>
-                {STILL_TRYING}
+      {/* An account that is gone has no bats: the roost said "0 of 0 at home"
+          under the notice above. (Found in the browser.) */}
+      {isGone ? null : (
+        <Card style={styles.card}>
+          <View style={styles.roostHeading}>
+            <Text variant="heading">Your roost</Text>
+            {bats.length > 0 ? (
+              <Text variant="caption" tone="secondary">
+                {atHome} of {bats.length} at home
               </Text>
             ) : null}
           </View>
-        )}
 
-        {roost.error ? (
-          <Text variant="caption" tone="danger">
-            {roost.error}
-          </Text>
-        ) : suspended ? (
-          <Text variant="caption" tone="danger">
-            {badges.error}
-          </Text>
-        ) : null}
-        {suspended && !isGone ? <AccountClosedActions /> : null}
-        {roostMissing && !closed ? tryAgain : null}
-      </Card>
+          {roost.data ? (
+            <View style={styles.tiles}>
+              {bats.map((bat) => (
+                <BatTile
+                  key={bat.id}
+                  bat={bat}
+                  now={now}
+                  active={focused}
+                  onPress={
+                    bat.flight
+                      ? () =>
+                          router.push({
+                            pathname: '/letters/[id]',
+                            params: { id: bat.flight!.messageId },
+                          })
+                      : canWrite
+                        ? () => router.push('/compose')
+                        : undefined
+                  }
+                />
+              ))}
+            </View>
+          ) : roost.error ? null : (
+            <View style={styles.loading}>
+              <ActivityIndicator color={Colors.textMuted} />
+              {stillTrying ? (
+                <Text variant="caption" tone="muted" center>
+                  {STILL_TRYING}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
+          {roost.error ? (
+            <Text variant="caption" tone="danger">
+              {roost.error}
+            </Text>
+          ) : suspended ? (
+            <Text variant="caption" tone="danger">
+              {badges.error}
+            </Text>
+          ) : null}
+          {suspended ? <AccountClosedActions /> : null}
+          {roostMissing && !closed ? tryAgain : null}
+        </Card>
+      )}
 
       <View style={styles.write}>
         <Button

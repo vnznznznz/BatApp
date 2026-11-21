@@ -653,16 +653,32 @@ describe('HomeScreen', () => {
       mockProfileState.isGone = true;
       mockProfileState.error = ACCOUNT_GONE;
       await renderScreen(<HomeScreen />);
-      await roostLoaded();
 
-      expect(screen.getByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(await screen.findByText(ACCOUNT_GONE)).toBeOnTheScreen();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(writeButton()).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Bat 1, at home' })).toBeDisabled();
 
       await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
       expect(mockSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Its bats went with it: the roost said "0 of 0 at home" under the notice
+     * that the account is gone. (Found in the browser.) Nor are bats from
+     * before shown, or why they could not be counted again.
+     */
+    it('shows no roost for an account that is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      await renderScreen(<HomeScreen />);
+      await screen.findByText(ACCOUNT_GONE);
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      expect(screen.queryByText('Your roost')).toBeNull();
+      expect(screen.queryByText(/at home$/)).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Bat 1/ })).toBeNull();
     });
 
     it('offers no try again for the bats either when the account is gone', async () => {
@@ -671,10 +687,24 @@ describe('HomeScreen', () => {
       mockProfileState.error = ACCOUNT_GONE;
       mockedFetchRoost.mockRejectedValue(noConnection());
       await renderScreen(<HomeScreen />);
+      await screen.findByText(ACCOUNT_GONE);
+      await act(() => jest.advanceTimersByTimeAsync(0));
 
-      expect(await screen.findByText(NO_CONNECTION)).toBeOnTheScreen();
+      expect(mockedFetchRoost).toHaveBeenCalled();
+      expect(screen.queryByText(NO_CONNECTION)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    it('says nothing of how many bats are home when there are none', async () => {
+      serve(() => []);
+      await renderScreen(<HomeScreen />);
+      await screen.findByText('Your roost');
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      expect(mockedFetchRoost).toHaveBeenCalled();
+      expect(screen.queryByText(/at home$/)).toBeNull();
+      expect(writeButton()).toBeDisabled();
     });
 
     /**
@@ -695,6 +725,40 @@ describe('HomeScreen', () => {
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(writeButton()).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    /** Either answer can be the first to say it, and either is enough. */
+    it.each([
+      ['the bats', () => mockedFetchRoost.mockRejectedValue(suspended())],
+      ['the counts', () => mockedFetchBadges.mockRejectedValue(suspended())],
+    ])(
+      'holds writing back, with only the way out, when %s say the account is suspended',
+      async (_, refuse) => {
+        refuse();
+        await renderScreen(<HomeScreen />);
+
+        expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+        expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+        expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+        expect(writeButton()).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      },
+    );
+
+    /**
+     * Refused for the suspension, the counts are not a check that failed: "Could
+     * not check for new letters" read like a fault of the network. (Found in
+     * the browser.) The roost says why.
+     */
+    it('does not say the counts could not be checked when the account is suspended', async () => {
+      mockedFetchRoost.mockRejectedValue(suspended());
+      mockedFetchBadges.mockRejectedValue(suspended());
+      await renderScreen(<HomeScreen />);
+      await screen.findByText(REFUSALS.account_suspended);
+
+      expect(screen.queryByText(/^Could not check/)).toBeNull();
+      expect(screen.getByText('Received and sent')).toBeOnTheScreen();
+      expect(screen.getByText('Add friends by their username')).toBeOnTheScreen();
     });
 
     it('offers no try again to an account suspended before the roost was first loaded', async () => {
