@@ -101,7 +101,8 @@ Recorded where the work is, not only here:
   measurably slower (seen on the local servers), it answers a sign-up for an address with a
   confirmed account "User already registered" while confirmation by email or by phone is off
   ("Before a second person can sign up", step 4), it answers a taken username with an error, and
-  it refuses a suspended or removed account's sign-in as such, whatever the password.
+  it answers a sign-in to a suspended or removed account with "User is banned", whatever the
+  password.
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
