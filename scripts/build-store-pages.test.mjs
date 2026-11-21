@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -177,6 +185,60 @@ describe('the public web pages', () => {
   });
 });
 
+/**
+ * The pages carry the operator's name, address and email, and this repository
+ * is public. "--out ." - the site's checkout mistyped - wrote them into it,
+ * untracked, one `git add -A` from being published with the code.
+ */
+describe('where the pages are built', () => {
+  const REPOSITORY = join(HERE, '..');
+  /**
+   * Every build that is to be refused below lacks a detail as well: were the
+   * check gone, it would stop at that rather than write the pages into this
+   * repository, and still fail the test by its reason.
+   */
+  const NO_NAME = { ...DETAILS };
+  delete NO_NAME.OPERATOR_NAME;
+
+  /** The build run from `cwd`, as an operator would run it there. */
+  const buildFrom = (cwd, env, out) =>
+    execFileSync(process.execPath, [SCRIPT, '--out', out, '--migrations', migrations], {
+      cwd,
+      env: { PATH: process.env.PATH ?? '', ...env },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+
+  const INSIDE = /build-store-pages: --out .+ is inside this repository, which is public/;
+
+  for (const [where, out] of [
+    ['this repository, as "."', '.'],
+    ['this repository, by its whole path', REPOSITORY],
+    ['a folder inside it', 'docs/store'],
+    ['a folder still to be made inside it', join('site', 'night-courier')],
+  ]) {
+    it(`is never ${where}`, () => {
+      assert.throws(() => buildFrom(REPOSITORY, NO_NAME, out), INSIDE);
+    });
+  }
+
+  it('is never inside this repository by way of a link to it', () => {
+    symlinkSync(REPOSITORY, join(scratch, 'link'));
+
+    assert.throws(() => buildFrom(scratch, NO_NAME, join('link', 'site')), INSIDE);
+  });
+
+  it('may be a folder beside this repository whose name begins as its own does', () => {
+    assert.throws(() => buildFrom(REPOSITORY, NO_NAME, `${REPOSITORY}-site`), /set OPERATOR_NAME/);
+  });
+
+  it('may be anywhere outside it', () => {
+    buildFrom(REPOSITORY, DETAILS, out);
+
+    assert.deepEqual(readdirSync(join(out, 'night-courier')).length, 3);
+  });
+});
+
 describe('the help page', () => {
   it('marks its German half as German, from the heading to the end', () => {
     build(LIVE, out);
@@ -220,6 +282,112 @@ describe('the help page', () => {
 
     assert.throws(() => build(DETAILS, out, ['--sources', sources]), /support-page\.md/);
     assert.deepEqual(readdirSync(out), []);
+  });
+});
+
+/**
+ * The privacy policy promises that the pages load nothing from other sites.
+ * The build looked for scripts, style sheets, frames, images and src= alone,
+ * and let through an embedded document, an SVG image, a video's poster and
+ * the other ways a page fetches something as it is shown.
+ */
+describe('what the pages load', () => {
+  const HEADING = '# Night Courier – help and contact\n';
+
+  /** The help page's source, with `html` under its first heading. */
+  const sourcesWithHtml = (html) =>
+    sourcesWith('support-page.md', (text) => text.replace(HEADING, `${HEADING}\n${html}\n`));
+
+  for (const [what, html, said] of [
+    [
+      'an embedded document, by <object data>',
+      '<object data="https://example.org/a.pdf"></object>',
+      '<object>',
+    ],
+    ['an embed', '<embed src="https://example.org/a.svg">', '<embed>'],
+    [
+      'an SVG image, by its href',
+      '<svg><image href="https://example.org/a.png" width="8" height="8"/></svg>',
+      'href= on <image>',
+    ],
+    [
+      'an SVG image, by its xlink:href',
+      '<svg><image xlink:href="https://example.org/a.png"/></svg>',
+      'xlink:href= on <image>',
+    ],
+    [
+      'a picture, by its srcset',
+      '<picture><source srcset="https://example.org/a.webp 1x"></picture>',
+      'srcset= on <source>',
+    ],
+    [
+      'a video’s poster',
+      '<video poster="https://example.org/a.jpg"></video>',
+      'poster= on <video>',
+    ],
+    [
+      'a table’s background',
+      '<table background="https://example.org/a.png"><tr><td>x</td></tr></table>',
+      'background= on <table>',
+    ],
+    [
+      'a link that pings another site when it is followed',
+      '<a href="index.html" ping="https://example.org/count">Help</a>',
+      'ping= on <a>',
+    ],
+    [
+      'an image behind a quoted >, which ends no tag',
+      '<svg><image title="1 > 0" href="https://example.org/a.png"/></svg>',
+      'href= on <image>',
+    ],
+    [
+      'a script run by an attribute',
+      '<svg onload="fetch(\'https://example.org/\')"></svg>',
+      'onload= on <svg>',
+    ],
+    [
+      'a script run by a link',
+      '<a href="javascript:fetch(\'https://example.org/\')">Help</a>',
+      'a javascript: link',
+    ],
+    [
+      'another page, by a refresh',
+      '<meta http-equiv="refresh" content="0; url=https://example.org/">',
+      'http-equiv=refresh on <meta>',
+    ],
+    [
+      'an image set in a style',
+      '<p style="background-image: image-set(\'https://example.org/a.png\' 1x)">x</p>',
+      'image-set(',
+    ],
+  ]) {
+    it(`are not built with ${what}`, () => {
+      const sources = sourcesWithHtml(html);
+
+      assert.throws(
+        () => build(DETAILS, out, ['--sources', sources]),
+        (error) =>
+          error.stderr.includes(
+            `index.html would load something from elsewhere (${said}); the privacy policy ` +
+              'promises it does not',
+          ),
+      );
+      assert.deepEqual(readdirSync(out), []);
+    });
+  }
+
+  /** A link loads nothing until it is followed, and the pages lead to each other with links. */
+  it('are built with plain links, to each other and to other sites', () => {
+    const sources = sourcesWithHtml(
+      '<p><a href="privacy-policy.en.html" title="1 > 0">The policy</a>, ' +
+        '<a href="https://example.org/">a site</a>, ' +
+        '<a href="#night-courier--hilfe-und-kontakt">Deutsch</a>, ' +
+        '<a href="mailto:operator@example.test">mail</a>.</p>',
+    );
+
+    build(DETAILS, out, ['--sources', sources]);
+
+    assert.match(read(out, 'index.html'), /<a href="https:\/\/example\.org\/">a site<\/a>/);
   });
 });
 

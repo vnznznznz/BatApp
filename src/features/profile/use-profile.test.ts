@@ -423,6 +423,52 @@ describe('useProfile', () => {
       expect(result.current.profile?.displayName).toBe('Anna B.');
     });
 
+    /**
+     * The name was saved, and only reading the profile back got no answer:
+     * the profile went on showing the old name, and the screen "Saved." beside
+     * it, until a later read got through.
+     */
+    it('shows the name it saved though the profile could not be read back', async () => {
+      mockDatabase.read.mockResolvedValueOnce(found()).mockResolvedValue(failed);
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      await act(() => result.current.updateDisplayName('  Anna B. '));
+
+      expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+      expect(result.current.error).toBe(COULD_NOT_LOAD);
+      expect(result.current.profile?.displayName).toBe('Anna B.');
+      // The rest is as it was read last.
+      expect(result.current.profile).toEqual({ ...toProfile(row()), displayName: 'Anna B.' });
+    });
+
+    it('shows the name as the server has it once the profile is read back', async () => {
+      mockDatabase.read
+        .mockResolvedValueOnce(found())
+        .mockResolvedValue(found({ display_name: 'Anna Berg' }));
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      await act(() => result.current.updateDisplayName('Anna B.'));
+
+      expect(result.current.profile?.displayName).toBe('Anna Berg');
+    });
+
+    it('shows no name it did not save', async () => {
+      mockDatabase.read.mockResolvedValueOnce(found()).mockResolvedValue(failed);
+      mockDatabase.change.mockResolvedValue({
+        error: { message: 'new row violates check constraint', code: '23514' },
+      });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      await act(async () => {
+        await result.current.updateDisplayName('Anna B.').catch(() => {});
+      });
+
+      expect(result.current.profile?.displayName).toBe('Anna');
+    });
+
     it('saves a city by its id alone, and reads the profile back', async () => {
       mockDatabase.read
         .mockResolvedValueOnce(found())

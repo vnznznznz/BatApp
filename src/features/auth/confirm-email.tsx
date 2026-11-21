@@ -452,7 +452,8 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
             label="I forgot my password"
             variant="secondary"
             disabled={held}
-            onPress={() => router.push('/reset-password')}
+            // With the address the code went to, which the reset would ask for again.
+            onPress={() => router.push({ pathname: '/reset-password', params: { email } })}
           />
         ) : null}
 

@@ -50,7 +50,11 @@ export default function SignInScreen() {
 
   async function submit() {
     if (inFlight.current) return;
-    const next = { email: validateEmail(email), password: validatePassword(password) };
+    // The password the courier has: "Choose a password." is signing up's.
+    const next = {
+      email: validateEmail(email),
+      password: validatePassword(password, 'Enter your password.'),
+    };
     setErrors(next);
     setFormError(null);
     setNotice(null);
@@ -153,7 +157,10 @@ export default function SignInScreen() {
         <Button
           label="I forgot my password"
           variant="ghost"
-          onPress={() => router.push('/reset-password')}
+          // With the address typed here, which the reset would ask for again.
+          onPress={() =>
+            router.push({ pathname: '/reset-password', params: { email: email.trim() } })
+          }
         />
         <Button label="Back" variant="ghost" onPress={() => router.back()} />
       </View>

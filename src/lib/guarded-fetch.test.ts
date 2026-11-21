@@ -1,4 +1,4 @@
-import { farewellDue, forgetFarewell } from '@/lib/farewell';
+import { farewellDue, forgetFarewell, noteAccountDeleted } from '@/lib/farewell';
 import { createGuardedFetch, RENEWAL_PAUSE_MS, REQUEST_TIMEOUT_MS } from '@/lib/guarded-fetch';
 
 const ANON_KEY = 'sb_publishable_test_key';
@@ -34,12 +34,16 @@ const call = (token: string | null, body: unknown = {}): RequestInit => ({
 const bearerOf = (init: RequestInit | undefined) =>
   new Headers(init?.headers).get('Authorization')?.replace(/^Bearer /, '') ?? null;
 
+/** The refresh token of the session stored on the device, while one is: the renewals below carry it. */
+const STORED_REFRESH_TOKEN = 'r';
+
 function setUp({ sessionStored = true } = {}) {
   const network = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit | undefined]>();
   const renewSession = jest.fn<Promise<string | null>, [string]>();
   const guarded = createGuardedFetch({
     anonKey: ANON_KEY,
     isSessionStored: () => sessionStored,
+    isStoredRefreshToken: (token) => sessionStored && token === STORED_REFRESH_TOKEN,
     renewSession,
     fetch: network,
   });
@@ -238,6 +242,7 @@ describe('an answer', () => {
     const guarded = createGuardedFetch({
       anonKey: ANON_KEY,
       isSessionStored: () => true,
+      isStoredRefreshToken: () => true,
       renewSession: jest.fn(),
     });
     const platform = jest.spyOn(globalThis, 'fetch').mockResolvedValue(json(200, [1]));
@@ -501,16 +506,108 @@ describe('a renewal refused because the account is suspended', () => {
     expect(farewellDue()).toBeNull();
   });
 
-  it('leaves no word for any other end of the session, nor for a sign-in refused', async () => {
+  it('leaves no word for a sign-in refused', async () => {
     const { guarded, network } = setUp();
-    network
-      .mockResolvedValueOnce(authRefusal(400, 'refresh_token_not_found', 'Invalid Refresh Token'))
-      .mockResolvedValueOnce(authRefusal(400, 'user_banned', 'User is banned'));
+    network.mockResolvedValueOnce(authRefusal(400, 'user_banned', 'User is banned'));
 
-    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
     await guarded(SIGN_IN, { method: 'POST', body: '{}' });
 
     expect(farewellDue()).toBeNull();
+  });
+
+  it('is not taken back by a renewal refused for any other reason: the suspension says more', async () => {
+    const { guarded, network } = setUp();
+    network
+      .mockResolvedValueOnce(banned())
+      .mockResolvedValueOnce(authRefusal(400, 'refresh_token_not_found', 'Invalid Refresh Token'));
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(farewellDue()).toBe('suspended');
+  });
+});
+
+/**
+ * Signed out on another device, by the tidy-up of a session unused for 90
+ * days, or by a new password set elsewhere: the next renewal is refused, and
+ * the app landed on the welcome screen without a word. (Found in review.)
+ * Word is left here, as for a suspension. The local stack answers each of
+ * those with refresh_token_not_found.
+ */
+describe('a renewal refused because the session was ended elsewhere', () => {
+  beforeEach(() => forgetFarewell());
+
+  it.each([
+    ['refresh_token_not_found', 'Invalid Refresh Token: Refresh Token Not Found'],
+    ['session_not_found', 'Invalid Refresh Token: No Valid Session Found'],
+    ['refresh_token_already_used', 'Invalid Refresh Token: Already Used'],
+    ['session_expired', 'Invalid Refresh Token: Session Expired (Inactivity)'],
+  ])(
+    'leaves word for the welcome screen for %s, and is handed on as it came',
+    async (code, message) => {
+      const { guarded, network } = setUp();
+      network.mockResolvedValue(authRefusal(400, code, message));
+
+      const answer = await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+      expect(answer.status).toBe(400);
+      expect(await answer.json()).toEqual({ code, message });
+      expect(farewellDue()).toBe('ended');
+    },
+  );
+
+  it('leaves word whichever way the code is given', async () => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValue(
+      json(400, {
+        code: 400,
+        error_code: 'refresh_token_not_found',
+        msg: 'Invalid Refresh Token: Refresh Token Not Found',
+      }),
+    );
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(farewellDue()).toBe('ended');
+  });
+
+  /**
+   * The app renews a session it has let go of, to tell the server of a
+   * sign-out it may not have heard: the courier signed out, and what the
+   * server says of that session is no news for them.
+   */
+  it('leaves no word for a session the device no longer holds', async () => {
+    const { guarded, network } = setUp();
+    network.mockImplementation(async () =>
+      authRefusal(400, 'refresh_token_not_found', 'Invalid Refresh Token'),
+    );
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"let-go"}' });
+    await guarded(RENEWAL, { method: 'POST' });
+
+    expect(farewellDue()).toBeNull();
+  });
+
+  it('leaves no word for a renewal that has not happened yet', async () => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValue(json(503, { message: 'Service Unavailable' }));
+
+    await expect(
+      guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' }),
+    ).rejects.toThrow(/^Network request/);
+
+    expect(farewellDue()).toBeNull();
+  });
+
+  it('says no more than a suspension does, nor over a deletion', async () => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValue(authRefusal(400, 'refresh_token_not_found', 'Invalid Refresh Token'));
+    noteAccountDeleted();
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(farewellDue()).toBe('deleted');
   });
 });
 

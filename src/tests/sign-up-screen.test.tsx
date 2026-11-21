@@ -326,6 +326,8 @@ describe('SignUpScreen', () => {
     expect(mockSignUp).not.toHaveBeenCalled();
     expect(screen.getByText('Choose a username.')).toBeOnTheScreen();
     expect(screen.getByText('Enter your email address.')).toBeOnTheScreen();
+    // Signing up is where both are chosen: these words are its own.
+    expect(screen.getByText('Choose a password.')).toBeOnTheScreen();
   });
 
   it('passes the typed username through unchanged for the context to normalise', async () => {
@@ -721,7 +723,11 @@ describe('SignUpScreen', () => {
         expect(screen.getByText(MAY_BE_CONFIRMED)).toBeOnTheScreen();
         expect(mockedAnnounce).toHaveBeenLastCalledWith(MAY_BE_CONFIRMED);
         await user.press(button('I forgot my password'));
-        expect(mockPush).toHaveBeenCalledWith('/reset-password');
+        // With the address the code went to, which the reset would ask for again.
+        expect(mockPush).toHaveBeenCalledWith({
+          pathname: '/reset-password',
+          params: { email: 'anna@example.com' },
+        });
       });
 
       it('says no more than that the code did not work after one refused outright', async () => {

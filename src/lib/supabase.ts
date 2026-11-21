@@ -4,7 +4,12 @@ import { AppState, Platform } from 'react-native';
 import type { Database } from '@/lib/database.types';
 import { readSupabaseConfig } from '@/lib/env';
 import { createGuardedFetch } from '@/lib/guarded-fetch';
-import { authStorage, isSessionStored, SESSION_KEY } from '@/lib/session-store';
+import {
+  authStorage,
+  isSessionStored,
+  isStoredRefreshToken,
+  SESSION_KEY,
+} from '@/lib/session-store';
 
 // Each variable written out in full, on purpose. Expo inlines EXPO_PUBLIC_*
 // values into the bundle only where the code says `process.env.EXPO_PUBLIC_X`
@@ -38,7 +43,7 @@ export const supabase = createClient<Database>(url, anonKey, {
     flowType: 'implicit',
   },
   global: {
-    fetch: createGuardedFetch({ anonKey, isSessionStored, renewSession }),
+    fetch: createGuardedFetch({ anonKey, isSessionStored, isStoredRefreshToken, renewSession }),
   },
 });
 

@@ -104,6 +104,15 @@ describe('validatePassword', () => {
     expect(validatePassword('')).toMatch(/Choose a password/);
   });
 
+  /** Signing in asks for the password the courier has, not for one to choose. */
+  it('asks for an empty field in the words it is given, and checks the rest as ever', () => {
+    expect(validatePassword('', 'Enter your password.')).toBe('Enter your password.');
+    expect(validatePassword('short', 'Enter your password.')).toBe(
+      'Passwords need at least 8 characters.',
+    );
+    expect(validatePassword('a-good-password', 'Enter your password.')).toBeNull();
+  });
+
   /**
    * The auth server counts the shortest in bytes too, as UTF-8 writes them:
    * four umlauts, or two emoji, are a password it takes (GoTrue v2.197 at
@@ -192,6 +201,13 @@ describe('validateUsername', () => {
   it('accepts a username typed as the app writes it, with the @', () => {
     expect(validateUsername('@anna')).toBeNull();
     expect(validateUsername('@')).toMatch(/Choose a username/);
+  });
+
+  /** Asking a friend is typing their username, not choosing one. */
+  it('asks for an empty field in the words it is given, and checks the rest as ever', () => {
+    expect(validateUsername(' @ ', 'Enter their username.')).toBe('Enter their username.');
+    expect(validateUsername('an', 'Enter their username.')).toMatch(/at least/);
+    expect(validateUsername('@anna', 'Enter their username.')).toBeNull();
   });
 });
 
