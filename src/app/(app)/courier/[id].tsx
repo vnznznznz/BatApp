@@ -1,5 +1,5 @@
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -38,18 +38,13 @@ export default function CourierScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
   const { reload } = list;
-  const { profile, reload: reloadProfile } = useProfile();
+  // The city picker, opened from here, saves the city itself and pops back:
+  // what this page says about a city of the courier's own is read again each
+  // time it comes back into view - by the hook itself, which the page used to
+  // repeat. (Found in the merged tree.)
+  const { profile } = useProfile();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // The city picker, opened from here, saves the city itself and pops back:
-  // what this page says about a city of the courier's own has to be read again
-  // each time it comes back into view.
-  useFocusEffect(
-    useCallback(() => {
-      void reloadProfile();
-    }, [reloadProfile]),
-  );
 
   const friendship = list.data?.find((entry) => entry.friend.id === id) ?? null;
 

@@ -50,17 +50,22 @@ jest.mock('@/features/friends/friends', () => ({
   withdrawRequest: jest.fn(),
 }));
 
-/** The courier's profile as the database has it now. */
-const mockProfileState: { profile: Profile | null } = { profile: null };
+/** The courier's profile as the database has it now, and how often it was read. */
+const mockProfileState: { profile: Profile | null; reads: number } = { profile: null, reads: 0 };
 
-// As the real hook does, it holds what it read last, and reads again only when
-// asked to.
+// As the real hook does, it holds what it read last, and reads again each time
+// the screen comes into view - the first time included - and when asked to.
 jest.mock('@/features/profile/use-profile', () => {
   const React = jest.requireActual<typeof import('react')>('react');
+  const { useFocusEffect } = jest.requireMock<typeof import('expo-router')>('expo-router');
   return {
     useProfile: () => {
       const [profile, setProfile] = React.useState(() => mockProfileState.profile);
-      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      const reload = React.useCallback(async () => {
+        mockProfileState.reads += 1;
+        setProfile(mockProfileState.profile);
+      }, []);
+      useFocusEffect(React.useCallback(() => void reload(), [reload]));
       return { profile, isLoading: false, error: null, reload };
     },
   };
@@ -216,6 +221,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockFocusEffects.clear();
   mockProfileState.profile = courier;
+  mockProfileState.reads = 0;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedRequestFriend.mockReset();
@@ -541,6 +547,22 @@ describe('FriendsScreen', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Choose your city' }));
 
       expect(mockPush).toHaveBeenCalledWith('/city-picker');
+    });
+
+    /**
+     * The hook reads the profile again as the screen comes into view, which is
+     * what shows a city the picker has just saved. The screen asked as well,
+     * and made two requests for the same row at every focus. (Found in the
+     * merged tree.)
+     */
+    it('reads the profile once each time the screen comes into view', async () => {
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+      expect(mockProfileState.reads).toBe(1);
+
+      await comeBack();
+
+      expect(mockProfileState.reads).toBe(2);
     });
 
     // Ben has no city, so there is no route to him whoever has one: only the

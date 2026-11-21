@@ -1,5 +1,5 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useRouter } from 'expo-router';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -39,18 +39,13 @@ import { useRemote } from '@/lib/use-remote';
  */
 export default function FriendsScreen() {
   const router = useRouter();
-  const { profile, reload: reloadProfile } = useProfile();
-  const list = useRemote(fetchFriendships);
-  const { reload, refresh } = list;
-
   // The city picker, opened from here or from the profile, saves the city
   // itself and pops back: what this screen says about a city of the courier's
-  // own has to be read again each time it comes back into view.
-  useFocusEffect(
-    useCallback(() => {
-      void reloadProfile();
-    }, [reloadProfile]),
-  );
+  // own is read again each time it comes back into view - by the hook itself,
+  // which the screen used to repeat. (Found in the merged tree.)
+  const { profile } = useProfile();
+  const list = useRemote(fetchFriendships);
+  const { reload, refresh } = list;
 
   const [username, setUsername] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);

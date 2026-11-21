@@ -59,13 +59,22 @@ const mockProfileState: { profile: Profile | null; isLoading: boolean; error: st
   isLoading: false,
   error: null,
 };
-// Stable, as the real hook's is: the screen reloads the profile on focus, and a
-// new function on every render would read as a new focus on every render.
+// Stable, as the real hook's is: a new function on every render would read as
+// a new focus on every render.
 const mockReloadProfile = jest.fn(() => Promise.resolve());
+const mockReloadProfileOnFocus = () => void mockReloadProfile();
 
-jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({ ...mockProfileState, reload: mockReloadProfile }),
-}));
+// As the real hook does, it reads the profile each time the screen comes into
+// view, the first time included.
+jest.mock('@/features/profile/use-profile', () => {
+  const { useFocusEffect } = jest.requireMock<typeof import('expo-router')>('expo-router');
+  return {
+    useProfile: () => {
+      useFocusEffect(mockReloadProfileOnFocus);
+      return { ...mockProfileState, reload: mockReloadProfile };
+    },
+  };
+});
 
 const mockedFetchRoost = jest.mocked(fetchRoost);
 const mockedFetchBadges = jest.mocked(fetchBadges);
@@ -748,33 +757,35 @@ describe('HomeScreen', () => {
 
   describe('staying current', () => {
     // The profile screen and the city picker both change what the roost shows,
-    // and the courier comes back here from each of them.
+    // and the courier comes back here from each of them. The hook reads the
+    // profile again by itself; the screen asking as well made two requests for
+    // the row at every return. (Found in the merged tree; home-profile.test.tsx
+    // counts the requests with the real hook.)
     it('reloads the profile, the roost and the counts when the roost comes back into view', async () => {
       await renderScreen(<HomeScreen />);
       await roostLoaded();
 
       await comeBackToRoost();
 
-      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+      expect(mockReloadProfile).toHaveBeenCalledTimes(2);
       expect(mockedFetchRoost).toHaveBeenCalledTimes(2);
       expect(mockedFetchBadges).toHaveBeenCalledTimes(2);
 
       await comeBackToRoost();
 
-      expect(mockReloadProfile).toHaveBeenCalledTimes(2);
+      expect(mockReloadProfile).toHaveBeenCalledTimes(3);
     });
 
     /**
      * The hook that reads the profile asks for it itself when the screen
      * opens. Asking here as well made two requests for the same row at every
-     * start. (Found in review; home-profile.test.tsx counts the requests with
-     * the real hook.)
+     * start. (Found in review.)
      */
     it('does not ask for the profile a second time as it opens', async () => {
       await renderScreen(<HomeScreen />);
       await roostLoaded();
 
-      expect(mockReloadProfile).not.toHaveBeenCalled();
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
     });
 
     /**
