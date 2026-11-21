@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { cityId, createCourier, makeFriends, rpc, setCity } from './fixtures.mjs';
 import {
@@ -483,4 +486,199 @@ describe('the settling columns', () => {
     ).rows[0];
     assert.deepEqual(afterUpdate, before);
   });
+});
+
+/**
+ * The city picker's question says where the bats leave from, and the move is
+ * saved only while they still leave from there when the save arrives: on a
+ * PostgREST filter the app builds from the row the way private.settle_city
+ * reads it (departingFrom in use-profile.ts). Pinned in Jest only as words, the
+ * filter could read a city cleared by hand, a settled city with no time of the
+ * move, or the last millisecond of the day differently from the trigger, and
+ * nothing would notice. (Found in review.) So each filter the app sends - the
+ * fixture's, which use-profile.test.ts holds to the function - is applied here
+ * as PostgREST applies it, in the courier's own save, to a courier in each
+ * state, next to what the trigger decides for that state.
+ *
+ * The filters were built at the fixture's `now`, and the trigger reads the
+ * clock: so each state is put in twice, its times measured once from the
+ * fixture's moment for the filters and once from the database's own for the
+ * trigger. Both decide by how long ago the move was, and by nothing else.
+ */
+describe('the condition the city picker saves a move on', () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const FIXTURE = JSON.parse(
+    readFileSync(
+      join(HERE, '..', '..', 'features', 'profile', 'departing-filter.fixture.json'),
+      'utf8',
+    ),
+  );
+  const CONFIG = readFileSync(join(HERE, '..', '..', 'constants', 'config.ts'), 'utf8');
+  const RELOCATION_HOURS = Number(/export const RELOCATION_HOURS = ([0-9.]+)/.exec(CONFIG)[1]);
+
+  const MILLISECOND = 1;
+  const HOUR = 3_600_000;
+  const DAY = RELOCATION_HOURS * HOUR;
+
+  /** PostgREST's operators, for those the app's filters use. */
+  const OPERATORS = { eq: '=', gt: '>', lte: '<=' };
+
+  /**
+   * A filter as `.or()` sends it, in the SQL PostgREST makes of it: the terms
+   * of `or=(...)` joined by OR, `and(...)` and `or(...)` within them, and each
+   * `column.operator.value` with its value bound as a parameter. An operator
+   * the app does not send is an error here rather than a filter read wrongly.
+   */
+  function sqlOf(filter, values) {
+    return `(${terms(filter)
+      .map((term) => termSql(term, values))
+      .join(' or ')})`;
+  }
+
+  function termSql(term, values) {
+    const group = /^(and|or)\((.*)\)$/.exec(term);
+    if (group) {
+      return `(${terms(group[2])
+        .map((inner) => termSql(inner, values))
+        .join(` ${group[1]} `)})`;
+    }
+    const [, column, operator, value] = /^([a-z_]+)\.([a-z]+)\.(.+)$/.exec(term) ?? [];
+    if (operator === 'is' && value === 'null') return `${column} is null`;
+    if (!column || !Object.hasOwn(OPERATORS, operator)) {
+      throw new Error(`not a filter the app sends: ${term}`);
+    }
+    values.push(value);
+    return `${column} ${OPERATORS[operator]} $${values.length}`;
+  }
+
+  /** The terms of a list, split at the commas outside brackets. */
+  function terms(list) {
+    const found = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] === '(') depth++;
+      else if (list[i] === ')') depth--;
+      else if (list[i] === ',' && depth === 0) {
+        found.push(list.slice(start, i));
+        start = i + 1;
+      }
+    }
+    found.push(list.slice(start));
+    return found;
+  }
+
+  /** Runs `fn` in a transaction that is then undone, so that what it saved is not kept. */
+  async function undone(fn) {
+    await db.exec('begin');
+    try {
+      return await fn();
+    } finally {
+      await db.exec('rollback');
+    }
+  }
+
+  /**
+   * Puts a courier who has had letters into `state`: a city, the city a move
+   * is settling away from, and how long ago the move was, in milliseconds
+   * before `moment` - or, for a null moment, before this transaction's now(),
+   * which is what the trigger reads.
+   */
+  async function putIn(who, { city, settled, before }, moment) {
+    // The city first: changing it fires the trigger, which writes the other
+    // two columns itself.
+    await db.query(
+      `update public.profiles set city_id = $2, has_corresponded = true where id = $1`,
+      [who, city],
+    );
+    await db.query(
+      `update public.profiles
+       set settled_city_id = $2,
+           city_changed_at = coalesce($4::timestamptz, date_trunc('milliseconds', now()))
+                             - $3 * interval '1 millisecond'
+       where id = $1`,
+      [who, settled, before, moment],
+    );
+  }
+
+  /**
+   * Where private.settle_city has the bats leave from: the city it keeps them
+   * in for a day when the courier moves on to one they are not in - Köln, here
+   * - or null for nowhere, when the move counts at once.
+   */
+  const departingFor = (who, state) =>
+    undone(async () => {
+      await putIn(who, state, null);
+      const koeln = await cityId(db, 'Köln', 'DE');
+      await asUser(db, who, () =>
+        db.query(`update public.profiles set city_id = $2 where id = $1`, [who, koeln]),
+      );
+      const { rows } = await db.query(
+        `select settled_city_id, city_changed_at is not null as settling
+         from public.profiles where id = $1`,
+        [who],
+      );
+      assert.equal(rows[0].settling, rows[0].settled_city_id !== null);
+      return rows[0].settled_city_id;
+    });
+
+  /** Whether the courier's save on `filter` changes their row, as PostgREST runs it. */
+  const savesOn = (who, state, filter) =>
+    undone(async () => {
+      await putIn(who, state, FIXTURE.now);
+      const values = [await cityId(db, 'Köln', 'DE'), who];
+      const where = sqlOf(filter, values);
+      const { rows } = await asUser(db, who, () =>
+        db.query(
+          `update public.profiles set city_id = $1 where id = $2 and ${where} returning id`,
+          values,
+        ),
+      );
+      return rows.length === 1;
+    });
+
+  it('has a filter for each city its states name, by the id the seed data gives it', async () => {
+    for (const { city, departing } of FIXTURE.filters) {
+      assert.equal(city === null ? null : await cityId(db, city[0], city[1]), departing);
+    }
+  });
+
+  // Each state: a city, the one a move is settling away from, how long ago
+  // the move was - and where the bats leave from, as the trigger reads it.
+  const BERLIN = ['Berlin', 'DE'];
+  const MUNICH = ['Munich', 'DE'];
+  const STATES = [
+    ['no city and no move', [null, null, null], null],
+    ['a city and no move', [MUNICH, null, null], MUNICH],
+    ['a move an hour old', [MUNICH, BERLIN, HOUR], BERLIN],
+    ['a move that settled an hour ago', [MUNICH, BERLIN, DAY + HOUR], MUNICH],
+    ['a move a day old to the millisecond', [MUNICH, BERLIN, DAY], MUNICH],
+    ['a move a millisecond short of a day', [MUNICH, BERLIN, DAY - MILLISECOND], BERLIN],
+    ['a move a millisecond over a day', [MUNICH, BERLIN, DAY + MILLISECOND], MUNICH],
+    ['a settled city and no time of the move', [MUNICH, BERLIN, null], MUNICH],
+    ['a time of a move and no settled city', [MUNICH, null, HOUR], MUNICH],
+    ['the city cleared while a move settles', [null, BERLIN, HOUR], BERLIN],
+    ['the city cleared and the move settled', [null, BERLIN, DAY + HOUR], null],
+    ['the city cleared, a settled city and no time', [null, BERLIN, null], null],
+  ];
+
+  const idOf = async (city) => (city ? cityId(db, city[0], city[1]) : null);
+
+  for (const [description, [city, settled, before], expected] of STATES) {
+    it(`saves for ${description} only on leaving from where the trigger has the bats leave`, async () => {
+      const anna = await createCourier(db, { name: 'anna' });
+      const state = { city: await idOf(city), settled: await idOf(settled), before };
+
+      const departing = await departingFor(anna, state);
+      assert.equal(departing, await idOf(expected), 'where the trigger has them leave from');
+
+      for (const { departing: asked, filter } of FIXTURE.filters) {
+        assert.equal(
+          await savesOn(anna, state, filter),
+          asked === departing,
+          `the save on leaving from ${asked ?? 'nowhere'}`,
+        );
+      }
+    });
+  }
 });

@@ -120,8 +120,12 @@ export function toProfile(row: Row, now: number = Date.now()): Profile {
  * away from, while the move is younger than RELOCATION_HOURS, and from the
  * courier's city otherwise. `now` is this device's clock, by which the app
  * says everything it says about a move.
+ *
+ * Exported for departing-filter.fixture.json, whose filters use-profile.test.ts
+ * checks against this and relocation.db.test.mjs applies as PostgREST would,
+ * next to what `private.settle_city` decides for the same rows.
  */
-function departingFrom(departing: number | null, now: number): string {
+export function departingFrom(departing: number | null, now: number): string {
   const dayBefore = new Date(now - RELOCATION_HOURS * 3_600_000).toISOString();
   // No move settling: none made, or the last one a day ago or more.
   const noMove = `settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.${dayBefore}`;

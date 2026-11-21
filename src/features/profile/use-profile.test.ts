@@ -2,7 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { RELOCATION_HOURS } from '@/constants/config';
+import departingFilters from '@/features/profile/departing-filter.fixture.json';
 import {
+  departingFrom,
   toProfile,
   useProfile,
   type CityCondition,
@@ -568,6 +570,19 @@ describe('useProfile', () => {
         expect(answer).toEqual({ saved: false, profile: result.current.profile });
         expect(result.current.profile?.move).toBeNull();
       });
+
+      /**
+       * Whether these filters pick the row exactly when the database reads
+       * the bats as leaving from that city is shown by a database test, which
+       * applies the fixture's filters next to private.settle_city
+       * (relocation.db.test.mjs). This holds the fixture to what is sent.
+       */
+      it.each(departingFilters.filters.map((entry) => [entry.city?.[0] ?? 'nowhere', entry]))(
+        'sends the filter the database test checks for leaving from %s',
+        (_, { departing, filter }) => {
+          expect(departingFrom(departing, Date.parse(departingFilters.now))).toBe(filter);
+        },
+      );
     });
 
     /**
