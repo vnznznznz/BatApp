@@ -1340,14 +1340,27 @@ describe('what the courier is told when the auth server says no', () => {
      * has an account, and the form can ask for the code at once: "Check your
      * email" was all it said, with no way to a code that had run out.
      */
-    it('asks for the code instead when the address has not been confirmed yet', async () => {
-      await opened(() => authRefusal(400, 'email_not_confirmed', 'Email not confirmed'));
+    it.each<[string, () => Response]>([
+      ['', () => authRefusal(400, 'email_not_confirmed', 'Email not confirmed')],
+      [
+        ', said in other words',
+        () => authRefusal(400, 'email_not_confirmed', 'Confirm your address first'),
+      ],
+      [
+        ', said as a server said it before it had codes',
+        () => json(400, { error: 'invalid_grant', error_description: 'Email not confirmed' }),
+      ],
+    ])(
+      'asks for the code instead when the address has not been confirmed yet%s',
+      async (_, answer) => {
+        await opened(answer);
 
-      expect(await asked(() => auth.signIn('anna@example.test', 'night-courier'))).toEqual({
-        needsEmailConfirmation: true,
-      });
-      expect(state()).toBe('signed out');
-    });
+        expect(await asked(() => auth.signIn('anna@example.test', 'night-courier'))).toEqual({
+          needsEmailConfirmation: true,
+        });
+        expect(state()).toBe('signed out');
+      },
+    );
 
     it('keeps what the server said, for whoever has to find out what went wrong', async () => {
       await opened(() => json(401, { message: 'Invalid API key' }));
@@ -1476,6 +1489,14 @@ describe('what the courier is told when the auth server says no', () => {
       [
         'the address has an account',
         () => authRefusal(422, 'user_already_exists', 'User already registered'),
+      ],
+      [
+        'the address has an account, said in other words',
+        () => authRefusal(422, 'user_already_exists', 'A user with this email exists'),
+      ],
+      [
+        'the address has an account, said as a server said it before it had codes',
+        () => json(422, { code: 422, msg: 'User already registered' }),
       ],
       [
         'a code went to the address a moment ago',

@@ -198,7 +198,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         // Said only once the password has been found right: the address is
         // still waiting for its code, and the form asks for it.
-        if (error?.code === 'email_not_confirmed') return { needsEmailConfirmation: true };
+        if (isAnswer(error, 'email_not_confirmed', 'email not confirmed')) {
+          return { needsEmailConfirmation: true };
+        }
         if (error) throw explained(error);
         return { needsEmailConfirmation: false };
       },
@@ -223,7 +225,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // The auth server tells by itself - "User already registered" - while
         // confirmation by phone is off (GO-LIVE), but at least the app does not.
         // A code that went to the address a moment ago is one on its way too.
-        if (error?.code === 'user_already_exists' || isCodeJustSent(error)) {
+        if (
+          isAnswer(error, 'user_already_exists', 'user already registered') ||
+          isCodeJustSent(error)
+        ) {
           return { needsEmailConfirmation: true };
         }
         if (error) throw explained(error);
@@ -360,6 +365,13 @@ export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try an
 export const CODE_DID_NOT_WORK =
   'That code did not work. Check it against the newest email, or ask for a new one.';
 
+/**
+ * Whether the auth server answered with `code`, or in the words it gave
+ * before it had codes: it says both today, with the app's API version.
+ */
+const isAnswer = (error: AuthError | null, code: string, words: string) =>
+  error !== null && (error.code === code || error.message.toLowerCase().includes(words));
+
 /** The answer for an email asked for within a minute of the last one to the address. */
 const CODE_JUST_SENT = /only request this after (\d+) seconds?/;
 
@@ -386,14 +398,6 @@ function describeAuthError(error: AuthError): string {
 
   if (said.includes('invalid login credentials')) {
     return 'That email and password do not match an account.';
-  }
-  // Signing in and up answer these two with the screen for the code, and
-  // these words are for wherever else they might come from.
-  if (said.includes('email not confirmed')) {
-    return 'Check your email and confirm your address first.';
-  }
-  if (said.includes('user already registered')) {
-    return 'There is already an account with that email address.';
   }
   if (error.code === 'otp_expired' || said.includes('token has expired or is invalid')) {
     return CODE_DID_NOT_WORK;
