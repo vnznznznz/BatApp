@@ -187,9 +187,8 @@ export default function CityPickerScreen() {
         // the start. These two are for iOS: the list's insets follow the
         // keyboard, so the last rows can be scrolled above it, and a drag puts
         // it away. Android draws the app edge to edge, where the window is not
-        // resized for the keyboard, so there the last rows can stay under it
-        // until the shared Screen component makes room (not yet tried on a
-        // device).
+        // resized for the keyboard: there the shared Screen component makes
+        // room for it, and the list ends above it (not yet tried on a device).
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="on-drag"
         ItemSeparatorComponent={() => <View style={styles.separator} />}

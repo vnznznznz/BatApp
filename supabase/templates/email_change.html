@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- An eight-digit code is not a telephone number for the mail app to make a link of. -->
+    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no" />
+    <title>Your Night Courier code</title>
+    <style>
+      a[x-apple-data-detectors] {
+        color: inherit !important;
+        text-decoration: none !important;
+      }
+    </style>
+  </head>
+  <body style="margin: 0; padding: 24px; font-family: Georgia, 'Times New Roman', serif">
+    <p style="margin: 0 0 16px; font-size: 17px; line-height: 1.5">
+      Here is a code for changing the email address of a Night Courier account, from {{ .Email }} to
+      {{ .NewEmail }}:
+    </p>
+    <p
+      style="
+        margin: 0 0 16px;
+        font-family: Menlo, Consolas, 'Courier New', monospace;
+        font-size: 36px;
+        font-weight: bold;
+        letter-spacing: 6px;
+      "
+    >
+      {{ .Token }}
+    </p>
+    <p style="margin: 0 0 16px; font-size: 17px; line-height: 1.5">
+      The change needs a code from each of the two addresses. It works for a day, and only the
+      newest code counts.
+    </p>
+    <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #6b6b6b">
+      If you did not ask for this change, you can ignore this email: without the code, the address
+      stays as it is.
+    </p>
+  </body>
+</html>

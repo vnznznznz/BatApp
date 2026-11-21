@@ -14,8 +14,12 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
   title: string;
   /** A second line, muted. */
   subtitle?: string;
+  /** How many lines the subtitle may take before it is cut: 0 for all it needs. */
+  subtitleLines?: number;
   /** A third line, for a preview of content. Clipped to two lines. */
   detail?: string;
+  /** How many lines the detail may take before it is cut: 0 for all it needs. */
+  detailLines?: number;
   /** Shown before the text: an unread dot, a small mark. */
   leading?: ReactNode;
   /** Shown after the text: a badge, a chevron. Small, and not interactive. */
@@ -31,6 +35,12 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
    * at all.
    */
   actions?: ReactNode;
+  /**
+   * Puts the actions below the text at every text size, for a row whose text
+   * has to be read whole: beside two buttons on a 360dp phone, a name and a
+   * username are cut to a few characters.
+   */
+  actionsBelow?: boolean;
   /** Draws the title in the heading weight, for unread or otherwise new rows. */
   emphasised?: boolean;
 };
@@ -45,16 +55,19 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
 export function ListRow({
   title,
   subtitle,
+  subtitleLines = 1,
   detail,
+  detailLines = 2,
   leading,
   trailing,
   actions,
+  actionsBelow = false,
   emphasised = false,
   onPress,
   ...rest
 }: ListRowProps) {
   const { fontScale } = useWindowDimensions();
-  const stacked = Boolean(actions) && fontScale >= LARGE_TEXT_SCALE;
+  const stacked = Boolean(actions) && (actionsBelow || fontScale >= LARGE_TEXT_SCALE);
 
   const content = (
     <>
@@ -64,12 +77,12 @@ export function ListRow({
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="caption" tone="secondary" numberOfLines={1}>
+          <Text variant="caption" tone="secondary" numberOfLines={subtitleLines}>
             {subtitle}
           </Text>
         ) : null}
         {detail ? (
-          <Text variant="caption" tone="muted" numberOfLines={2} style={styles.detail}>
+          <Text variant="caption" tone="muted" numberOfLines={detailLines} style={styles.detail}>
             {detail}
           </Text>
         ) : null}

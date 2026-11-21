@@ -37,12 +37,24 @@ describe('formatDuration', () => {
 
 describe('formatDistance', () => {
   it('keeps one decimal for short hops', () => {
-    expect(formatDistance(3.42)).toBe('3.4 km');
+    expect(formatDistance(3.42)).toBe('3.4 km');
   });
 
   it('rounds and groups longer distances', () => {
-    expect(formatDistance(584.3)).toBe('584 km');
-    expect(formatDistance(8423.9)).toBe('8,424 km');
+    expect(formatDistance(584.3)).toBe('584 km');
+    expect(formatDistance(8423.9)).toBe('8,424 km');
+  });
+
+  /**
+   * With a plain space, a line that wraps - a letter's line in the list, the
+   * way to a friend in compose - could end with "404" and start the next with
+   * "km". (Found in the browser.) The space between the two does not break;
+   * screen readers read it as any other space.
+   */
+  it('keeps the number and its unit together with a space that does not break', () => {
+    for (const km of [0.4, 3.42, 504.6, 9296.2]) {
+      expect(formatDistance(km)).toMatch(/^[\d.,]+ km$/);
+    }
   });
 
   it('renders a placeholder for unusable input', () => {

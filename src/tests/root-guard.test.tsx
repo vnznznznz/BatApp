@@ -1,13 +1,8 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import RootLayout from '@/app/_layout';
-
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work that would otherwise
-// count against whichever test runs first.
-jest.setTimeout(20_000);
 
 /** Everything the guard has asked of the router, in order. */
 const mockNavigation: string[] = [];
@@ -57,17 +52,59 @@ jest.mock('expo-splash-screen', () => ({
   hideAsync: jest.fn(() => Promise.resolve(true)),
 }));
 
-const mockAuth: { session: object | null; isRestoring: boolean } = {
+type MockAuth = {
+  session: object | null;
+  isRestoring: boolean;
+  isSettingPassword: boolean;
+  /** What the code that holds the way in is for, once it has signed the courier in. */
+  unfinished: { flow: 'sign-up' | 'sign-in' | 'reset' } | null;
+};
+
+const mockAuth: MockAuth = {
   session: null,
   isRestoring: false,
+  isSettingPassword: false,
+  unfinished: null,
+};
+
+/**
+ * Whoever reads the context, and what they were last given: a change is drawn
+ * at once, as with the app's own context, and not only when the whole tree
+ * happens to be drawn again - which, with the React Compiler, it is not.
+ */
+const mockReaders = {
+  listeners: new Set<() => void>(),
+  given: { ...mockAuth },
+  current(): MockAuth {
+    const { given } = mockReaders;
+    const changed = (Object.keys(mockAuth) as (keyof MockAuth)[]).some(
+      (key) => given[key] !== mockAuth[key],
+    );
+    if (changed) mockReaders.given = { ...mockAuth };
+    return mockReaders.given;
+  },
 };
 
 // The guard is under test, not the auth stack. Mocking the context keeps this
 // from becoming an integration test of Supabase's client.
-jest.mock('@/features/auth/auth-context', () => ({
-  AuthProvider: ({ children }: { children: import('react').ReactNode }) => children,
-  useAuth: () => mockAuth,
-}));
+jest.mock('@/features/auth/auth-context', () => {
+  const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+  return {
+    AuthProvider: ({ children }: { children: import('react').ReactNode }) => children,
+    useAuth: () =>
+      useSyncExternalStore((listener: () => void) => {
+        mockReaders.listeners.add(listener);
+        return () => mockReaders.listeners.delete(listener);
+      }, mockReaders.current),
+  };
+});
+
+/** Changes what the auth context says while the app is open. */
+const authChanges = (change: Partial<MockAuth>) =>
+  act(async () => {
+    Object.assign(mockAuth, change);
+    mockReaders.listeners.forEach((listener) => listener());
+  });
 
 /** A signed-in courier's session, as far as the guard looks at one. */
 const SESSION = { user: { id: 'user-mara' } };
@@ -109,6 +146,8 @@ beforeEach(() => {
   mockSegments.current = [];
   mockAuth.session = SESSION;
   mockAuth.isRestoring = false;
+  mockAuth.isSettingPassword = false;
+  mockAuth.unfinished = null;
 });
 
 describe('the root guard', () => {
@@ -153,6 +192,18 @@ describe('the root guard', () => {
       expect(mockNavigation).toEqual([]);
     });
 
+    /**
+     * A link that leads nowhere lands on a page that says so. Sent on to the
+     * roost at once, the courier would only have seen it flash past, and not
+     * known why they were not where the link pointed; its button takes them
+     * to the start, and from there to the roost.
+     */
+    it('lets a signed-in courier read that a link leads nowhere', async () => {
+      await openTheAppOn('+not-found');
+
+      expect(mockNavigation).toEqual([]);
+    });
+
     it('leaves a courier already in the app where they are', async () => {
       await openTheAppOn('(app)', 'letters');
 
@@ -180,10 +231,159 @@ describe('the root guard', () => {
     });
   });
 
+  /**
+   * The code from a reset email signs the courier in, and the new password is
+   * saved with that session a moment later - or not, and they try another.
+   * Sent to the roost in between, they would be signed in with a password
+   * they do not know, and the screen asking for it gone.
+   */
+  describe('while a password reset is being finished', () => {
+    beforeEach(() => {
+      mockAuth.isSettingPassword = true;
+    });
+
+    it('leaves the courier on the reset screen until the new password is saved', async () => {
+      await openTheAppOn('reset-password');
+
+      expect(mockNavigation).toEqual([]);
+    });
+
+    it('takes them to the roost once it is saved', async () => {
+      await openTheAppOn('reset-password');
+      expect(mockNavigation).toEqual([]);
+
+      await authChanges({ isSettingPassword: false });
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+
+    /**
+     * Gone back from the reset screen - in a browser, say - they were signed
+     * in, and taken into the app, with the password not saved. (Found in
+     * review.) Held wherever they are, they are taken back to it, as they are
+     * when the app opens after it was closed.
+     */
+    it.each([
+      ['the sign-in form', ['sign-in']],
+      ['the welcome screen, as the app opens', []],
+      ['the house rules', ['rules']],
+      ['the app itself', ['(app)', 'home']],
+    ])('takes a courier back to the reset screen from %s', async (_, segments) => {
+      mockAuth.unfinished = { flow: 'reset' };
+
+      await openTheAppOn(...segments);
+
+      expect(mockNavigation).toEqual(['replace /reset-password']);
+    });
+
+    /** Until the code has signed the courier in, what it is for is not known: nowhere to go. */
+    it('sends nobody anywhere while the code is still being checked', async () => {
+      await openTheAppOn('sign-in');
+
+      expect(mockNavigation).toEqual([]);
+    });
+  });
+
+  /**
+   * The code that confirms a new account signs the courier in, and the
+   * password they typed at sign-up is set with that session a moment later -
+   * whoever signed up for the address first, their password is gone then.
+   * Sent to the roost in between, they could be signed in to an account
+   * someone else still has the password of. (Found in review.)
+   */
+  describe('while the account a sign-up’s code confirmed is being set up', () => {
+    beforeEach(() => {
+      mockAuth.isSettingPassword = true;
+    });
+
+    it('leaves the courier on the sign-up screen until it is done', async () => {
+      await openTheAppOn('sign-up');
+
+      expect(mockNavigation).toEqual([]);
+    });
+
+    it('takes them to the roost once it is done', async () => {
+      await openTheAppOn('sign-up');
+
+      await authChanges({ isSettingPassword: false });
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+
+    /**
+     * Gone from the sign-up screen while the code was checked - "Sign in
+     * instead", or a browser's back - the code then signed the courier in on
+     * a screen that did not hold them, and the root layout took them into the
+     * app before the account was theirs. And the app, closed then, opened in
+     * it. (Found in review.)
+     */
+    it.each([
+      ['the sign-in form', ['sign-in']],
+      ['the welcome screen, as the app opens', []],
+      ['the page for a link that leads nowhere', ['+not-found']],
+      ['the app itself', ['(app)', 'letters']],
+    ])('takes a courier back to the sign-up screen from %s', async (_, segments) => {
+      mockAuth.unfinished = { flow: 'sign-up' };
+
+      await openTheAppOn(...segments);
+
+      expect(mockNavigation).toEqual(['replace /sign-up']);
+    });
+
+    it('leaves a courier on the sign-up screen there', async () => {
+      mockAuth.unfinished = { flow: 'sign-up' };
+
+      await openTheAppOn('sign-up');
+
+      expect(mockNavigation).toEqual([]);
+    });
+  });
+
+  /**
+   * Confirming an address takes the account's password away, and the code
+   * from signing in signs the courier in: the password they signed in with is
+   * set again a moment later. Sent to the roost in between, the account would
+   * be left with no password at all.
+   */
+  describe('while the password signed in with is being set again', () => {
+    beforeEach(() => {
+      mockAuth.isSettingPassword = true;
+    });
+
+    it.each([
+      ['the welcome screen, as the app opens', []],
+      ['the sign-up form', ['sign-up']],
+      ['the app itself', ['(app)', 'home']],
+    ])('takes a courier back to the sign-in screen from %s', async (_, segments) => {
+      mockAuth.unfinished = { flow: 'sign-in' };
+
+      await openTheAppOn(...segments);
+
+      expect(mockNavigation).toEqual(['replace /sign-in']);
+    });
+
+    it('leaves a courier on the sign-in screen there, and takes them in once it is set', async () => {
+      mockAuth.unfinished = { flow: 'sign-in' };
+      await openTheAppOn('sign-in');
+      expect(mockNavigation).toEqual([]);
+
+      await authChanges({ isSettingPassword: false, unfinished: null });
+
+      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+  });
+
+  it('sends a signed-in courier on from the reset screen when no reset is being finished', async () => {
+    await openTheAppOn('reset-password');
+
+    expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+  });
+
   describe('without a session', () => {
     it.each([
       ['the house rules', 'rules'],
       ['the sign-in form', 'sign-in'],
+      ['the page for a link that leads nowhere', '+not-found'],
     ])('leaves someone signed out on %s', async (_, segment) => {
       mockAuth.session = null;
 

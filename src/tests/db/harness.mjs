@@ -46,7 +46,17 @@ export const AUTH_STUB = `
     banned_until timestamptz,
     -- GoTrue confirms every address at sign-up while confirmation is off.
     email_confirmed_at timestamptz default now(),
-    created_at timestamptz not null default now()
+    -- The password's hash: '' or null for an account without one.
+    encrypted_password varchar(255),
+    -- The codes emailed to confirm the address and to set a new password, and
+    -- when each was last sent. GoTrue empties the times when the password
+    -- changes.
+    confirmation_token varchar(255),
+    confirmation_sent_at timestamptz,
+    recovery_token varchar(255),
+    recovery_sent_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz
   );
 
   -- A signed-in device. GoTrue renews updated_at with every token refresh.

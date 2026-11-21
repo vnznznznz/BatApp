@@ -20,7 +20,7 @@ import {
 // Node's types, which describe nothing that exists in React Native.
 declare const __dirname: string;
 const { readdirSync, readFileSync } = jest.requireActual<{
-  readdirSync: (path: string) => string[];
+  readdirSync: (path: string, options?: { recursive: true }) => string[];
   readFileSync: (path: string, encoding: 'utf8') => string;
 }>('fs');
 const { join } = jest.requireActual<{ join: (...parts: string[]) => string }>('path');
@@ -222,11 +222,14 @@ describe('who can join', () => {
     ],
   };
 
-  /** A document as one line of plain words: its sentences are wrapped, and some are bold. */
-  const plainText = (file: string) =>
-    readFileSync(join(__dirname, '..', '..', 'docs', 'store', file), 'utf8')
-      .replace(/\*\*/g, '')
-      .replace(/\s+/g, ' ');
+  const ROOT = join(__dirname, '..', '..');
+
+  /**
+   * A document - its path from the project's root - as one line of plain
+   * words: its sentences are wrapped, and some are bold.
+   */
+  const plainText = (path: string) =>
+    readFileSync(join(ROOT, path), 'utf8').replace(/\*\*/g, '').replace(/\s+/g, ' ');
 
   /** Every age each place in `text` gives, in the order the statement names them. */
   function agesIn(text: string, statement: string) {
@@ -240,7 +243,7 @@ describe('who can join', () => {
   }
 
   it.each(Object.entries(SAID_IN))('is what %s says, in every place it says it', (file, said) => {
-    const text = plainText(file);
+    const text = plainText(join('docs', 'store', file));
     const ages = { min: MINIMUM_AGE, parent: PARENTAL_PERMISSION_UNDER };
 
     for (const statement of said) {
@@ -261,12 +264,14 @@ describe('who can join', () => {
    * The statements above are the ones that matter most, not all there are:
    * the listings, the records of processing and the operator's notes give the
    * ages in many more places, and a 13 changed to 14 in one of them passed.
-   * (Found in review.) So every place a store document gives an age is also
-   * found by the words around the number - "at least 13", "under 16", "ab 13
+   * (Found in review.) So every place a document gives an age is also found
+   * by the words around the number - "at least 13", "under 16", "ab 13
    * Jahren", "13+" - and must give one of the two; a span, "13–15", must be
-   * the years that need the permission. A new document is searched too. Not
-   * "older than" or "älter als": the documents say how long records are kept
-   * with them.
+   * the years that need the permission. Every Markdown document is searched,
+   * not only the store's: the go-live list and the roadmap give the ages too,
+   * and a document added later, or one that gives no age yet, could give
+   * another unnoticed. (Found in review.) Not "older than" or "älter als":
+   * the documents say how long records are kept with them.
    */
   const NUMBER = String.raw`(\d+)(?![.,:]?\d)`;
   /** Where a word starts, in any script: `\b` knows only the letters of English. */
@@ -276,7 +281,8 @@ describe('who can join', () => {
       String.raw`aged ${NUMBER}(?: to ${NUMBER})?`,
       String.raw`${NUMBER} (?:and|or) (?:over|older|up)\b`,
       String.raw`(?:at least|under|younger than|below) ${NUMBER}`,
-      String.raw`(?:minimum )?age (?:of |is |was |to )?${NUMBER}`,
+      // As one age is given, and as it is said to have changed to another.
+      String.raw`(?:minimum )?age (?:of |is |was |to |(?:is now|went|goes|rose|changed|moved|was (?:raised|lowered|set)) to )?${NUMBER}`,
       String.raw`minimum of ${NUMBER}`,
       String.raw`${NUMBER}- to ${NUMBER}-year-old`,
       String.raw`${NUMBER}-year-old`,
@@ -310,10 +316,14 @@ describe('who can join', () => {
     ["Google's precise location", /at least 3 km²/g],
     ['when a data protection officer is needed', /ab 20 Personen/g],
     ['the age of the rule on sexual content', /(?:involving|sent to) anyone under 18/g],
+    ['the phases of the roadmap', /Phases \d+–\d+|delivery time \(6–8\)/g],
+    ["a courier's bats", /slots 1–3/g],
+    ['the versions of Node.js and npm', /Node 24\.3\+|npm 10\+/g],
+    ["Apple's enterprise programme", /100\+ employees/g],
     ["Apple's age ratings", /4\+, 9\+, 13\+, 16\+ and 18\+/g],
     [
       "the rating Apple's tables give the app before the override",
-      /(?:at|under|as|expected:) 4\+/g,
+      /(?:at|under|as|expected:|expected to be) 4\+/g,
     ],
     ["Play's age groups", /5 and under, 6–8, 9–12, 13–15, 16–17, 18 and over/g],
     ["Play's age groups below the minimum age", /not 5 and under, not 6–8, not 9–12/g],
@@ -323,19 +333,56 @@ describe('who can join', () => {
     ],
     [
       'the minimum age until 5 November 2026',
-      /the minimum age was 12|include 9–12|Kindes unter 12/g,
+      /the minimum age was 12|include 9–12|Kindes unter 12|for a minimum age of 12/g,
     ],
   ];
 
-  const STORE_DOCUMENTS = readdirSync(join(__dirname, '..', '..', 'docs', 'store')).filter((file) =>
-    file.endsWith('.md'),
-  );
+  const isMarkdown = (file: string) => file.endsWith('.md');
 
-  it('is every age the store documents give, wherever they give one', () => {
+  /** Every Markdown document: those at the project's root, and all under docs/. */
+  const DOCUMENTS = [
+    ...readdirSync(ROOT).filter(isMarkdown),
+    ...readdirSync(join(ROOT, 'docs'), { recursive: true })
+      .filter(isMarkdown)
+      .map((file) => join('docs', file)),
+  ];
+
+  /** The documents that say who may join, each of which the search has to find an age in. */
+  const SAY_WHO_MAY_JOIN = [
+    ...readdirSync(join(ROOT, 'docs', 'store'))
+      .filter(isMarkdown)
+      .map((file) => join('docs', 'store', file)),
+    join('docs', 'GO-LIVE.md'),
+    join('docs', 'ROADMAP.md'),
+  ];
+
+  /**
+   * Each way the documents give an age, as they write it. "Went to" was not
+   * one of the phrases: the roadmap's "since the minimum age went to 13",
+   * changed to 14, passed. (Found in review.)
+   */
+  it.each([
+    'a minimum age of 14',
+    'the minimum age is 14',
+    'since the minimum age went to 14,',
+    'the age rose to 14',
+    'the minimum age was raised to 14',
+    'I am 14 or older',
+    'aged 14 to 16',
+    'at least 14',
+    'under 14',
+    'ab 14 Jahren',
+    '14+',
+  ])('finds the age in "%s"', (sentence) => {
+    expect([...sentence.matchAll(AGE_GIVEN)].flatMap((match) => match.slice(1))).toContain('14');
+  });
+
+  it('is every age the documents give, wherever they give one', () => {
     const contradicting: string[] = [];
     const notFound = new Set(OTHER_NUMBERS.map(([what]) => what));
+    expect(DOCUMENTS).toEqual(expect.arrayContaining([...SAY_WHO_MAY_JOIN, 'README.md']));
 
-    for (const file of STORE_DOCUMENTS) {
+    for (const file of DOCUMENTS) {
       let text = plainText(file);
       for (const [what, where] of OTHER_NUMBERS) {
         text = text.replace(where, () => {
@@ -345,8 +392,10 @@ describe('who can join', () => {
       }
 
       const given = [...text.matchAll(AGE_GIVEN)];
-      // A search that found nothing would pass whatever the documents said.
-      expect({ file, givesAnAge: given.length > 0 }).toEqual({ file, givesAnAge: true });
+      // A search that found nothing would pass whatever such a document said.
+      if (SAY_WHO_MAY_JOIN.includes(file)) {
+        expect({ file, givesAnAge: given.length > 0 }).toEqual({ file, givesAnAge: true });
+      }
       for (const match of given) {
         const [first, last] = match
           .slice(1)

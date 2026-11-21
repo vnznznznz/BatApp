@@ -1,4 +1,5 @@
 import { MESSAGE_MAX_LENGTH, REPORT_NOTE_MAX_LENGTH } from '@/constants/config';
+import { CONTACT_URL } from '@/lib/links';
 
 /**
  * Errors from the database functions, in words a person can act on.
@@ -33,9 +34,18 @@ export const REFUSALS = {
   note_too_long: `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`,
   try_again: 'That did not go through. Try again.',
   // The answer of every function to a suspended account, so it has to read
-  // right for a roost that will not load as well as for a refused deletion.
-  account_suspended:
-    'This account has been suspended. Write to the contact address on the help page.',
+  // right for a roost that will not load as well as for a refused deletion:
+  // beside Sign out and Contact, under a save or a request with nothing
+  // beside it, and after the sign-out. So it names whom to write to rather
+  // than a button or a page - "the help page" was one the app never names. But
+  // only in a build with a contact address: one without shows no Contact, nor
+  // any address, and sent the courier to someone it gave no way to reach.
+  // (Found in review.) Read as the words are, as the screens read the address.
+  get account_suspended() {
+    return CONTACT_URL
+      ? 'This account has been suspended. To ask why, write to the person who runs Night Courier.'
+      : 'This account has been suspended.';
+  },
   too_many_friend_requests: 'That is a lot of requests in a short time. Try again in an hour.',
 } as const;
 

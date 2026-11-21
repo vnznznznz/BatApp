@@ -22,11 +22,18 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => mockAuth,
 }));
 
-jest.mock('@/lib/links', () => ({
-  ...jest.requireActual('@/lib/links'),
-  CONTACT_URL: 'https://night-courier.example/help',
-  openLink: jest.fn(),
-}));
+/** The contact address the build was given; null for a build without one. */
+const mockContact: { url: string | null } = { url: null };
+
+// Read when the screen renders, not when the module is loaded: a getter in
+// an object spread would be read at once, before any test has set it.
+jest.mock('@/lib/links', () =>
+  Object.defineProperty(
+    { ...jest.requireActual('@/lib/links'), openLink: jest.fn() },
+    'CONTACT_URL',
+    { get: () => mockContact.url, enumerable: true },
+  ),
+);
 
 /** Fixed insets so the screen renders deterministically outside a device. */
 const metrics: Metrics = {
@@ -40,6 +47,7 @@ const renderScreen = (ui: ReactElement) =>
 beforeEach(() => {
   mockPush.mockClear();
   mockAuth.session = null;
+  mockContact.url = 'https://night-courier.example/help';
   forgetFarewell();
 });
 
@@ -99,6 +107,40 @@ describe('WelcomeScreen', () => {
    * was shown signed out - only a screen reader heard it. (Found in the
    * browser.)
    */
+  /**
+   * The words name whom to write to, not a button or a page - "the help page"
+   * was one the app never names. (Found in review.) Beside the Contact
+   * button, in a build with a contact address.
+   */
+  it('names whom to ask why, beside the way to write', async () => {
+    noteAccountSuspended();
+
+    await renderScreen(<WelcomeScreen />);
+
+    expect(
+      screen.getByText(
+        'This account has been suspended. To ask why, write to the person who runs Night Courier.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Contact' })).toBeOnTheScreen();
+  });
+
+  /**
+   * A build without a contact address shows no Contact anywhere, and told
+   * the courier to write to someone it gave no way to reach. (Found in
+   * review.) It says what has happened, and no more.
+   */
+  it('says what has happened, and no more, in a build without a contact address', async () => {
+    mockContact.url = null;
+    noteAccountSuspended();
+
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText('This account has been suspended.')).toBeOnTheScreen();
+    expect(screen.queryByText(/write to/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+  });
+
   it('keeps the word until it is shown to someone signed out', async () => {
     noteAccountSuspended();
     mockAuth.session = { user: { id: 'user-sam' } };

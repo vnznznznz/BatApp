@@ -530,6 +530,130 @@ describe('signing in and out', () => {
   });
 });
 
+/**
+ * No code flow (PKCE). The emails carry a code to type, and no link, so a
+ * verifier kept on the device protects nothing; and with the code flow every
+ * code emailed left a row on the auth server (auth.flow_state) that nothing
+ * deletes, and verifier entries in the keychain until the next sign-out.
+ */
+describe('the codes from the emails', () => {
+  const isSignUp = (request: Sent) => request.url.endsWith('/auth/v1/signup');
+  const isResend = (request: Sent) => request.url.endsWith('/auth/v1/resend');
+  const isRecover = (request: Sent) => request.url.includes('/auth/v1/recover');
+  const isVerifier = (key: string) => key.includes('code-verifier');
+
+  const answered = () => {
+    network = (request) => {
+      if (isSignUp(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user);
+      if (request.url.endsWith('/auth/v1/verify')) {
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      }
+      if (request.url.includes('/auth/v1/logout')) return new Response(null, { status: 204 });
+      return json(200, {});
+    };
+  };
+
+  it('are asked for with no code challenge, and nothing is kept for one', async () => {
+    answered();
+    const { client } = launch();
+
+    await settled(client.auth.signUp({ email: 'mara@example.test', password: 'night-courier' }));
+    await settled(client.auth.resend({ type: 'signup', email: 'mara@example.test' }));
+    await settled(client.auth.resetPasswordForEmail('mara@example.test'));
+
+    const asked = sent.filter(
+      (request) => isSignUp(request) || isResend(request) || isRecover(request),
+    );
+    expect(asked).toHaveLength(3);
+    // auth-js sends both as null without the code flow.
+    for (const { body } of asked) {
+      expect(body).not.toEqual(expect.objectContaining({ code_challenge: expect.anything() }));
+      expect(body).not.toEqual(
+        expect.objectContaining({ code_challenge_method: expect.anything() }),
+      );
+    }
+    expect(mockKeychain.size).toBe(0);
+    expect(console.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('WebCrypto API is not supported'),
+    );
+  });
+
+  /**
+   * Said in the client's options, not left to supabase-js's default: a later
+   * one may default to the code flow, and every email would then leave a row
+   * on the auth server that nothing deletes. Today's default is the same, so
+   * without this the option could go unnoticed. (Found in review.)
+   */
+  it('are asked for with no code challenge by a supabase-js that defaults to the code flow', async () => {
+    jest.doMock('@supabase/supabase-js', () => {
+      const actual =
+        jest.requireActual<typeof import('@supabase/supabase-js')>('@supabase/supabase-js');
+      return {
+        ...actual,
+        createClient: (...[url, key, options]: Parameters<typeof actual.createClient>) =>
+          actual.createClient(url, key, {
+            ...options,
+            auth: { flowType: 'pkce', ...options?.auth },
+          }),
+      };
+    });
+    try {
+      answered();
+      const { client } = launch();
+
+      await settled(client.auth.signUp({ email: 'mara@example.test', password: 'night-courier' }));
+      await settled(client.auth.resetPasswordForEmail('mara@example.test'));
+
+      const asked = sent.filter((request) => isSignUp(request) || isRecover(request));
+      expect(asked).toHaveLength(2);
+      for (const { body } of asked) {
+        expect(body).not.toEqual(expect.objectContaining({ code_challenge: expect.anything() }));
+      }
+      expect([...mockKeychain.keys()].filter(isVerifier)).toEqual([]);
+    } finally {
+      jest.dontMock('@supabase/supabase-js');
+    }
+  });
+
+  /** The auth server checks a code typed in itself. */
+  it('sign in when typed in, with nothing but the session kept', async () => {
+    answered();
+    const { client, store } = launch();
+
+    const { error } = await settled(
+      client.auth.verifyOtp({ type: 'signup', email: 'mara@example.test', token: '12345678' }),
+    );
+
+    expect(error).toBeNull();
+    expect(sent.find(({ url }) => url.endsWith('/auth/v1/verify'))?.body).not.toHaveProperty(
+      'code_verifier',
+    );
+    expect(store.isSessionStored()).toBe(true);
+    expect([...mockKeychain.keys()].filter(isVerifier)).toEqual([]);
+  });
+
+  it('leave signing in with a password, and changing a password, as they were', async () => {
+    network = (request) => {
+      if (request.url.includes('grant_type=password')) {
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      }
+      return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600).user);
+    };
+    const { client } = launch();
+
+    await settled(
+      client.auth.signInWithPassword({ email: 'mara@example.test', password: 'night-courier' }),
+    );
+    const { error } = await settled(client.auth.updateUser({ password: 'a new password' }));
+
+    expect(error).toBeNull();
+    for (const { body } of sent.filter(({ url }) => url.includes('/auth/v1/'))) {
+      expect(body).not.toEqual(expect.objectContaining({ code_challenge: expect.anything() }));
+    }
+    expect([...mockKeychain.keys()].filter(isVerifier)).toEqual([]);
+  });
+});
+
 describe('while the app is open', () => {
   const renews = () => {
     network = (request) =>

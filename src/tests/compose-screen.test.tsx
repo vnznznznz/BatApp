@@ -19,8 +19,11 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockSetParams = jest.fn();
-/** The route's search params, as the screen reads them. */
-const mockParams: { to?: string } = {};
+/**
+ * The route's search params, as the screen reads them. A param given twice
+ * comes as a list.
+ */
+const mockParams: { to?: string; name?: string | string[] } = {};
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
@@ -339,6 +342,7 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockSetParams.mockClear();
   delete mockParams.to;
+  delete mockParams.name;
   mockSession.user = { id: 'user-mara' };
   forgetAllDrafts();
   mockProfileState.profile = courier;
@@ -373,9 +377,66 @@ describe('ComposeScreen', () => {
 
       expect(await screen.findByText('Who is it for?')).toBeOnTheScreen();
       expect(screen.getByRole('button', { name: /^Anna Weber/ })).toBeEnabled();
-      expect(screen.getByText('Munich, DE · 505 km · about 6h 18m')).toBeOnTheScreen();
+      // The town on a line of its own, and the way there on the next.
+      expect(
+        screen.getByText('Munich, DE\n505\u00a0km · about 6h 18m', {
+          exact: true,
+          normalizer: (text: string) => text,
+        }),
+      ).toHaveProp('numberOfLines', 0);
       expect(screen.getByText('@ben has not chosen a city yet')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Your letter')).toBeNull();
+    });
+
+    /**
+     * The way to a friend in a town that shares its name with another is
+     * long: "La Ceiba (131 km from San Pedro Sula), HN · 9,296 km · about 4d
+     * 20h". On the one line it had, a 360 px screen cut off the distance and
+     * the flight time. (Found in review.) The town takes a line of its own,
+     * and the way there the next, with no limit on the lines.
+     */
+    it('gives a twin town a line of its own and the way there the next, uncut', async () => {
+      const inLaCeiba = {
+        name: 'La Ceiba',
+        countryCode: 'HN',
+        qualifier: '131 km from San Pedro Sula',
+      };
+      serveFriends(() => [
+        {
+          ...anna,
+          friend: { ...anna.friend, city: inLaCeiba },
+          route: { distanceKm: 9296.2, flightSeconds: 418_329 },
+        },
+      ]);
+      await renderScreen(<ComposeScreen />);
+
+      const route = await screen.findByText(
+        'La Ceiba (131 km from San Pedro Sula), HN\n9,296\u00a0km · about 4d 20h',
+        { exact: true, normalizer: (text: string) => text },
+      );
+      expect(route).toHaveProp('numberOfLines', 0);
+    });
+
+    /** Beside a letter started to them, the way there keeps its lines, and the letter is named. */
+    it('keeps the way whole when a letter to the friend was started', async () => {
+      serveFriends(() => [anna, eva]);
+      const toAnna = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna,\n\nThe chestnuts are out again.');
+      await toAnna.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+
+      const annaRow = await screen.findByRole('button', { name: /^Anna Weber/ });
+      expect(
+        within(annaRow).getByText('Munich, DE\n505\u00a0km · about 6h 18m', {
+          exact: true,
+          normalizer: (text: string) => text,
+        }),
+      ).toHaveProp('numberOfLines', 0);
+      expect(
+        within(annaRow).getByText('A letter you started: Dear Anna, The chestnuts are out again.'),
+      ).toBeOnTheScreen();
     });
 
     it('offers only friends, not people with a request still open either way', async () => {
@@ -388,12 +449,13 @@ describe('ComposeScreen', () => {
       expect(screen.queryByText(/dora/)).toBeNull();
     });
 
+    /** By name as well, so that the route says whom it is for, as "Write back" does. */
     it('picks a friend by putting them in the route', async () => {
       await renderScreen(<ComposeScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: /^Anna Weber/ }));
 
-      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna', name: 'Anna Weber' });
     });
 
     it('cannot pick a friend no bat can find', async () => {
@@ -431,6 +493,89 @@ describe('ComposeScreen', () => {
       expect(await screen.findByText('You can only write to friends.')).toBeOnTheScreen();
       expect(screen.queryByText(/Choose one below/)).toBeNull();
       expect(screen.getByText('You have no friends to write to yet.')).toBeOnTheScreen();
+    });
+
+    /**
+     * "Write back" on the letter of someone who is no longer a friend opened
+     * "You can only write to friends", with the friends who were left, and
+     * did not say that the one written back to was not among them. (Found in
+     * the browser.) The letter passes their name with the route, and the
+     * screen says it plainly.
+     */
+    it.each([
+      ['with friends left to choose', () => [anna, ben, carla, dora], 'Anna Weber'],
+      ['with no friend left', () => [carla, dora], null],
+    ])(
+      'names someone who is no longer a friend when the route names them, %s',
+      async (_, list, offered) => {
+        serveFriends(list);
+        mockParams.to = 'user-bruno';
+        mockParams.name = 'Bruno Kraft';
+        await renderScreen(<ComposeScreen />);
+
+        expect(
+          await screen.findByText(
+            'Bruno Kraft is no longer among your friends, so you cannot write to them.',
+          ),
+        ).toBeOnTheScreen();
+        expect(screen.queryByText(/You can only write to friends/)).toBeNull();
+        expect(screen.queryByLabelText('Your letter')).toBeNull();
+        if (offered) {
+          expect(screen.getByRole('button', { name: new RegExp(`^${offered}`) })).toBeEnabled();
+        } else {
+          expect(screen.getByText('You have no friends to write to yet.')).toBeOnTheScreen();
+        }
+      },
+    );
+
+    /**
+     * The name is the route's, and a link from anywhere can put any text there:
+     * a line break, characters that turn the sentence round, a paragraph. The
+     * screen showed it as it came. A name the display-name rule refuses could
+     * be nobody's, and is not shown: the screen says what it says when the
+     * route gives no name.
+     */
+    it.each<[string, string | string[]]>([
+      ['a line break', 'Bruno\nKraft'],
+      ['characters that turn the text round', 'Bruno \u202Eeman'],
+      ['more than a name can hold', 'B'.repeat(41)],
+      ['nothing to see', '\u200B\u200B'],
+      ['two names, from the param given twice', ['Bruno Kraft', 'Someone Else']],
+    ])('names nobody when the route gives what could be nobody’s name: %s', async (_, name) => {
+      mockParams.to = 'user-bruno';
+      mockParams.name = name;
+      await renderScreen(<ComposeScreen />);
+
+      expect(
+        await screen.findByText('You can only write to friends. Choose one below.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/no longer among your friends/)).toBeNull();
+    });
+
+    /** As the rule judges a name: without the blank space around it, and up to 40 characters. */
+    it('names them by a name the rule takes, without the blank space around it', async () => {
+      const longest = 'B'.repeat(40);
+      mockParams.to = 'user-bruno';
+      mockParams.name = `  ${longest}  `;
+      await renderScreen(<ComposeScreen />);
+
+      expect(
+        await screen.findByText(
+          `${longest} is no longer among your friends, so you cannot write to them.`,
+          { exact: true, normalizer: (text: string) => text },
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    /** A friend is written to under their own name, whatever name the route gives. */
+    it('opens the letter to a friend whatever name the route gives', async () => {
+      mockParams.to = 'user-anna';
+      mockParams.name = 'Bruno Kraft';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByLabelText('Your letter')).toBeOnTheScreen();
+      expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
+      expect(screen.queryByText(/Bruno Kraft/)).toBeNull();
     });
 
     it('sends someone with nobody to write to off to find friends', async () => {
@@ -707,7 +852,7 @@ describe('ComposeScreen', () => {
 
       await fireEvent.press(annaRow);
 
-      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna', name: 'Anna Weber' });
     });
 
     /**
@@ -988,6 +1133,40 @@ describe('ComposeScreen', () => {
       expect(
         await screen.findByRole('image', { name: 'Bat 0% of the way from Berlin to Munich' }),
       ).toBeOnTheScreen();
+    });
+
+    /**
+     * "It will reach Anna Weber in Friedberg" was either of two towns in
+     * Germany, and so was each end of the flight drawn under it. (Found in
+     * review.)
+     */
+    it('says where a town is that shares its name with another, in words and on the path', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        city: {
+          id: 2924802,
+          name: 'Friedberg',
+          countryCode: 'DE',
+          qualifier: 'near Frankfurt am Main',
+        },
+      };
+      const inFriedberg = { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' };
+      serveFriends(() => [{ ...anna, friend: { ...anna.friend, city: inFriedberg } }]);
+      const { deliverAt } = dispatchToAnna();
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(
+        await screen.findByText(
+          `It will reach Anna Weber in Friedberg (near Augsburg) in 6h 20m, at ${formatTimestamp(deliverAt)}.`,
+        ),
+      ).toBeOnTheScreen();
+      const path = screen.getByRole('image', {
+        name: 'Bat 0% of the way from Friedberg (near Frankfurt am Main) to Friedberg (near Augsburg)',
+      });
+      expect(within(path).getByText('Friedberg (near Frankfurt am Main)')).toBeOnTheScreen();
+      expect(within(path).getByText('Friedberg (near Augsburg)')).toBeOnTheScreen();
     });
 
     it('counts down to the landing', async () => {
@@ -1741,7 +1920,7 @@ describe('ComposeScreen', () => {
       expect(mockedFetchSentLetter).toHaveBeenCalledTimes(asked);
 
       await fireEvent.press(annaRow);
-      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna' });
+      expect(mockSetParams).toHaveBeenCalledWith({ to: 'user-anna', name: 'Anna Weber' });
     });
 
     // What may have gone is what was sent, whatever has been written over it

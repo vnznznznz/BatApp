@@ -13,7 +13,8 @@ import { TextField } from '@/components/text-field';
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
-import { describeCity } from '@/features/cities/search';
+import { validateDisplayName } from '@/features/auth/validation';
+import { cityName, describeCity } from '@/features/cities/search';
 import {
   fetchFriendships,
   friendName,
@@ -84,7 +85,17 @@ const HELD_BACK =
  */
 export default function ComposeScreen() {
   const router = useRouter();
-  const { to } = useLocalSearchParams<{ to?: string }>();
+  // Whom the letter is for, and by what name: "Write back" passes both, so
+  // that someone who is no longer a friend can be named here. A param given
+  // twice comes as a list.
+  const { to, name: given } = useLocalSearchParams<{ to?: string; name?: string | string[] }>();
+  // The name is the route's, and a link from anywhere can put any text there:
+  // a line break, characters that turn the sentence round, a paragraph. It is
+  // shown only if the display-name rule takes it - as it takes every name the
+  // app itself puts there, a username with its @ too - and otherwise left out,
+  // as if none had been given. (Found in review.)
+  const named =
+    typeof given === 'string' && validateDisplayName(given) === null ? given.trim() : null;
   const { session } = useAuth();
   const courierId = session?.user.id;
   const { profile, error: profileError, isGone, reload: reloadProfile } = useProfile();
@@ -111,9 +122,14 @@ export default function ComposeScreen() {
   const friends = groupFriendships(friendships.data ?? []).friends;
   const recipient = to ? (friends.find((f) => f.friend.id === to) ?? null) : null;
   const name = recipient ? friendName(recipient.friend) : null;
-  const city = recipient?.friend.city?.name ?? null;
+  // Where the bat flies to and from, as the letter sent says and draws it: a
+  // town that shares its name says where it is. "It will reach Anna in
+  // Friedberg" was either of two. (Found in review.)
+  const recipientCity = recipient?.friend.city;
+  const city = recipientCity ? cityName(recipientCity) : null;
   // While a move settles, letters still leave from the old city.
-  const from = (profile?.move?.from ?? profile?.city)?.name ?? null;
+  const home = profile?.move?.from ?? profile?.city;
+  const from = home ? cityName(home) : null;
 
   const bats = roost.data ?? [];
   const atHome = countAtHome(bats);
@@ -303,12 +319,17 @@ export default function ComposeScreen() {
         {closedNotice}
 
         {/* Pointing at a list only where there is one: below it, there may be
-            no friend left to choose. (Found in the browser.) */}
+            no friend left to choose. (Found in the browser.) And naming the
+            one written back to: "You can only write to friends" over the
+            friends who were left did not say that they were not among them.
+            (Found in the browser.) */}
         {to && friendships.data && !closed ? (
           <Text variant="caption" tone="danger" style={styles.spaced}>
-            {friends.length > 0
-              ? 'You can only write to friends. Choose one below.'
-              : 'You can only write to friends.'}
+            {named
+              ? `${named} is no longer among your friends, so you cannot write to them.`
+              : friends.length > 0
+                ? 'You can only write to friends. Choose one below.'
+                : 'You can only write to friends.'}
           </Text>
         ) : null}
 
@@ -342,7 +363,14 @@ export default function ComposeScreen() {
                 key={friendship.id}
                 friendship={friendship}
                 courierId={courierId}
-                onPress={() => router.setParams({ to: friendship.friend.id })}
+                // With the name, as "Write back" gives it: one left in the
+                // route from before would name someone else.
+                onPress={() =>
+                  router.setParams({
+                    to: friendship.friend.id,
+                    name: friendName(friendship.friend),
+                  })
+                }
               />
             ))}
           </Card>
@@ -525,7 +553,12 @@ function FriendRow({
   return (
     <ListRow
       title={friendName(friendship.friend)}
-      subtitle={describeRoute(friendship)}
+      // The town on a line of its own, and the way there on the next, read
+      // whole: a town told apart by where it is - "La Ceiba (131 km from San
+      // Pedro Sula), HN" - left no room for the distance and the flight at
+      // 360dp, and they were cut off.
+      subtitle={describeRoute(friendship, '\n')}
+      subtitleLines={0}
       detail={
         inDoubt
           ? `A letter that may or may not have gone: ${asOneLine(inDoubt)}`
@@ -539,16 +572,19 @@ function FriendRow({
   );
 }
 
-/** "Munich, DE · 505 km · about 6h 18m", or why no bat can go there. */
-function describeRoute(friendship: Friendship): string {
+/**
+ * "Munich, DE · 505 km · about 6h 18m", or why no bat can go there; with
+ * `afterTown` between the town and the way there.
+ */
+function describeRoute(friendship: Friendship, afterTown = ' · '): string {
   const { city } = friendship.friend;
   if (!city) return `@${friendship.friend.username} has not chosen a city yet`;
   if (!friendship.route) return describeCity(city);
-  return [
-    describeCity(city),
+  const way = [
     formatDistance(friendship.route.distanceKm),
     formatFlightEstimate(friendship.route.flightSeconds),
   ].join(' · ');
+  return `${describeCity(city)}${afterTown}${way}`;
 }
 
 const styles = StyleSheet.create({

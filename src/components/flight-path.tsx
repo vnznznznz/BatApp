@@ -76,14 +76,19 @@ export function FlightPath({ from, to, progress, active = true }: FlightPathProp
           </>
         ) : null}
       </View>
+      {/* Each name under its end of the path, on the lines it needs. On one
+          line in half the width, a town told apart from its twin lost what
+          tells it apart: "La Ceiba (131 km from San Pedro Sula)" was cut
+          after "from" on a 360 px phone. (Found in the browser.) The path
+          above keeps its height whatever the names take. */}
       <View style={styles.labels}>
-        <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.label}>
+        <Text variant="caption" tone="secondary" numberOfLines={0} style={styles.label}>
           {from}
         </Text>
         <Text
           variant="caption"
           tone="secondary"
-          numberOfLines={1}
+          numberOfLines={0}
           style={[styles.label, styles.right]}
         >
           {to}

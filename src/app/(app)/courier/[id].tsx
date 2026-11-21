@@ -8,6 +8,7 @@ import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import {
   acceptFriend,
+  declineRequest,
   describeRoute,
   describeStanding,
   fetchFriendships,
@@ -118,8 +119,11 @@ export default function CourierScreen() {
       // Withdrawing has a call of its own: if they said yes a moment ago,
       // removeFriend would end the new friendship without the question below.
       // Refused instead, the page stays and shows them as the friend they are.
+      // Declining has one too: if they took the request back a moment ago,
+      // removeFriend would say a friendship had ended that never began.
+      // (Found in review.)
       if (current.direction === 'incoming') {
-        void run('end', () => removeFriend(current.id), `Declined ${handle}.`, true);
+        void run('end', () => declineRequest(current.id), `Declined ${handle}.`, true);
       } else {
         void run(
           'end',
@@ -201,11 +205,14 @@ export default function CourierScreen() {
       </View>
 
       <View style={styles.actions}>
+        {/* With their name, as Write back gives it: if the friendship ends
+            before compose has asked who is a friend, compose can say who it
+            is that can no longer be written to. (Found in the browser.) */}
         {friendship.status === 'accepted' ? (
           <Button
             label="Write a letter"
             disabled={busy !== null || !friendship.route}
-            onPress={() => router.push({ pathname: '/compose', params: { to: friend.id } })}
+            onPress={() => router.push({ pathname: '/compose', params: { to: friend.id, name } })}
           />
         ) : null}
         {noCityOfYourOwn ? (

@@ -7,11 +7,6 @@ import CityPickerScreen from '@/app/(app)/city-picker';
 import { CITY_DATA_CREDIT, searchCities, type City } from '@/features/cities/search';
 import type { CityCondition, CitySave, Profile } from '@/features/profile/use-profile';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work that would otherwise
-// count against whichever test runs first.
-jest.setTimeout(20_000);
-
 const mockBack = jest.fn();
 /** Whether the picker is still in front when a save comes back. */
 const mockFocus = { focused: true };
@@ -749,6 +744,41 @@ describe('CityPickerScreen', () => {
         'A letter has gone to or from you since, so a move now takes a day to count. Until ' +
           "18 Nov 21:00, your letters leave from Berlin, DE, and your friends' letters land there.",
       );
+    });
+
+    /**
+     * Another device can set a first city while the question is open. Asked
+     * again from the profile the question was first asked from, the picker
+     * would put the same first-city question again, saved on the bats being
+     * nowhere, and be refused every time. It asks from the profile the
+     * refusal came with: a move from the city set meanwhile.
+     */
+    it('asks a first city again as a move once another device has set one', async () => {
+      const munich = { id: 2867714, name: 'Munich', countryCode: 'DE' };
+      mockProfileState.profile = { ...courier, city: null };
+      mockUpdateCity
+        .mockResolvedValueOnce({ saved: false, profile: { ...courier, city: munich } })
+        .mockResolvedValueOnce({ saved: true });
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+      expect(lastAlert().title).toBe('Make Hamburg, DE your city?');
+
+      await chooseInAlert('Choose');
+
+      expect(mockBack).not.toHaveBeenCalled();
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'A move takes a day to count. Until 18 Nov 21:00, your letters leave from Munich, DE, ' +
+          "and your friends' letters land there.",
+        buttons: ['Cancel', 'Move'],
+      });
+      await chooseInAlert('Move');
+      expect(mockUpdateCity.mock.calls).toEqual([
+        [hamburg.id, { departing: null }],
+        [hamburg.id, { departing: munich.id }],
+      ]);
+      expect(mockBack).toHaveBeenCalledTimes(1);
     });
 
     /**

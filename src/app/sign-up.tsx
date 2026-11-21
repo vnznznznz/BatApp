@@ -1,15 +1,24 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
+import { Card } from '@/components/card';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { ToggleRow } from '@/components/toggle-row';
 import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
-import { USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
+import {
+  ALREADY_REGISTERED,
+  FINISHING_SIGN_OUT,
+  USERNAME_MAY_BE_TAKEN,
+  useAuth,
+} from '@/features/auth/auth-context';
+import { ConfirmEmail } from '@/features/auth/confirm-email';
+import { HoldBack } from '@/features/auth/hold-back';
+import { settled, wordsOf } from '@/features/auth/settled';
 import {
   validateDisplayName,
   validateEmail,
@@ -17,26 +26,53 @@ import {
   validateUsername,
 } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
+import { useLingering } from '@/lib/use-lingering';
 import { openLink, PRIVACY_POLICY_URL } from '@/lib/links';
 
 type Errors = Partial<Record<'email' | 'password' | 'username' | 'displayName', string | null>>;
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, unfinished, isSigningOut } = useAuth();
+  // A sign-up whose code has signed the courier in, with the account not yet
+  // set up - the app closed in between, say - taken up where it was left: the
+  // root layout brings the courier here for it.
+  const [resumed] = useState(() => (unfinished?.flow === 'sign-up' ? unfinished : null));
 
-  const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState(resumed?.displayName ?? '');
+  const [username, setUsername] = useState(resumed?.username ?? '');
+  const [email, setEmail] = useState(resumed?.email ?? '');
   const [password, setPassword] = useState('');
   const [oldEnough, setOldEnough] = useState(false);
   const [ageError, setAgeError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(resumed?.email ?? null);
+  // Until the courier goes back to the form from it.
+  const [resuming, setResuming] = useState(resumed !== null);
+  // What the code screen has to say on the way back to the form: the account
+  // has been removed, after Start over. Read aloud alone, it reached nobody
+  // who reads the screen, and the form looked as it had before. (Found in
+  // review.) Until the courier signs up again.
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The fields the keyboard's "next" key moves on to, in order.
+  const usernameField = useRef<TextInput>(null);
+  const emailField = useRef<TextInput>(null);
+  const passwordField = useRef<TextInput>(null);
+  // The keyboard's "go" key is not held back by the button's spinner, and a
+  // second tap can come before the spinner is drawn: once is enough.
+  const inFlight = useRef(false);
+  // Signing up waits for a sign-out still under way, and on a connection that
+  // never answers that is a minute behind the spinner: said, once it has
+  // taken a while, under the button and aloud.
+  const finishingSignOut = useLingering(busy && isSigningOut);
+  useEffect(() => {
+    if (finishingSignOut) announce(FINISHING_SIGN_OUT);
+  }, [finishingSignOut]);
 
   async function submit() {
+    if (inFlight.current) return;
     const next: Errors = {
       displayName: validateDisplayName(displayName),
       username: validateUsername(username),
@@ -45,6 +81,7 @@ export default function SignUpScreen() {
     };
     setErrors(next);
     setFormError(null);
+    setNotice(null);
     // Asked, not checked: nobody's age is known or stored. But the rule is
     // said where it applies, and agreeing to it is a deliberate act. Said aloud
     // whatever else is wrong - the fields say their own errors - so a screen
@@ -54,132 +91,176 @@ export default function SignUpScreen() {
     if (tooYoung) announce(tooYoung);
     if (Object.values(next).some(Boolean) || tooYoung) return;
 
+    inFlight.current = true;
     setBusy(true);
-    try {
-      const { needsEmailConfirmation } = await signUp({ email, password, username, displayName });
-      // With confirmation on, no session arrives yet — say so rather than leave
-      // the user on a form that appears to have done nothing. With it off, the
-      // session lands immediately and the route guard takes them onward, so
-      // showing "check your email" would be a lie they would wait on.
-      if (needsEmailConfirmation) setSentTo(email.trim());
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
-      // The one failure that belongs to a field is said at that field.
+    const answer = await settled(signUp({ email, password, username, displayName }));
+    inFlight.current = false;
+    setBusy(false);
+
+    if (!answer.ok) {
+      const message = wordsOf(answer.error);
+      // The failures that belong to a field are said at that field.
+      // The fields say theirs aloud; the form says its own.
       if (message === USERNAME_MAY_BE_TAKEN) setErrors({ ...next, username: message });
-      else setFormError(message);
-    } finally {
-      setBusy(false);
+      else if (message === ALREADY_REGISTERED) setErrors({ ...next, email: message });
+      else {
+        setFormError(message);
+        announce(message);
+      }
+      return;
     }
+    // With confirmation on, no session arrives yet: the code emailed to the
+    // address is asked for. With it off, the session lands immediately and
+    // the route guard takes them onward, so asking for a code would be a lie
+    // they would wait on.
+    if (answer.value.needsEmailConfirmation) setSentTo(email.trim());
   }
 
   if (sentTo) {
+    // Back from there to this form, with everything typed still in it, for an
+    // address that was mistyped.
     return (
-      <Screen center scroll style={styles.screen}>
-        <Text variant="title" center>
-          Check your email
-        </Text>
-        <Text variant="body" tone="secondary" center style={styles.confirmBody}>
-          We sent a confirmation link to {sentTo}. Open it, and your {BATS_PER_USER} bats will be
-          waiting.
-        </Text>
-        <Button label="Back to sign in" onPress={() => router.replace('/sign-in')} />
-      </Screen>
+      <ConfirmEmail
+        email={sentTo}
+        reason="signed-up"
+        details={{ email, password, username, displayName }}
+        resumed={resuming}
+        onBack={(said) => {
+          setResuming(false);
+          setSentTo(null);
+          setNotice(said ?? null);
+        }}
+      />
     );
   }
 
   return (
-    <Screen scroll style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Text variant="title">Join the roost</Text>
-        <Text variant="caption" tone="secondary" style={styles.subtitle}>
-          {BATS_PER_USER} bats come with the account. There is nothing to buy.
-        </Text>
+    <Screen scroll avoidKeyboard style={styles.screen}>
+      {/* Nothing is held on the form. Said here too: the code screen's swipe, taken
+          away while it held the way in, is not given back by its going - and
+          starting over comes back to the form in the same moment as the hold ends. */}
+      <HoldBack holding={false} />
+      <Text variant="title">Join the roost</Text>
+      <Text variant="caption" tone="secondary" style={styles.subtitle}>
+        {BATS_PER_USER} bats come with the account. There is nothing to buy.
+      </Text>
 
-        <View style={styles.form}>
-          <TextField
-            label="Your name"
-            value={displayName}
-            onChangeText={setDisplayName}
-            error={errors.displayName}
-            hint="What your friends, and anyone you ask to be friends, will see."
-            autoCapitalize="words"
-            autoComplete="name"
-            returnKeyType="next"
-          />
-          <TextField
-            label="Username"
-            value={username}
-            onChangeText={setUsername}
-            error={errors.username}
-            hint="How friends find you. Lowercase letters, numbers and underscores."
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="next"
-          />
-          <TextField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            error={errors.email}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            returnKeyType="next"
-          />
-          <TextField
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            error={errors.password}
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="new-password"
-            textContentType="newPassword"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-          />
+      {notice ? (
+        <Card style={styles.notice}>
+          <Text variant="body">{notice}</Text>
+        </Card>
+      ) : null}
 
-          {formError ? (
-            <Text variant="caption" tone="danger">
-              {formError}
-            </Text>
-          ) : null}
+      <View style={styles.form}>
+        <TextField
+          label="Your name"
+          value={displayName}
+          onChangeText={setDisplayName}
+          error={errors.displayName}
+          hint="What your friends, and anyone you ask to be friends, will see."
+          autoCapitalize="words"
+          autoComplete="name"
+          returnKeyType="next"
+          // On without letting go of the focus first, which would close the
+          // keyboard for the next field to open it again.
+          submitBehavior="submit"
+          onSubmitEditing={() => usernameField.current?.focus()}
+        />
+        <TextField
+          ref={usernameField}
+          label="Username"
+          value={username}
+          onChangeText={setUsername}
+          error={errors.username}
+          hint="How friends find you. Lowercase letters, numbers and underscores."
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => emailField.current?.focus()}
+        />
+        <TextField
+          ref={emailField}
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          error={errors.email}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordField.current?.focus()}
+        />
+        <TextField
+          ref={passwordField}
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          error={errors.password}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
 
-          <ToggleRow
-            label={`I am ${MINIMUM_AGE} or older`}
-            hint={`If you are under ${PARENTAL_PERMISSION_UNDER}, a parent or guardian has said yes.`}
-            value={oldEnough}
-            onValueChange={(value) => {
-              setOldEnough(value);
-              setAgeError(null);
-            }}
-            error={ageError}
-          />
-
-          {/* The terms come before the button that agrees to them. */}
-          <Text variant="caption" tone="secondary" style={styles.rules}>
-            By creating an account, you agree to the house rules - the terms of using Night Courier.
-            There is no tolerance for harassment, threats, hate, scams, spam, or sexual content
-            nobody asked for, and none at all for sexual content involving or sent to anyone under
-            18. Accounts that break them may be removed.
+        {formError ? (
+          <Text variant="caption" tone="danger">
+            {formError}
           </Text>
+        ) : null}
+
+        {/* Only while the server confirms nothing by email: then an address
+            with an account is said to have one (see signUp). */}
+        {errors.email === ALREADY_REGISTERED ? (
           <Button
-            label="Read the house rules"
-            variant="ghost"
-            onPress={() => router.push('/rules')}
+            label="Sign in instead"
+            variant="secondary"
+            onPress={() => router.replace('/sign-in')}
           />
-          {PRIVACY_POLICY_URL ? (
-            <Button
-              label="Privacy policy"
-              variant="ghost"
-              onPress={() => void openLink(PRIVACY_POLICY_URL)}
-            />
-          ) : null}
-          <Button label="Create account" loading={busy} onPress={submit} />
-          <Button label="Back" variant="ghost" onPress={() => router.back()} />
-        </View>
-      </KeyboardAvoidingView>
+        ) : null}
+
+        <ToggleRow
+          label={`I am ${MINIMUM_AGE} or older`}
+          hint={`If you are under ${PARENTAL_PERMISSION_UNDER}, a parent or guardian has said yes.`}
+          value={oldEnough}
+          onValueChange={(value) => {
+            setOldEnough(value);
+            setAgeError(null);
+          }}
+          error={ageError}
+        />
+
+        {/* The terms come before the button that agrees to them. */}
+        <Text variant="caption" tone="secondary" style={styles.rules}>
+          By creating an account, you agree to the house rules - the terms of using Night Courier.
+          There is no tolerance for harassment, threats, hate, scams, spam, or sexual content nobody
+          asked for, and none at all for sexual content involving or sent to anyone under 18.
+          Accounts that break them may be removed.
+        </Text>
+        <Button
+          label="Read the house rules"
+          variant="ghost"
+          onPress={() => router.push('/rules')}
+        />
+        {PRIVACY_POLICY_URL ? (
+          <Button
+            label="Privacy policy"
+            variant="ghost"
+            onPress={() => void openLink(PRIVACY_POLICY_URL)}
+          />
+        ) : null}
+        <Button label="Create account" loading={busy} onPress={submit} />
+        {finishingSignOut ? (
+          <Text variant="caption" tone="muted" center>
+            {FINISHING_SIGN_OUT}
+          </Text>
+        ) : null}
+        <Button label="Back" variant="ghost" onPress={() => router.back()} />
+      </View>
     </Screen>
   );
 }
@@ -192,7 +273,7 @@ const AGE_RULE =
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
   subtitle: { marginTop: Spacing.xs },
+  notice: { marginTop: Spacing.lg },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
-  confirmBody: { marginVertical: Spacing.lg },
   rules: { lineHeight: 19 },
 });

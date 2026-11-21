@@ -6,6 +6,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import CourierScreen from '@/app/(app)/courier/[id]';
 import {
   acceptFriend,
+  declineRequest,
   fetchFriendships,
   removeFriend,
   withdrawRequest,
@@ -57,6 +58,7 @@ jest.mock('@/features/friends/friends', () => ({
   ...jest.requireActual('@/features/friends/friends'),
   fetchFriendships: jest.fn(),
   acceptFriend: jest.fn(),
+  declineRequest: jest.fn(),
   removeFriend: jest.fn(),
   withdrawRequest: jest.fn(),
 }));
@@ -104,6 +106,7 @@ const NO_CITY_OF_YOUR_OWN =
 
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
+const mockedDeclineRequest = jest.mocked(declineRequest);
 const mockedRemoveFriend = jest.mocked(removeFriend);
 const mockedWithdrawRequest = jest.mocked(withdrawRequest);
 const mockedBlockCourier = jest.mocked(blockCourier);
@@ -288,6 +291,7 @@ beforeEach(() => {
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
+  mockedDeclineRequest.mockReset().mockResolvedValue(undefined);
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
   mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   mockedBlockCourier.mockReset().mockResolvedValue('blocked');
@@ -351,13 +355,22 @@ describe('CourierScreen', () => {
       expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
     });
 
-    it('opens a letter to them', async () => {
+    /**
+     * With their name, as Write back gives it. A friendship that ended between
+     * this page and the letter left compose saying only "You can only write to
+     * friends", not that the one written to was no longer among them. (Found
+     * in the browser.)
+     */
+    it('opens a letter to them, with their name', async () => {
       await openPageOf(anna);
 
       await fireEvent.press(button('Write a letter'));
 
       expect(mockPush).toHaveBeenCalledTimes(1);
-      expect(mockPush).toHaveBeenCalledWith({ pathname: '/compose', params: { to: 'user-anna' } });
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/compose',
+        params: { to: 'user-anna', name: 'Anna Weber' },
+      });
       expect(alertSpy).not.toHaveBeenCalled();
     });
 
@@ -575,11 +588,40 @@ describe('CourierScreen', () => {
       await fireEvent.press(button('Decline'));
 
       expect(alertSpy).not.toHaveBeenCalled();
-      expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
-      expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-carla');
+      expect(mockedDeclineRequest).toHaveBeenCalledTimes(1);
+      expect(mockedDeclineRequest).toHaveBeenCalledWith('friendship-carla');
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
       expect(mockedAcceptFriend).not.toHaveBeenCalled();
       await expectWentToFriends();
       expect(announced()).toEqual(['Declined @carla.']);
+    });
+
+    /**
+     * Carla took her request back while the page still showed it. Declined
+     * as a friendship ending, the server's "no such friendship" was said as
+     * "That friendship has already ended." - of a friendship that never began.
+     * (Found in review.) It is said as what it is: the request is gone.
+     */
+    it('says the request is no longer waiting when it was withdrawn meanwhile, and nothing of a friendship', async () => {
+      mockedDeclineRequest.mockImplementation(async () => {
+        serve(() => [anna, ben, dora]);
+        throw new RpcError(REFUSALS.request_not_found, 'request_not_found');
+      });
+      // What the server says to ending a friendship that is not there.
+      mockedRemoveFriend.mockRejectedValue(
+        new RpcError(REFUSALS.friendship_not_found, 'friendship_not_found'),
+      );
+      await openPageOf(carla);
+
+      await fireEvent.press(button('Decline'));
+
+      // Said aloud; the list read again no longer has her, and the page says so.
+      expect(
+        await screen.findByText('This courier is no longer among your friends or requests.'),
+      ).toBeOnTheScreen();
+      expect(announced()).toEqual([REFUSALS.request_not_found]);
+      expect(screen.queryByText(REFUSALS.friendship_not_found)).toBeNull();
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
     });
   });
 
@@ -924,6 +966,7 @@ describe('CourierScreen', () => {
       await fireEvent.press(button('Decline'));
       await fireEvent.press(button('Block @carla'));
       expect(mockedAcceptFriend).toHaveBeenCalledTimes(1);
+      expect(mockedDeclineRequest).not.toHaveBeenCalled();
       expect(mockedRemoveFriend).not.toHaveBeenCalled();
       expect(alertSpy).not.toHaveBeenCalled();
 
@@ -940,13 +983,13 @@ describe('CourierScreen', () => {
      */
     it('declines once, and goes to the friends list once, however often Decline is pressed', async () => {
       const declining = deferred<void>();
-      mockedRemoveFriend.mockReturnValue(declining.promise);
+      mockedDeclineRequest.mockReturnValue(declining.promise);
       await openPageOf(carla);
 
       await fireEvent.press(button('Decline'));
       await fireEvent.press(button('Decline'));
 
-      expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
+      expect(mockedDeclineRequest).toHaveBeenCalledTimes(1);
       expect(button('Decline')).toBeBusy();
       expect(button('Accept')).toBeDisabled();
       expect(button('Accept')).not.toBeBusy();
@@ -956,7 +999,7 @@ describe('CourierScreen', () => {
       await act(async () => declining.resolve());
 
       await expectWentToFriends();
-      expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
+      expect(mockedDeclineRequest).toHaveBeenCalledTimes(1);
       expect(mockedAcceptFriend).not.toHaveBeenCalled();
       expect(announced()).toEqual(['Declined @carla.']);
     });

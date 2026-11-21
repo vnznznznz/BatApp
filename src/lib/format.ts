@@ -34,13 +34,21 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * Between a distance and its unit: a space that does not break. With a plain
+ * one, a line that wraps - a letter's line in the list, the way to a friend in
+ * compose - could end with "404" and start the next with "km". (Found in the
+ * browser.) Screen readers read it as any other space.
+ */
+const NO_BREAK_SPACE = ' ';
+
+/**
  * Renders a distance in kilometres. Short hops keep one decimal so that a
  * cross-town flight does not collapse to "0 km".
  */
 export function formatDistance(km: number): string {
   if (!Number.isFinite(km) || km < 0) return '—';
-  if (km < 10) return `${Math.round(km * 10) / 10} km`;
-  return `${Math.round(km).toLocaleString('en-US')} km`;
+  if (km < 10) return `${Math.round(km * 10) / 10}${NO_BREAK_SPACE}km`;
+  return `${Math.round(km).toLocaleString('en-US')}${NO_BREAK_SPACE}km`;
 }
 
 /** "3 / 3 bats available" — the headline figure on the home screen. */

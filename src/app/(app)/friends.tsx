@@ -12,6 +12,7 @@ import { Colors, Spacing } from '@/constants/theme';
 import { validateUsername } from '@/features/auth/validation';
 import {
   acceptFriend,
+  declineRequest,
   describeRequestOutcome,
   describeRoute,
   fetchFriendships,
@@ -130,8 +131,14 @@ export default function FriendsScreen() {
     });
   }
 
+  // With their name, as Write back gives it: if the friendship ends before
+  // compose has asked who is a friend, compose can say who it is that can no
+  // longer be written to. (Found in the browser.)
   function writeTo(friendship: Friendship) {
-    router.push({ pathname: '/compose', params: { to: friendship.friend.id } });
+    router.push({
+      pathname: '/compose',
+      params: { to: friendship.friend.id, name: friendName(friendship.friend) },
+    });
   }
 
   /** Their page: more about them, and the way to block or report them. */
@@ -238,9 +245,11 @@ export default function FriendsScreen() {
                   label="Decline"
                   size="compact"
                   variant="ghost"
-                  loading={busyId === friendship.id && busy?.action === removeFriend}
+                  loading={busyId === friendship.id && busy?.action === declineRequest}
                   disabled={busyId !== null}
-                  onPress={() => void act(friendship, removeFriend)}
+                  // Not removeFriend: if they withdrew a moment ago, that
+                  // would say a friendship had ended that never began.
+                  onPress={() => void act(friendship, declineRequest)}
                 />
               </View>
             </View>
@@ -282,9 +291,17 @@ export default function FriendsScreen() {
                 key={friendship.id}
                 title={friendName(friendship.friend)}
                 subtitle={describeFriend(friendship)}
-                detail={describeRoute(friendship)}
+                // Read whole, the town and the flight each on a line of
+                // their own: a town told apart by where it is took the
+                // flight off the end at 360dp.
+                detail={describeRoute(friendship, '\n')}
+                detailLines={0}
                 onPress={() => open(friendship)}
                 accessibilityHint={OPEN_HINT}
+                // Under the text, which needs the whole width: beside Write
+                // and Remove a name and username were cut to a few characters
+                // on a 360dp phone.
+                actionsBelow
                 actions={
                   <>
                     <Button

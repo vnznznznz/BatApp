@@ -256,6 +256,73 @@ describe('LettersScreen', () => {
     });
 
     /**
+     * "From Friedberg" was either of two towns in Germany. (Found in review.)
+     * A town that shares its name with another says where it is; one that
+     * does not stays as short as it was.
+     */
+    it('says where a town is that shares its name with another', async () => {
+      const letter = received({
+        origin: { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' },
+      });
+      mockedFetchInbox.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          `From Friedberg (near Augsburg) · 255 km · ${formatTimestamp(letter.arrivedAt)}`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    /**
+     * On one line, a long town name took the line and the time with it: "From
+     * Sankt Peter (near Klagenfurt am Wörthersee) · 659 km · 10:00" was cut
+     * before the distance at 360 and 390 px, and so were towns such as
+     * "Universitäts- und Hansestadt Greifswald". (Found in the browser.) The
+     * line takes the lines it needs.
+     */
+    it('shows where a letter came from, how far and when it landed whole, however long the town’s name', async () => {
+      const letter = received({
+        origin: {
+          name: 'Sankt Peter',
+          countryCode: 'AT',
+          qualifier: 'near Klagenfurt am Wörthersee',
+        },
+        distanceKm: 659.2,
+      });
+      mockedFetchInbox.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          `From Sankt Peter (near Klagenfurt am Wörthersee) · 659 km · ${formatTimestamp(letter.arrivedAt)}`,
+        ),
+      ).toHaveProp('numberOfLines', 0);
+    });
+
+    /**
+     * Wrapped, the line could end with the distance's number and start the
+     * next with its unit: "From Friedberg (near Frankfurt am Main) · 404" and
+     * then "km · 10:00" at 360 px. (Found in the browser.) The two are joined
+     * by a space that does not break.
+     */
+    it('keeps the distance and its unit together on a line that wraps', async () => {
+      const letter = received({
+        origin: { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Frankfurt am Main' },
+        distanceKm: 404.2,
+      });
+      mockedFetchInbox.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          `From Friedberg (near Frankfurt am Main) · 404 km · ${formatTimestamp(letter.arrivedAt)}`,
+          { normalizer: asRendered },
+        ),
+      ).toHaveProp('numberOfLines', 0);
+    });
+
+    /**
      * Letters start with a greeting and a blank line. Kept as written, a
      * two-line preview would show "Dear Mara," and then nothing.
      */
@@ -564,6 +631,73 @@ describe('LettersScreen', () => {
         await screen.findByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/^In the air/)).toBeNull();
+    });
+
+    /** "In the air to Friedberg" was either of two towns in Germany. (Found in review.) */
+    it('says where a town is that shares its name with another, in the air and landed', async () => {
+      const friedberg = {
+        name: 'Friedberg',
+        countryCode: 'DE',
+        qualifier: 'near Frankfurt am Main',
+      };
+      const landed = sent({
+        id: 'landed',
+        destination: friedberg,
+        delivered: true,
+        sentAt: new Date(NOW - 9 * HOUR),
+        deliverAt: new Date(NOW - 2 * HOUR),
+      });
+      mockedFetchSent.mockResolvedValue([sent({ destination: friedberg }), landed]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(
+        await screen.findByText(
+          'In the air to Friedberg (near Frankfurt am Main) · lands in 2h 30m',
+        ),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          `Landed in Friedberg (near Frankfurt am Main) · ${formatTimestamp(landed.deliverAt)}`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    /**
+     * "In the air to La Ceiba (131 km from San Pedro Sula) · lands in 4d 20h"
+     * lost the countdown at 360 and 390 px, on the one line it had. (Found in
+     * the browser.) In the air or landed, the line takes the lines it needs.
+     */
+    it('shows the countdown and the landing whole, however long the town’s name', async () => {
+      const laCeiba = {
+        name: 'La Ceiba',
+        countryCode: 'HN',
+        qualifier: '131 km from San Pedro Sula',
+      };
+      const landed = sent({
+        id: 'landed',
+        destination: laCeiba,
+        delivered: true,
+        sentAt: new Date(NOW - 120 * HOUR),
+        deliverAt: new Date(NOW - 2 * HOUR),
+      });
+      mockedFetchSent.mockResolvedValue([
+        sent({ destination: laCeiba, deliverAt: new Date(NOW + 116 * HOUR + 30 * MINUTE) }),
+        landed,
+      ]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(
+        await screen.findByText(
+          'In the air to La Ceiba (131 km from San Pedro Sula) · lands in 4d 20h',
+        ),
+      ).toHaveProp('numberOfLines', 0);
+      expect(
+        screen.getByText(
+          `Landed in La Ceiba (131 km from San Pedro Sula) · ${formatTimestamp(landed.deliverAt)}`,
+        ),
+      ).toHaveProp('numberOfLines', 0);
     });
 
     it('still says at what time a letter of last week landed once the year has turned', async () => {

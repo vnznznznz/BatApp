@@ -29,6 +29,13 @@ export const supabase = createClient<Database>(url, anonKey, {
     // No URL to read a session out of in a native app, and leaving this on
     // makes the client parse deep links it has no business parsing.
     detectSessionInUrl: false,
+    // Not the code flow (PKCE). Every email the auth server can send carries
+    // a code to type, and no link (supabase/templates), so a verifier kept on
+    // the device would protect nothing. And with it, each code emailed left a
+    // row on the auth server that nothing deletes (auth.flow_state), and
+    // verifier entries in the keychain until the next sign-out. Said here,
+    // not left to the default, which a later supabase-js may change.
+    flowType: 'implicit',
   },
   global: {
     fetch: createGuardedFetch({ anonKey, isSessionStored, renewSession }),
