@@ -449,6 +449,26 @@ describe('the details kept with a sign-in', () => {
       ]),
       1,
     );
+
+    // Nothing is not a size to measure growth from: from nothing, the bound
+    // holds as it does from anything else.
+    await assert.rejects(
+      asAuthServer(db, () =>
+        db.query(`update auth.users set raw_user_meta_data = $2::jsonb where id = $1`, [
+          rows[0].id,
+          JSON.stringify({ junk: junk(100_000) }),
+        ]),
+      ),
+      overTheBound,
+    );
+    assert.equal(
+      await count(
+        `select count(*)::text as count from auth.users
+         where id = $1 and raw_user_meta_data is null`,
+        [rows[0].id],
+      ),
+      1,
+    );
   });
 
   /**

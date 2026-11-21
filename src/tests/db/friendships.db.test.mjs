@@ -156,14 +156,24 @@ describe('asking', () => {
     );
   });
 
+  /**
+   * Refused by the grant, not by the function: private.caller() would refuse
+   * a visitor anyway, so a refusal without its reason would pass as well for
+   * a function granted to everyone, or one that does not exist.
+   */
   it('is not available to a signed-out visitor', async () => {
     await createCourier(db, { name: 'ben' });
 
-    await assert.rejects(() => asAnon(db, () => db.query(`select public.request_friend('ben')`)));
-    await assert.rejects(() =>
-      asAnon(db, () =>
-        db.query(`select public.withdraw_request('00000000-0000-4000-8000-000000000000')`),
-      ),
+    await assert.rejects(
+      () => asAnon(db, () => db.query(`select public.request_friend('ben')`)),
+      /permission denied for function request_friend/,
+    );
+    await assert.rejects(
+      () =>
+        asAnon(db, () =>
+          db.query(`select public.withdraw_request('00000000-0000-4000-8000-000000000000')`),
+        ),
+      /permission denied for function withdraw_request/,
     );
   });
 });

@@ -1293,6 +1293,45 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     });
 
     /**
+     * The tidy-up chooses the sign-ups to delete, and then waits for their
+     * rows. Someone who confirms their address in that wait has an account
+     * like anyone else's by the time the delete comes, and keeps it: the
+     * delete asks once more of each sign-up whether it is still unconfirmed.
+     */
+    it('keeps a sign-up whose address is confirmed while it waits for its rows', async () => {
+      const late = await unconfirmedSignUp('late');
+      const holder = await connect();
+      const tidier = await connect();
+      const gotrue = await connect();
+      await gotrue.query('set role supabase_auth_admin');
+      const tidierPid = (await tidier.query('select pg_backend_pid() as pid')).rows[0].pid;
+
+      await holder.query('begin');
+      await holder.query(`select 1 from public.bats where owner_id = $1 limit 1 for update`, [
+        late,
+      ]);
+      const tidying = tidyUp(tidier);
+      await until(`select 1 from pg_stat_activity where pid = $1 and wait_event_type = 'Lock'`, [
+        tidierPid,
+      ]);
+      await gotrue.query(`update auth.users set email_confirmed_at = now() where id = $1`, [late]);
+      await holder.query('commit');
+      const { rows } = await tidying;
+
+      assert.deepEqual(
+        rows[0].skipped.filter((step) => !step.startsWith('pg_cron run log: ')),
+        [],
+      );
+      const { rows: left } = await admin.query(
+        `select (select count(*)::int from auth.users where id = $1) as "sign-in",
+                (select count(*)::int from public.profiles where id = $1) as profile,
+                (select count(*)::int from public.bats where owner_id = $1) as bats`,
+        [late],
+      );
+      assert.deepEqual(left, [{ 'sign-in': 1, profile: 1, bats: 3 }]);
+    });
+
+    /**
      * If Postgres does stop the tidy-up, only the step it was in is undone. The
      * whole night's run used to go with it - old sign-in records, idle
      * sessions, sign-up names all stayed another day - and nothing said so.

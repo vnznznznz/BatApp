@@ -130,9 +130,23 @@ describe('search_cities', () => {
     }
   });
 
+  /**
+   * The test above sees only that a long query is cheap, which a cut at ten
+   * thousand characters would also pass. This pins where the cut is: the
+   * marks are tidied away whatever their number, so what decides is whether
+   * the "x" is still inside the first 64 characters.
+   */
+  it('reads the first 64 characters of a query, and not one more', async () => {
+    const xAt = (position) => 'ber' + '!'.repeat(position - 4) + 'x';
+
+    assert.deepEqual(await search(anna, xAt(64)), []);
+    assert.equal((await search(anna, xAt(65)))[0]?.name, 'Berlin');
+  });
+
   it('is not available to a signed-out visitor', async () => {
-    await assert.rejects(() =>
-      asAnon(db, () => db.query(`select * from public.search_cities('berlin', 20)`)),
+    await assert.rejects(
+      () => asAnon(db, () => db.query(`select * from public.search_cities('berlin', 20)`)),
+      /permission denied for function search_cities/,
     );
   });
 });
@@ -153,7 +167,10 @@ describe('cities table permissions', () => {
   });
 
   it('is not readable by a signed-out visitor', async () => {
-    await assert.rejects(() => asAnon(db, () => db.query(`select 1 from public.cities limit 1`)));
+    await assert.rejects(
+      () => asAnon(db, () => db.query(`select 1 from public.cities limit 1`)),
+      /permission denied for table cities/,
+    );
   });
 
   // Reference data is maintained by migrations only. No policy grants writes.

@@ -282,6 +282,9 @@ describe('sending', () => {
   it('refuses a letter with nothing in it to see', async () => {
     const { anna, ben } = await berlinAndMunich();
     const blank = {
+      // Asked of a null, the list answers null rather than no: refused by its
+      // own test, not left for the table to fail on later.
+      'no body at all': null,
       'a zero-width space': '\u200B',
       'a no-break space': '\u00A0',
       'an ideographic space': '\u3000',
@@ -358,16 +361,24 @@ describe('sending', () => {
     assert.deepEqual(await batStatuses(db, anna), ['available', 'available', 'available']);
   });
 
+  /**
+   * Refused by the grant, not by the function: private.caller() would refuse
+   * a visitor anyway, so a refusal without its reason would pass as well for
+   * a function granted to everyone, or one that does not exist.
+   */
   it('is not available to a signed-out visitor', async () => {
     const { ben } = await berlinAndMunich();
 
-    await assert.rejects(() =>
-      asAnon(db, () => db.query(`select * from public.send_message($1, 'hello')`, [ben])),
+    await assert.rejects(
+      () => asAnon(db, () => db.query(`select * from public.send_message($1, 'hello')`, [ben])),
+      /permission denied for function send_message/,
     );
-    await assert.rejects(() =>
-      asAnon(db, () =>
-        db.query(`select * from public.sent_letter('55555555-5555-4555-8555-555555555555')`),
-      ),
+    await assert.rejects(
+      () =>
+        asAnon(db, () =>
+          db.query(`select * from public.sent_letter('55555555-5555-4555-8555-555555555555')`),
+        ),
+      /permission denied for function sent_letter/,
     );
   });
 });
@@ -1187,8 +1198,11 @@ describe('reading', () => {
   });
 
   it('is not available to a signed-out visitor', async () => {
-    for (const fn of ['get_roost()', 'list_inbox()', 'list_sent()', 'get_badges()']) {
-      await assert.rejects(() => asAnon(db, () => db.query(`select * from public.${fn}`)), fn);
+    for (const fn of ['get_roost', 'list_inbox', 'list_sent', 'get_badges']) {
+      await assert.rejects(
+        () => asAnon(db, () => db.query(`select * from public.${fn}()`)),
+        new RegExp(`permission denied for function ${fn}`),
+      );
     }
   });
 });
