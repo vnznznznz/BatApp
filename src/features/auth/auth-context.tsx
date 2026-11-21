@@ -991,10 +991,12 @@ export const USERNAME_MAY_BE_TAKEN = 'That username may already be taken. Try an
  */
 export class SignedOutUnfinished extends Error {}
 
+// Whom to write to, as REFUSALS.account_suspended says it: the app names no
+// help page, and a build without a contact address has no Contact button.
 const SIGN_IN_ENDED =
   'Your sign-in ended before your account was finished: someone who knew a password set ' +
-  'for this address before yours may have changed it. Write to the contact address on the ' +
-  'help page, and the account can be removed so that you can sign up again.';
+  'for this address before yours may have changed it. Write to the person who runs Night ' +
+  'Courier, and the account can be removed so that you can sign up again.';
 
 const SIGN_IN_ENDED_BEFORE_SAVED =
   'Your sign-in ended before your password was saved again. Your address is confirmed: ' +

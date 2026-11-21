@@ -3363,10 +3363,11 @@ describe('setting up the account a sign-up’s code has confirmed', () => {
     server({ password: () => authRefusal(403, 'session_not_found', 'Session not found') });
     await confirmed();
 
+    // Whom to write to, and no page: the app names none (see REFUSALS.account_suspended).
     expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(
       'Your sign-in ended before your account was finished: someone who knew a password set ' +
-        'for this address before yours may have changed it. Write to the contact address on ' +
-        'the help page, and the account can be removed so that you can sign up again.',
+        'for this address before yours may have changed it. Write to the person who runs ' +
+        'Night Courier, and the account can be removed so that you can sign up again.',
     );
     expect(state()).toBe('signed out');
     expect(auth.isSettingPassword).toBe(false);
