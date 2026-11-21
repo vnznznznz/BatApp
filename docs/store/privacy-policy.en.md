@@ -254,7 +254,8 @@ to. But a letter has only one recipient: if I act on a reported letter, its send
 reported it.
 
 When you report, "also block" is already switched on. You can switch it off if you still want to get
-letters from that person.
+letters from that person. If you report the same letter, or the same person, again before you close
+the app or sign out, it starts as you left it the last time.
 
 **What I do with a report:** I read every report. Depending on what happened, I do nothing, send the
 person a warning to the email address of their account, or remove their account (section 3.8). If
