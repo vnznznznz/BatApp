@@ -56,10 +56,17 @@ type MockAuthState = {
   isSettingPassword: boolean;
   /** What the code that holds the way in is for, once it has signed the courier in. */
   unfinished: object | null;
+  /** Whether a sign-out is still under way, which checking a code waits for. Unset, none is. */
+  isSigningOut?: boolean;
 };
 
 const mockAuthState = {
-  current: { session: null, isSettingPassword: false, unfinished: null } as MockAuthState,
+  current: {
+    session: null,
+    isSettingPassword: false,
+    unfinished: null,
+    isSigningOut: false,
+  } as MockAuthState,
   listeners: new Set<() => void>(),
   set(next: Partial<MockAuthState>) {
     this.current = { ...this.current, ...next };
@@ -195,7 +202,12 @@ beforeEach(() => {
       },
     };
   });
-  mockAuthState.current = { session: null, isSettingPassword: false, unfinished: null };
+  mockAuthState.current = {
+    session: null,
+    isSettingPassword: false,
+    unfinished: null,
+    isSigningOut: false,
+  };
   mockSendPasswordReset.mockReset().mockResolvedValue(undefined);
   mockVerifyResetCode.mockReset().mockImplementation(async () => {
     mockAuthState.set({ session: SESSION, isSettingPassword: true });
@@ -311,6 +323,87 @@ describe('ResetPasswordScreen', () => {
           `was not saved. Try again, or sign out. ${SAME}`,
       );
       expect(focusedOn()).toHaveLength(1);
+    });
+  });
+
+  /**
+   * The code is checked only once no sign-out is under way, as signing in
+   * is, and on a connection that never answers that was up to a minute
+   * behind the button's spinner, with nothing said. (Found in the merged
+   * tree.)
+   */
+  describe('while the last sign-out is still under way', () => {
+    const FINISHING =
+      'Finishing the last sign-out first. Without a connection, that can take a minute.';
+    const SAME = 'The new password has to differ from the old one.';
+
+    /** The texts on the screen, in the order they are drawn: the buttons' labels among them. */
+    const drawn = () =>
+      screen.container
+        .queryAll((node) => (node as unknown as HostNode).type === 'Text')
+        .map((node) => String((node as unknown as HostNode).props.children));
+
+    it('says so under the button once it has waited five seconds, aloud as well', async () => {
+      mockVerifyResetCode.mockReturnValue(new Promise(() => {}));
+      mockAuthState.set({ isSigningOut: true });
+      await askedForACode();
+      await typedCodeAndPassword();
+
+      await act(() => jest.advanceTimersByTimeAsync(4_999));
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      await act(() => jest.advanceTimersByTimeAsync(1));
+
+      expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+      expect(mockedAnnounce).toHaveBeenCalledWith(FINISHING);
+      const order = drawn();
+      expect(order.indexOf(FINISHING)).toBe(order.indexOf('Set the new password') + 1);
+    });
+
+    it('lets go of the words once the sign-out is over, the code still being checked', async () => {
+      mockVerifyResetCode.mockReturnValue(new Promise(() => {}));
+      mockAuthState.set({ isSigningOut: true });
+      await askedForACode();
+      await typedCodeAndPassword();
+      await act(() => jest.advanceTimersByTimeAsync(5_000));
+      expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+
+      await act(async () => mockAuthState.set({ isSigningOut: false }));
+
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      expect(button('Set the new password')).toBeBusy();
+    });
+
+    it('says nothing of a sign-out when none is under way, however long the code takes', async () => {
+      mockVerifyResetCode.mockReturnValue(new Promise(() => {}));
+      await askedForACode();
+      await typedCodeAndPassword();
+
+      await act(() => jest.advanceTimersByTimeAsync(30_000));
+
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      expect(mockedAnnounce).not.toHaveBeenCalledWith(FINISHING);
+    });
+
+    /**
+     * Saving the password alone checks no code and waits for no sign-out, and
+     * Sign out stays on offer beside it: a sign-out begun there is not what
+     * the save waits for.
+     */
+    it('says nothing of a sign-out while the password alone is being saved', async () => {
+      mockSetNewPassword
+        .mockRejectedValueOnce(new Error(SAME))
+        .mockReturnValueOnce(new Promise(() => {}));
+      await askedForACode();
+      await typedCodeAndPassword();
+      expect(screen.getByText('Your new password')).toBeOnTheScreen();
+
+      await user.press(button('Save the new password'));
+      await act(async () => mockAuthState.set({ isSigningOut: true }));
+      await act(() => jest.advanceTimersByTimeAsync(30_000));
+
+      expect(button('Save the new password')).toBeBusy();
+      expect(screen.queryByText(FINISHING)).toBeNull();
+      expect(mockedAnnounce).not.toHaveBeenCalledWith(FINISHING);
     });
   });
 

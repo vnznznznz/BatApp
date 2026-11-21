@@ -535,6 +535,84 @@ describe('SignInScreen', () => {
       expect(button('Send the code again')).toBeDisabled();
     });
 
+    /**
+     * The code is checked only once no sign-out is under way, as signing in
+     * is, and on a connection that never answers that was up to a minute
+     * behind Confirm's spinner, with nothing said. (Found in the merged tree.)
+     */
+    describe('while the last sign-out is still under way', () => {
+      const FINISHING =
+        'Finishing the last sign-out first. Without a connection, that can take a minute.';
+
+      /** The texts on the screen, in the order they are drawn: the buttons' labels among them. */
+      const drawn = () =>
+        screen.container
+          .queryAll((node) => (node as unknown as HostNode).type === 'Text')
+          .map((node) => String((node as unknown as HostNode).props.children));
+
+      async function confirmPressed() {
+        await signedInUnconfirmed();
+        await user.type(screen.getByLabelText('Code'), '87654321');
+        await user.press(button('Confirm'));
+      }
+
+      it('says so under Confirm once it has waited five seconds, aloud as well', async () => {
+        mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+        mockHold.signOutUnderWay(true);
+        await confirmPressed();
+
+        await act(() => jest.advanceTimersByTimeAsync(4_999));
+        expect(screen.queryByText(FINISHING)).toBeNull();
+        await act(() => jest.advanceTimersByTimeAsync(1));
+
+        expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+        expect(mockedAnnounce).toHaveBeenCalledWith(FINISHING);
+        const order = drawn();
+        expect(order.indexOf(FINISHING)).toBe(order.indexOf('Confirm') + 1);
+      });
+
+      it('lets go of the words once the sign-out is over, the code still being checked', async () => {
+        mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+        mockHold.signOutUnderWay(true);
+        await confirmPressed();
+        await act(() => jest.advanceTimersByTimeAsync(5_000));
+        expect(screen.getByText(FINISHING)).toBeOnTheScreen();
+
+        await act(async () => mockHold.signOutUnderWay(false));
+
+        expect(screen.queryByText(FINISHING)).toBeNull();
+        expect(button('Confirm')).toBeBusy();
+      });
+
+      it('says nothing of a sign-out when none is under way, however long the code takes', async () => {
+        mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+        await confirmPressed();
+
+        await act(() => jest.advanceTimersByTimeAsync(30_000));
+
+        expect(screen.queryByText(FINISHING)).toBeNull();
+        expect(mockedAnnounce).not.toHaveBeenCalledWith(FINISHING);
+      });
+
+      /** Saving the password again checks no code, and waits for no sign-out. */
+      it('says nothing of a sign-out while the password alone is saved again', async () => {
+        codeSignsIn();
+        mockFinishSignIn
+          .mockRejectedValueOnce(new Error('No connection. Check your network and try again.'))
+          .mockReturnValue(new Promise(() => {}));
+        await confirmPressed();
+        expect(screen.getByText('Almost there')).toBeOnTheScreen();
+        mockHold.signOutUnderWay(true);
+
+        await user.press(button('Try again'));
+        await act(() => jest.advanceTimersByTimeAsync(30_000));
+
+        expect(button('Try again')).toBeBusy();
+        expect(screen.queryByText(FINISHING)).toBeNull();
+        expect(mockedAnnounce).not.toHaveBeenCalledWith(FINISHING);
+      });
+    });
+
     it('offers no way back to the form while the code is checked', async () => {
       mockConfirmEmail.mockReturnValue(new Promise(() => {}));
       await signedInUnconfirmed();

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -8,7 +8,7 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
-import { CODE_DID_NOT_WORK, useAuth } from '@/features/auth/auth-context';
+import { CODE_DID_NOT_WORK, FINISHING_SIGN_OUT, useAuth } from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
 import { settled, wordsOf } from '@/features/auth/settled';
 import { StageHeading, stageWords } from '@/features/auth/stage-heading';
@@ -21,6 +21,7 @@ import {
 } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
 import { CONTACT_URL, openLink } from '@/lib/links';
+import { useLingering } from '@/lib/use-lingering';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -140,6 +141,7 @@ function NewPasswordForm({
   const router = useRouter();
   const {
     isSettingPassword,
+    isSigningOut,
     unfinished,
     sendPasswordReset,
     verifyResetCode,
@@ -182,6 +184,16 @@ function NewPasswordForm({
   // screen leads away from it. (Found in review: "Use another address",
   // pressed while the code was checked, left the hold behind.)
   const held = busy || isSettingPassword;
+  // The code is checked only once no sign-out is under way, as signing in
+  // is, and on a connection that never answers that is a minute behind the
+  // button's spinner: said, once it has taken a while, under the button and
+  // aloud, as under Sign in and Create account. Not once the code has signed
+  // the courier in: saving the password alone waits for no sign-out, and a
+  // sign-out begun with Sign out beside it is not what it waits for.
+  const finishingSignOut = useLingering(busy && isSigningOut && !signedInByCode);
+  useEffect(() => {
+    if (finishingSignOut) announce(FINISHING_SIGN_OUT);
+  }, [finishingSignOut]);
 
   function failed(caught: unknown) {
     setFormError(wordsOf(caught));
@@ -379,6 +391,11 @@ function NewPasswordForm({
           loading={busy}
           onPress={submit}
         />
+        {finishingSignOut ? (
+          <Text variant="caption" tone="muted" center>
+            {FINISHING_SIGN_OUT}
+          </Text>
+        ) : null}
 
         {signedInByCode ? (
           <Button label="Sign out" variant="ghost" onPress={leave} />

@@ -791,9 +791,11 @@ const isAccountGone = (error: AuthError | null) =>
   (error.code === 'user_not_found' || /user (not found|.* does not exist)/i.test(error.message));
 
 /**
- * Said under the sign-in and sign-up buttons once they have waited a while for
- * a sign-out still under way (isSigningOut): without a connection it can take
- * a minute, and the spinner alone said nothing of why.
+ * Said under the sign-in and sign-up buttons, and under those that check a
+ * code from an email - the code screen's Confirm, the reset's "Set the new
+ * password" - once they have waited a while for a sign-out still under way
+ * (isSigningOut): without a connection it can take a minute, and the spinner
+ * alone said nothing of why.
  */
 export const FINISHING_SIGN_OUT =
   'Finishing the last sign-out first. Without a connection, that can take a minute.';

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -11,6 +11,7 @@ import { BATS_PER_USER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import {
   CODE_DID_NOT_WORK,
+  FINISHING_SIGN_OUT,
   SignedOutUnfinished,
   useAuth,
   type SignUpDetails,
@@ -21,6 +22,7 @@ import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import { EMAIL_CODE_LENGTH, validateEmailCode, validatePassword } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
+import { useLingering } from '@/lib/use-lingering';
 
 type ConfirmEmailProps = {
   /** The address the code went to, as it was sent. */
@@ -107,6 +109,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   const router = useRouter();
   const {
     isSettingPassword,
+    isSigningOut,
     confirmEmail,
     confirmSignUp,
     finishSignUp,
@@ -150,6 +153,15 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   const askForPassword = !typedBefore;
   const chosenPassword = typedBefore || password;
   const chosen = details ? { ...details, password: chosenPassword } : null;
+  // The code is checked only once no sign-out is under way, as signing in
+  // is, and on a connection that never answers that is a minute behind
+  // Confirm's spinner: said, once it has taken a while, under the button and
+  // aloud, as under Sign in and Create account. The stage that asks to try
+  // again checks no code.
+  const finishingSignOut = useLingering(busy && isSigningOut && !unfinished);
+  useEffect(() => {
+    if (finishingSignOut) announce(FINISHING_SIGN_OUT);
+  }, [finishingSignOut]);
 
   function failed(error: unknown, { atTheCode = false } = {}) {
     // The code field says its own error aloud.
@@ -384,6 +396,11 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
         ) : null}
 
         <Button label="Confirm" loading={busy} onPress={confirm} />
+        {finishingSignOut ? (
+          <Text variant="caption" tone="muted" center>
+            {FINISHING_SIGN_OUT}
+          </Text>
+        ) : null}
 
         <Button
           label="Send the code again"
