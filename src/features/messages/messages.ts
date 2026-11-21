@@ -74,6 +74,9 @@ export const PAGE_SIZE = 30;
 /** The most letters one request returns: `max_results` is capped at this in SQL. */
 export const MAX_PAGE_SIZE = 100;
 
+/** How much of a letter a list shows: the lists cut `preview` here in SQL. */
+export const PREVIEW_LENGTH = 200;
+
 /* -------------------------------------------------------------------------- */
 /* Rows, with the nullability the SQL actually has                             */
 /* -------------------------------------------------------------------------- */
@@ -198,6 +201,24 @@ export function prepareBody(text: string): string {
   return text.trim();
 }
 
+/**
+ * The opening of a letter not sent yet, cut as the server cuts the preview of
+ * one that was - by characters as the database counts them, so never through
+ * the middle of an emoji.
+ */
+export function previewOf(text: string): string {
+  return Array.from(prepareBody(text)).slice(0, PREVIEW_LENGTH).join('');
+}
+
+/**
+ * A letter's opening, run together for a two-line preview. Letters start with
+ * "Dear Ben," and a blank line; kept as written, the preview would show the
+ * greeting and then nothing.
+ */
+export function asOneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 /** Mirrors the database's checks, so a mistake is caught before a round trip. */
 export function validateBody(text: string): string | null {
   const body = prepareBody(text);
@@ -214,6 +235,17 @@ export type Dispatch = {
   deliverAt: Date;
   distanceKm: number;
 };
+
+/** What `send_message` and `sent_letter` both answer with. */
+type DispatchRow = { message_id: string; deliver_at: string; distance_km: number };
+
+function toDispatch(row: DispatchRow): Dispatch {
+  return {
+    id: row.message_id,
+    deliverAt: new Date(row.deliver_at),
+    distanceKm: row.distance_km,
+  };
+}
 
 /**
  * Sends a letter. `clientRef` names this letter rather than this attempt: pass
@@ -234,13 +266,24 @@ export async function sendMessage(
     })
     .single();
   if (error) throw toRpcError(error, 'Your letter could not be sent. Check your connection.');
+  return toDispatch(data as DispatchRow);
+}
 
-  const row = data as { message_id: string; deliver_at: string; distance_km: number };
-  return {
-    id: row.message_id,
-    deliverAt: new Date(row.deliver_at),
-    distanceKm: row.distance_km,
-  };
+/**
+ * The letter that went out under `clientRef`, or null if none did: what became
+ * of a send that was never answered. The database waits for a send under the
+ * same reference that is still running, so null means that none went, not that
+ * one is about to.
+ *
+ * Throws when it could not ask. That must never be read as null: "could not
+ * find out" taken for "nothing went" is how one letter leaves on two bats.
+ */
+export async function fetchSentLetter(clientRef: string): Promise<Dispatch | null> {
+  const { data, error } = await supabase.rpc('sent_letter', { client_ref: clientRef });
+  if (error) throw toRpcError(error, 'Could not find out whether your letter went.');
+
+  const [row] = (data ?? []) as DispatchRow[];
+  return row ? toDispatch(row) : null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -273,11 +316,43 @@ export async function fetchSent(
   return ((data ?? []) as SentRow[]).map(toSentLetter);
 }
 
-/** A whole letter. Reading a received one marks it opened, for your inbox only. */
+/**
+ * A whole letter. Reading a received one marks it opened, for your inbox only -
+ * and whoever is listening is told so (see `onLetterOpened`), once the server
+ * has answered that it is.
+ */
 export async function readMessage(id: string): Promise<Letter> {
   const { data, error } = await supabase.rpc('read_message', { message_id: id }).single();
   if (error) throw toRpcError(error, 'That letter could not be opened. Check your connection.');
-  return toLetter(data as LetterRow);
+
+  const letter = toLetter(data as LetterRow);
+  // Only a received letter ever comes back opened.
+  if (letter.openedAt) letterOpened(letter.id);
+  return letter;
+}
+
+const readers = new Set<(id: string) => void>();
+
+/**
+ * Calls `listener` with the id of each received letter the server has marked
+ * opened, until the returned function is called.
+ *
+ * The inbox asks again when it comes back into view, but only for its newest
+ * hundred letters; for one read farther down, this is how it learns that the
+ * letter is no longer unread. It used to assume so when the row was tapped,
+ * and a letter that then failed to open lost its mark while the server, and
+ * the roost's count, still had it as unread. (Found in review.)
+ */
+export function onLetterOpened(listener: (id: string) => void): () => void {
+  readers.add(listener);
+  return () => {
+    readers.delete(listener);
+  };
+}
+
+/** Says that the server has marked this received letter opened. */
+export function letterOpened(id: string): void {
+  readers.forEach((notify) => notify(id));
 }
 
 export async function fetchBadges(): Promise<Badges> {

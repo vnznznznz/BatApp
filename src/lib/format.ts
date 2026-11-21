@@ -62,9 +62,21 @@ function sameDay(a: Date, b: Date): boolean {
 }
 
 /**
- * A moment in the reader's local time, as briefly as is unambiguous:
- * "21:04" today, "Yesterday 21:04", "12 Oct 21:04" this year, "12 Oct 2025"
- * before that.
+ * How far back a moment is shown by its day alone. Less than a year, so that a
+ * day and month shown without a year can only be the last ones gone by.
+ */
+const LONG_AGO_MS = 300 * DAY_MS;
+
+/**
+ * A moment in the reader's local time, as briefly as is unambiguous: "21:04"
+ * today, "Yesterday 21:04", "12 Oct 21:04" for the months just gone and for
+ * anything still to come - "1 Jan 2027 04:18" when that is in a year not yet
+ * begun - and "12 Oct 2025", the day alone, for anything longer ago.
+ *
+ * The time is dropped by how long ago the moment was, not by its year. It used
+ * to go whenever the year differed: meant for old letters, that also took the
+ * time off a landing a few hours ahead on New Year's Eve, and in January off
+ * every letter of the week before. (Found in review.)
  *
  * Written out rather than left to `Intl`, which renders differently per device
  * locale and per JavaScript engine. A 24-hour clock with the day before the
@@ -81,9 +93,12 @@ export function formatTimestamp(date: Date, now: Date = new Date()): string {
   if (sameDay(date, yesterday)) return `Yesterday ${time}`;
 
   const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
-  return date.getFullYear() === now.getFullYear()
-    ? `${day} ${time}`
-    : `${day} ${date.getFullYear()}`;
+  if (now.getTime() - date.getTime() > LONG_AGO_MS) return `${day} ${date.getFullYear()}`;
+
+  // Only a moment still to come can be in a later year than now.
+  return date.getFullYear() > now.getFullYear()
+    ? `${day} ${date.getFullYear()} ${time}`
+    : `${day} ${time}`;
 }
 
 /**

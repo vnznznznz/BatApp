@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -12,6 +12,7 @@ import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-context';
 import { describeCity } from '@/features/cities/search';
 import {
   fetchFriendships,
@@ -19,15 +20,22 @@ import {
   groupFriendships,
   type Friendship,
 } from '@/features/friends/friends';
+import { keepDraft, useDraft, useSend } from '@/features/messages/drafts';
 import {
+  asOneLine,
   letterLength,
   prepareBody,
-  sendMessage,
+  previewOf,
   validateBody,
-  type Dispatch,
 } from '@/features/messages/messages';
+import {
+  askAfterLetterAt,
+  onLetterOutcome,
+  sendLetter,
+  type Outcome,
+} from '@/features/messages/sending';
 import { useProfile } from '@/features/profile/use-profile';
-import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
+import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
 import { announce } from '@/lib/announce';
 import { flightProgress } from '@/lib/flight';
 import {
@@ -36,12 +44,30 @@ import {
   formatFlightEstimate,
   formatTimestamp,
 } from '@/lib/format';
-import { messageOf } from '@/lib/rpc-error';
-import { randomUuid } from '@/lib/uuid';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
 import { useScreenFocused } from '@/lib/use-screen-focused';
+
+/** A letter that went, as the server answered for it. */
+type Sent = Extract<Outcome, { kind: 'sent' }>;
+
+/**
+ * When the screen asks again what became of a letter: while it is on screen,
+ * and at once when it is opened again - not while nobody is looking at it.
+ * "By itself" alone promised more than that. (Found in review.)
+ */
+const CHECKS_AGAIN = 'while this letter is on screen, and when you come back to it.';
+
+/** Shown with the letter for as long as it is not known whether it went. */
+const NOT_KNOWN =
+  'No answer came back, so your letter may or may not have gone. ' +
+  `Night Courier will check again ${CHECKS_AGAIN}`;
+
+/** Said when changed words were not sent, because of what is not known about the letter. */
+const HELD_BACK =
+  'What you changed has not been sent: Night Courier first needs to know whether ' +
+  `your letter went as you first wrote it. It will check again ${CHECKS_AGAIN}`;
 
 /**
  * Writing a letter: choosing a friend, writing, and sending it by bat.
@@ -49,40 +75,44 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
  * The flight time shown before sending is the server's estimate, and the
  * arrival shown after is the server's answer. Nothing on this screen decides
  * how long a bat flies; it only reports it.
+ *
+ * Nor does the screen hold the letter. Its words, and how the sending of them
+ * stands, are kept outside it (see drafts.ts and sending.ts), because both can
+ * outlast it: the courier may leave half-way through a letter, or while the
+ * button is still spinning.
  */
 export default function ComposeScreen() {
   const router = useRouter();
   const { to } = useLocalSearchParams<{ to?: string }>();
-  const { profile, error: profileError } = useProfile();
+  const { session } = useAuth();
+  const courierId = session?.user.id;
+  const { profile, error: profileError, reload: reloadProfile } = useProfile();
   const friendships = useRemote(fetchFriendships);
   const roost = useRemote(fetchRoost);
   const now = useNow(1000);
   const focused = useScreenFocused();
 
-  const [text, setText] = useState('');
+  // The words are kept outside this screen, one unsent letter for each friend,
+  // so that leaving it - the back arrow, a swipe, going back to read again the
+  // letter being answered - does not throw them away.
+  const text = useDraft(courierId, to);
+  // So is how the sending of them stands. A screen opened onto a letter that
+  // is still on its way out shows it so, rather than offering to send it again.
+  const { busy: sending, unanswered } = useSend(courierId, to);
   const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
   // Who it went to is kept with the answer, so the confirmation stays on screen
-  // even if the friend list is fetched again behind it and has changed.
-  const [dispatched, setDispatched] = useState<{
-    dispatch: Dispatch;
-    name: string;
-    city: string | null;
-    /** Where it left from, and when, for drawing the flight. */
-    from: string | null;
-    sentAt: Date;
-  } | null>(null);
-  // The button disables itself while loading, but a second tap can land in the
-  // same frame as the first. A letter costs a bat; this makes sure it is one.
-  const inFlight = useRef(false);
-  // Names the letter being written, for the server to recognise a retry: kept
-  // while the words and the recipient stay the same - a send whose answer was
-  // lost is retried as the same letter - and replaced the moment either
-  // changes, since that is a different letter.
-  const attempt = useRef<{ ref: string; to: string; text: string } | null>(null);
+  // even if the friend list is fetched again behind it and has changed. `at` is
+  // when the answer came.
+  const [dispatched, setDispatched] = useState<{ sent: Sent; at: Date } | null>(null);
+  // True while the profile is being loaded again because the courier asked.
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   const friends = groupFriendships(friendships.data ?? []).friends;
   const recipient = to ? (friends.find((f) => f.friend.id === to) ?? null) : null;
+  const name = recipient ? friendName(recipient.friend) : null;
+  const city = recipient?.friend.city?.name ?? null;
+  // While a move settles, letters still leave from the old city.
+  const from = (profile?.move?.from ?? profile?.city)?.name ?? null;
 
   const bats = roost.data ?? [];
   const atHome = countAtHome(bats);
@@ -93,85 +123,123 @@ export default function ComposeScreen() {
   // again is what lands it.
   useRefreshAt(nextHomeAt, roost.settledAt, roost.reload);
 
-  async function send(friendship: Friendship) {
-    if (inFlight.current) return;
+  // And count them again whenever a send settles: the bat that left, with the
+  // server's own time of leaving - or, after a refusal for want of a bat, a
+  // roost that had been stale. Whichever letter it was: the courier may have
+  // gone on to this one while the last was still on its way out.
+  const { reload: reloadRoost, refresh: refreshRoost } = roost;
+  useEffect(() => onRoostChanged(() => void reloadRoost()), [reloadRoost]);
+
+  // What became of a send is told to every screen showing that letter: this
+  // one, whether it pressed the button itself or was opened while the letter
+  // was still on its way out.
+  useEffect(
+    () =>
+      onLetterOutcome((courier, recipientId, outcome) => {
+        if (courier !== courierId || recipientId !== to) return;
+        if (outcome.kind === 'sent') {
+          setDispatched({ sent: outcome, at: new Date() });
+          announce(describeSent(outcome));
+        } else if (outcome.kind === 'held') {
+          setError(outcome.message);
+        } else if (outcome.kind === 'withheld') {
+          // Without a word of its own, a press of Send on changed words looked
+          // like nothing at all: the letter went on saying only that the
+          // first one may have gone. (Found in review.)
+          setError(HELD_BACK);
+        }
+        // Not knowing needs no word here: the letter says so itself, below,
+        // for as long as it lasts and on whichever screen shows it.
+      }),
+    [courierId, to],
+  );
+
+  // While it is not known whether the letter went, ask again without being
+  // asked to, for as long as the letter is on screen. Each asking in vain sets
+  // a later time to ask next, which is what keeps this going.
+  const askAt = unanswered?.unknown ? unanswered.askAt : null;
+  useEffect(() => {
+    if (askAt === null || !courierId || !to || name === null) return;
+    return askAfterLetterAt(askAt, courierId, { id: to, name, city, from });
+  }, [askAt, courierId, to, name, city, from]);
+
+  // Asks again for what this letter waits on, the bats and the profile, and
+  // shows that it is asking. The screen has nothing to pull down, so without
+  // this an error saying "try again" left only one way to do it: going back.
+  // (Found in review.)
+  //
+  // Written with `then` rather than try and finally on purpose: the React
+  // Compiler leaves out a whole component that has a `finally` in it, without
+  // a word, and this is the screen that draws again on every keystroke.
+  function loadAgain() {
+    void refreshRoost();
+    setLoadingProfile(true);
+    const done = () => setLoadingProfile(false);
+    void reloadProfile().then(done, done);
+  }
+
+  function send() {
     const problem = validateBody(text);
     setError(problem);
-    if (problem) return;
-
-    inFlight.current = true;
-    setSending(true);
-    const to = friendship.friend.id;
-    // Compared as it will be sent: a trailing space added after a failure is
-    // not a different letter, and must not cost a second bat if the first went.
-    const words = prepareBody(text);
-    if (attempt.current?.to !== to || attempt.current.text !== words) {
-      attempt.current = { ref: randomUuid(), to, text: words };
-    }
-    try {
-      const dispatch = await sendMessage(to, text, attempt.current.ref);
-      setDispatched({
-        dispatch,
-        name: friendName(friendship.friend),
-        city: friendship.friend.city?.name ?? null,
-        // While a move settles, letters still leave from the old city.
-        from: (profile?.move?.from ?? profile?.city)?.name ?? null,
-        sentAt: new Date(),
-      });
-      announce(
-        `Your bat is on its way to ${friendName(friendship.friend)}. ` +
-          `It lands in ${formatDuration(dispatch.deliverAt.getTime() - Date.now())}.`,
-      );
-      setText('');
-      attempt.current = null;
-      // The bat that left, with the server's own time of leaving.
-      void roost.reload();
-    } catch (caught) {
-      setError(messageOf(caught));
-      // A refusal for want of a bat means the roost on screen was stale.
-      void roost.reload();
-    } finally {
-      inFlight.current = false;
-      setSending(false);
-    }
+    if (problem || !courierId || !to || name === null) return;
+    void sendLetter(courierId, { id: to, name, city, from });
   }
 
   if (dispatched) {
-    const { dispatch, name, city, from } = dispatched;
+    const { to: went, dispatch, arrived, changed } = dispatched.sent;
     // When the letter left by the server's clock, from the roost fetched again
     // after sending; until then, when the answer came. A retried send is
     // answered with a letter that left earlier, and the drawing should agree
     // with the roost's. (Found in review.)
     const sentAt =
       roost.data?.find((bat) => bat.flight?.messageId === dispatch.id)?.flight?.sentAt ??
-      dispatched.sentAt;
+      dispatched.at;
     const remaining = dispatch.deliverAt.getTime() - now;
-    const where = city ? ` in ${city}` : '';
+    const where = went.city ? ` in ${went.city}` : '';
     return (
       <Screen center scroll edges={['bottom']} style={styles.screen}>
-        <FlyingBat size={120} tint={Colors.batFlying} flying={focused} />
+        <FlyingBat
+          size={120}
+          tint={arrived ? Colors.batAvailable : Colors.batFlying}
+          flying={focused && !arrived}
+        />
         <Text variant="title" center style={styles.spaced}>
-          Your bat is on its way
+          {arrived ? 'Your letter has arrived' : 'Your bat is on its way'}
         </Text>
         <Text variant="body" tone="secondary" center style={styles.spaced}>
-          {remaining > 0
-            ? `It will reach ${name}${where} in ${formatDuration(remaining)}, at ${formatTimestamp(dispatch.deliverAt)}.`
-            : `It is reaching ${name}${where} any moment now.`}
+          {arrived
+            ? `It has reached ${went.name}${where}. Landed ${formatTimestamp(dispatch.deliverAt)}.`
+            : remaining > 0
+              ? `It will reach ${went.name}${where} in ${formatDuration(remaining)}, at ${formatTimestamp(dispatch.deliverAt)}.`
+              : `It is reaching ${went.name}${where} any moment now.`}
         </Text>
+        {changed ? (
+          <Text variant="body" tone="secondary" center style={styles.spaced}>
+            It went as you first wrote it. What you changed since has not been sent. It is kept, in
+            case you want to send it as a second letter.
+          </Text>
+        ) : null}
         <Text variant="caption" tone="muted" center style={styles.distance}>
           {formatDistance(dispatch.distanceKm)} as the bat flies.
         </Text>
-        {from && city ? (
+        {went.from && went.city && !arrived ? (
           <View style={styles.path}>
             <FlightPath
-              from={from}
-              to={city}
+              from={went.from}
+              to={went.city}
               progress={flightProgress(sentAt, dispatch.deliverAt, now)}
               active={focused}
             />
           </View>
         ) : null}
         <View style={styles.actions}>
+          {changed ? (
+            <Button
+              label="Back to what you wrote"
+              variant="secondary"
+              onPress={() => setDispatched(null)}
+            />
+          ) : null}
           <Button label="Back to the roost" onPress={() => router.dismissTo('/home')} />
         </View>
       </Screen>
@@ -201,9 +269,17 @@ export default function ComposeScreen() {
         ) : null}
 
         {friendships.error && !friendships.data ? (
-          <Text variant="caption" tone="danger" style={styles.spaced}>
-            {friendships.error}
-          </Text>
+          <View style={styles.failed}>
+            <Text variant="caption" tone="danger">
+              {friendships.error}
+            </Text>
+            <Button
+              label="Try again"
+              variant="secondary"
+              loading={friendships.isRefreshing}
+              onPress={() => void friendships.refresh()}
+            />
+          </View>
         ) : null}
 
         {friendships.data && friends.length === 0 ? (
@@ -218,11 +294,10 @@ export default function ComposeScreen() {
         {friends.length > 0 ? (
           <Card style={styles.list}>
             {friends.map((friendship) => (
-              <ListRow
+              <FriendRow
                 key={friendship.id}
-                title={friendName(friendship.friend)}
-                subtitle={describeRoute(friendship)}
-                disabled={!friendship.route}
+                friendship={friendship}
+                courierId={courierId}
                 onPress={() => router.setParams({ to: friendship.friend.id })}
               />
             ))}
@@ -233,13 +308,36 @@ export default function ComposeScreen() {
   }
 
   const route = recipient.route;
-  const length = letterLength(text);
+  // Counted as it will be sent, which is what the limit is on: without the
+  // blank space around it. Counted as typed, a letter of exactly the limit with
+  // a new line after it showed a red "2001 / 2000" and went all the same.
+  // (Found in review.)
+  const length = letterLength(prepareBody(text));
   const tooLong = length > MESSAGE_MAX_LENGTH;
-  const canSend = Boolean(route) && Boolean(profile?.city) && atHome > 0;
+  // Only a courier known to have no city is held back here. A profile that
+  // could not be loaded holds no letter back: the server knows where home is,
+  // and refuses a sender without a city itself. (Found in review: one failed
+  // request as the screen opened left "Send by bat" disabled until the screen
+  // was left, and the letter with it.)
+  const needsCity = profile !== null && !profile.city;
+  const canSend = Boolean(route) && atHome > 0 && !needsCity && Boolean(profile || profileError);
+
+  // One way out is enough when both the bats and the profile are missing. It
+  // stands by the bats then, next to the button it is in the way of.
+  const roostMissing = Boolean(roost.error) && !roost.data;
+  const tryAgain = (
+    <Button
+      label="Try again"
+      variant="secondary"
+      loading={roost.isRefreshing || loadingProfile}
+      onPress={loadAgain}
+    />
+  );
 
   // The only place that says why "Send by bat" might be disabled, so it must
-  // say something in every state - including when the bats could not be counted.
-  let batLine: string | null = null;
+  // say something in every state - while the bats are still being counted, and
+  // when they could not be.
+  let batLine: string;
   if (roost.data) {
     const remaining = nextHomeAt === null ? null : nextHomeAt - now;
     batLine =
@@ -250,8 +348,8 @@ export default function ComposeScreen() {
           : remaining > 0
             ? `All your bats are out. The next one is home in ${formatDuration(remaining)}.`
             : 'All your bats are out. The next one is landing any moment now.';
-  } else if (roost.error) {
-    batLine = roost.error;
+  } else {
+    batLine = roost.error ?? 'Counting your bats…';
   }
 
   return (
@@ -270,14 +368,17 @@ export default function ComposeScreen() {
         </Text>
       ) : null}
 
-      {profile && !profile.city ? (
+      {needsCity ? (
         <Text variant="caption" tone="danger" style={styles.spaced}>
           Choose your city first. Your bats need to know where home is.
         </Text>
       ) : !profile && profileError ? (
-        <Text variant="caption" tone="danger" style={styles.spaced}>
-          {profileError}
-        </Text>
+        <View style={styles.failed}>
+          <Text variant="caption" tone="danger">
+            {profileError}
+          </Text>
+          {roostMissing ? null : tryAgain}
+        </View>
       ) : null}
 
       <View style={styles.form}>
@@ -285,11 +386,14 @@ export default function ComposeScreen() {
           label="Your letter"
           value={text}
           onChangeText={(value) => {
-            setText(value);
+            keepDraft(courierId, to, value);
             if (error) setError(null);
           }}
-          error={error}
+          error={error ?? (unanswered?.unknown ? NOT_KNOWN : null)}
           placeholder={`Dear ${friendName(recipient.friend)},`}
+          // The request carries the words as they were when Send was pressed.
+          // Anything typed while it is out would be neither sent nor kept.
+          editable={!sending}
           multiline
           autoCapitalize="sentences"
           accessibilityHint={`Up to ${MESSAGE_MAX_LENGTH} characters.`}
@@ -303,24 +407,69 @@ export default function ComposeScreen() {
           {length} / {MESSAGE_MAX_LENGTH}
         </Text>
 
-        {batLine ? (
-          <Text
-            variant="caption"
-            tone={!roost.data ? 'danger' : atHome > 0 ? 'muted' : 'flying'}
-            style={styles.note}
-          >
-            {batLine}
-          </Text>
-        ) : null}
+        <Text
+          variant="caption"
+          tone={roost.data ? (atHome > 0 ? 'muted' : 'flying') : roost.error ? 'danger' : 'muted'}
+          style={styles.note}
+        >
+          {batLine}
+        </Text>
+        {roostMissing ? tryAgain : null}
 
-        <Button
-          label="Send by bat"
-          loading={sending}
-          disabled={!canSend}
-          onPress={() => void send(recipient)}
-        />
+        <Button label="Send by bat" loading={sending} disabled={!canSend} onPress={send} />
       </View>
     </Screen>
+  );
+}
+
+/** The confirmation in one breath, for someone listening rather than looking. */
+function describeSent({ to, dispatch, arrived, changed }: Sent): string {
+  const went = arrived
+    ? `Your letter to ${to.name} has arrived.`
+    : `Your bat is on its way to ${to.name}. ` +
+      `It lands in ${formatDuration(dispatch.deliverAt.getTime() - Date.now())}.`;
+  return changed
+    ? `${went} It went as you first wrote it; what you changed since has not been sent.`
+    : went;
+}
+
+/**
+ * A friend to choose, with the way there - and, if a letter to them was started
+ * and not sent, how it begins. Opened with nobody chosen, the screen does not
+ * go straight into such a letter, even when it is the only one: from there,
+ * there would be no way to write to anyone else. It says where the words are
+ * and leaves the choice to the courier.
+ *
+ * A letter whose send was never answered is pointed out as that, by the words
+ * that may have gone: it is not merely started, and opening it is what finds
+ * out what became of it.
+ */
+function FriendRow({
+  friendship,
+  courierId,
+  onPress,
+}: {
+  friendship: Friendship;
+  courierId: string | undefined;
+  onPress: () => void;
+}) {
+  const started = previewOf(useDraft(courierId, friendship.friend.id));
+  const { unanswered } = useSend(courierId, friendship.friend.id);
+  const inDoubt = unanswered?.unknown ? previewOf(unanswered.words) : '';
+  return (
+    <ListRow
+      title={friendName(friendship.friend)}
+      subtitle={describeRoute(friendship)}
+      detail={
+        inDoubt
+          ? `A letter that may or may not have gone: ${asOneLine(inDoubt)}`
+          : started
+            ? `A letter you started: ${asOneLine(started)}`
+            : undefined
+      }
+      disabled={!friendship.route}
+      onPress={onPress}
+    />
   );
 }
 
@@ -340,6 +489,7 @@ const styles = StyleSheet.create({
   screen: { paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   lead: { marginTop: Spacing.xs, lineHeight: 19 },
   spaced: { marginTop: Spacing.md },
+  failed: { marginTop: Spacing.md, gap: Spacing.sm },
   list: { marginTop: Spacing.lg, paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   form: { gap: Spacing.sm, marginTop: Spacing.lg },
   counter: { alignSelf: 'flex-end' },

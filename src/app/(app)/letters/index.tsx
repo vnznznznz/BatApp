@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { UnreadDot } from '@/components/badge';
@@ -10,10 +10,12 @@ import { SegmentedControl } from '@/components/segmented-control';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
 import {
+  asOneLine,
   correspondentName,
   fetchInbox,
   fetchSent,
   MAX_PAGE_SIZE,
+  onLetterOpened,
   PAGE_SIZE,
   type ReceivedLetter,
   type SentLetter,
@@ -21,6 +23,7 @@ import {
 import { formatDistance, formatDuration, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { usePaged, type Paged } from '@/lib/use-paged';
+import { useRefreshAt } from '@/lib/use-refresh-at';
 
 type Box = 'received' | 'sent';
 
@@ -55,10 +58,13 @@ export default function LettersScreen() {
 function ReceivedList() {
   const router = useRouter();
   const letters = usePaged(fetchInbox, PAGE_SIZE, MAX_PAGE_SIZE);
-  // Letters opened from this list. Opening marks a letter read on the server,
-  // but a refresh brings back at most a hundred letters; remembering here keeps
-  // the unread mark off a letter just read however deep in the list it was.
+  // Letters read while this list was shown. Reading marks a letter opened on
+  // the server, but a refresh brings back at most a hundred letters;
+  // remembering here keeps the unread mark off a letter just read however deep
+  // in the list it was. Read, not tapped: a letter that then cannot be opened
+  // is still unread, here as on the server. (Found in review.)
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => onLetterOpened((id) => setOpened((previous) => new Set(previous).add(id))), []);
 
   return (
     <LetterList
@@ -73,10 +79,7 @@ function ReceivedList() {
             detail={asOneLine(letter.preview)}
             emphasised={unread}
             leading={<UnreadDot visible={unread} label="Unread" />}
-            onPress={() => {
-              setOpened((previous) => new Set(previous).add(letter.id));
-              router.push({ pathname: '/letters/[id]', params: { id: letter.id } });
-            }}
+            onPress={() => router.push({ pathname: '/letters/[id]', params: { id: letter.id } })}
           />
         );
       }}
@@ -89,19 +92,37 @@ function SentList() {
   const letters = usePaged(fetchSent, PAGE_SIZE, MAX_PAGE_SIZE);
   const now = useNow(1000);
 
+  // Whether a letter has landed is the server's to say, here as on the roost
+  // and on the letter itself. This list used to go by the phone's clock alone,
+  // and on a phone running fast called a letter landed that was still in the
+  // air everywhere else. (Found in review.) So it asks again when the next
+  // letter is due, and keeps asking while one is overdue: fetching is what
+  // lands it. `asked` changes after every such fetch, which is what sets the
+  // next one.
+  const nextLanding = soonestLanding(letters.items);
+  const { refresh } = letters;
+  const [asked, setAsked] = useState(0);
+  const askAgain = useCallback(async () => {
+    await refresh();
+    setAsked((times) => times + 1);
+  }, [refresh]);
+  useRefreshAt(nextLanding, asked, askAgain);
+
   return (
     <LetterList
       paged={letters}
       empty="You have not sent a letter yet."
       renderItem={(letter: SentLetter) => {
-        const landed = letter.delivered || letter.deliverAt.getTime() <= now;
+        const remaining = letter.deliverAt.getTime() - now;
         return (
           <ListRow
             title={`To ${correspondentName(letter.recipient)}`}
             subtitle={
-              landed
+              letter.delivered
                 ? `Landed in ${letter.destination.name} · ${formatTimestamp(letter.deliverAt)}`
-                : `In the air to ${letter.destination.name} · lands in ${formatDuration(letter.deliverAt.getTime() - now)}`
+                : remaining > 0
+                  ? `In the air to ${letter.destination.name} · lands in ${formatDuration(remaining)}`
+                  : `In the air to ${letter.destination.name} · landing any moment now`
             }
             detail={asOneLine(letter.preview)}
             onPress={() => router.push({ pathname: '/letters/[id]', params: { id: letter.id } })}
@@ -147,9 +168,22 @@ function LetterList<T extends { id: string }>({
       }
       ListHeaderComponent={
         paged.error ? (
-          <Text variant="caption" tone="danger" style={styles.message}>
-            {paged.error}
-          </Text>
+          <View style={styles.failed}>
+            <Text variant="caption" tone="danger" style={styles.line}>
+              {paged.error}
+            </Text>
+            {/* With letters on screen there is a list to pull down. With none,
+                nothing shows that it can be pulled, and the error would say
+                "try again" with no way to. (Found in review.) */}
+            {paged.items.length === 0 ? (
+              <Button
+                label="Try again"
+                variant="secondary"
+                loading={paged.isRefreshing}
+                onPress={() => void paged.refresh()}
+              />
+            ) : null}
+          </View>
         ) : null
       }
       ListEmptyComponent={
@@ -179,13 +213,14 @@ function LetterList<T extends { id: string }>({
   );
 }
 
-/**
- * A letter's opening, run together for a two-line preview. Letters start with
- * "Dear Ben," and a blank line; kept as written, the preview would show the
- * greeting and then nothing.
- */
-function asOneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+/** When the next of these letters lands, or null if none is in the air. */
+function soonestLanding(letters: readonly SentLetter[]): number | null {
+  let soonest: number | null = null;
+  for (const letter of letters) {
+    const landing = letter.deliverAt.getTime();
+    if (!letter.delivered && (soonest === null || landing < soonest)) soonest = landing;
+  }
+  return soonest;
 }
 
 function Separator() {
@@ -198,5 +233,7 @@ const styles = StyleSheet.create({
   list: { paddingBottom: Spacing.xl, flexGrow: 1 },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
   message: { marginTop: Spacing.lg, lineHeight: 19 },
+  failed: { marginTop: Spacing.lg, gap: Spacing.sm },
+  line: { lineHeight: 19 },
   retry: { marginTop: Spacing.lg, alignItems: 'center' },
 });

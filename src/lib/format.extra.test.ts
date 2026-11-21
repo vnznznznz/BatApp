@@ -48,19 +48,99 @@ describe('formatTimestamp', () => {
     );
   });
 
-  it('shows the day, month and time for an earlier day this year', () => {
+  it('shows the day, month and time for an earlier day', () => {
     expect(formatTimestamp(at(2026, 9, 12, 21, 4), now)).toBe('12 Oct 21:04');
-    expect(formatTimestamp(at(2026, 0, 3, 7, 5), now)).toBe('3 Jan 07:05');
+    expect(formatTimestamp(at(2026, 1, 3, 7, 5), now)).toBe('3 Feb 07:05');
   });
 
-  it('shows the year instead of the time for an earlier year', () => {
-    expect(formatTimestamp(at(2025, 9, 12, 21, 4), now)).toBe('12 Oct 2025');
-    expect(formatTimestamp(at(2026, 11, 30, 23, 45), at(2027, 0, 1, 0, 30))).toBe('30 Dec 2026');
+  /**
+   * The time used to go whenever the year differed. That was meant for old
+   * letters, but on New Year's Eve it took the time off a landing a few hours
+   * ahead - "It will reach Ben in 6h 18m, at 1 Jan 2027" - and in January off
+   * every letter of the week before. (Found in review.)
+   */
+  describe('around New Year', () => {
+    const newYearsEve = at(2026, 11, 31, 22, 0);
+    const secondOfJanuary = at(2027, 0, 2, 9, 0);
+
+    it('keeps the time of a moment still to come once the year turns, and names the year', () => {
+      // A bat that lands six hours on.
+      expect(formatTimestamp(at(2027, 0, 1, 4, 18), newYearsEve)).toBe('1 Jan 2027 04:18');
+      // A move that settles a day on.
+      expect(formatTimestamp(at(2027, 0, 1, 22, 0), newYearsEve)).toBe('1 Jan 2027 22:00');
+      // A flight across the world.
+      expect(formatTimestamp(at(2027, 0, 10, 9, 30), newYearsEve)).toBe('10 Jan 2027 09:30');
+    });
+
+    it('names the year from the first minute of it', () => {
+      expect(formatTimestamp(at(2027, 0, 1, 0, 0), at(2026, 11, 31, 23, 59))).toBe(
+        '1 Jan 2027 00:00',
+      );
+    });
+
+    it('names no year for a moment still to come in this one', () => {
+      expect(formatTimestamp(at(2026, 11, 31, 4, 18), at(2026, 11, 30, 22, 0))).toBe(
+        '31 Dec 04:18',
+      );
+      expect(formatTimestamp(at(2027, 0, 3, 4, 18), secondOfJanuary)).toBe('3 Jan 04:18');
+    });
+
+    it('keeps the time of a letter from the last days of the old year', () => {
+      expect(formatTimestamp(at(2026, 11, 30, 21, 4), secondOfJanuary)).toBe('30 Dec 21:04');
+      expect(formatTimestamp(at(2026, 11, 31, 23, 59), secondOfJanuary)).toBe('31 Dec 23:59');
+      expect(formatTimestamp(at(2026, 11, 30, 23, 45), at(2027, 0, 1, 0, 30))).toBe('30 Dec 23:45');
+    });
+
+    it('keeps the time of a letter from months before, across the turn of the year', () => {
+      expect(formatTimestamp(at(2026, 9, 12, 21, 4), secondOfJanuary)).toBe('12 Oct 21:04');
+      expect(formatTimestamp(at(2026, 3, 1, 8, 0), secondOfJanuary)).toBe('1 Apr 08:00');
+    });
+
+    it('shows only the time on New Year’s Day itself, as on any day', () => {
+      expect(formatTimestamp(at(2027, 0, 1, 4, 18), at(2027, 0, 1, 0, 5))).toBe('04:18');
+    });
+  });
+
+  /**
+   * By then the day says enough - and it comes with its year, because the day
+   * and month alone would soon be taken for the ones coming round again.
+   */
+  describe('long ago', () => {
+    it('shows the year instead of the time for a moment more than three hundred days back', () => {
+      expect(formatTimestamp(at(2025, 9, 12, 21, 4), now)).toBe('12 Oct 2025');
+      expect(formatTimestamp(at(2025, 11, 20, 8, 0), now)).toBe('20 Dec 2025');
+      expect(formatTimestamp(at(2019, 5, 1, 12, 0), now)).toBe('1 Jun 2019');
+    });
+
+    it('does so whichever year that was, this one included', () => {
+      expect(formatTimestamp(at(2026, 0, 3, 7, 5), now)).toBe('3 Jan 2026');
+      expect(formatTimestamp(at(2026, 0, 1, 12, 0), at(2026, 11, 31, 12, 0))).toBe('1 Jan 2026');
+    });
+
+    it('keeps the time for a moment less than three hundred days back', () => {
+      expect(formatTimestamp(at(2026, 0, 6, 7, 5), now)).toBe('6 Jan 07:05');
+      expect(formatTimestamp(at(2025, 11, 20, 8, 0), at(2026, 8, 1, 12, 0))).toBe('20 Dec 08:00');
+    });
+
+    /** The line is drawn at three hundred days exactly, whatever the reader's time zone does in between. */
+    it('draws the line at three hundred days, to the minute', () => {
+      const DAY = 86_400_000;
+      const onTheLine = new Date(now.getTime() - 300 * DAY);
+      const justBeyond = new Date(onTheLine.getTime() - 60_000);
+
+      expect(formatTimestamp(onTheLine, now)).toMatch(/^\d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/);
+      expect(formatTimestamp(justBeyond, now)).toMatch(/^\d{1,2} [A-Z][a-z]{2} \d{4}$/);
+    });
+
+    it('never drops the time of a moment still to come, however far off', () => {
+      expect(formatTimestamp(at(2027, 11, 30, 21, 4), at(2027, 0, 2, 9, 0))).toBe('30 Dec 21:04');
+      expect(formatTimestamp(at(2029, 5, 1, 12, 0), now)).toBe('1 Jun 2029 12:00');
+    });
   });
 
   it('names every month the same way on any device', () => {
     const months = Array.from({ length: 12 }, (_, month) =>
-      formatTimestamp(at(2026, month, 1, 12, 0), at(2026, 11, 31, 12, 0)),
+      formatTimestamp(at(2026, month, 1, 12, 0), at(2026, month, 20, 12, 0)),
     );
 
     expect(months).toEqual([

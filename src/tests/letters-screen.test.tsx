@@ -6,6 +6,7 @@ import LettersScreen from '@/app/(app)/letters/index';
 import {
   fetchInbox,
   fetchSent,
+  letterOpened,
   PAGE_SIZE,
   type Correspondent,
   type ReceivedLetter,
@@ -45,14 +46,32 @@ jest.mock('expo-router', () => {
   };
 });
 
+/** How many lists are listening, at this moment, for letters being read. */
+const mockListening = { lists: 0 };
+
 // The screen is under test, not the network. The fetchers are replaced; the
-// helpers that name a correspondent and size a page are kept.
-jest.mock('@/features/messages/messages', () => ({
-  ...jest.requireActual('@/features/messages/messages'),
-  fetchInbox: jest.fn(),
-  fetchSent: jest.fn(),
-  readMessage: jest.fn(),
-}));
+// helpers that name a correspondent and size a page are kept. So is the way a
+// list hears that a letter was read - counted here, so that a list that has
+// gone can be seen to have stopped listening.
+jest.mock('@/features/messages/messages', () => {
+  const actual = jest.requireActual<typeof import('@/features/messages/messages')>(
+    '@/features/messages/messages',
+  );
+  return {
+    ...actual,
+    fetchInbox: jest.fn(),
+    fetchSent: jest.fn(),
+    readMessage: jest.fn(),
+    onLetterOpened: (listener: (id: string) => void) => {
+      const stop = actual.onLetterOpened(listener);
+      mockListening.lists += 1;
+      return () => {
+        mockListening.lists -= 1;
+        stop();
+      };
+    },
+  };
+});
 
 const mockedFetchInbox = jest.mocked(fetchInbox);
 const mockedFetchSent = jest.mocked(fetchSent);
@@ -160,6 +179,21 @@ async function pullToRefresh() {
 
 const spinners = () => screen.container.queryAll((node) => node.type === 'ActivityIndicator');
 
+const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
+
+const NOT_LOADED = 'Your letters could not be loaded. Check your connection.';
+
+/** A promise the test settles by hand, to look at the screen while a call is in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * Lets time pass as it does on a phone: a second at a time, with the screen
  * rendering in between.
@@ -173,6 +207,7 @@ async function letTimePass(ms: number) {
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
+  mockListening.lists = 0;
   mockedFetchInbox.mockReset();
   mockedFetchInbox.mockResolvedValue([]);
   mockedFetchSent.mockReset();
@@ -222,6 +257,25 @@ describe('LettersScreen', () => {
       expect(
         screen.getByText('Dear Mara, the harbour was loud tonight.', { normalizer: asRendered }),
       ).toBeOnTheScreen();
+    });
+
+    /**
+     * In the first days of January every letter of the week before used to be
+     * listed by its day alone, "30 Dec 2026", where a letter three days old
+     * shows its time in any other week. (Found in review.) Local times
+     * throughout, so this holds in any time zone.
+     */
+    it('still lists a letter of last week with its time once the year has turned', async () => {
+      jest.setSystemTime(new Date(2027, 0, 2, 9, 0));
+      mockedFetchInbox.mockResolvedValue([
+        received({ arrivedAt: new Date(2026, 11, 30, 21, 4) }),
+        received({ id: 'last-winter', sender: ben, arrivedAt: new Date(2026, 1, 3, 8, 15) }),
+      ]);
+      await renderScreen(<LettersScreen />);
+
+      expect(await screen.findByText('From Hamburg · 255 km · 30 Dec 21:04')).toBeOnTheScreen();
+      // Long ago, the day says enough - with its year.
+      expect(screen.getByText('From Hamburg · 255 km · 3 Feb 2026')).toBeOnTheScreen();
     });
 
     it('marks the letters that have not been opened, and only those', async () => {
@@ -293,15 +347,60 @@ describe('LettersScreen', () => {
     });
 
     it('says so when the letters cannot be loaded, rather than that there are none', async () => {
-      mockedFetchInbox.mockRejectedValue(
-        new Error('Your letters could not be loaded. Check your connection.'),
-      );
+      mockedFetchInbox.mockRejectedValue(new Error(NOT_LOADED));
       await renderScreen(<LettersScreen />);
 
-      expect(
-        await screen.findByText('Your letters could not be loaded. Check your connection.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(NOT_LOADED)).toBeOnTheScreen();
       expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+    });
+
+    /**
+     * An empty list gives no sign that it can be pulled down, and the error
+     * said "check your connection" with nothing to try it with afterwards.
+     * (Found in review.)
+     */
+    it('offers to try again when the first letters cannot be loaded, and shows them when they can', async () => {
+      mockedFetchInbox.mockRejectedValueOnce(new Error(NOT_LOADED)).mockResolvedValue([received()]);
+      await renderScreen(<LettersScreen />);
+      await screen.findByText(NOT_LOADED);
+
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
+      expect(screen.queryByText(NOT_LOADED)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
+      expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, PAGE_SIZE);
+    });
+
+    it('shows that it is trying again, and offers it once more if that fails too', async () => {
+      mockedFetchInbox.mockRejectedValueOnce(new Error(NOT_LOADED));
+      await renderScreen(<LettersScreen />);
+      await screen.findByText(NOT_LOADED);
+
+      const secondTry = deferred<ReceivedLetter[]>();
+      mockedFetchInbox.mockReturnValueOnce(secondTry.promise);
+      await fireEvent.press(tryAgainButton());
+
+      expect(tryAgainButton()).toBeBusy();
+
+      await act(async () => secondTry.reject(new Error(NOT_LOADED)));
+
+      expect(tryAgainButton()).not.toBeBusy();
+      expect(screen.getByText(NOT_LOADED)).toBeOnTheScreen();
+    });
+
+    it('offers nothing to try again while the first letters are loading, or when there are none', async () => {
+      const first = deferred<ReceivedLetter[]>();
+      mockedFetchInbox.mockReturnValueOnce(first.promise);
+      await renderScreen(<LettersScreen />);
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+      await act(async () => first.resolve([]));
+
+      expect(screen.getByText(/^Nothing has landed yet/)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
   });
 
@@ -376,21 +475,173 @@ describe('LettersScreen', () => {
       expect(screen.queryByText(/^In the air/)).toBeNull();
     });
 
-    it('calls a letter landed once the arrival time the server set has passed', async () => {
+    it('still says at what time a letter of last week landed once the year has turned', async () => {
+      jest.setSystemTime(new Date(2027, 0, 2, 9, 0));
+      mockedFetchSent.mockResolvedValue([
+        sent({
+          delivered: true,
+          sentAt: new Date(2026, 11, 30, 14, 0),
+          deliverAt: new Date(2026, 11, 30, 21, 4),
+        }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(await screen.findByText('Landed in Vienna · 30 Dec 21:04')).toBeOnTheScreen();
+    });
+
+    /**
+     * Whether a letter has landed is the server's to say. The list used to
+     * call it landed the moment the phone's clock passed the arrival time,
+     * while the roost and the letter itself went on waiting for the server: on
+     * a phone running fast, a letter had "landed" here that was still in the
+     * air everywhere else. (Found in review.) Asking again is what lands it -
+     * the server delivers whatever is due before it answers.
+     */
+    it('asks the server again once a letter is due, and calls it landed when the server does', async () => {
       const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
-      mockedFetchSent.mockResolvedValue([letter]);
+      mockedFetchSent
+        .mockResolvedValueOnce([letter])
+        .mockResolvedValue([{ ...letter, delivered: true }]);
       await renderScreen(<LettersScreen />);
       await showSent();
       expect(
         await screen.findByText('In the air to Vienna · lands in less than a minute'),
       ).toBeOnTheScreen();
 
-      await letTimePass(31 * SECOND);
+      await letTimePass(29 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
 
+      await letTimePass(3 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
       expect(
         screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/any moment now/)).toBeNull();
+    });
+
+    it('does not call a letter landed before the server does, and keeps asking until it has', async () => {
+      const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
+      mockedFetchSent
+        .mockResolvedValueOnce([letter])
+        // The phone runs a little fast: by the server's clock it is not due yet.
+        .mockResolvedValueOnce([letter])
+        .mockResolvedValue([{ ...letter, delivered: true }]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in less than a minute');
+
+      // To the second: due by this clock, and not yet asked after.
+      await letTimePass(30 * SECOND);
+      expect(screen.getByText('In the air to Vienna · landing any moment now')).toBeOnTheScreen();
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
+
+      await letTimePass(2 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('In the air to Vienna · landing any moment now')).toBeOnTheScreen();
+      expect(screen.queryByText(/^Landed/)).toBeNull();
+      expect(screen.queryByText(/lands in any moment now/)).toBeNull();
+
+      await letTimePass(3 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(3);
+      expect(
+        screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+    });
+
+    it('asks again after a failed fetch while a letter is overdue', async () => {
+      const letter = sent({ deliverAt: new Date(NOW + 30 * SECOND) });
+      mockedFetchSent
+        .mockResolvedValueOnce([letter])
+        .mockRejectedValueOnce(new Error('No connection. Check your network and try again.'))
+        .mockResolvedValue([{ ...letter, delivered: true }]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in less than a minute');
+
+      await letTimePass(MINUTE);
+
+      expect(
+        screen.getByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
+    });
+
+    it('waits for the letter that lands first when several are in the air', async () => {
+      // Listed newest first, as the server lists them, which is not the order
+      // they land in: the one that lands first is neither the first row nor
+      // the last, and a letter that landed long ago comes after them all.
+      const toHamburg = sent({
+        id: 'to-anna',
+        recipient: anna,
+        destination: { name: 'Hamburg', countryCode: 'DE' },
+        deliverAt: new Date(NOW + 10 * MINUTE),
+      });
+      const toVienna = sent({ id: 'to-ben', deliverAt: new Date(NOW + 2 * MINUTE) });
+      const toPrague = sent({
+        id: 'to-ben-too',
+        destination: { name: 'Prague', countryCode: 'CZ' },
+        deliverAt: new Date(NOW + 5 * MINUTE),
+      });
+      const landedLongAgo = sent({
+        id: 'older',
+        destination: { name: 'Graz', countryCode: 'AT' },
+        delivered: true,
+        deliverAt: new Date(NOW - 5 * HOUR),
+      });
+      mockedFetchSent
+        .mockResolvedValueOnce([toHamburg, toVienna, toPrague, landedLongAgo])
+        .mockResolvedValue([toHamburg, { ...toVienna, delivered: true }, toPrague, landedLongAgo]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText('In the air to Vienna · lands in 2m');
+
+      await letTimePass(MINUTE + 58 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
+
+      await letTimePass(4 * SECOND);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/^Landed in Vienna/)).toBeOnTheScreen();
+      expect(screen.getByText('In the air to Prague · lands in 2m')).toBeOnTheScreen();
+      expect(screen.getByText('In the air to Hamburg · lands in 7m')).toBeOnTheScreen();
+
+      // And then not again until the next one is due.
+      await letTimePass(2 * MINUTE + 50 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
+
+      await letTimePass(10 * SECOND);
+      expect(mockedFetchSent).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not keep asking while no letter is in the air', async () => {
+      mockedFetchSent.mockResolvedValue([
+        sent({ delivered: true, deliverAt: new Date(NOW - 2 * HOUR) }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText(/^Landed in Vienna/);
+
+      await letTimePass(5 * MINUTE);
+
+      expect(mockedFetchSent).toHaveBeenCalledTimes(1);
+    });
+
+    // The server's word counts the other way round too: on a phone running
+    // slow, a letter has landed although its time has not come by this clock.
+    it('calls a letter landed as soon as the server does, whatever the phone’s clock says', async () => {
+      const letter = sent({ delivered: true, deliverAt: new Date(NOW + 5 * MINUTE) });
+      mockedFetchSent.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(
+        await screen.findByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^In the air/)).toBeNull();
     });
 
     /**
@@ -439,16 +690,25 @@ describe('LettersScreen', () => {
     });
 
     it('says so when the letters sent cannot be loaded, rather than that there are none', async () => {
-      mockedFetchSent.mockRejectedValue(
-        new Error('Your letters could not be loaded. Check your connection.'),
-      );
+      mockedFetchSent.mockRejectedValue(new Error(NOT_LOADED));
       await renderScreen(<LettersScreen />);
       await showSent();
 
-      expect(
-        await screen.findByText('Your letters could not be loaded. Check your connection.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(NOT_LOADED)).toBeOnTheScreen();
       expect(screen.queryByText('You have not sent a letter yet.')).toBeNull();
+    });
+
+    it('offers to try again when the letters sent cannot be loaded', async () => {
+      mockedFetchSent.mockRejectedValueOnce(new Error(NOT_LOADED)).mockResolvedValue([sent()]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+      await screen.findByText(NOT_LOADED);
+
+      await fireEvent.press(tryAgainButton());
+
+      expect(await screen.findByText('To Ben Okafor')).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(mockedFetchSent).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -573,7 +833,12 @@ describe('LettersScreen', () => {
       expect(mockedFetchInbox).toHaveBeenLastCalledWith(undefined, 1 + PAGE_SIZE);
     });
 
-    it('takes the unread mark off a letter as soon as it is opened', async () => {
+    /**
+     * Tapping a row asks for the letter; it has not been read until the server
+     * has answered. The mark used to go with the tap, and a letter that then
+     * could not be opened had lost it all the same. (Found in review.)
+     */
+    it('leaves the unread mark on a letter that has only been tapped', async () => {
       mockedFetchInbox.mockResolvedValue([received({ id: 'letter-1' })]);
       await renderScreen(<LettersScreen />);
       expect(await screen.findByLabelText('Unread')).toBeOnTheScreen();
@@ -584,6 +849,72 @@ describe('LettersScreen', () => {
         pathname: '/letters/[id]',
         params: { id: 'letter-1' },
       });
+      expect(screen.getByLabelText('Unread')).toBeOnTheScreen();
+    });
+
+    it('takes the unread mark off a letter as soon as it has been read, and off no other', async () => {
+      mockedFetchInbox.mockResolvedValue([
+        received({ id: 'from-anna', sender: anna }),
+        received({ id: 'from-ben', sender: ben }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      expect(await screen.findAllByLabelText('Unread')).toHaveLength(2);
+
+      // The letter's own screen, on top of this one, has read it.
+      await act(async () => letterOpened('from-anna'));
+
+      const read = screen.getByRole('button', { name: /Anna Weber/ });
+      const unread = screen.getByRole('button', { name: /Ben Okafor/ });
+      expect(within(read).queryByLabelText('Unread')).toBeNull();
+      expect(within(unread).getByLabelText('Unread')).toBeOnTheScreen();
+      // Without asking the server again.
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(1);
+    });
+
+    it('remembers every letter read since it was shown, not only the last', async () => {
+      mockedFetchInbox.mockResolvedValue([
+        received({ id: 'from-anna', sender: anna }),
+        received({ id: 'from-ben', sender: ben }),
+      ]);
+      await renderScreen(<LettersScreen />);
+      await screen.findAllByLabelText('Unread');
+
+      await act(async () => letterOpened('from-anna'));
+      await act(async () => letterOpened('from-ben'));
+
+      expect(screen.queryAllByLabelText('Unread')).toHaveLength(0);
+    });
+
+    it('listens for letters being read only while the received letters are shown', async () => {
+      const view = await renderScreen(<LettersScreen />);
+      await screen.findByText(/^Nothing has landed yet\./);
+      expect(mockListening.lists).toBe(1);
+
+      await showSent();
+      expect(mockListening.lists).toBe(0);
+
+      await fireEvent.press(tab('Received'));
+      expect(mockListening.lists).toBe(1);
+
+      await view.unmount();
+      expect(mockListening.lists).toBe(0);
+    });
+
+    /**
+     * A refresh brings back the newest hundred letters and keeps what the list
+     * held of any older one - which, for a letter read since, is that it was
+     * unread. What the list was told outlasts the refresh.
+     */
+    it('keeps the mark off a letter that was read when a refresh still has it as unread', async () => {
+      mockedFetchInbox.mockResolvedValue([received({ id: 'letter-1' })]);
+      await renderScreen(<LettersScreen />);
+      await screen.findByLabelText('Unread');
+      await act(async () => letterOpened('letter-1'));
+
+      await pullToRefresh();
+
+      expect(mockedFetchInbox).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Unread')).toBeNull();
     });
 
@@ -625,6 +956,8 @@ describe('LettersScreen', () => {
         await screen.findByText('No connection. Check your network and try again.'),
       ).toBeOnTheScreen();
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
+      // The list is there to pull down; the button is for when there is none.
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
   });
 });

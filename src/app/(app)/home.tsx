@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Badge } from '@/components/badge';
@@ -15,8 +15,8 @@ import { describeCity } from '@/features/cities/search';
 import { fetchBadges } from '@/features/messages/messages';
 import { useProfile } from '@/features/profile/use-profile';
 import { BatTile } from '@/features/roost/bat-tile';
-import { countAtHome, fetchRoost, nextHomecoming } from '@/features/roost/roost';
-import { formatDuration } from '@/lib/format';
+import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
+import { formatDuration, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
@@ -31,12 +31,7 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const {
-    profile,
-    isLoading: profileLoading,
-    error: profileError,
-    reload: reloadProfile,
-  } = useProfile();
+  const { profile, error: profileError, reload: reloadProfile } = useProfile();
   const roost = useRemote(fetchRoost);
   const badges = useRemote(fetchBadges);
   const now = useNow(1000);
@@ -46,10 +41,15 @@ export default function HomeScreen() {
   const { reload: reloadRoost, refresh: refreshRoost } = roost;
   const { reload: reloadBadges } = badges;
 
-  // The profile screen and the city picker change what this one shows.
+  // The profile screen and the city picker change what this one shows, so the
+  // profile is read again each time the roost comes back into view. Not as it
+  // opens: the hook has only just asked for it then, and asking here as well
+  // made two requests for the same row at every start. (Found in review.)
+  const opened = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      void reloadProfile();
+      if (opened.current) void reloadProfile();
+      opened.current = true;
     }, [reloadProfile]),
   );
 
@@ -65,11 +65,26 @@ export default function HomeScreen() {
   }, [reloadRoost, reloadBadges]);
   useRefreshAt(nextHomeAt, roost.settledAt, reloadAll);
 
-  const hasCity = Boolean(profile?.city);
-  const canWrite = hasCity && atHome > 0;
+  // And when a send settles. Its own screen may be gone by then, with this one
+  // in front again: it asked as it came into view, a moment before the letter
+  // was stored, and would go on showing that bat at home.
+  useEffect(() => onRoostChanged(reloadAll), [reloadAll]);
+
+  // Only a courier known to have no city is kept from writing. One whose
+  // profile could not be loaded is not: the server knows where home is, and
+  // refuses a sender without a city itself. (Found in review: a profile that
+  // failed once left "Write a letter" disabled under bats that were all home.)
+  const needsCity = profile !== null && !profile.city;
+  const canWrite = atHome > 0 && !needsCity && Boolean(profile || profileError);
+
+  // A new city takes a day to count, and until then the bats still leave from
+  // the old one. Read against this screen's own clock: the roost stays open
+  // under every other screen, and a move that has settled must not go on being
+  // announced until the profile happens to be read again.
+  const move = profile?.move && profile.move.settlesAt.getTime() > now ? profile.move : null;
 
   let writeHint: string | null = null;
-  if (profile && !hasCity) {
+  if (needsCity) {
     writeHint = 'Choose your city before sending a letter.';
   } else if (roost.data && atHome === 0 && nextHomeAt !== null) {
     const remaining = nextHomeAt - now;
@@ -81,12 +96,29 @@ export default function HomeScreen() {
 
   const unread = badges.data?.unreadLetters ?? 0;
   const requests = badges.data?.friendRequests ?? 0;
+  // Never counted, which is not the same as nothing waiting.
+  const uncounted = Boolean(badges.error) && !badges.data;
 
+  // Everything on this screen, asked for again: by a pull, and by "Try again".
   const refreshAll = () => {
     void refreshRoost();
     void reloadBadges();
     void reloadProfile();
   };
+
+  // Shown where there is nothing to show instead. The screen asks again by
+  // itself as well, but an error that says "try again" has to come with a way
+  // to do it. One button, wherever the bats would be, or else the name: with
+  // no connection everything fails at once.
+  const roostMissing = Boolean(roost.error) && !roost.data;
+  const tryAgain = (
+    <Button
+      label="Try again"
+      variant="secondary"
+      loading={roost.isRefreshing}
+      onPress={refreshAll}
+    />
+  );
 
   return (
     <Screen
@@ -111,18 +143,29 @@ export default function HomeScreen() {
               @{profile.username}
               {profile.city ? ` · ${describeCity(profile.city)}` : ''}
             </Text>
+            {/* The line above names the new city; the profile and the compose
+                screen say the same of a move. (Found in review.) */}
+            {move ? (
+              <Text variant="caption" tone="muted" center style={styles.note}>
+                Your bats still leave from {describeCity(move.from)} until{' '}
+                {formatTimestamp(move.settlesAt, new Date(now))}, when your move settles.
+              </Text>
+            ) : null}
           </>
-        ) : profileLoading ? (
-          <ActivityIndicator color={Colors.textMuted} />
-        ) : (
+        ) : profileError ? (
           // Without this, a failed load rendered a placeholder name over a bare "@".
-          <Text variant="caption" tone="danger" center>
-            {profileError ?? 'Your profile could not be loaded. Pull down to try again.'}
-          </Text>
+          <>
+            <Text variant="caption" tone="danger" center>
+              {profileError}
+            </Text>
+            {roostMissing ? null : tryAgain}
+          </>
+        ) : (
+          <ActivityIndicator color={Colors.textMuted} />
         )}
       </View>
 
-      {profile && !hasCity ? (
+      {needsCity ? (
         <Card raised style={styles.card}>
           <Text variant="heading">Choose your city</Text>
           <Text variant="caption" tone="secondary" style={styles.note}>
@@ -173,6 +216,7 @@ export default function HomeScreen() {
             {roost.error}
           </Text>
         ) : null}
+        {roostMissing ? tryAgain : null}
       </Card>
 
       <View style={styles.write}>
@@ -191,7 +235,13 @@ export default function HomeScreen() {
       <Card style={[styles.card, styles.menu]}>
         <ListRow
           title="Letters"
-          subtitle={unread > 0 ? `${unread} new` : 'Received and sent'}
+          subtitle={
+            unread > 0
+              ? `${unread} new`
+              : uncounted
+                ? 'Could not check for new letters'
+                : 'Received and sent'
+          }
           emphasised={unread > 0}
           trailing={
             <>
@@ -204,7 +254,11 @@ export default function HomeScreen() {
         <ListRow
           title="Friends"
           subtitle={
-            requests > 0 ? `${requests} waiting for your answer` : 'Add friends by their username'
+            requests > 0
+              ? `${requests} waiting for your answer`
+              : uncounted
+                ? 'Could not check for friend requests'
+                : 'Add friends by their username'
           }
           emphasised={requests > 0}
           trailing={
