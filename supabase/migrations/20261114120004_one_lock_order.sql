@@ -124,6 +124,12 @@ revoke all on function private.lock_courier_rows(uuid) from public, anon, authen
 -- report. (It is also why a courier's count of friend requests is not taken
 -- with their other rows: a request counts itself after it has written the
 -- friendship.)
+--
+-- That serves the rows a deletion has already taken, and no others: a
+-- friendship asked for after them deadlocked a block this way round, as
+-- review found. What closes both cases is the courier gate migration, which
+-- keeps any new row naming a courier from being written while their account
+-- ends.
 
 -- As before (see the safety migration), in the other order.
 create or replace function private.block(blocker uuid, blocked uuid)

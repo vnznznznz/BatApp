@@ -130,24 +130,31 @@ async function until(sql, params = []) {
  * that two transactions really overlap there. `when` is a trigger's timing and
  * event, such as 'before delete'; a row is held from before a `before` pause.
  * `each` is 'row' or 'statement': a statement's pause comes before any of its
- * rows is taken.
+ * rows is taken. `onlyFor` limits the pause to connections that have set that
+ * application_name, and `name` lets two pauses be in place at once.
  */
-async function slowly(when, table, run, { seconds = 0.3, each = 'row' } = {}) {
+async function slowly(
+  when,
+  table,
+  run,
+  { seconds = 0.3, each = 'row', onlyFor = null, name = '_slowly' } = {},
+) {
+  const condition = onlyFor ? `when (current_setting('application_name') = '${onlyFor}')` : '';
   await admin.query(`
-    create function public._slowly() returns trigger language plpgsql as $$
+    create function public.${name}() returns trigger language plpgsql as $$
     begin
       perform pg_sleep(${seconds});
       return case when tg_op = 'DELETE' then old else new end;
     end $$;
-    create trigger _slowly ${when} on ${table}
-      for each ${each} execute function public._slowly();
+    create trigger ${name} ${when} on ${table}
+      for each ${each} ${condition} execute function public.${name}();
   `);
   try {
     return await run();
   } finally {
     await admin.query(`
-      drop trigger _slowly on ${table};
-      drop function public._slowly();
+      drop trigger ${name} on ${table};
+      drop function public.${name}();
     `);
   }
 }
@@ -914,8 +921,9 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     /**
      * What keeps all of the above from deadlocking is one habit: whatever ends
      * an account first takes every row it will reach, in one order. This looks
-     * at what is then held, from a second connection: every row of each table,
-     * and not yet the account itself, which is taken last.
+     * at what is then held, from a second connection: the account's gate, so
+     * that no new row can name it; every row of each table; and not yet the
+     * account itself, which is taken last.
      */
     it('takes every row the end of an account will reach, friendships included, and the sign-in last', async () => {
       const anna = await createCourier('anna', ['Berlin', 'DE']);
@@ -956,9 +964,20 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
         reports: 1,
       });
 
+      /** Whether a write about Anna could pass her gate now (see the courier gate migration). */
+      const gateOpen = async () =>
+        (
+          await probe.query(
+            `select pg_try_advisory_xact_lock_shared(private.courier_lock_key($1)) as open`,
+            [anna],
+          )
+        ).rows[0].open;
+      assert.equal(await gateOpen(), true);
+
       await holder.query('begin');
       await holder.query('select private.lock_courier_rows($1)', [anna]);
       const stillFree = await annasRows();
+      const gateWhileHeld = await gateOpen();
       const notYetTaken = {
         profile: await free('public.profiles', 'id = $1'),
         signIn: await free('auth.users', 'id = $1'),
@@ -971,6 +990,7 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       await holder.query('rollback');
 
       assert.deepEqual(stillFree, { letters: 0, bats: 0, friendships: 0, blocks: 0, reports: 0 });
+      assert.equal(gateWhileHeld, false, 'a write about Anna could still begin');
       assert.deepEqual(notYetTaken, { profile: 1, signIn: 1, othersFriendships: 1 });
     });
 
@@ -1868,6 +1888,319 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       );
       const { rows: kept } = await admin.query(`select count(*)::int as count from public.reports`);
       assert.equal(kept[0].count, 1);
+    });
+  });
+
+  /**
+   * Whatever ends an account takes the account's rows first, in one order -
+   * but that can only take the rows there are. A request that writes a new row
+   * naming the courier after that, while the account is still being ended,
+   * used to slip in: a friend request made then, and a block of the same
+   * courier straight after, held the request's row while the account's end
+   * wanted it, and wanted the courier's profile, which the end held. (Found
+   * in review, through the API alone, for every way an account ends.) And a
+   * row that waited for the profile instead failed on a foreign key once the
+   * profile was gone, with a raw database error rather than an answer.
+   *
+   * Each way of ending an account pauses here after it has taken the
+   * account's rows, and the other courier acts in that pause.
+   */
+  describe('a courier whose account is ending', () => {
+    const settle = (query) =>
+      query.then(
+        (result) => ({ ok: result.rows[0] }),
+        (error) => ({
+          refused: error.hint ?? error.code,
+          message: `${error.code} ${error.message}`,
+        }),
+      );
+
+    /** [label, the first write after its rows are taken, () => [session, start]] */
+    const endings = [
+      [
+        'their own deletion',
+        'before delete',
+        async (xavier) => {
+          const session = await connectAs(xavier);
+          return [session, () => session.query('select public.delete_own_account() as done')];
+        },
+      ],
+      [
+        'the operator’s removal',
+        'before update',
+        async (xavier) => {
+          const session = await connect();
+          return [
+            session,
+            () => session.query('select private.remove_account($1) as done', [xavier]),
+          ];
+        },
+      ],
+      [
+        'the operator’s deletion',
+        'before delete',
+        async (xavier) => {
+          const session = await connect();
+          return [
+            session,
+            () => session.query('select private.delete_account($1) as done', [xavier]),
+          ];
+        },
+      ],
+    ];
+
+    const pidOf = async (session) =>
+      (await session.query('select pg_backend_pid() as pid')).rows[0].pid;
+    const pausedIn = (pid) =>
+      until(`select 1 from pg_stat_activity where pid = $1 and wait_event = 'PgSleep'`, [pid]);
+
+    /** What is left that names Xavier, and of his sign-in. */
+    const leftOf = async (xavier) =>
+      (
+        await admin.query(
+          `select
+             (select count(*)::int from public.profiles where id = $1) as profile,
+             (select count(*)::int from auth.users where id = $1 and banned_until > now())
+               as "banned sign-in",
+             (select count(*)::int from auth.users where id = $1) as "sign-in",
+             (select count(*)::int from public.friendships
+              where $1 in (requester_id, addressee_id)) as friendships,
+             (select count(*)::int from public.blocks where $1 in (blocker_id, blocked_id))
+               as blocks,
+             (select count(*)::int from public.reports) as reports,
+             (select count(*)::int from public.messages) as letters`,
+          [xavier],
+        )
+      ).rows[0];
+
+    const gone = (label) => ({
+      profile: 0,
+      'banned sign-in': label === 'the operator’s removal' ? 1 : 0,
+      'sign-in': label === 'the operator’s removal' ? 1 : 0,
+      friendships: 0,
+      blocks: 0,
+      reports: 0,
+      letters: 0,
+    });
+
+    for (const [label, firstWrite, start] of endings) {
+      it(`refuses a request and then a block made during ${label}, instead of deadlocking with it`, async () => {
+        const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+        const yara = await createCourier('yara', ['Munich', 'DE']);
+        const yaraSession = await connectAs(yara);
+        await yaraSession.query(`set application_name = 'yara'`);
+        const [ender, end] = await start(xavier);
+        const enderPid = await pidOf(ender);
+
+        // Xavier's account pauses with his rows taken; Yara's block pauses
+        // with the friendship ended and the block still to write.
+        const [ending, yaras] = await slowly(
+          firstWrite,
+          'auth.users',
+          () =>
+            slowly(
+              'after delete',
+              'public.friendships',
+              async () => {
+                const ending = settle(end());
+                await pausedIn(enderPid);
+                const asked = await settle(
+                  yaraSession.query(`select public.request_friend('xavier') as outcome`),
+                );
+                const blocked = await settle(
+                  yaraSession.query(`select public.block_courier($1) as outcome`, [xavier]),
+                );
+                return Promise.all([ending, { asked, blocked }]);
+              },
+              { seconds: 1.5, onlyFor: 'yara', name: '_slow_block' },
+            ),
+          { seconds: 1, each: 'statement' },
+        );
+
+        assert.equal(ending.refused, undefined, ending.message);
+        assert.deepEqual(
+          { asked: yaras.asked.refused, blocked: yaras.blocked.refused },
+          { asked: 'unknown_username', blocked: 'courier_not_found' },
+          JSON.stringify(yaras),
+        );
+        assert.deepEqual(await leftOf(xavier), gone(label));
+      });
+
+      it(`answers whatever would name a friend during ${label} as if he were gone already`, async () => {
+        const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+        const yara = await createCourier('yara', ['Munich', 'DE']);
+        await makeFriends(xavier, yara);
+        const { rows } = await (
+          await connectAs(xavier)
+        ).query(`select message_id from public.send_message($1, 'Unkind.')`, [yara]);
+        const letter = rows[0].message_id;
+        await admin.query(
+          `update public.messages
+           set sent_at = now() - interval '2 hours', deliver_at = now() - interval '1 minute'
+           where id = $1`,
+          [letter],
+        );
+        await admin.query(`select private.deliver_due_messages()`);
+        const calls = {
+          request_friend: [`select public.request_friend('xavier') as outcome`, []],
+          block_courier: [`select public.block_courier($1) as outcome`, [xavier]],
+          report_courier: [`select public.report_courier($1, 'spam') as outcome`, [xavier]],
+          report_letter: [`select public.report_letter($1, 'harassment') as outcome`, [letter]],
+          send_message: [
+            `select message_id as outcome from public.send_message($1, 'Still there?')`,
+            [xavier],
+          ],
+        };
+        const sessions = await Promise.all(Object.keys(calls).map(() => connectAs(yara)));
+        const [ender, end] = await start(xavier);
+        const enderPid = await pidOf(ender);
+
+        // Paused in the cascade, with his profile already deleted.
+        const [ending, answers] = await slowly(
+          'before delete',
+          'public.friendships',
+          async () => {
+            const ending = settle(end());
+            await pausedIn(enderPid);
+            const answers = await Promise.all(
+              Object.values(calls).map(([sql, params], i) =>
+                settle(sessions[i].query(sql, params)),
+              ),
+            );
+            return Promise.all([ending, answers]);
+          },
+          { seconds: 1 },
+        );
+
+        assert.equal(ending.refused, undefined, ending.message);
+        assert.deepEqual(
+          Object.fromEntries(Object.keys(calls).map((name, i) => [name, answers[i].refused])),
+          {
+            request_friend: 'unknown_username',
+            block_courier: 'courier_not_found',
+            report_courier: 'courier_not_found',
+            report_letter: 'message_not_found',
+            send_message: 'not_friends',
+          },
+          JSON.stringify(answers),
+        );
+        assert.deepEqual(await leftOf(xavier), gone(label));
+      });
+    }
+
+    /**
+     * The other way round: a write about Xavier is under way when his account
+     * starts to end. The end waits for it before it takes a single row - had
+     * it taken them first, it would be holding them while it waited.
+     */
+    it('waits for a write in progress before it takes any of the account’s rows', async () => {
+      const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+      const yara = await createCourier('yara', ['Munich', 'DE']);
+      const yaraSession = await connectAs(yara);
+      const xavierSession = await connectAs(xavier);
+      const probe = await connect();
+      const freeBats = async () =>
+        (
+          await probe.query(
+            `select count(*)::int as count
+             from (select 1 from public.bats where owner_id = $1 for update skip locked) as free`,
+            [xavier],
+          )
+        ).rows[0].count;
+
+      await yaraSession.query('begin');
+      await yaraSession.query(`select public.request_friend('xavier')`);
+      const deleting = xavierSession.query('select public.delete_own_account()');
+      assert.equal(await settlesWithin(deleting, 300), false, 'the deletion did not wait');
+      const batsWhileWaiting = await freeBats();
+      await yaraSession.query('commit');
+      await deleting;
+
+      assert.equal(batsWhileWaiting, 3, 'the deletion took rows before it waited');
+      assert.deepEqual(await leftOf(xavier), gone('their own deletion'));
+    });
+
+    /** A gate is shared: writes about the same courier do not wait for one another. */
+    it('lets any number of writes about the same courier go on at once', async () => {
+      const xavier = await createCourier('xavier', ['Berlin', 'DE']);
+      const yara = await createCourier('yara', ['Munich', 'DE']);
+      const zoe = await createCourier('zoe', ['Hamburg', 'DE']);
+      const yaraSession = await connectAs(yara);
+      const zoeSession = await connectAs(zoe);
+
+      await yaraSession.query('begin');
+      await yaraSession.query(`select public.report_courier($1, 'spam')`, [xavier]);
+      const asking = zoeSession.query(`select public.request_friend('xavier') as outcome`);
+      assert.equal(await settlesWithin(asking, 1000), true, 'the request waited for the report');
+      await yaraSession.query('commit');
+
+      assert.equal((await asking).rows[0].outcome, 'requested');
+    });
+
+    /**
+     * A write that waits at a gate may be waiting for the operator to remove
+     * its own courier's account. Once that is done, the request is refused as
+     * every request of that account is from then on.
+     */
+    it('refuses a write that waited for its own account to be removed', async () => {
+      await createCourier('xavier', ['Berlin', 'DE']);
+      const yara = await createCourier('yara', ['Munich', 'DE']);
+      const yaraSession = await connectAs(yara);
+      const operator = await connect();
+
+      await operator.query('begin');
+      await operator.query('select private.remove_account($1)', [yara]);
+      const asking = settle(yaraSession.query(`select public.request_friend('xavier') as outcome`));
+      assert.equal(await settlesWithin(asking, 300), false, 'the request did not wait');
+      await operator.query('commit');
+
+      assert.equal((await asking).refused, 'account_suspended', (await asking).message);
+      const { rows } = await admin.query(`select count(*)::int as count from public.friendships`);
+      assert.equal(rows[0].count, 0);
+    });
+
+    /** The tidy-up ends accounts too: sign-ups whose address was never confirmed. */
+    it('refuses a request and then a block made while the tidy-up deletes a sign-up', async () => {
+      const xavier = await unconfirmedSignUp('xavier');
+      const yara = await createCourier('yara', ['Munich', 'DE']);
+      const yaraSession = await connectAs(yara);
+      await yaraSession.query(`set application_name = 'yara'`);
+      const tidier = await connect();
+      const tidierPid = await pidOf(tidier);
+
+      const [tidied, yaras] = await slowly(
+        'before delete',
+        'auth.users',
+        () =>
+          slowly(
+            'after delete',
+            'public.friendships',
+            async () => {
+              const tidying = settle(tidier.query('select private.tidy_up() as skipped'));
+              await pausedIn(tidierPid);
+              const asked = await settle(
+                yaraSession.query(`select public.request_friend('xavier') as outcome`),
+              );
+              const blocked = await settle(
+                yaraSession.query(`select public.block_courier($1) as outcome`, [xavier]),
+              );
+              return Promise.all([tidying, { asked, blocked }]);
+            },
+            { seconds: 1.5, onlyFor: 'yara', name: '_slow_block' },
+          ),
+        { seconds: 1, each: 'statement' },
+      );
+
+      assert.deepEqual(
+        tidied.ok.skipped.filter((step) => !step.startsWith('pg_cron run log: ')),
+        [],
+      );
+      assert.deepEqual(
+        { asked: yaras.asked.refused, blocked: yaras.blocked.refused },
+        { asked: 'unknown_username', blocked: 'courier_not_found' },
+        JSON.stringify(yaras),
+      );
+      assert.deepEqual(await leftOf(xavier), gone('the tidy-up'));
     });
   });
 });
