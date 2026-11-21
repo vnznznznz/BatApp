@@ -1,6 +1,6 @@
 -- Night Courier - the tidy-up's ages, counted from the right moment.
 --
--- Review found that the daily tidy-up counted from the wrong moment:
+-- Review found two ages the daily tidy-up got wrong:
 --
 --   * A sign-up whose address was never confirmed went 7 days after it was
 --     made. Once confirmation is on, someone can ask for a new code on the
@@ -9,6 +9,11 @@
 --     the code was then refused, and they had to sign up again. Such a sign-up
 --     now goes 7 days after the last code sent to confirm its address, and one
 --     never sent a code 7 days after it was made, as before.
+--   * pg_cron's log of its runs is kept a week, and a row went a week after
+--     its run ended. A run cut off by a restart never ends, so its row stayed
+--     for ever. It now goes a week after the run began; and a run cut off
+--     before it began, which has no time at all, once a run that pg_cron
+--     started after it began more than a week ago.
 --
 -- Nothing else changes: the steps, their order, the rows they take first and
 -- the errors they pass over are as the one lock order migration left them.
@@ -18,7 +23,8 @@
 /* -------------------------------------------------------------------------- */
 
 -- As before (see the one lock order migration), except that an unconfirmed
--- sign-up's week counts from the last code sent to it.
+-- sign-up's week counts from the last code sent to it, and that pg_cron's log
+-- forgets runs that never ended.
 create or replace function private.tidy_up()
 returns text[]
 language plpgsql
@@ -143,9 +149,22 @@ begin
     for update skip locked
   );
 
+  -- pg_cron's log of its runs, for a week. pg_cron writes when a run began,
+  -- and when it ended once it has. A run cut off by a restart never gets an
+  -- end - pg_cron marks it failed, 'server restarted', when it comes back -
+  -- and goes a week after it began. One cut off before it began has neither
+  -- time. pg_cron numbers its runs as it starts them, so such a run is older
+  -- than any run numbered after it, and more than a week old once one of
+  -- those began more than a week ago.
   begin
     delete from cron.job_run_details d
-    where d.end_time < now() - interval '7 days';
+    where coalesce(d.end_time, d.start_time) < now() - interval '7 days'
+      or (d.start_time is null and d.end_time is null
+        and d.runid < (
+          select max(later.runid)
+          from cron.job_run_details later
+          where later.start_time < now() - interval '7 days'
+        ));
   exception
     when undefined_table or invalid_schema_name or insufficient_privilege
       or deadlock_detected then
