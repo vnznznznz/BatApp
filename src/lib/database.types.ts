@@ -518,6 +518,7 @@ export type Database = {
         }[];
       };
       unblock_courier: { Args: { courier_id: string }; Returns: undefined };
+      withdraw_request: { Args: { friendship_id: string }; Returns: undefined };
     };
     Enums: {
       [_ in never]: never;

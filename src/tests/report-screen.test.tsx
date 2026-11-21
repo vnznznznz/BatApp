@@ -5,7 +5,13 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ReportScreen from '@/app/(app)/report';
 import { REPORT_NOTE_MAX_LENGTH, REPORT_RETENTION_DAYS } from '@/constants/config';
-import { reportCourier, reportLetter, type ReportOutcome } from '@/features/safety/safety';
+import { Colors } from '@/constants/theme';
+import {
+  forgetBlockChoices,
+  reportCourier,
+  reportLetter,
+  type ReportOutcome,
+} from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
 import { RpcError } from '@/lib/rpc-error';
 
@@ -71,6 +77,13 @@ jest.mock('@/features/safety/safety', () => ({
   reportCourier: jest.fn(),
 }));
 
+/** Who is signed in: whose report this is. */
+const mockAuth: { userId: string | undefined } = { userId: 'user-mara' };
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ session: mockAuth.userId ? { user: { id: mockAuth.userId } } : null }),
+}));
+
 // A phone hears what the screen says through VoiceOver or TalkBack, and the web
 // build through a live region on the page - which this environment does not
 // have. So what the screen hands announce() is recorded, the same way on every
@@ -118,11 +131,32 @@ const REPORTED = 'Your report is with the person who runs Night Courier.';
 const LETTER_REPORTED_BEFORE =
   'You have already reported this letter, and that report is still open.';
 const COURIER_REPORTED_BEFORE = 'You have already reported @anna, and that report is still open.';
+/**
+ * The limit counts the last 24 hours, not the calendar day, so "tomorrow" could
+ * be too early: 24 hours from now is the time that is sure to do.
+ */
 const OVER_THE_LIMIT =
-  'You have sent a lot of reports today, so this one was not recorded. Try again tomorrow.';
+  'You have made a lot of reports in the last 24 hours, so this one was not recorded. Try ' +
+  'again 24 hours from now.';
 const OVER_THE_LIMIT_BLOCKED =
-  'You have sent a lot of reports today, so this one was not recorded. Report @anna again ' +
-  'tomorrow, from your blocked couriers in your profile.';
+  'You have made a lot of reports in the last 24 hours, so this one was not recorded. Report ' +
+  '@anna again 24 hours from now, from your blocked couriers in your profile.';
+/**
+ * Reporting from the blocked list sends no letter, so that is not the way to
+ * report this one: the letter is hidden until its sender is unblocked.
+ */
+const OVER_THE_LIMIT_LETTER_BLOCKED =
+  'You have made a lot of reports in the last 24 hours, so this one was not recorded. To ' +
+  'report this letter 24 hours from now, unblock @anna in your profile, then open the letter ' +
+  'and report it again. From your blocked couriers you can report @anna too, but without the ' +
+  'letter.';
+/** Above the note a report did not take, which is kept on screen to be copied. */
+const NOTE_NOT_SENT = 'Your note was not sent with it. Here it is, so you can keep it:';
+/**
+ * Above the note after "already reported": an earlier try whose answer was
+ * lost may have carried it, so the screen says only what it knows.
+ */
+const NOTE_NOT_ADDED = 'Nothing was added to that report. Here is your note, so you can keep it:';
 const BLOCKED =
   '@anna is blocked: they cannot write to you or ask to be friends, and their letters are ' +
   'hidden. You can unblock them in your profile.';
@@ -173,6 +207,7 @@ const reasonChoice = (label: string) => screen.getByRole('radio', { name: label 
 const noteField = () => screen.getByLabelText('Anything else we should know?');
 const blockSwitch = () => screen.getByRole('switch', { name: 'Also block @anna' });
 const sendButton = () => screen.getByRole('button', { name: 'Send report' });
+const noteCounter = () => screen.getByLabelText(/ of \d+ characters$/);
 const doneButton = () => screen.getByRole('button', { name: 'Done' });
 
 /** Flips "Also block" as a tap on the switch does. */
@@ -261,6 +296,9 @@ beforeEach(() => {
   delete mockParams.blocked;
   mockedReportLetter.mockReset().mockResolvedValue('reported');
   mockedReportCourier.mockReset().mockResolvedValue('reported');
+  // Each test starts as a courier who has reported nobody yet.
+  forgetBlockChoices();
+  mockAuth.userId = 'user-mara';
   focusSpy = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
   backListeners = [];
   backSpy = jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
@@ -555,6 +593,39 @@ describe('ReportScreen', () => {
 
       expect(noteField()).toHaveDisplayValue('');
       expect(screen.getByText(NOTE_HINT)).toBeOnTheScreen();
+      expect(noteCounter()).toHaveTextContent(`0 / ${REPORT_NOTE_MAX_LENGTH}`);
+    });
+
+    /**
+     * As the letter field does: a count as the note is written, so that the
+     * limit is seen coming rather than met as a refusal - counted as the
+     * database counts, an emoji as one, and spaces at either end not at all.
+     */
+    it('counts the note as it is written, the way the limit counts it', async () => {
+      await reportingTheLetter();
+
+      await fireEvent.changeText(noteField(), '  He says 🦇 knows  ');
+
+      expect(noteCounter()).toHaveTextContent(`15 / ${REPORT_NOTE_MAX_LENGTH}`);
+      expect(noteCounter()).toHaveProp(
+        'accessibilityLabel',
+        `15 of ${REPORT_NOTE_MAX_LENGTH} characters`,
+      );
+    });
+
+    it('shows the count over the limit before anything is sent', async () => {
+      await reportingTheLetter();
+
+      await fireEvent.changeText(noteField(), 'a'.repeat(REPORT_NOTE_MAX_LENGTH + 1));
+
+      expect(noteCounter()).toHaveTextContent(
+        `${REPORT_NOTE_MAX_LENGTH + 1} / ${REPORT_NOTE_MAX_LENGTH}`,
+      );
+      expect(noteCounter()).toHaveStyle({ color: Colors.danger });
+
+      await fireEvent.changeText(noteField(), 'a'.repeat(REPORT_NOTE_MAX_LENGTH));
+
+      expect(noteCounter()).not.toHaveStyle({ color: Colors.danger });
     });
 
     it('will not send a note over the limit, and says why in place of the hint', async () => {
@@ -648,6 +719,109 @@ describe('ReportScreen', () => {
         alsoBlock: false,
       });
       expect(await screen.findByText('Thank you')).toBeOnTheScreen();
+    });
+
+    /**
+     * Someone who reported a letter but kept the friend did so on purpose.
+     * Reporting the same letter again starts from that choice, rather than
+     * blocking them by default this time.
+     */
+    it('starts where the courier left it the last time they reported the same letter', async () => {
+      await reportingTheLetter();
+      await sendReport(false);
+      await screen.unmount();
+
+      await reportingTheLetter();
+
+      expect(blockSwitch()).not.toBeChecked();
+    });
+
+    it('starts where the courier left it the last time they reported the same courier', async () => {
+      await reportingTheCourier();
+      await sendReport(false);
+      await screen.unmount();
+
+      await reportingTheCourier();
+
+      expect(blockSwitch()).not.toBeChecked();
+    });
+
+    /**
+     * Another letter is a new event, often a worse one, and a report that
+     * leaves its sender free to write should be chosen, not fallen into: the
+     * reason the switch is on by default holds again.
+     */
+    it.each<[string, Partial<typeof mockParams>]>([
+      ['another letter from the same person', { letter: 'another-letter-from-anna' }],
+      ['the same person, without a letter', { letter: undefined }],
+      ['someone else', { letter: 'letter-from-ben', courier: 'user-ben', username: 'ben' }],
+    ])('starts with the block on again for %s', async (_, next) => {
+      await reportingTheLetter();
+      await sendReport(false);
+      await screen.unmount();
+
+      Object.assign(mockParams, next);
+      await renderScreen(<ReportScreen />);
+
+      expect(screen.getByRole('switch', { name: /^Also block @/ })).toBeChecked();
+    });
+
+    /**
+     * Signing out does not restart the app: the next person to sign in on the
+     * same phone has made no choice about anyone. (Found in review.)
+     */
+    it('starts with the block on again for whoever signs in next', async () => {
+      await reportingTheLetter();
+      await sendReport(false);
+      await screen.unmount();
+
+      mockAuth.userId = 'user-noor';
+      await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
+    });
+
+    it('remembers nothing of a report that did not go', async () => {
+      mockedReportLetter.mockRejectedValue(new RpcError(NOT_SENT, null));
+      await reportingTheLetter();
+      await setBlocking(false);
+      await fireEvent.press(reasonChoice('Spam or a scam'));
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText(NOT_SENT)).toBeOnTheScreen();
+      await screen.unmount();
+
+      await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
+    });
+
+    /** Over the day's limit nothing was recorded, the choice least of all. (Found in review.) */
+    it('remembers nothing of a report that was not recorded', async () => {
+      mockedReportLetter.mockResolvedValue('limit_reached');
+      await reportingTheLetter();
+      await sendReport(false);
+      expect(screen.getByText('Not recorded')).toBeOnTheScreen();
+      await screen.unmount();
+
+      await reportingTheLetter();
+
+      expect(blockSwitch()).toBeChecked();
+    });
+
+    /**
+     * From the blocked list there is no block to choose: the report goes
+     * without one because the courier is blocked already, not because anyone
+     * chose to keep them. Once unblocked, a report about them blocks by default.
+     */
+    it('takes a report from the blocked list for no choice at all', async () => {
+      await reportingFromTheBlockedList();
+      await sendReport();
+      await screen.unmount();
+
+      delete mockParams.blocked;
+      await reportingTheCourier();
+
+      expect(blockSwitch()).toBeChecked();
     });
 
     it('can be turned off when reporting a courier, too', async () => {
@@ -830,7 +1004,7 @@ describe('ReportScreen', () => {
         'limit_reached',
         true,
         'Not recorded',
-        [OVER_THE_LIMIT_BLOCKED, BLOCKED],
+        [OVER_THE_LIMIT_LETTER_BLOCKED, BLOCKED],
       ],
       [
         "a letter over the day's limit",
@@ -912,11 +1086,103 @@ describe('ReportScreen', () => {
     );
 
     /**
-     * A block ends the friendship and hides the courier's letters, this one
-     * too - whatever became of the report - so the letter or the courier's
-     * page the report was made from has nothing left to show. Done goes back
-     * past it as well.
+     * A report that was not recorded, or added nothing to an earlier one, did
+     * not take the note either. What was typed - a threat described in the
+     * courier's own words, say - stays on screen, where it can be copied,
+     * rather than going with the form.
      */
+    it.each<[string, () => Promise<void>, ReportOutcome, string, string]>([
+      [
+        "a letter over the day's limit",
+        reportingTheLetter,
+        'limit_reached',
+        NOTE_NOT_SENT,
+        NOTE_NOT_ADDED,
+      ],
+      [
+        'a letter reported before',
+        reportingTheLetter,
+        'already_reported',
+        NOTE_NOT_ADDED,
+        NOTE_NOT_SENT,
+      ],
+      [
+        "a courier over the day's limit",
+        reportingTheCourier,
+        'limit_reached',
+        NOTE_NOT_SENT,
+        NOTE_NOT_ADDED,
+      ],
+      [
+        'a courier reported before',
+        reportingTheCourier,
+        'already_reported',
+        NOTE_NOT_ADDED,
+        NOTE_NOT_SENT,
+      ],
+    ])(
+      'keeps the note on screen after the report of %s, which did not take it',
+      async (_, open, outcome, above, notSaid) => {
+        const note = 'He says he knows where I live.';
+        mockedReportLetter.mockResolvedValue(outcome);
+        mockedReportCourier.mockResolvedValue(outcome);
+        await open();
+        await fireEvent.press(reasonChoice('Threats or violence'));
+        await fireEvent.changeText(noteField(), note);
+
+        await fireEvent.press(sendButton());
+
+        expect(await screen.findByText(above)).toBeOnTheScreen();
+        expect(screen.queryByText(notSaid)).toBeNull();
+        const kept = screen.getByText(note);
+        expect(kept).toBeOnTheScreen();
+        expect(kept).toHaveProp('selectable', true);
+      },
+    );
+
+    /**
+     * The first Send reached the database, and the report was made with the
+     * note; only its answer was lost. The second is answered "already
+     * reported". The note may well be with the person who runs Night Courier,
+     * so the screen does not say it was not sent. (Found in review.)
+     */
+    it('does not say the note was not sent when an earlier try may have carried it', async () => {
+      const note = 'He says he knows where I live.';
+      const lost = 'No connection. Check your network and try again.';
+      mockedReportLetter
+        .mockRejectedValueOnce(new RpcError(lost, null))
+        .mockResolvedValueOnce('already_reported');
+      await reportingTheLetter();
+      await fireEvent.press(reasonChoice('Threats or violence'));
+      await fireEvent.changeText(noteField(), note);
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText(lost)).toBeOnTheScreen();
+
+      await fireEvent.press(sendButton());
+
+      expect(await screen.findByText('Already reported')).toBeOnTheScreen();
+      expect(mockedReportLetter).toHaveBeenCalledTimes(2);
+      expect(mockedReportLetter.mock.calls.map(([, report]) => report.note)).toEqual([note, note]);
+      expect(screen.queryByText(NOTE_NOT_SENT)).toBeNull();
+      expect(screen.getByText(NOTE_NOT_ADDED)).toBeOnTheScreen();
+      expect(screen.getByText(note)).toBeOnTheScreen();
+    });
+
+    it.each<[string, ReportOutcome, string]>([
+      ['went through', 'reported', 'Some text'],
+      ["was over the day's limit, with no note", 'limit_reached', '   '],
+    ])('shows no note kept back when the report %s', async (_, outcome, note) => {
+      mockedReportLetter.mockResolvedValue(outcome);
+      await reportingTheLetter();
+      await fireEvent.press(reasonChoice('Threats or violence'));
+      await fireEvent.changeText(noteField(), note);
+
+      await fireEvent.press(sendButton());
+
+      await screen.findByRole('button', { name: 'Done' });
+      expect(screen.queryByText(NOTE_NOT_SENT)).toBeNull();
+    });
+
     /**
      * Two taps before the screen has gone would dismiss twice: four screens
      * back instead of two, past the letters list. (Found in review.)

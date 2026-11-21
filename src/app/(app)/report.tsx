@@ -10,8 +10,13 @@ import { TextField } from '@/components/text-field';
 import { ToggleRow } from '@/components/toggle-row';
 import { REPORT_NOTE_MAX_LENGTH, REPORT_REASONS, REPORT_RETENTION_DAYS } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-context';
 import {
+  blockChoiceFor,
+  noteLength,
+  prepareNote,
   REASON_LABELS,
+  rememberBlockChoice,
   reportCourier,
   reportLetter,
   validateNote,
@@ -42,17 +47,24 @@ const CHOICES = REPORT_REASONS.map((value) => ({ value, label: REASON_LABELS[val
 /**
  * Reporting a letter, or a courier, to the person who runs the service - and
  * blocking them in the same step, which is what someone reporting usually
- * wants and so is the default.
+ * wants and so is the default, unless the courier chose otherwise the last time
+ * they reported the same letter, or the same courier without a letter.
  */
 export default function ReportScreen() {
   const router = useRouter();
+  const { session } = useAuth();
+  const reporterId = session?.user.id;
   const { courier, username, letter, blocked } = useLocalSearchParams<Params>();
   const alreadyBlocked = blocked === '1';
   const handle = `@${username}`;
 
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [note, setNote] = useState('');
-  const [alsoBlock, setAlsoBlock] = useState(!alreadyBlocked);
+  // On, unless they are blocked already - or the courier turned it off the
+  // last time they reported the same thing, and so meant to keep them.
+  const [alsoBlock, setAlsoBlock] = useState(
+    () => !alreadyBlocked && (courier ? blockChoiceFor(reporterId, { courier, letter }) : true),
+  );
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -121,6 +133,7 @@ export default function ReportScreen() {
 
   // Narrowed by the guard above, for the function below.
   const courierId = courier;
+  const noteCount = noteLength(note);
 
   async function send() {
     if (inFlight.current) return;
@@ -144,6 +157,11 @@ export default function ReportScreen() {
         ? await reportLetter(letter, report)
         : await reportCourier(courierId, report);
       const done = { outcome, blockedNow: blocking };
+      // Only a choice that went with a recorded report: from the blocked list
+      // there was no choice to make, and over the limit nothing was recorded.
+      if (!alreadyBlocked && outcome === 'reported') {
+        rememberBlockChoice(reporterId, { courier: courierId, letter }, blocking);
+      }
       setSent(done);
       if (Platform.OS === 'web') {
         const lines = describeSent(done, alreadyBlocked, handle, Boolean(letter));
@@ -162,6 +180,18 @@ export default function ReportScreen() {
   if (sent) {
     const lines = describeSent(sent, alreadyBlocked, handle, Boolean(letter));
     const title = TITLES[sent.outcome];
+    // A report that was not recorded, or added nothing to an earlier one, did
+    // not take the note either. What was typed stays here, where it can be
+    // copied, rather than going with the form.
+    const noteKept = sent.outcome !== 'reported' && prepareNote(note) ? note : null;
+    // Over the limit nothing was recorded, so neither was the note. "Already
+    // reported" can follow a try that did reach the database, note and all,
+    // and only lost its answer on the way back: then only this try added
+    // nothing.
+    const aboveNote =
+      sent.outcome === 'limit_reached'
+        ? 'Your note was not sent with it. Here it is, so you can keep it:'
+        : 'Nothing was added to that report. Here is your note, so you can keep it:';
     return (
       <Screen scroll edges={['bottom']} style={styles.screen}>
         {/* headerBackVisible for iOS and Android; the web build's stack ignores it
@@ -188,6 +218,16 @@ export default function ReportScreen() {
             </Text>
           ))}
         </View>
+        {noteKept ? (
+          <View style={styles.lines}>
+            <Text variant="caption" tone="secondary" style={styles.line}>
+              {aboveNote}
+            </Text>
+            <Text variant="body" selectable style={styles.line}>
+              {noteKept}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.actions}>
           <Button label="Done" onPress={finish} />
         </View>
@@ -233,6 +273,16 @@ export default function ReportScreen() {
           multiline
           autoCapitalize="sentences"
         />
+        {/* As the letter field has: the limit seen coming, counted as the
+            database counts it, rather than met as a refusal. */}
+        <Text
+          variant="caption"
+          tone={noteCount > REPORT_NOTE_MAX_LENGTH ? 'danger' : 'muted'}
+          style={styles.counter}
+          accessibilityLabel={`${noteCount} of ${REPORT_NOTE_MAX_LENGTH} characters`}
+        >
+          {noteCount} / {REPORT_NOTE_MAX_LENGTH}
+        </Text>
       </View>
 
       {alreadyBlocked ? null : (
@@ -285,6 +335,11 @@ function describeSent(
   aboutLetter: boolean,
 ): string[] {
   const blocked = sent.blockedNow || alreadyBlocked;
+  // The limit counts the last 24 hours, not the calendar day, so "tomorrow"
+  // could be too early. And once a block has hidden the letter, the blocked
+  // list is no way to report it: a report from there carries no letter.
+  const notRecorded =
+    'You have made a lot of reports in the last 24 hours, so this one was not recorded.';
   const lines = [
     sent.outcome === 'reported'
       ? 'Your report is with the person who runs Night Courier.'
@@ -292,9 +347,11 @@ function describeSent(
         ? aboutLetter
           ? 'You have already reported this letter, and that report is still open.'
           : `You have already reported ${handle}, and that report is still open.`
-        : blocked
-          ? `You have sent a lot of reports today, so this one was not recorded. Report ${handle} again tomorrow, from your blocked couriers in your profile.`
-          : 'You have sent a lot of reports today, so this one was not recorded. Try again tomorrow.',
+        : !blocked
+          ? `${notRecorded} Try again 24 hours from now.`
+          : aboutLetter
+            ? `${notRecorded} To report this letter 24 hours from now, unblock ${handle} in your profile, then open the letter and report it again. From your blocked couriers you can report ${handle} too, but without the letter.`
+            : `${notRecorded} Report ${handle} again 24 hours from now, from your blocked couriers in your profile.`,
   ];
   if (sent.blockedNow) {
     lines.push(
@@ -312,4 +369,5 @@ const styles = StyleSheet.create({
   section: { marginTop: Spacing.xl },
   notes: { gap: Spacing.sm },
   actions: { alignSelf: 'stretch', marginTop: Spacing.xl },
+  counter: { alignSelf: 'flex-end', marginTop: Spacing.xs },
 });

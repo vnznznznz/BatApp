@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { Alert } from 'react-native';
+import { AccessibilityInfo, Alert, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import FriendsScreen from '@/app/(app)/friends';
@@ -9,6 +9,7 @@ import {
   fetchFriendships,
   removeFriend,
   requestFriend,
+  withdrawRequest,
   type Friendship,
   type RequestOutcome,
 } from '@/features/friends/friends';
@@ -17,6 +18,8 @@ import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
+/** The focus effects of the screen as it is now, to run again as it comes back into view. */
+const mockFocusEffects = new Set<() => void | (() => void)>();
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
@@ -24,7 +27,14 @@ jest.mock('expo-router', () => {
     useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
+      React.useEffect(() => {
+        mockFocusEffects.add(effect);
+        const cleanup = effect();
+        return () => {
+          mockFocusEffects.delete(effect);
+          if (typeof cleanup === 'function') cleanup();
+        };
+      }, [effect]),
   };
 });
 
@@ -37,18 +47,30 @@ jest.mock('@/features/friends/friends', () => ({
   requestFriend: jest.fn(),
   acceptFriend: jest.fn(),
   removeFriend: jest.fn(),
+  withdrawRequest: jest.fn(),
 }));
 
+/** The courier's profile as the database has it now. */
 const mockProfileState: { profile: Profile | null } = { profile: null };
 
-jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({ profile: mockProfileState.profile, isLoading: false, error: null }),
-}));
+// As the real hook does, it holds what it read last, and reads again only when
+// asked to.
+jest.mock('@/features/profile/use-profile', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useProfile: () => {
+      const [profile, setProfile] = React.useState(() => mockProfileState.profile);
+      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      return { profile, isLoading: false, error: null, reload };
+    },
+  };
+});
 
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedRequestFriend = jest.mocked(requestFriend);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
 const mockedRemoveFriend = jest.mocked(removeFriend);
+const mockedWithdrawRequest = jest.mocked(withdrawRequest);
 
 /** A fixed moment, so "asked ..." reads the same on every run. */
 const NOW = new Date('2026-10-31T21:00:00Z').getTime();
@@ -135,6 +157,10 @@ const metrics: Metrics = {
 const renderScreen = (ui: ReactElement) =>
   render(<SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>);
 
+const NO_CITY_OF_YOUR_OWN =
+  'You have not chosen your city yet, so your bats cannot carry a letter anywhere. ' +
+  'Choose it here, or in your profile.';
+
 /** Resolves once the list has loaded. The section is there even when it is empty. */
 const listLoaded = () => screen.findByRole('header', { name: 'Your friends' });
 
@@ -146,7 +172,29 @@ async function ask(username: string) {
   await fireEvent.press(sendRequestButton());
 }
 
+/**
+ * The views that lay `element` out in a row with whatever stands beside it:
+ * every ancestor whose children run side by side.
+ */
+function rowsAround(element: ReturnType<typeof screen.getByText>) {
+  const rows = [];
+  for (let node = element.parent; node; node = node.parent) {
+    if (StyleSheet.flatten(node.props.style)?.flexDirection === 'row') rows.push(node);
+  }
+  return rows;
+}
+
+/** Comes back to the screen, as when the picker on top of it is popped. */
+const comeBack = () =>
+  act(async () => {
+    for (const effect of [...mockFocusEffects]) effect();
+  });
+
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
+let announceSpy: jest.SpiedFunction<typeof AccessibilityInfo.announceForAccessibility>;
+
+/** Everything said aloud to a screen reader so far, in order. */
+const announced = () => announceSpy.mock.calls.map(([message]) => message);
 
 /** The alert the screen raised most recently: its title, its message and its buttons. */
 function lastAlert() {
@@ -166,17 +214,24 @@ async function chooseInAlert(label: string) {
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockClear();
+  mockFocusEffects.clear();
   mockProfileState.profile = courier;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedRequestFriend.mockReset();
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
+  mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  announceSpy = jest
+    .spyOn(AccessibilityInfo, 'announceForAccessibility')
+    .mockImplementation(() => {});
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
   alertSpy.mockRestore();
+  announceSpy.mockRestore();
   jest.useRealTimers();
 });
 
@@ -283,9 +338,35 @@ describe('FriendsScreen', () => {
 
       expect(await screen.findByRole('header', { name: 'Asking you' })).toBeOnTheScreen();
       expect(screen.getByText('Carla Ruiz')).toBeOnTheScreen();
-      expect(
-        screen.getByText(`@carla · asked ${formatTimestamp(carla.requestedAt)}`),
-      ).toBeOnTheScreen();
+      expect(screen.getByText('@carla')).toBeOnTheScreen();
+      expect(screen.getByText(`Asked ${formatTimestamp(carla.requestedAt)}`)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
+    });
+
+    /**
+     * Beside Accept and Decline, a 20-character username was cut to about 11
+     * on a 360dp phone, and when they asked fell off the line altogether - and
+     * the username is how the courier knows who this is. The answers sit
+     * under the name instead, so the name has the row's whole width.
+     */
+    it('gives the name of someone asking the whole width, with the answers beneath it', async () => {
+      const longName = 'carla_from_the_coast';
+      // At the text size most people read at: from 1.2 up, every row puts its
+      // buttons under its text anyway.
+      jest
+        .spyOn(Dimensions, 'get')
+        .mockReturnValue({ width: 360, height: 740, scale: 3, fontScale: 1 });
+      serve(() => [{ ...carla, friend: { ...carla.friend, username: longName } }]);
+      await renderScreen(<FriendsScreen />);
+
+      const username = await screen.findByText(new RegExp(`^@${longName}`));
+      const rows = rowsAround(username);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(within(row).queryByRole('button', { name: 'Accept' })).toBeNull();
+        expect(within(row).queryByRole('button', { name: 'Decline' })).toBeNull();
+      }
       expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
     });
@@ -368,8 +449,53 @@ describe('FriendsScreen', () => {
       await fireEvent.press(await screen.findByRole('button', { name: 'Accept' }));
 
       expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+      // Heard as well: focus stays on the button, far from the words.
+      expect(announced()).toEqual([REFUSALS.request_not_found]);
       await waitFor(() => expect(screen.queryByText('Carla Ruiz')).toBeNull());
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('one answer at a time', () => {
+    /**
+     * What the screen says belongs to what was done last. A refusal on a row
+     * left on screen through a later request reads as that request's answer;
+     * a request's "sent" left beside a later refusal reads as if all went well.
+     */
+    it("lets go of a row's refusal once someone new is asked", async () => {
+      serve(() => [carla]);
+      mockedAcceptFriend.mockRejectedValue(
+        new RpcError(REFUSALS.request_not_found, 'request_not_found'),
+      );
+      mockedRequestFriend.mockResolvedValue('requested');
+      await renderScreen(<FriendsScreen />);
+      await fireEvent.press(await screen.findByRole('button', { name: 'Accept' }));
+      expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+
+      await ask('anna');
+
+      expect(
+        await screen.findByText('Request sent. Once @anna accepts, you can write to each other.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(REFUSALS.request_not_found)).toBeNull();
+    });
+
+    it('lets go of what a request came to once a row is acted on', async () => {
+      serve(() => [carla]);
+      mockedRequestFriend.mockResolvedValue('requested');
+      mockedAcceptFriend.mockRejectedValue(
+        new RpcError(REFUSALS.request_not_found, 'request_not_found'),
+      );
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+      await ask('anna');
+      const sent = 'Request sent. Once @anna accepts, you can write to each other.';
+      expect(await screen.findByText(sent)).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Accept' }));
+
+      expect(await screen.findByText(REFUSALS.request_not_found)).toBeOnTheScreen();
+      expect(screen.queryByText(sent)).toBeNull();
     });
   });
 
@@ -396,6 +522,90 @@ describe('FriendsScreen', () => {
 
       expect(screen.getByText('Munich, DE')).toBeOnTheScreen();
       expect(screen.queryByText(/by bat$/)).toBeNull();
+    });
+
+    /**
+     * Without a city of their own, no bat can leave, so Write is off on every
+     * row - with only the friend's city beside it, which looks like a reason
+     * it is not. The screen says the real one, and where to put it right.
+     */
+    it('says why no letter can be written while the courier has no city, and offers to choose one', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [{ ...anna, route: null }]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.getByRole('button', { name: 'Write to Anna Weber' })).toBeDisabled();
+      expect(screen.getByText(NO_CITY_OF_YOUR_OWN)).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Choose your city' }));
+
+      expect(mockPush).toHaveBeenCalledWith('/city-picker');
+    });
+
+    // Ben has no city, so there is no route to him whoever has one: only the
+    // courier's own city tells that the notice is not theirs.
+    it('says nothing of a city of their own once the courier has one, though no friend has', async () => {
+      serve(() => [ben]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
+    });
+
+    it('says nothing of a city while the profile is not known', async () => {
+      mockProfileState.profile = null;
+      serve(() => [ben]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+    });
+
+    /**
+     * The picker saves the city itself and pops back. Ben has no city, so no
+     * route appears to tell of it: the screen has to read the profile again
+     * as it comes back. (Found in review: it went on saying "You have not
+     * chosen your city yet" until it was opened anew.)
+     */
+    it('lets go of it once the city is chosen, though no friend has a city', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [ben]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+      await fireEvent.press(screen.getByRole('button', { name: 'Choose your city' }));
+      expect(mockPush).toHaveBeenCalledWith('/city-picker');
+
+      mockProfileState.profile = courier;
+      await comeBack();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
+    });
+
+    /**
+     * The list and the profile are read side by side as the screen comes back.
+     * A route on the list means the courier has a city by now, whichever of
+     * the two answered first.
+     */
+    it('lets go of it once the list shows a route, the city chosen in the meantime', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [anna]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Write to Anna Weber' })).toBeEnabled();
+    });
+
+    it('says nothing of a city while there is no friend to write to', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [carla]);
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
     });
 
     it('says when there are no friends yet', async () => {
@@ -533,16 +743,99 @@ describe('FriendsScreen', () => {
 
     it('withdraws a request, and then drops it from the list', async () => {
       serve(() => [dora]);
-      mockedRemoveFriend.mockImplementation(async () => {
+      mockedWithdrawRequest.mockImplementation(async () => {
         serve(() => []);
       });
       await renderScreen(<FriendsScreen />);
 
       await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
 
-      expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-dora');
+      expect(mockedWithdrawRequest).toHaveBeenCalledWith('friendship-dora', 'dora');
+      // Never the call that ends whatever the row has become by now.
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
       await waitFor(() => expect(screen.queryByText('@dora')).toBeNull());
-      expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Dora said yes while the list still showed her request. The withdrawal is
+     * refused rather than ending the new friendship; the courier is told what
+     * happened, and ending it now goes through the usual question.
+     *
+     * Told in a dialog, not at the top of the screen with a row's other
+     * refusals: Withdraw is in the last section, and with a few friends above
+     * it the top is out of sight. The request would leave the list as if
+     * withdrawn, and the courier would be friends with someone they meant to
+     * un-ask without having read a word of it. (Found in review.)
+     */
+    it('says so when the other person accepted in the meantime, and keeps the friendship', async () => {
+      const acceptedMeanwhile =
+        '@dora accepted your request in the meantime, so you are friends now.';
+      const accepted: Friendship = {
+        ...dora,
+        status: 'accepted',
+        acceptedAt: new Date(NOW),
+        friend: { ...dora.friend, displayName: 'Dora Lind' },
+      };
+      serve(() => [dora]);
+      mockedWithdrawRequest.mockImplementation(async () => {
+        serve(() => [accepted]);
+        throw new RpcError(acceptedMeanwhile, 'request_not_found');
+      });
+      await renderScreen(<FriendsScreen />);
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+      expect(lastAlert()).toEqual({
+        title: 'Nothing to withdraw',
+        message: acceptedMeanwhile,
+        buttons: [],
+      });
+      // The dialog is read out as it opens; said aloud as well, it would be heard twice.
+      expect(announced()).toEqual([]);
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(screen.queryByRole('header', { name: 'Waiting for an answer' })).toBeNull(),
+      );
+      expect(screen.getByText('Dora Lind')).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Remove Dora Lind' }));
+
+      expect(lastAlert().title).toBe('Stop being friends with Dora Lind?');
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
+    });
+
+    it('says so in a dialog when the request was gone already', async () => {
+      const gone = 'Your request to @dora is no longer waiting for an answer.';
+      serve(() => [anna, ben, dora]);
+      mockedWithdrawRequest.mockImplementation(async () => {
+        serve(() => [anna, ben]);
+        throw new RpcError(gone, 'request_not_found');
+      });
+      await renderScreen(<FriendsScreen />);
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+      expect(lastAlert()).toEqual({ title: 'Nothing to withdraw', message: gone, buttons: [] });
+      expect(announced()).toEqual([]);
+      await waitFor(() => expect(screen.queryByText('@dora')).toBeNull());
+    });
+
+    /** Anything else is a row's refusal like any other, and the request is still listed. */
+    it('says why a withdrawal failed otherwise, aloud as well', async () => {
+      const failed = 'That request could not be withdrawn. Try again.';
+      serve(() => [dora]);
+      mockedWithdrawRequest.mockRejectedValue(new RpcError(failed, null));
+      await renderScreen(<FriendsScreen />);
+
+      await fireEvent.press(await screen.findByRole('button', { name: 'Withdraw' }));
+
+      expect(await screen.findByText(failed)).toBeOnTheScreen();
+      expect(announced()).toEqual([failed]);
+      expect(alertSpy).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled();
     });
   });
 

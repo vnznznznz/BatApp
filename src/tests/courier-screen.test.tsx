@@ -8,8 +8,10 @@ import {
   acceptFriend,
   fetchFriendships,
   removeFriend,
+  withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import type { Profile } from '@/features/profile/use-profile';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
@@ -25,6 +27,8 @@ const mockDismissTo = jest.fn();
 const mockParams = { id: 'user-anna' };
 /** Whether the page is still in front when an answer comes back. */
 const mockFocus = { focused: true };
+/** The focus effects of the page as it is now, to run again as it comes back into view. */
+const mockFocusEffects = new Set<() => void | (() => void)>();
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -39,7 +43,14 @@ jest.mock('expo-router', () => {
     useNavigation: () => ({ isFocused: () => mockFocus.focused }),
     // There is no navigator here, so being mounted stands in for being focused.
     useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
+      React.useEffect(() => {
+        mockFocusEffects.add(effect);
+        const cleanup = effect();
+        return () => {
+          mockFocusEffects.delete(effect);
+          if (typeof cleanup === 'function') cleanup();
+        };
+      }, [effect]),
   };
 });
 
@@ -51,6 +62,7 @@ jest.mock('@/features/friends/friends', () => ({
   fetchFriendships: jest.fn(),
   acceptFriend: jest.fn(),
   removeFriend: jest.fn(),
+  withdrawRequest: jest.fn(),
 }));
 
 // Blocking is the one call the page makes into the safety module.
@@ -59,9 +71,40 @@ jest.mock('@/features/safety/safety', () => ({
   blockCourier: jest.fn(),
 }));
 
+/** The courier's profile as the database has it now. */
+const mockProfileState: { profile: Profile | null } = { profile: null };
+
+// As the real hook does, it holds what it read last, and reads again only when
+// asked to.
+jest.mock('@/features/profile/use-profile', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useProfile: () => {
+      const [profile, setProfile] = React.useState(() => mockProfileState.profile);
+      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      return { profile, isLoading: false, error: null, reload };
+    },
+  };
+});
+
+/** The courier whose app this is: in Berlin, unless a test says otherwise. */
+const courier: Profile = {
+  id: 'user-mara',
+  username: 'mara',
+  displayName: 'Mara Lind',
+  avatarUrl: null,
+  move: null,
+  city: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+};
+
+const NO_CITY_OF_YOUR_OWN =
+  'You have not chosen your city yet, so your bats cannot carry a letter anywhere. ' +
+  'Choose it here, or in your profile.';
+
 const mockedFetchFriendships = jest.mocked(fetchFriendships);
 const mockedAcceptFriend = jest.mocked(acceptFriend);
 const mockedRemoveFriend = jest.mocked(removeFriend);
+const mockedWithdrawRequest = jest.mocked(withdrawRequest);
 const mockedBlockCourier = jest.mocked(blockCourier);
 
 /**
@@ -195,6 +238,12 @@ function expectStayed() {
   expect(mockBack).not.toHaveBeenCalled();
 }
 
+/** Comes back to the page, as when the picker on top of it is popped. */
+const comeBack = () =>
+  act(async () => {
+    for (const effect of [...mockFocusEffects]) effect();
+  });
+
 let alertSpy: jest.SpiedFunction<typeof Alert.alert>;
 
 /** The alert the screen raised most recently: its title, its message and its buttons. */
@@ -232,10 +281,13 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockParams.id = 'user-anna';
   mockFocus.focused = true;
+  mockFocusEffects.clear();
+  mockProfileState.profile = courier;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
   mockedRemoveFriend.mockReset().mockResolvedValue(undefined);
+  mockedWithdrawRequest.mockReset().mockResolvedValue(undefined);
   mockedBlockCourier.mockReset().mockResolvedValue('blocked');
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   announceSpy = jest
@@ -324,6 +376,82 @@ describe('CourierScreen', () => {
       expect(button('Write a letter')).toBeDisabled();
       await fireEvent.press(button('Write a letter'));
       expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Without a city of their own, no bat can leave: Write a letter is off,
+     * beside the friend's city, which looks like a reason but is not. The page
+     * says the real one, and where to put it right.
+     */
+    it('says why no letter can be written while the courier has no city, and offers to choose one', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      const friendship: Friendship = { ...anna, route: null };
+      serve(() => [friendship]);
+      await openPageOf(friendship);
+
+      expect(button('Write a letter')).toBeDisabled();
+      expect(screen.getByText(NO_CITY_OF_YOUR_OWN)).toBeOnTheScreen();
+
+      await fireEvent.press(button('Choose your city'));
+
+      expect(mockPush).toHaveBeenCalledWith('/city-picker');
+    });
+
+    /**
+     * The picker saves the city itself and pops back. Ben has no city, so no
+     * route appears to tell of it: the page has to read the profile again as
+     * it comes back. (Found in review: it went on saying "You have not chosen
+     * your city yet" until it was opened anew.)
+     */
+    it('lets go of it once the city is chosen, though the friend has none', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      serve(() => [ben]);
+      await openPageOf(ben);
+      expect(screen.getByText(NO_CITY_OF_YOUR_OWN)).toBeOnTheScreen();
+      await fireEvent.press(button('Choose your city'));
+
+      mockProfileState.profile = courier;
+      await comeBack();
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
+      expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
+    });
+
+    it('keeps Choose your city off while an action is on its way', async () => {
+      mockProfileState.profile = { ...courier, city: null };
+      const removing = deferred<void>();
+      mockedRemoveFriend.mockReturnValue(removing.promise);
+      serve(() => [ben]);
+      await openPageOf(ben);
+      await fireEvent.press(button('Remove friend'));
+      await chooseInAlert('Remove');
+
+      expect(button('Choose your city')).toBeDisabled();
+      await fireEvent.press(button('Choose your city'));
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => removing.resolve());
+    });
+
+    it.each<[string, Profile | null, Friendship]>([
+      ['the courier has a city', courier, anna],
+      ['only the friend has none', courier, ben],
+      // The list and the profile are read side by side as the page comes back;
+      // a route means a city, whichever answered first.
+      ['the list shows a route, the city chosen in the meantime', { ...courier, city: null }, anna],
+      ['the profile is not known', null, ben],
+      // No letter is offered to someone who has not said yes, so there is no
+      // Write to explain.
+      ['it is a request, not a friendship', { ...courier, city: null }, dora],
+      ['someone is asking, not a friend', { ...courier, city: null }, carla],
+    ])('says nothing of a city of their own when %s', async (_, profile, friendship) => {
+      mockProfileState.profile = profile;
+      serve(() => [friendship]);
+      await openPageOf(friendship);
+
+      expect(screen.queryByText(NO_CITY_OF_YOUR_OWN)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Choose your city' })).toBeNull();
     });
 
     it('asks before removing a friend, and keeps them if the courier thinks better of it', async () => {
@@ -463,10 +591,46 @@ describe('CourierScreen', () => {
       await fireEvent.press(button('Withdraw request'));
 
       expect(alertSpy).not.toHaveBeenCalled();
-      expect(mockedRemoveFriend).toHaveBeenCalledTimes(1);
-      expect(mockedRemoveFriend).toHaveBeenCalledWith('friendship-dora');
+      expect(mockedWithdrawRequest).toHaveBeenCalledTimes(1);
+      expect(mockedWithdrawRequest).toHaveBeenCalledWith('friendship-dora', 'dora');
+      // Never the call that ends whatever the row has become by now.
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
       await expectWentToFriends();
       expect(announced()).toEqual(['Withdrew your request to @dora.']);
+    });
+
+    /**
+     * Dora said yes while the page still showed the request. The withdrawal is
+     * refused rather than ending the new friendship: the page says so, stays,
+     * and now shows her as a friend - ending that goes through the usual question.
+     */
+    it('says so when they accepted in the meantime, stays, and keeps the friendship', async () => {
+      const acceptedMeanwhile =
+        '@dora accepted your request in the meantime, so you are friends now.';
+      const accepted: Friendship = {
+        ...dora,
+        status: 'accepted',
+        acceptedAt: new Date(NOW),
+        friend: { ...dora.friend, displayName: 'Dora Lind' },
+      };
+      mockedWithdrawRequest.mockImplementation(async () => {
+        serve(() => [anna, ben, carla, accepted]);
+        throw new RpcError(acceptedMeanwhile, 'request_not_found');
+      });
+      await openPageOf(dora);
+
+      await fireEvent.press(button('Withdraw request'));
+
+      expect(await screen.findByText(acceptedMeanwhile)).toBeOnTheScreen();
+      expect(announced()).toEqual([acceptedMeanwhile]);
+      expect(await screen.findByText('Dora Lind')).toBeOnTheScreen();
+      expectStayed();
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
+
+      await fireEvent.press(button('Remove friend'));
+
+      expect(lastAlert().title).toBe('Stop being friends with Dora Lind?');
+      expect(mockedRemoveFriend).not.toHaveBeenCalled();
     });
   });
 
@@ -521,7 +685,7 @@ describe('CourierScreen', () => {
   });
 
   describe('safety', () => {
-    it('sets blocking and reporting apart, and says the other courier learns of neither a block nor who reported them', async () => {
+    it('sets blocking and reporting apart, and promises about a report only what the report form and the house rules promise', async () => {
       await openPageOf(anna);
 
       expect(screen.getByRole('header', { name: 'Safety' })).toBeOnTheScreen();
@@ -529,7 +693,8 @@ describe('CourierScreen', () => {
         screen.getByText(
           'Blocking ends any friendship or request between you, hides their letters from you ' +
             'and stops them asking again; @anna is not told. Reporting tells the person who ' +
-            'runs Night Courier, who never tells @anna who reported them.',
+            'runs Night Courier, who does not tell @anna who reported them, unless the law ' +
+            'requires it.',
         ),
       ).toBeOnTheScreen();
       expect(button('Block @anna')).toBeEnabled();

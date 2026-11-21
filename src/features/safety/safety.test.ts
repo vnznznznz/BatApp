@@ -1,10 +1,13 @@
 import { REPORT_NOTE_MAX_LENGTH, REPORT_REASONS } from '@/constants/config';
 import {
+  blockChoiceFor,
   blockCourier,
   fetchBlocked,
+  forgetBlockChoices,
   noteLength,
   prepareNote,
   REASON_LABELS,
+  rememberBlockChoice,
   reportCourier,
   reportLetter,
   toBlockedCourier,
@@ -419,5 +422,66 @@ describe('validateNote', () => {
 
   it('uses the same words as the database when it refuses', () => {
     expect(validateNote('a'.repeat(REPORT_NOTE_MAX_LENGTH + 1))).toBe(REFUSALS.note_too_long);
+  });
+});
+
+describe('the block chosen last time', () => {
+  const mara = 'user-mara';
+  const letter = { courier: 'user-anna', letter: 'letter-from-anna' };
+
+  beforeEach(() => {
+    forgetBlockChoices();
+  });
+
+  it('blocks as well by default, for something not reported before', () => {
+    expect(blockChoiceFor(mara, letter)).toBe(true);
+    expect(blockChoiceFor(mara, { courier: 'user-anna' })).toBe(true);
+  });
+
+  it('starts from what was chosen when the same letter was last reported', () => {
+    rememberBlockChoice(mara, letter, false);
+
+    expect(blockChoiceFor(mara, letter)).toBe(false);
+
+    rememberBlockChoice(mara, letter, true);
+
+    expect(blockChoiceFor(mara, letter)).toBe(true);
+  });
+
+  /**
+   * A new letter is a new event: whoever kept a friend after one letter may
+   * well not after a worse one, and someone who does not look at the switch
+   * should not leave the sender free to write by default.
+   */
+  it('blocks by default for another letter from the same courier, or the courier alone', () => {
+    rememberBlockChoice(mara, letter, false);
+
+    expect(blockChoiceFor(mara, { courier: 'user-anna', letter: 'another-letter' })).toBe(true);
+    expect(blockChoiceFor(mara, { courier: 'user-anna' })).toBe(true);
+  });
+
+  it('starts from what was chosen when the same courier was last reported without a letter', () => {
+    rememberBlockChoice(mara, { courier: 'user-anna' }, false);
+
+    expect(blockChoiceFor(mara, { courier: 'user-anna' })).toBe(false);
+    expect(blockChoiceFor(mara, letter)).toBe(true);
+    expect(blockChoiceFor(mara, { courier: 'user-ben' })).toBe(true);
+  });
+
+  /**
+   * Signing out does not restart the app, so whoever signs in next on the
+   * same phone would otherwise find someone else's choice made for them.
+   */
+  it('keeps each choice to the person who made it', () => {
+    rememberBlockChoice(mara, letter, false);
+
+    expect(blockChoiceFor('user-noor', letter)).toBe(true);
+  });
+
+  it('remembers nothing, and blocks by default, while nobody is signed in', () => {
+    rememberBlockChoice(undefined, letter, false);
+
+    expect(blockChoiceFor(undefined, letter)).toBe(true);
+    expect(blockChoiceFor(mara, letter)).toBe(true);
   });
 });

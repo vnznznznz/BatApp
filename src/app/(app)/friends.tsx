@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState, type ReactNode } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -19,13 +19,14 @@ import {
   groupFriendships,
   removeFriend,
   requestFriend,
+  withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
 import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
-import { confirmAction } from '@/lib/confirm';
+import { confirmAction, notify } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
-import { messageOf } from '@/lib/rpc-error';
+import { messageOf, RpcError } from '@/lib/rpc-error';
 import { useRemote } from '@/lib/use-remote';
 
 /**
@@ -38,9 +39,18 @@ import { useRemote } from '@/lib/use-remote';
  */
 export default function FriendsScreen() {
   const router = useRouter();
-  const { profile } = useProfile();
+  const { profile, reload: reloadProfile } = useProfile();
   const list = useRemote(fetchFriendships);
   const { reload, refresh } = list;
+
+  // The city picker, opened from here or from the profile, saves the city
+  // itself and pops back: what this screen says about a city of the courier's
+  // own has to be read again each time it comes back into view.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadProfile();
+    }, [reloadProfile]),
+  );
 
   const [username, setUsername] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -59,7 +69,10 @@ export default function FriendsScreen() {
   async function ask() {
     const problem = validateUsername(username);
     setFieldError(problem);
+    // What the screen says belongs to what was done last: a refusal from a row
+    // left up beside this request would read as its answer.
     setOutcome(null);
+    setActionError(null);
     if (problem) return;
 
     setAsking(true);
@@ -77,16 +90,26 @@ export default function FriendsScreen() {
     }
   }
 
-  async function act(friendship: Friendship, action: FriendAction) {
+  async function act(friendship: Friendship, action: FriendAction, withdrawing = false) {
     setBusy({ id: friendship.id, action });
     setActionError(null);
+    // Likewise a request's "sent" left beside this action's refusal.
+    setOutcome(null);
     try {
       await action(friendship.id);
       await reload();
     } catch (caught) {
       const problem = messageOf(caught);
-      setActionError(problem);
-      announce(problem);
+      if (withdrawing && caught instanceof RpcError && caught.reason === 'request_not_found') {
+        // Withdraw is in the last section, and with a few friends above it the
+        // top of the screen, where a row's refusal goes, is out of sight. The
+        // request leaves the list as if withdrawn, though the two may be
+        // friends now: a dialog makes sure that is read. It is read out, too.
+        notify('Nothing to withdraw', problem);
+      } else {
+        setActionError(problem);
+        announce(problem);
+      }
       // Whatever went wrong, the list on screen may be out of date now.
       await reload();
     } finally {
@@ -177,35 +200,61 @@ export default function FriendsScreen() {
 
       {groups.incoming.length > 0 ? (
         <Section title="Asking you">
+          {/* The answers sit under the name rather than beside it: beside them, on a
+              360dp phone, a 20-character username was cut to about 11 and when
+              they asked fell off the line - and the username is how the courier
+              knows who is asking. */}
           {groups.incoming.map((friendship) => (
-            <ListRow
-              key={friendship.id}
-              title={friendName(friendship.friend)}
-              subtitle={`@${friendship.friend.username} · asked ${formatTimestamp(friendship.requestedAt)}`}
-              onPress={() => open(friendship)}
-              accessibilityHint={OPEN_HINT}
-              actions={
-                <>
-                  <Button
-                    label="Accept"
-                    size="compact"
-                    loading={busyId === friendship.id && busy?.action === acceptFriend}
-                    disabled={busyId !== null}
-                    onPress={() => void act(friendship, acceptFriend)}
-                  />
-                  <Button
-                    label="Decline"
-                    size="compact"
-                    variant="ghost"
-                    loading={busyId === friendship.id && busy?.action === removeFriend}
-                    disabled={busyId !== null}
-                    onPress={() => void act(friendship, removeFriend)}
-                  />
-                </>
-              }
-            />
+            <View key={friendship.id}>
+              <ListRow
+                title={friendName(friendship.friend)}
+                subtitle={`@${friendship.friend.username}`}
+                detail={`Asked ${formatTimestamp(friendship.requestedAt)}`}
+                onPress={() => open(friendship)}
+                accessibilityHint={OPEN_HINT}
+              />
+              <View style={styles.answers}>
+                <Button
+                  label="Accept"
+                  size="compact"
+                  loading={busyId === friendship.id && busy?.action === acceptFriend}
+                  disabled={busyId !== null}
+                  onPress={() => void act(friendship, acceptFriend)}
+                />
+                <Button
+                  label="Decline"
+                  size="compact"
+                  variant="ghost"
+                  loading={busyId === friendship.id && busy?.action === removeFriend}
+                  disabled={busyId !== null}
+                  onPress={() => void act(friendship, removeFriend)}
+                />
+              </View>
+            </View>
           ))}
         </Section>
+      ) : null}
+
+      {/* Without a city of their own no bat can leave, so every Write is off -
+          beside the friend's city, which looks like the reason but is not.
+          Nothing is said while the profile is unknown. A route on the list
+          means a city all the same: the two are read side by side as the
+          screen comes back, and either may answer first. */}
+      {profile &&
+      !profile.city &&
+      groups.friends.length > 0 &&
+      !groups.friends.some((friendship) => friendship.route) ? (
+        <View style={styles.section}>
+          <Text variant="caption" tone="secondary" style={styles.lead}>
+            You have not chosen your city yet, so your bats cannot carry a letter anywhere. Choose
+            it here, or in your profile.
+          </Text>
+          <Button
+            label="Choose your city"
+            variant="secondary"
+            onPress={() => router.push('/city-picker')}
+          />
+        </View>
       ) : null}
 
       {list.data ? (
@@ -266,7 +315,15 @@ export default function FriendsScreen() {
                   variant="ghost"
                   loading={busyId === friendship.id}
                   disabled={busyId !== null}
-                  onPress={() => void act(friendship, removeFriend)}
+                  // Not removeFriend: if they said yes a moment ago, that would
+                  // end the new friendship without the usual question.
+                  onPress={() =>
+                    void act(
+                      friendship,
+                      (id) => withdrawRequest(id, friendship.friend.username),
+                      true,
+                    )
+                  }
                 />
               }
             />
@@ -309,4 +366,11 @@ const styles = StyleSheet.create({
   section: { marginTop: Spacing.xl, gap: Spacing.sm },
   card: { paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   empty: { padding: Spacing.md, lineHeight: 19 },
+  answers: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.sm,
+  },
 });

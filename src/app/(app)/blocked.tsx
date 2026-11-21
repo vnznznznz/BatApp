@@ -18,7 +18,7 @@ import { useRemote } from '@/lib/use-remote';
 /**
  * The couriers you have blocked: the way to report one - their letters and
  * their page are out of reach once they are blocked, so this is the only place
- * left to do it from - and the way to let one back.
+ * left to do it from, though without a letter - and the way to let one back.
  *
  * Unblocking shows their letters again but does not make you friends again:
  * that takes a new request, and their yes.
@@ -144,6 +144,15 @@ export default function BlockedScreen() {
             ))
           )}
         </Card>
+      ) : null}
+
+      {/* A report from here can carry no letter: theirs are hidden while they are
+          blocked. Said before someone reports one, rather than after. */}
+      {list.data && list.data.length > 0 ? (
+        <Text variant="caption" tone="muted" style={styles.section}>
+          Report sends the person who runs Night Courier their names as they are now, without any
+          letter. To report a letter of theirs, unblock them, open the letter and report it there.
+        </Text>
       ) : null}
     </Screen>
   );

@@ -122,3 +122,44 @@ export function validateNote(text: string): string | null {
     ? `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`
     : null;
 }
+
+/** What a report is about: a letter and its sender, or a courier alone. */
+export type ReportSubject = { courier: string; letter?: string };
+
+/**
+ * Whether "Also block" was on the last time each person using the app reported
+ * each letter, or each courier without a letter, for as long as the app runs.
+ * Someone who reported a letter but kept the friend did so on purpose, and
+ * reporting the same letter again starts from that. Another letter is a new
+ * event, often a worse one, so it starts from the default again.
+ *
+ * Kept per person because signing out does not restart the app, and kept in
+ * memory only: it says whom someone chose not to block, which is nobody
+ * else's business.
+ */
+const blockChoices = new Map<string, boolean>();
+
+function choiceKey(reporterId: string, subject: ReportSubject): string {
+  return subject.letter
+    ? `${reporterId} letter ${subject.letter}`
+    : `${reporterId} courier ${subject.courier}`;
+}
+
+/** On by default: someone reporting usually wants to hear no more from them. */
+export function blockChoiceFor(reporterId: string | undefined, subject: ReportSubject): boolean {
+  if (!reporterId) return true;
+  return blockChoices.get(choiceKey(reporterId, subject)) ?? true;
+}
+
+export function rememberBlockChoice(
+  reporterId: string | undefined,
+  subject: ReportSubject,
+  block: boolean,
+): void {
+  if (reporterId) blockChoices.set(choiceKey(reporterId, subject), block);
+}
+
+/** Back to the default for everything - for tests, which each start as a freshly opened app. */
+export function forgetBlockChoices(): void {
+  blockChoices.clear();
+}

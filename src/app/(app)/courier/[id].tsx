@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -13,8 +13,10 @@ import {
   fetchFriendships,
   friendName,
   removeFriend,
+  withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import { useProfile } from '@/features/profile/use-profile';
 import { blockCourier } from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
 import { confirmAction } from '@/lib/confirm';
@@ -36,8 +38,18 @@ export default function CourierScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
   const { reload } = list;
+  const { profile, reload: reloadProfile } = useProfile();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The city picker, opened from here, saves the city itself and pops back:
+  // what this page says about a city of the courier's own has to be read again
+  // each time it comes back into view.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadProfile();
+    }, [reloadProfile]),
+  );
 
   const friendship = list.data?.find((entry) => entry.friend.id === id) ?? null;
 
@@ -101,13 +113,19 @@ export default function CourierScreen() {
 
   function confirmEnd(current: Friendship) {
     if (current.status === 'pending') {
-      const declining = current.direction === 'incoming';
-      void run(
-        'end',
-        () => removeFriend(current.id),
-        declining ? `Declined ${handle}.` : `Withdrew your request to ${handle}.`,
-        true,
-      );
+      // Withdrawing has a call of its own: if they said yes a moment ago,
+      // removeFriend would end the new friendship without the question below.
+      // Refused instead, the page stays and shows them as the friend they are.
+      if (current.direction === 'incoming') {
+        void run('end', () => removeFriend(current.id), `Declined ${handle}.`, true);
+      } else {
+        void run(
+          'end',
+          () => withdrawRequest(current.id, friend.username),
+          `Withdrew your request to ${handle}.`,
+          true,
+        );
+      }
       return;
     }
     confirmAction({
@@ -145,6 +163,14 @@ export default function CourierScreen() {
     });
   }
 
+  // Without a city of their own no bat can leave, so Write a letter is off -
+  // beside the friend's city, which looks like the reason but is not. Nothing
+  // is said while the profile is unknown. A route means a city all the same:
+  // the two are read side by side as the page comes back, and either may
+  // answer first.
+  const noCityOfYourOwn =
+    friendship.status === 'accepted' && profile !== null && !profile.city && !friendship.route;
+
   const endLabel =
     friendship.status === 'accepted'
       ? 'Remove friend'
@@ -179,6 +205,20 @@ export default function CourierScreen() {
             disabled={busy !== null || !friendship.route}
             onPress={() => router.push({ pathname: '/compose', params: { to: friend.id } })}
           />
+        ) : null}
+        {noCityOfYourOwn ? (
+          <>
+            <Text variant="caption" tone="secondary" style={styles.line}>
+              You have not chosen your city yet, so your bats cannot carry a letter anywhere. Choose
+              it here, or in your profile.
+            </Text>
+            <Button
+              label="Choose your city"
+              variant="secondary"
+              disabled={busy !== null}
+              onPress={() => router.push('/city-picker')}
+            />
+          </>
         ) : null}
         {friendship.status === 'pending' && friendship.direction === 'incoming' ? (
           <Button
@@ -217,7 +257,7 @@ export default function CourierScreen() {
         <Text variant="caption" tone="muted" style={styles.line}>
           Blocking ends any friendship or request between you, hides their letters from you and
           stops them asking again; {handle} is not told. Reporting tells the person who runs Night
-          Courier, who never tells {handle} who reported them.
+          Courier, who does not tell {handle} who reported them, unless the law requires it.
         </Text>
         <Button
           label={`Block ${handle}`}
