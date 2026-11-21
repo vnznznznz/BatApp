@@ -300,6 +300,108 @@ describe('search_cities, the way a town is typed', () => {
 });
 
 /**
+ * A city whose own name begins with what is typed comes before one where only
+ * an alias does - its own name as it is written. Half-typed, "Sai" is the
+ * start of Saint Paul's name and "St" of St. Louis's; but once the saints had
+ * one form in the index, its first term was "sankt paul", and those towns
+ * ranked as if only an alias began so and fell out of the twenty shown -
+ * while "San" ranked Saint Petersburg as if its name began so, and pushed
+ * Sāngli out. (Found in review.) The form with "sankt" is the town's own name
+ * too, once a whole saint has been typed: "St. P" begins St. Petersburg.
+ */
+describe('search_cities, ranking by the name as it is written', () => {
+  let anna;
+  let older;
+
+  before(async () => {
+    anna = await createUser(db, { username: 'ranking', displayName: 'Ranking' });
+    older = await createTestDatabase({ until: BEFORE_SPELLINGS });
+  });
+
+  after(async () => {
+    await older?.close();
+  });
+
+  /** The client's fold before the spelling rules, and as it is now (see search.ts). */
+  const foldThen = (typed) =>
+    typed
+      .toLowerCase()
+      .replace(/ß/g, 'ss')
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[^a-z0-9 .'-]/g, '');
+  const foldNow = (typed) =>
+    typed
+      .toLowerCase()
+      .replace(/ß/g, 'ss')
+      .replace(/[‘’ʼ]/g, "'")
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[(),/]/g, ' ')
+      .replace(/[^a-z0-9 .'-]/g, '')
+      .replace(/ +/g, ' ')
+      .trim()
+      .replace(/(^|[ -])st\.(?=[a-z0-9])/g, '$1sankt ')
+      .replace(/(^|[ -])(?:st\.|st(?=[ -])|saint(?=[ -]))/g, '$1sankt');
+
+  const shown = async (database, query) =>
+    (
+      await asUser(database, anna, () =>
+        database.query(`select name from public.search_cities($1, 20)`, [query]),
+      )
+    ).rows.map((row) => row.name);
+
+  for (const [typed, town] of [
+    ['Sai', 'Saint Paul'],
+    ['Sain', 'Saint-Louis'],
+    ['Sain', 'Saint-Marc'],
+    ['St', 'St. Louis'],
+    ['St', 'St. Petersburg'],
+    ['Sān', 'Sāngli'],
+  ]) {
+    it(`shows ${town} among the twenty for "${typed}"`, async () => {
+      assert.ok((await shown(db, foldNow(typed))).includes(town));
+    });
+  }
+
+  it('ranks the towns whose own name begins with "Saint" before those only an alias does', async () => {
+    const names = await shown(db, foldNow('Saint'));
+
+    assert.ok(names.indexOf('Saint Paul') !== -1, names.join(', '));
+    assert.ok(names.indexOf('Saint Paul') < names.indexOf('Luanda'), names.join(', '));
+  });
+
+  it('ranks St. Petersburg and Saint Petersburg by their own names for "St. Pe"', async () => {
+    const names = await shown(db, foldNow('St. Pe'));
+
+    assert.deepEqual(names.slice(0, 2), ['Saint Petersburg', 'St. Petersburg']);
+  });
+
+  /**
+   * Every town with a saint in its own name, and whatever part of that name
+   * is typed: where it was among the twenty shown before the spelling rules,
+   * it still is.
+   */
+  it('keeps every town named for a saint among the twenty it was in, however much is typed', async () => {
+    const { rows } = await db.query(
+      `select name from public.cities where name ~* '(^|[ (/-])(st\\.?|saint|sankt)([ -]|$)'`,
+    );
+    assert.equal(rows.length, 16);
+
+    const dropped = [];
+    for (const { name } of rows) {
+      for (let length = 2; length <= name.length; length++) {
+        const typed = name.slice(0, length).trim();
+        if (!(await shown(older, foldThen(typed))).includes(name)) continue;
+        if (!(await shown(db, foldNow(typed))).includes(name))
+          dropped.push(`${name} <- "${typed}"`);
+      }
+    }
+    assert.deepEqual(dropped, []);
+  });
+});
+
+/**
  * Nothing that found a city before the saints became one form may find it
  * no longer: every term each of the 4,310 rows had, typed in full or only
  * the first two letters of it, or anything in between, still finds the row.

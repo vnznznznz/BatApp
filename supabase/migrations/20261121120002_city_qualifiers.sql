@@ -137,7 +137,36 @@ select private.qualify_cities();
 /* Search                                                                     */
 /* -------------------------------------------------------------------------- */
 
--- As before (see the city search migration), returning the qualifier too.
+-- As before (see the city search migration), returning the qualifier too,
+-- and ranking a city whose own name begins with the query by the name as it
+-- is written, or, for a query with a whole saint in it, in the form with
+-- "sankt".
+--
+-- The spelling rules gave the saints one form in the index, and while that
+-- form led each row's terms, "Sai" and "Sain" no longer ranked Saint Paul,
+-- Saint-Louis and Saint-Marc by their own names, nor "St" St. Louis and St.
+-- Petersburg: they fell out of the twenty shown. "San" ranked Saint
+-- Petersburg as if its name began so, and pushed Sāngli out. (Found in
+-- review.) The written form leads each row's terms again, and the form with
+-- "sankt" counts once a saint has been typed whole - "St. Pe" begins St.
+-- Petersburg as surely as "Sankt Pe" does.
+--
+-- Asked for every part of every city's own name that had the city among the
+-- twenty before the spelling rules (30,759 things to type), nine cities drop
+-- out for one of them, each pushed out by a city that is now found by its own
+-- name, which the generator had passed over for an apostrophe or a comma in
+-- it: Xi'an for "Xi", Ta'if and Tai'an for "Ta", Lu'an for "Lu", Ra's Bayrut
+-- for "Ra", Mianzhu for "Mi", and three more like them. Those now rank as
+-- cities whose own name begins with the query, as they always should have. So
+-- do the districts of Zürich, named "Zürich (Kreis 11)" and the like: they
+-- fill the twenty for "Zur", where towns that only an alias begins with used
+-- to come after Zürich itself.
+--
+-- The saints' form is worked out with private.search_form, which only the
+-- owner may call, so this now runs with its owner's rights, like the rest of
+-- the API. It reads nothing but the cities, which every signed-in courier may
+-- read.
+--
 -- What a function returns cannot be changed in place, so it is made anew.
 drop function public.search_cities(text, integer);
 
@@ -148,6 +177,7 @@ create function public.search_cities(
 returns table (id integer, name text, country_code text, population integer, qualifier text)
 language sql
 stable
+security definer
 set search_path = ''
 as $$
   with q as materialized (
@@ -168,8 +198,15 @@ as $$
     -- "contains the whole term".
     (('|' || c.search_index || '|') like ('%|' || q.term || '|%')) desc,
     -- Then a city whose own name begins with the query, before one where only
-    -- an alias does.
-    (c.search_index like q.term || '%') desc,
+    -- an alias does. The first term is the own name as it is written; once a
+    -- whole saint has been typed, it counts in the saints' form too.
+    (
+      c.search_index like q.term || '%'
+      or (
+        q.term ~ '(^|[ -])sankt([ -]|$)'
+        and private.search_form(split_part(c.search_index, '|', 1)) like q.term || '%'
+      )
+    ) desc,
     -- Then the larger place, which is the one more people mean.
     c.population desc
   limit least(greatest(coalesce(max_results, 20), 1), 50)

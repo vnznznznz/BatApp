@@ -391,10 +391,12 @@ function writeFixture(all) {
  * "Zurich" matches "Zürich" and "Koln" matches "Köln" - typing umlauts on a
  * phone keyboard is possible but nobody bothers.
  *
- * Each name is there in the form the client folds a query to, and where the
- * saints made that differ, as it was written too ("sankt paul|saint paul"):
- * someone half-way through typing "Saint" has typed "Sain", which only the
- * second still begins with.
+ * Each name is there as it was written, and where the saints make that
+ * differ, in the form the client folds a query to after it ("saint
+ * paul|sankt paul"): someone half-way through typing "Saint" has typed
+ * "Sain", which only the written form still begins with. The first term is
+ * the city's own name as it is written, which search_cities ranks "the
+ * city's own name begins with the query" by.
  *
  * Must stay in step with `fold()` in src/features/cities/search.ts. That pairing
  * is asserted by a test, because a silent divergence would make search quietly
@@ -414,8 +416,8 @@ function searchIndex(name, alternates) {
     if (!trimmed || !LATIN_NAME.test(trimmed)) continue;
 
     const written = foldLetters(trimmed);
-    add(saintForm(written));
     add(written);
+    add(saintForm(written));
   }
 
   return terms.join('|');

@@ -217,14 +217,16 @@ describe('build-cities.mjs, folding names', () => {
 
   /**
    * One form for st, st., sankt and saint at the start of a word, which is
-   * what the client sends whichever was typed - and beside it the form as
-   * written, so that what found the town before, typed half-way, still does.
+   * what the client sends whichever was typed - and before it the form as
+   * written, so that what found the town before, typed half-way, still does,
+   * and the first term is the town's own name as it is written: search_cities
+   * ranks by it.
    */
-  it('makes the saints one form, and keeps the form each was written in', () => {
+  it('keeps each name as it was written, first, and makes the saints one form after it', () => {
     const sql = fromSpellings();
 
-    assert.equal(indexOf(sql, 2658822), 'sankt gallen|st. gallen|sankt-gall|saint-gall|san gallo');
-    assert.equal(indexOf(sql, 5045360), 'sankt paul|saint paul|st. paul|st paul');
+    assert.equal(indexOf(sql, 2658822), 'sankt gallen|st. gallen|saint-gall|sankt-gall|san gallo');
+    assert.equal(indexOf(sql, 5045360), 'saint paul|sankt paul|st. paul|st paul');
   });
 
   it('indexes a name with brackets, slashes or commas, reading them as spaces', () => {

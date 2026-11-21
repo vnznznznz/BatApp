@@ -27,12 +27,15 @@
 --     "Ra’s" when the courier pressed '.
 --
 -- Each term keeps, beside its new form, the form it was written in where the
--- saints changed it: "sankt paul|saint paul". Someone half-way through typing
--- "Saint" has typed "Sain", and only the second still begins with that.
--- Kept like that, nothing that found a city before stops finding it: every
--- term of every row, typed in full or as its first two letters or anything in
--- between, still finds its row (cities.db.test.mjs asks every one of them:
--- 275,400 different things to type).
+-- saints changed it, and before it: "saint paul|sankt paul". Someone half-way
+-- through typing "Saint" has typed "Sain", and only the written form still
+-- begins with that. Kept like that, nothing that found a city before stops
+-- finding it: every term of every row, typed in full or as its first two
+-- letters or anything in between, still finds its row (cities.db.test.mjs
+-- asks every one of them: 275,400 different things to type). And the first
+-- term of a row is still its own name as it is written, which is what
+-- search_cities ranks "the city's own name begins with the query" by (see the
+-- city qualifiers migration, where search_cities is made anew).
 --
 -- What the rules add, over the 4,310 rows:
 --
@@ -56,7 +59,9 @@
 -- and the end of fold() in src/features/cities/search.ts; the tests hold the
 -- two to the same fixture.
 --
--- Kept after this migration because the tests hold the rows to it.
+-- Kept after this migration: search_cities puts a row's own name in this
+-- form to rank it for a query with a saint in it, and the tests hold the rows
+-- to it.
 create or replace function private.search_form(term text)
 returns text
 language sql
@@ -81,9 +86,10 @@ revoke all on function private.search_form(text) from public, anon, authenticate
 /* -------------------------------------------------------------------------- */
 
 -- Each row's terms in their new order: first the row's own name where the
--- generator used to pass it over, then every term it had, each in its new
--- form and, where the saints changed it, the form it was written in. A term
--- that comes round again is kept where it came first, as the generator does.
+-- generator used to pass it over, then every term it had, each in the form it
+-- was written in and then, where the saints change it, in its new form. A
+-- term that comes round again is kept where it came first, as the generator
+-- does.
 --
 -- The names passed over are exactly those with a bracket, a slash, a comma or
 -- a typographic apostrophe in them: 66 rows. They are folded here as the
@@ -117,10 +123,10 @@ candidates as (
        unnest(string_to_array(c.search_index, '|')) with ordinality as t (term, position)
 ),
 forms as (
-  select id, position * 2 as rank, private.search_form(term) as form
+  select id, position * 2 as rank, btrim(regexp_replace(term, ' {2,}', ' ', 'g')) as form
   from candidates
   union all
-  select id, position * 2 + 1, btrim(regexp_replace(term, ' {2,}', ' ', 'g'))
+  select id, position * 2 + 1, private.search_form(term)
   from candidates
 ),
 firsts as (
