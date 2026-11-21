@@ -12,7 +12,7 @@ import {
   type Dispatch,
 } from '@/features/messages/messages';
 import { roostChanged } from '@/features/roost/roost';
-import { messageOf, RpcError } from '@/lib/rpc-error';
+import { RpcError } from '@/lib/rpc-error';
 import { randomUuid } from '@/lib/uuid';
 
 /**
@@ -228,10 +228,12 @@ async function carry(
         unanswered: null,
       };
     }
-    // It did not go. The reference is kept: the same words go out under it
-    // again, and it is asked after once more before other words go.
+    // It did not go. That is what is said, not how the send failed: the server
+    // has just answered, so "No connection" would no longer be true. (Found in
+    // review.) The reference is kept: the same words go out under it again,
+    // and it is asked after once more before other words go.
     return {
-      outcome: { kind: 'held', message: messageOf(caught) },
+      outcome: { kind: 'held', message: 'Your letter did not go. It is still here to send.' },
       unanswered: { ref, words, unknown: false, since, askAt: since },
     };
   }

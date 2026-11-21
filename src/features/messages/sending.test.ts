@@ -230,6 +230,23 @@ describe('sendLetter', () => {
   });
 
   /**
+   * Asked after a send that got no answer, the server has no such letter. It
+   * has just answered, so the connection works: what is known now is that the
+   * letter did not go, and that is what is said. (Found in review: it said "No
+   * connection", the failure of the send.)
+   */
+  it('says that the letter did not go when the server, asked, has no such letter', async () => {
+    mockedSendMessage.mockRejectedValueOnce(noAnswer());
+
+    await writeAndSend(anna, 'Dear Anna,');
+
+    expect(mockedFetchSentLetter).toHaveBeenCalledTimes(1);
+    expect(told).toEqual([
+      ['user-anna', { kind: 'held', message: 'Your letter did not go. It is still here to send.' }],
+    ]);
+  });
+
+  /**
    * The letter is on its way out until its send ends, and nothing here ends
    * it: a request nobody answers is given up by the client's own fetch, after
    * twenty seconds, with what React Native's fetch throws for a request that

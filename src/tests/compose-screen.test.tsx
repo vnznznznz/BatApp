@@ -231,6 +231,13 @@ const NOT_KNOWN =
   'No answer came back, so your letter may or may not have gone. ' +
   'Night Courier will check again by itself.';
 
+/**
+ * What the screen says when, asked after a send that got no answer, the server
+ * has no such letter. It has just answered, so the connection works: what is
+ * known is that the letter did not go.
+ */
+const DID_NOT_GO = 'Your letter did not go. It is still here to send.';
+
 /** What the confirmation adds when the words that went are not the ones now written. */
 const AS_FIRST_WRITTEN =
   'It went as you first wrote it. What you changed since has not been sent. ' +
@@ -1043,9 +1050,7 @@ describe('ComposeScreen', () => {
 
       await writeAndSend('See you at the lake.');
 
-      expect(
-        await screen.findByText('No connection. Check your network and try again.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(DID_NOT_GO)).toBeOnTheScreen();
       expect(letterField()).toHaveDisplayValue('See you at the lake.');
 
       await fireEvent.press(sendButton());
@@ -1105,7 +1110,7 @@ describe('ComposeScreen', () => {
       await openLetterTo('user-anna');
 
       await writeAndSend('See you at the lake.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
       await fireEvent.press(sendButton());
       await screen.findByText('Your bat is on its way');
 
@@ -1122,7 +1127,7 @@ describe('ComposeScreen', () => {
       await openLetterTo('user-anna');
 
       await writeAndSend('See you at the lake.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
       await fireEvent.changeText(letterField(), 'See you at the lake.  \n');
       await fireEvent.press(sendButton());
       await screen.findByText('Your bat is on its way');
@@ -1138,7 +1143,7 @@ describe('ComposeScreen', () => {
       await openLetterTo('user-anna');
 
       await writeAndSend('See you at the lake.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
       await fireEvent.changeText(letterField(), 'See you at the lake at six.');
       await fireEvent.press(sendButton());
       await screen.findByText('Your bat is on its way');
@@ -1191,6 +1196,8 @@ describe('ComposeScreen', () => {
       // Still finding out: the button spins, and nothing is claimed either way.
       expect(sendButton()).toBeBusy();
       expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
+      expect(screen.queryByText(DID_NOT_GO)).toBeNull();
+      expect(screen.queryByText(NOT_KNOWN)).toBeNull();
 
       await act(async () => asked.resolve(dispatchToAnna()));
 
@@ -1291,7 +1298,7 @@ describe('ComposeScreen', () => {
       mockedFetchSentLetter.mockResolvedValueOnce(null);
       await openLetterTo('user-anna');
       await writeAndSend('See you on Fridya.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
 
       // By now it has arrived after all.
       mockedFetchSentLetter.mockResolvedValue(dispatchToAnna());
@@ -1352,7 +1359,8 @@ describe('ComposeScreen', () => {
 
     /**
      * Asked, the server knew of no such letter: that much is known, so there is
-     * no "may or may not" about it, and nothing to keep asking.
+     * no "may or may not" about it, and nothing to keep asking. Nor is it "No
+     * connection" any more: the server has just answered. (Found in review.)
      */
     it('says only that it did not go when the server, asked, has no such letter', async () => {
       mockedSendMessage.mockRejectedValueOnce(noAnswer());
@@ -1360,14 +1368,13 @@ describe('ComposeScreen', () => {
 
       await writeAndSend('See you at the lake.');
 
-      expect(
-        await screen.findByText('No connection. Check your network and try again.'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText(DID_NOT_GO)).toBeOnTheScreen();
+      expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
       expect(screen.queryByText(NOT_KNOWN)).toBeNull();
 
       // Nor does the doubt come back once the letter is changed and the error clears.
       await fireEvent.changeText(letterField(), 'See you at the lake at six.');
-      expect(screen.queryByText('No connection. Check your network and try again.')).toBeNull();
+      expect(screen.queryByText(DID_NOT_GO)).toBeNull();
       expect(screen.queryByText(NOT_KNOWN)).toBeNull();
 
       await letTimePass(5 * MINUTE);
@@ -1551,7 +1558,7 @@ describe('ComposeScreen', () => {
       mockedSendMessage.mockRejectedValueOnce(noAnswer());
       await openLetterTo('user-anna');
       await writeAndSend('See you on Fridya.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
 
       mockedFetchSentLetter.mockRejectedValue(noAnswer());
       await fireEvent.changeText(letterField(), 'See you on Friday.');
@@ -1699,7 +1706,7 @@ describe('ComposeScreen', () => {
       // Asked what became of it, the server knows of no such letter.
       const first = await openLetterTo('user-anna');
       await writeAndSend('See you at the lake.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
       await first.unmount();
       delete mockParams.to;
 
@@ -1758,7 +1765,7 @@ describe('ComposeScreen', () => {
       mockedSendMessage.mockRejectedValueOnce(noAnswer());
       await openLetterTo('user-anna');
       await writeAndSend('See you at the lake.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
 
       // The screen stays open while the letter, which did go, flies and lands.
       await letTimePass(25 * MINUTE);
@@ -1803,7 +1810,7 @@ describe('ComposeScreen', () => {
       mockedSendMessage.mockRejectedValueOnce(noAnswer());
       const view = await openLetterTo('user-anna');
       await writeAndSend('See you at the lake.');
-      await screen.findByText('No connection. Check your network and try again.');
+      await screen.findByText(DID_NOT_GO);
 
       // The same screen, now with Eva in the route.
       mockParams.to = 'user-eva';
