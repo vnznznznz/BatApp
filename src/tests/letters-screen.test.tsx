@@ -12,6 +12,7 @@ import {
   type ReceivedLetter,
   type SentLetter,
 } from '@/features/messages/messages';
+import { fetchBlocked } from '@/features/safety/safety';
 import { formatTimestamp } from '@/lib/format';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
@@ -80,6 +81,13 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => ({ signOut: () => Promise.resolve() }),
 }));
 
+// Whom the courier has blocked is asked only when there is no letter to show.
+jest.mock('@/features/safety/safety', () => ({
+  ...jest.requireActual('@/features/safety/safety'),
+  fetchBlocked: jest.fn(),
+}));
+
+const mockedFetchBlocked = jest.mocked(fetchBlocked);
 const mockedFetchInbox = jest.mocked(fetchInbox);
 const mockedFetchSent = jest.mocked(fetchSent);
 
@@ -219,6 +227,8 @@ beforeEach(() => {
   mockedFetchInbox.mockResolvedValue([]);
   mockedFetchSent.mockReset();
   mockedFetchSent.mockResolvedValue([]);
+  mockedFetchBlocked.mockReset();
+  mockedFetchBlocked.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -343,6 +353,34 @@ describe('LettersScreen', () => {
           'Nothing has landed yet. When a friend’s bat arrives, the letter will be here.',
         ),
       ).toBeOnTheScreen();
+    });
+
+    /**
+     * A block hides the blocked courier's letters, and the list said "Nothing
+     * has landed yet" over letters that had landed. (Found in the browser,
+     * after a report that also blocked.)
+     */
+    it('says that the letters of blocked couriers are hidden, when there is none to show', async () => {
+      mockedFetchBlocked.mockResolvedValue([
+        { id: 'user-anna', username: 'anna', blockedAt: new Date(NOW - 60_000) },
+      ]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          'The letters of couriers you have blocked are hidden from you. To see them again, ' +
+            'unblock them: Your profile, then Blocked couriers.',
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+    });
+
+    it('asks nothing about blocks while there are letters to show', async () => {
+      mockedFetchInbox.mockResolvedValue([received()]);
+      await renderScreen(<LettersScreen />);
+      await screen.findByText('Anna Weber');
+
+      expect(mockedFetchBlocked).not.toHaveBeenCalled();
     });
 
     it('does not say nothing has landed while the first letters are still loading', async () => {

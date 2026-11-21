@@ -21,10 +21,12 @@ import {
   type SentLetter,
 } from '@/features/messages/messages';
 import { AccountClosedActions } from '@/features/profile/account-closed';
+import { fetchBlocked } from '@/features/safety/safety';
 import { formatDistance, formatDuration, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { usePaged, type Paged } from '@/lib/use-paged';
 import { useRefreshAt } from '@/lib/use-refresh-at';
+import { useRemote } from '@/lib/use-remote';
 
 type Box = 'received' | 'sent';
 
@@ -70,7 +72,7 @@ function ReceivedList() {
   return (
     <LetterList
       paged={letters}
-      empty="Nothing has landed yet. When a friend’s bat arrives, the letter will be here."
+      empty={<EmptyInbox />}
       renderItem={(letter: ReceivedLetter) => {
         const unread = letter.openedAt === null && !opened.has(letter.id);
         return (
@@ -135,13 +137,32 @@ function SentList() {
   );
 }
 
+/**
+ * What the received list says when it has no letter to show. A block hides the
+ * blocked courier's letters, and "Nothing has landed yet" stood over letters
+ * that had landed. (Found in the browser, after a report that also blocked.)
+ * Whom the courier has blocked is asked only here, where it matters.
+ */
+function EmptyInbox() {
+  const blocked = useRemote(fetchBlocked);
+  return (
+    <Text variant="caption" tone="muted" center style={styles.message}>
+      {blocked.data?.length
+        ? 'The letters of couriers you have blocked are hidden from you. To see them again, ' +
+          'unblock them: Your profile, then Blocked couriers.'
+        : 'Nothing has landed yet. When a friend’s bat arrives, the letter will be here.'}
+    </Text>
+  );
+}
+
 function LetterList<T extends { id: string }>({
   paged,
   empty,
   renderItem,
 }: {
   paged: Paged<T>;
-  empty: string;
+  /** Said when there is nothing to show: words, or what says them. */
+  empty: string | ReactElement;
   renderItem: (item: T) => ReactElement;
 }) {
   return (
@@ -195,10 +216,12 @@ function LetterList<T extends { id: string }>({
       ListEmptyComponent={
         paged.isLoading ? (
           <ActivityIndicator color={Colors.textMuted} style={styles.message} />
-        ) : paged.error ? null : (
+        ) : paged.error ? null : typeof empty === 'string' ? (
           <Text variant="caption" tone="muted" center style={styles.message}>
             {empty}
           </Text>
+        ) : (
+          empty
         )
       }
       ListFooterComponent={
