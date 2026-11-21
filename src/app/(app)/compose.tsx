@@ -45,6 +45,7 @@ import {
   formatFlightEstimate,
   formatTimestamp,
 } from '@/lib/format';
+import { REFUSALS } from '@/lib/rpc-error';
 import { useNow } from '@/lib/use-now';
 import { useRefreshAt } from '@/lib/use-refresh-at';
 import { useRemote } from '@/lib/use-remote';
@@ -61,9 +62,8 @@ type Sent = Extract<Outcome, { kind: 'sent' }>;
 const CHECKS_AGAIN = 'while this letter is on screen, and when you come back to it.';
 
 /** Shown with the letter for as long as it is not known whether it went. */
-const NOT_KNOWN =
-  'No answer came back, so your letter may or may not have gone. ' +
-  `Night Courier will check again ${CHECKS_AGAIN}`;
+const IN_DOUBT = 'No answer came back, so your letter may or may not have gone.';
+const NOT_KNOWN = `${IN_DOUBT} Night Courier will check again ${CHECKS_AGAIN}`;
 
 /** Said when changed words were not sent, because of what is not known about the letter. */
 const HELD_BACK =
@@ -131,6 +131,16 @@ export default function ComposeScreen() {
   const { reload: reloadRoost, refresh: refreshRoost } = roost;
   useEffect(() => onRoostChanged(() => void reloadRoost()), [reloadRoost]);
 
+  // Every account has its bats from the start, and loses them only with the
+  // account. A roost without one means it has gone - perhaps while this letter
+  // was being written - and the profile says so. (Found in the browser: Send
+  // was refused with "Letters can only go to friends", and the bat line said
+  // "All your bats are out".)
+  const roostIsEmpty = roost.data?.length === 0;
+  useEffect(() => {
+    if (roostIsEmpty) void reloadProfile();
+  }, [roostIsEmpty, roost.settledAt, reloadProfile]);
+
   // What became of a send is told to every screen showing that letter: this
   // one, whether it pressed the button itself or was opened while the letter
   // was still on its way out.
@@ -185,6 +195,30 @@ export default function ComposeScreen() {
     if (problem || !courierId || !to || name === null) return;
     void sendLetter(courierId, { id: to, name, city, from });
   }
+
+  // An account that is gone can send nothing, and asking again changes
+  // nothing for it. (Found in the merged tree.) Nor a suspended one, which the
+  // server refuses everything: whichever answer says so first - the bats, the
+  // friends, or Send itself. A count of bats from before the suspension left
+  // "Send by bat" on. (Found in the browser.)
+  const suspension =
+    roost.reason === 'account_suspended'
+      ? roost.error
+      : friendships.reason === 'account_suspended'
+        ? friendships.error
+        : error === REFUSALS.account_suspended
+          ? error
+          : null;
+  const closed = isGone || suspension !== null;
+  // Why, said once, with the way out: in place of everything else on offer.
+  const closedNotice = closed ? (
+    <View style={styles.failed}>
+      <Text variant="caption" tone="danger">
+        {isGone ? profileError : suspension}
+      </Text>
+      <AccountClosedActions />
+    </View>
+  ) : null;
 
   if (dispatched) {
     const { to: went, dispatch, arrived, changed } = dispatched.sent;
@@ -263,9 +297,14 @@ export default function ComposeScreen() {
           The farther away a friend lives, the longer your bat flies.
         </Text>
 
+        {/* A closed account has nobody to write to, and nothing to look for:
+            "You have no friends to write to yet" and Find friends stood
+            where the account's end should have been. (Found in the browser.) */}
+        {closedNotice}
+
         {/* Pointing at a list only where there is one: below it, there may be
             no friend left to choose. (Found in the browser.) */}
-        {to && friendships.data ? (
+        {to && friendships.data && !closed ? (
           <Text variant="caption" tone="danger" style={styles.spaced}>
             {friends.length > 0
               ? 'You can only write to friends. Choose one below.'
@@ -273,27 +312,21 @@ export default function ComposeScreen() {
           </Text>
         ) : null}
 
-        {friendships.error && !friendships.data ? (
+        {friendships.error && !friendships.data && !closed ? (
           <View style={styles.failed}>
             <Text variant="caption" tone="danger">
               {friendships.error}
             </Text>
-            {/* A suspended account would only be refused again. (Found in
-                the browser.) */}
-            {friendships.reason === 'account_suspended' ? (
-              <AccountClosedActions />
-            ) : (
-              <Button
-                label="Try again"
-                variant="secondary"
-                loading={friendships.isRefreshing}
-                onPress={() => void friendships.refresh()}
-              />
-            )}
+            <Button
+              label="Try again"
+              variant="secondary"
+              loading={friendships.isRefreshing}
+              onPress={() => void friendships.refresh()}
+            />
           </View>
         ) : null}
 
-        {friendships.data && friends.length === 0 ? (
+        {friendships.data && friends.length === 0 && !closed ? (
           <View style={styles.actions}>
             <Text variant="body" tone="secondary">
               You have no friends to write to yet.
@@ -302,7 +335,7 @@ export default function ComposeScreen() {
           </View>
         ) : null}
 
-        {friends.length > 0 ? (
+        {friends.length > 0 && !closed ? (
           <Card style={styles.list}>
             {friends.map((friendship) => (
               <FriendRow
@@ -331,17 +364,6 @@ export default function ComposeScreen() {
   // request as the screen opened left "Send by bat" disabled until the screen
   // was left, and the letter with it.)
   const needsCity = profile !== null && !profile.city;
-  // Nor can an account that is gone send anything, and asking again changes
-  // nothing for it. (Found in the merged tree.) Nor a suspended one, which the
-  // server refuses everything: a count of bats from before the suspension
-  // left "Send by bat" on. (Found in the browser.)
-  const suspension =
-    roost.reason === 'account_suspended'
-      ? roost.error
-      : friendships.reason === 'account_suspended'
-        ? friendships.error
-        : null;
-  const closed = isGone || suspension !== null;
   const canSend =
     Boolean(route) && atHome > 0 && !needsCity && !closed && Boolean(profile || profileError);
 
@@ -359,21 +381,40 @@ export default function ComposeScreen() {
 
   // The only place that says why "Send by bat" might be disabled, so it must
   // say something in every state - while the bats are still being counted, and
-  // when they could not be.
-  let batLine: string;
-  if (roost.data) {
+  // when they could not be. But not for a closed account, whose notice says
+  // why, nor for a roost without a bat: "All your bats are out" was untrue of
+  // an account that had gone. (Found in the browser.)
+  let batLine: string | null;
+  if (closed) {
+    batLine = null;
+  } else if (roost.data) {
     const remaining = nextHomeAt === null ? null : nextHomeAt - now;
     batLine =
-      atHome > 0
-        ? `${atHome} of ${bats.length} bats at home. This letter takes one; it comes back when the letter lands.`
-        : remaining === null
-          ? 'All your bats are out.'
-          : remaining > 0
-            ? `All your bats are out. The next one is home in ${formatDuration(remaining)}.`
-            : 'All your bats are out. The next one is landing any moment now.';
+      bats.length === 0
+        ? null
+        : atHome > 0
+          ? `${atHome} of ${bats.length} bats at home. This letter takes one; it comes back when the letter lands.`
+          : remaining === null
+            ? 'All your bats are out.'
+            : remaining > 0
+              ? `All your bats are out. The next one is home in ${formatDuration(remaining)}.`
+              : 'All your bats are out. The next one is landing any moment now.';
   } else {
     batLine = roost.error ?? 'Counting your bats…';
   }
+
+  // Under the letter: a mistake in it, or what became of it. A closed
+  // account's reason is said once, below, and not under the words as if they
+  // were wrong; what is left to say here is whether the letter may have gone.
+  // (Found in the browser: the suspension in red under the letter, and again
+  // below it.) Nothing will check again for it, so that is not promised.
+  const fieldError = isGone
+    ? null
+    : closed
+      ? unanswered?.unknown
+        ? IN_DOUBT
+        : null
+      : (error ?? (unanswered?.unknown ? NOT_KNOWN : null));
 
   return (
     <Screen scroll avoidKeyboard edges={['bottom']} style={styles.screen}>
@@ -395,12 +436,12 @@ export default function ComposeScreen() {
         <Text variant="caption" tone="danger" style={styles.spaced}>
           Choose your city first. Your bats need to know where home is.
         </Text>
-      ) : !profile && profileError ? (
+      ) : !profile && profileError && !isGone ? (
         <View style={styles.failed}>
           <Text variant="caption" tone="danger">
             {profileError}
           </Text>
-          {isGone ? <AccountClosedActions /> : roostMissing ? null : tryAgain}
+          {roostMissing ? null : tryAgain}
         </View>
       ) : null}
 
@@ -412,7 +453,7 @@ export default function ComposeScreen() {
             keepDraft(courierId, to, value);
             if (error) setError(null);
           }}
-          error={error ?? (unanswered?.unknown ? NOT_KNOWN : null)}
+          error={fieldError}
           placeholder={`Dear ${friendName(recipient.friend)},`}
           // The request carries the words as they were when Send was pressed.
           // Anything typed while it is out would be neither sent nor kept.
@@ -430,26 +471,16 @@ export default function ComposeScreen() {
           {length} / {MESSAGE_MAX_LENGTH}
         </Text>
 
-        <Text
-          variant="caption"
-          tone={roost.data ? (atHome > 0 ? 'muted' : 'flying') : roost.error ? 'danger' : 'muted'}
-          style={styles.note}
-        >
-          {batLine}
-        </Text>
-        {suspension !== null && !isGone ? (
-          <View style={styles.failed}>
-            {/* The line above says it already when the bats could not be counted. */}
-            {batLine === suspension ? null : (
-              <Text variant="caption" tone="danger">
-                {suspension}
-              </Text>
-            )}
-            <AccountClosedActions />
-          </View>
-        ) : roostMissing && !closed ? (
-          tryAgain
-        ) : null}
+        {batLine === null ? null : (
+          <Text
+            variant="caption"
+            tone={roost.data ? (atHome > 0 ? 'muted' : 'flying') : roost.error ? 'danger' : 'muted'}
+            style={styles.note}
+          >
+            {batLine}
+          </Text>
+        )}
+        {closedNotice ?? (roostMissing ? tryAgain : null)}
 
         <Button label="Send by bat" loading={sending} disabled={!canSend} onPress={send} />
       </View>
