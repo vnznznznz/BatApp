@@ -279,6 +279,24 @@ describe('FriendsScreen', () => {
       },
     );
 
+    /**
+     * The app writes every username with an @ - "Yours is @mara. Share it
+     * with friends." - and "@anna" typed here was refused as having a
+     * character a username cannot have.
+     */
+    it('asks for someone typed as the app writes them, with the @', async () => {
+      mockedRequestFriend.mockResolvedValue('requested');
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+
+      await ask('@anna');
+
+      expect(mockedRequestFriend).toHaveBeenCalledWith('@anna');
+      expect(
+        await screen.findByText('Request sent. Once @anna accepts, you can write to each other.'),
+      ).toBeOnTheScreen();
+    });
+
     it('lists someone who had already asked among friends straight away', async () => {
       serve(() => []);
       mockedRequestFriend.mockImplementation(async () => {

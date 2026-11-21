@@ -311,6 +311,12 @@ describe('describeRequestOutcome', () => {
       'Request sent. Once @annaweber accepts, you can write to each other.',
     );
   });
+
+  it('names a username typed with its @ with one @', () => {
+    expect(describeRequestOutcome('requested', '@anna')).toBe(
+      'Request sent. Once @anna accepts, you can write to each other.',
+    );
+  });
 });
 
 describe('requestFriend', () => {
@@ -321,6 +327,15 @@ describe('requestFriend', () => {
 
     expect(mockRpc).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith('request_friend', { username: 'annaweber' });
+  });
+
+  /** The app writes usernames with an @, and tells people to share them that way. */
+  it('asks for a username typed with its @ without it', async () => {
+    mockRpc.mockResolvedValue({ data: 'requested', error: null });
+
+    await requestFriend(' @Anna ');
+
+    expect(mockRpc).toHaveBeenCalledWith('request_friend', { username: 'anna' });
   });
 
   it.each<RequestOutcome>(['requested', 'already_requested', 'accepted', 'already_friends'])(

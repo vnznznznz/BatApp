@@ -7,7 +7,11 @@ import {
 } from '@supabase/supabase-js';
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { normaliseUsername } from '@/features/auth/validation';
+import {
+  EMAIL_NOT_ACCEPTED,
+  normaliseUsername,
+  PASSWORD_TOO_LONG,
+} from '@/features/auth/validation';
 import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
@@ -269,17 +273,15 @@ function describeAuthError(error: AuthError): string {
     return 'There is already an account with that email address.';
   }
   // The profile is made by a trigger as the account is saved, and whatever
-  // the trigger refuses, the auth server reports as this, with no reason. The
-  // form checks all the trigger checks but one: whether the username is free.
-  // So that is the likely cause - likely, which is all that can be said.
+  // the trigger refuses, the auth server reports as this, with no reason - a
+  // name with nothing to see in it as well as a taken username. The form
+  // checks all the trigger checks but one, the name by the database's own
+  // rules included: whether the username is free. So that is the likely
+  // cause - likely, which is all that can be said.
   if (said.includes('database error saving new user')) return USERNAME_MAY_BE_TAKEN;
   if (said.includes('user is banned')) return REFUSALS.account_suspended;
-  if (said.includes('unable to validate email address')) {
-    return (
-      'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
-      'cannot be used.'
-    );
-  }
+  // The form refuses such an address itself, in the same words.
+  if (said.includes('unable to validate email address')) return EMAIL_NOT_ACCEPTED;
   if (said.includes('error sending')) return 'The email could not be sent. Try again later.';
 
   // Two limits on emails. One is per address, a minute or so apart; the other
@@ -297,8 +299,9 @@ function describeAuthError(error: AuthError): string {
   if (said.includes('signups not allowed')) return 'New accounts cannot be created at the moment.';
   const shortest = /password should be at least (\d+) characters/.exec(said);
   if (shortest) return `Passwords need at least ${shortest[1]} characters.`;
-  const longest = /password cannot be longer than (\d+) characters/.exec(said);
-  if (longest) return `Passwords can be at most ${longest[1]} characters.`;
+  // "Characters" in the server's words, but it counts bytes: the form says
+  // which, and says it first.
+  if (said.includes('password cannot be longer than')) return PASSWORD_TOO_LONG;
   if (said.includes('different from the old password')) {
     return 'The new password has to differ from the old one.';
   }

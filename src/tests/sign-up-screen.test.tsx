@@ -339,6 +339,96 @@ describe('SignUpScreen', () => {
     expect(screen.getByLabelText('Your name').props.accessibilityHint).toBe(hint);
   });
 
+  /**
+   * What the database or the auth server would refuse is said at the field
+   * before anything is sent. A name the database refuses came back from the
+   * auth server as the same error as a taken username, and was said as one.
+   */
+  describe('what the form checks before asking', () => {
+    const NOTHING_TO_SEE = 'Enter a name your friends will recognise.';
+    const NOT_PLAIN = 'A name cannot contain line breaks or hidden characters.';
+
+    async function fillWith(details: {
+      name?: string;
+      username?: string;
+      email?: string;
+      password?: string;
+    }) {
+      const user = userEvent.setup();
+      const {
+        name = 'Anna Weber',
+        username = 'anna',
+        email = 'anna@example.com',
+        password = 'a-good-password',
+      } = details;
+      await user.type(screen.getByLabelText('Your name'), name);
+      await user.type(screen.getByLabelText('Username'), username);
+      await user.type(screen.getByLabelText('Email'), email);
+      await user.type(screen.getByLabelText('Password'), password);
+      await fireEvent(ageSwitch(), 'valueChange', true);
+      await user.press(button('Create account'));
+    }
+
+    it.each([
+      ['a zero-width space', '\u200B', NOTHING_TO_SEE],
+      ['a Hangul filler', '\u3164', NOTHING_TO_SEE],
+      ['a right-to-left override in it', 'ab\u202Edetpecca', NOT_PLAIN],
+    ])('refuses a name of %s at the name, and sends nothing', async (_, name, said) => {
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ name });
+
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Your name')).toHaveProp('accessibilityHint', said);
+    });
+
+    /** The database counts characters, and 30 emoji are 30 of them, not 60. */
+    it('takes a name of 30 emoji', async () => {
+      mockSignUp.mockResolvedValue({ needsEmailConfirmation: false });
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ name: '🦇'.repeat(30) });
+
+      expect(mockSignUp).toHaveBeenCalledWith(
+        expect.objectContaining({ displayName: '🦇'.repeat(30) }),
+      );
+    });
+
+    /** The app writes usernames with an @, and people share them that way. */
+    it('takes a username typed with its @', async () => {
+      mockSignUp.mockResolvedValue({ needsEmailConfirmation: false });
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ username: '@anna' });
+
+      expect(mockSignUp).toHaveBeenCalledWith(expect.objectContaining({ username: '@anna' }));
+    });
+
+    it('refuses a password longer than the auth server takes, and says why', async () => {
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ password: 'ä'.repeat(40) });
+
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Password').props.accessibilityHint).toMatch(
+        /at most 72 characters long\. Letters such as ä or é count as two/,
+      );
+    });
+
+    it('refuses an address the auth server does not take, in the words it gets for it', async () => {
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ email: 'jürgen@example.de' });
+
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Email')).toHaveProp(
+        'accessibilityHint',
+        'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
+          'cannot be used.',
+      );
+    });
+  });
+
   describe('moving through the form', () => {
     let focus: jest.SpiedFunction<TextInput['focus']>;
 

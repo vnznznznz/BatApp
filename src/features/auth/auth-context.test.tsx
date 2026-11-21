@@ -1334,9 +1334,12 @@ describe('what the courier is told when the auth server says no', () => {
         'Passwords need at least 10 characters.',
       ],
       [
+        // Bytes, in fact, not characters: 40 umlauts are refused with these
+        // words. The form says the same before it asks.
         'the password is longer than the server allows',
         () => authRefusal(400, 'validation_failed', 'Password cannot be longer than 72 characters'),
-        'Passwords can be at most 72 characters.',
+        'Passwords can be at most 72 characters long. Letters such as ä or é count as two, ' +
+          'and emoji as four.',
       ],
       [
         'new accounts are switched off',
@@ -1359,6 +1362,17 @@ describe('what the courier is told when the auth server says no', () => {
 
       expect(await outcomeOf(asked(() => auth.signUp(details)))).toBe(words);
       expect(state()).toBe('signed out');
+    });
+
+    /** The app writes usernames with an @, and people share them that way. */
+    it('sends a username typed with its @ without it', async () => {
+      await opened(() => json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+
+      await asked(() => auth.signUp({ ...details, username: ' @Anna ' }));
+
+      expect(sent.find((request) => request.url.includes('/auth/v1/signup'))?.body).toMatchObject({
+        data: { username: 'anna' },
+      });
     });
 
     it('sends the username as the database stores it, with the name', async () => {
