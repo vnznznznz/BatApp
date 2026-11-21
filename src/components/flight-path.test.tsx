@@ -34,6 +34,28 @@ describe('FlightPath', () => {
     expect(screen.getByText('Munich')).toBeOnTheScreen();
   });
 
+  /**
+   * On one line in half the width - about 148 px on a 360 px phone - a town
+   * told apart from its twin lost what tells it apart: "La Ceiba (131 km
+   * from San Pedro Sula)", "Friedberg (near Frankfurt am Main)". (Found in
+   * the browser.) Each name takes the lines it needs, under its end of the
+   * path, and the path is drawn as before.
+   */
+  it('names both towns whole, however long their names, and draws the path all the same', async () => {
+    const from = 'Friedberg (near Frankfurt am Main)';
+    const to = 'La Ceiba (131 km from San Pedro Sula)';
+    await render(<FlightPath from={from} to={to} progress={0.5} />);
+    await layOut(312);
+
+    expect(screen.getByText(from)).toHaveProp('numberOfLines', 0);
+    expect(screen.getByText(to)).toHaveProp('numberOfLines', 0);
+    expect(
+      screen.getAllByTestId('path-dot-flown').length +
+        screen.getAllByTestId('path-dot-ahead').length,
+    ).toBe(PATH_DOTS);
+    expect(batAt().left).toBeCloseTo(312 / 2 - 34 / 2);
+  });
+
   it('draws nothing until it knows how wide it is', async () => {
     await render(<FlightPath from="Berlin" to="Munich" progress={0.4} />);
 
