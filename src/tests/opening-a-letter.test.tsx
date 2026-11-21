@@ -56,7 +56,12 @@ const mockRpc = jest.fn();
 // it - not the network. Only Supabase's client is replaced: the functions that
 // list the letters and read one are the real ones.
 jest.mock('@/lib/supabase', () => ({
-  supabase: { rpc: (...args: unknown[]) => mockRpc(...args) },
+  supabase: {
+    rpc: (...args: unknown[]) => mockRpc(...args),
+    // Asked to say when the session is renewed: a load that got no answer is
+    // made again then (src/lib/renewal.ts).
+    auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
+  },
 }));
 
 const NOW = new Date('2026-10-31T21:00:00Z').getTime();

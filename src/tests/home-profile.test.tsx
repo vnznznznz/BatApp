@@ -84,6 +84,9 @@ jest.mock('@/lib/supabase', () => {
         mockQueried(table);
         return query;
       },
+      // Asked to say when the session is renewed: a load that got no answer is
+      // made again then (src/lib/renewal.ts).
+      auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
     },
   };
 });

@@ -39,6 +39,9 @@ const mockDatabase = {
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
+    // Asked to say when the session is renewed: a load that got no answer is
+    // made again then (src/lib/renewal.ts).
+    auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
     from: (table: string) => ({
       select: (columns: string) => ({
         eq: (...where: Asked['where']) => ({
