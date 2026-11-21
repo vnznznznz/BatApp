@@ -77,20 +77,31 @@ rather than paperwork.
 
 Recorded where the work is, not only here:
 
-- **Password reset cannot be completed in-app.** The email sends; there is no deep-link handler to
-  catch the return and present a new-password screen. Parked until custom SMTP exists, because
-  until then the mail cannot reach anyone anyway.
-- **The link in an auth email hands a whole sign-in to the URL scheme.** The app asks Supabase
-  Auth for its default way of answering such a link (`src/lib/supabase.ts` sets no `flowType`, and
-  the library's default is `implicit`). Review followed a reset link on the local stack: it ends
-  in a redirect to `nightcourier://#access_token=…&refresh_token=…`, a complete session.
-  Night Courier ignores it - that is the gap above - so it is of use only to whichever other app
-  on the phone answers to `nightcourier://`, and in Expo Go or a browser the link ends on an
-  error although it worked. Once confirmation is on, every sign-up email carries the same. Not
-  fixed here, because the fix is in the app: either ask for the code flow (`flowType: 'pkce'`),
-  where the link carries a one-time code only the device that asked can use, or have people type
-  a code from the email instead of following a link. **Do it before custom SMTP is switched on,**
-  which is the moment these emails start reaching people.
+- ~~**Password reset cannot be completed in-app.**~~ Solved: the email carries an 8-digit code,
+  which is typed into the app together with the new password (`src/app/reset-password.tsx`). It
+  reaches people once custom SMTP exists ("Before a second person can sign up").
+- ~~**The link in an auth email hands a whole sign-in to the URL scheme.**~~ Solved: there is no
+  link. Each of the six emails the auth server sends to confirm an address or a sign-in - the
+  confirmation of a new account, the reset, and four the app never asks for - has a template of
+  the app's, with a code to type into the app and no link (`supabase/templates`, named in
+  `supabase/config.toml`). The app names its sign-in flow itself, `flowType: 'implicit'` in
+  `src/lib/supabase.ts`, and not the code flow (PKCE): with no link in any of them, a verifier
+  kept on the phone would protect nothing. The templates go to the hosted project with its config
+  ("Setting up the hosted project", step 2), before custom SMTP.
+- **Whether an address has an account can still be found out.** The app answers an address that
+  has one as it answers any other, with three exceptions. While email confirmation is off,
+  sign-up says so plainly, by design: a new address is signed in at once anyway. While the
+  project has sent all the emails it may in the hour, sign-up answers an address with a confirmed
+  account differently from one without ("Before a second person can sign up" says how to keep
+  that rare). And sign-up refuses a username that is taken only for an address that has no
+  account yet, so anyone who knows a username can try addresses with it. Closing that needs a
+  change in the database: sign-up that does not fail on a taken username, or a check of usernames
+  that needs no address. The auth server tells by itself, whatever the app shows: within a minute
+  of an email it refuses another only to an address with an account, it answers such an address
+  measurably slower (seen on the local servers), it answers a sign-up for an address with a
+  confirmed account "User already registered" while confirmation by email or by phone is off
+  ("Before a second person can sign up", step 4), it answers a taken username with an error, and
+  it refuses a suspended or removed account's sign-in as such, whatever the password.
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
@@ -106,10 +117,12 @@ Recorded where the work is, not only here:
 2. Start Apple enrolment. _(long lead time, gates TestFlight)_
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
    Phase 11. Push the migrations to the hosted project ("Setting up the hosted project", step 3).
-4. Custom SMTP, then email confirmation on, then finish password reset - and before the first of
-   these, change what an email's link hands over ("Known gaps", above).
+4. Custom SMTP, then email confirmation on ("Before a second person can sign up: custom SMTP").
+   Password reset and confirmation are built: both work by a code from the email, typed into the
+   app, and the codes' settings and the emails' templates go to the project with its config
+   (step 1).
 5. ~~Phase 10 push.~~ Dropped.
-6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
+6. ~~Phase 13a, which App Review will check.~~ Done, and so is Phase 12. Phases 13 and 14 remain.
 7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026, to
    be built with `LAUNCH_STATE=before-launch` for now. Once the project exists in Zurich (step 1)
    and the DPA is signed and dated in `docs/store/gdpr-records.md`, 5.1 - and before anyone but
@@ -349,10 +362,11 @@ nothing that one command sets - a variable, an `export` - is there for the next.
 relies on it. What a later step needs from an earlier one is written down where it arises: the
 project's `<ref>` in the output of step 1's check, the database password in a file.
 
-The commands were tried on 17 November 2026, those that keep the database password in a file on
-21 November, with exactly this version: against a stand-in for Supabase's API, against scratch
-Postgres databases, and, read-only, against the local stack. No hosted project existed then. What that could not show is marked **not yet tried on a real
-project**; go slowly there, and correct this page when you know more.
+The commands were tried on 17 November 2026 - those that keep the database password in a file,
+and step 2's with the emails' codes and templates, on 21 November - with exactly this version:
+against a stand-in for Supabase's API, against scratch Postgres databases, and, read-only, against
+the local stack. No hosted project existed then. What that could not show is marked **not yet
+tried on a real project**; go slowly there, and correct this page when you know more.
 
 1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan, in
    the operator's organisation, with a generated database password that is written neither into
@@ -404,19 +418,41 @@ project**; go slowly there, and correct this page when you know more.
 
    `link` must answer with `"project_ref":"<ref>"`; from then on every command names this project
    as its target. `config diff` changes nothing; read it. Against a new project it lists a handful
-   of settings as `update` - the site URL and the redirect addresses, the minimum password length,
-   and **email confirmation off**: until custom SMTP exists, Supabase's own mailer reaches nobody
-   but the operator, so with confirmation on a friend's sign-up would never complete (see "Before a
-   second person can sign up" below). Those are what `config push` then sends, from
-   `supabase/config.toml`. Settings it lists as `remote_only` are ones the file does not declare;
-   the push leaves them alone.
+   of settings as `update`, or as `local_only` where the project shows no value of its own: the
+   site URL and the redirect addresses, the minimum password length, a recent sign-in before a
+   password is changed, **email confirmation off** - until custom SMTP exists, Supabase's own
+   mailer reaches nobody but the operator, so with confirmation on a friend's sign-up would never
+   complete (see "Before a second person can sign up" below) - and the codes the emails carry:
+   eight digits (`otp_length`), good for a day (`otp_expiry`, 86400 seconds where the project's
+   own is an hour), under the subject "Your Night Courier code" in each of six emails. Those are
+   what `config push` then sends, from `supabase/config.toml`, and with them the six emails' texts
+   from `supabase/templates`, each with a code and no link ("Known gaps already logged").
+   `config diff` does not show the texts: this version of the CLI does not compare them, and left
+   a text changed on the stand-in unmentioned. The push does compare them, and the check below
+   asks it.
 
-   **Check,** twice: these settings decide whether a friend can sign up at all, and nothing in
-   step 4 looks at them.
+   Settings it lists as `remote_only` are ones the file does not declare; the push leaves them
+   alone. Two of them matter here. `max_frequency` is the minute the project waits between two
+   emails to one address: leave it, because the app waits as long itself before it offers a new
+   code (`RESEND_WAIT_SECONDS` in `src/features/auth/use-resend-wait.ts`), and should one ever
+   change, change both. `sms.enable_confirmations` is for "Before a second person can sign up",
+   step 4. The auth server can also send notices of its own, of a changed password or address
+   among others (`[auth.email.notification]` in this CLI's config); the file turns none of them
+   on, and whether a new project sends any is **to check** in the dashboard. Should one ever be
+   turned on, give it a template of the app's too, without a link.
+
+   **Check,** three times: these settings decide whether a friend can sign up at all, and nothing
+   in step 4 looks at them.
 
    - `npx supabase@3.2.0 config diff --output-format json` now ends in a line whose `"counts"` has
      `"update":0` and `"local_only":0`. (Not `--exit-code`: that also counts the `remote_only`
      settings, which are meant to stay.)
+   - The emails' texts, which `config diff` leaves out: `npx supabase@3.2.0 config push --yes`
+     once more. It sends only what still differs from the files, and must now find nothing: its
+     last line has `"service":"auth","status":"up_to_date"`, and a `"message"` that begins
+     `Nothing was pushed`. A text that had not arrived is named in that line under `"changes"`
+     instead - as `["auth","email","template","recovery","content"]`, say - and sent; push once
+     more, and that push must then find nothing.
    - The project itself says so, whatever the CLI believes:
 
      ```bash
@@ -430,8 +466,13 @@ project**; go slowly there, and correct this page when you know more.
      `--reveal`, and never the `secret` or `service_role` entries.
 
    **Not yet tried on a real project:** what a real project's settings look like to `config diff`
-   (the list above comes from a stand-in holding Supabase's defaults as far as they are known), and
-   the settings endpoint on a hosted project (it was read on the local stack).
+   (the list above comes from a stand-in holding Supabase's defaults as far as they are known),
+   the settings endpoint on a hosted project (it was read on the local stack), and whether the
+   project takes everything the push sends - codes that last a day above all. This CLI sends
+   `otp_expiry = 86400` without complaint; whether the project has a ceiling of its own is not
+   known. If the push is refused for it, change `otp_expiry` in `supabase/config.toml`, the words
+   "It works for a day" in each template under `supabase/templates`, and
+   `src/tests/email-codes.test.ts`, which holds the two to each other, in one change.
 
 3. **Apply the migrations:**
 
@@ -457,6 +498,16 @@ project**; go slowly there, and correct this page when you know more.
    `supabase_migrations.schema_migrations`, so that a later push sends only what is new. It never
    runs `supabase/seed.sql`, which is for the local stack only: do not add `--include-seed`, and
    never aim a `db reset` at this project.
+
+   The newest file as this is written, `20261121160000_confirmation_clears_password.sql`, puts a
+   trigger on `auth.users`. As an address that was emailed a code to confirm it is confirmed, the
+   account's password goes, in the same statement: whoever signed up first chose it, and that may
+   have been anyone who typed the address. From then on no password signs in until one is set with
+   the session the code brought, and the app sets one at once - the password typed at sign-up, the
+   one typed at sign-in, or the new one of a reset. While confirmation is off the trigger changes
+   nothing: the auth server confirms each new account as it makes it, emails no code, and the
+   password stays. What it means for an account confirmed by hand is under "Before a second
+   person can sign up".
 
    **Without a password `db push` does not stop.** It asks Supabase's API for a database role of
    its own, good for a short time, and connects as that - the dry run too, and just the same
@@ -795,20 +846,47 @@ anyone who is not on the project's team**, and caps the whole project at two mes
 Until a custom SMTP provider is configured:
 
 - a friend's signup fails silently if email confirmation is on — the account is created and the
-  link never arrives;
+  code never arrives;
 - password reset does not work for anyone but the operator, whatever the confirmation setting is.
 
-Configure a provider under Authentication → Emails → SMTP Settings (Resend, Postmark and SES all
-have free tiers large enough for this app), which also lifts the cap to 30 messages per hour, and
-then turn email confirmation on. Set `enable_confirmations = true` under `[auth.email]` in
-`supabase/config.toml` in the same change, as its comment says: otherwise the next
-`npx supabase@3.2.0 config push --yes` switches confirmation off again, and section 3.10 of the
-privacy policy stops being true. The SMTP settings themselves can stay in the dashboard: the file
-does not declare them, so a push leaves them alone.
+From the day a provider is configured, the emails reach everyone who signs up or asks for a
+reset. In this order:
 
-One thing in the app comes first: what the link in such an email hands over ("Known gaps already
-logged", near the top). From the day a provider is configured, these emails reach everyone who
-signs up or asks for a reset.
+1. The codes' settings and the emails' templates are on the project already: they went with its
+   config ("Setting up the hosted project", step 2, and its check of the texts).
+2. Configure a provider under Authentication → Emails → SMTP Settings (Resend, Postmark and SES
+   all have free tiers large enough for this app). That also lifts the cap to 30 messages per
+   hour. Raise it well above the sign-ups expected in an hour (Authentication → Rate Limits,
+   **to check** where exactly): while the hour's emails are used up, sign-up answers an address
+   that has a confirmed account differently from one that has none ("Known gaps already logged").
+   The SMTP settings themselves can stay in the dashboard: the file does not declare them, so a
+   push leaves them alone.
+3. Try it before anyone depends on it: in the app, "I forgot my password", for the operator's own
+   address. The email must come with the subject "Your Night Courier code", eight digits and no
+   link. Type the code into the app with a new password: the app opens, and from then on that
+   password signs in.
+4. Turn email confirmation on: `enable_confirmations = true` under `[auth.email]` in
+   `supabase/config.toml`, pushed and checked as in step 2. In the file, as its own comments say,
+   and not in the dashboard alone: otherwise the next `npx supabase@3.2.0 config push --yes`
+   switches confirmation off again, and section 3.10 of the privacy policy stops being true. In
+   the same change, `enable_confirmations = true` under `[auth.sms]` as well, while sign-up by
+   phone stays off (`enabled = false`): `config diff` then lists `auth.sms.enable_confirmations`
+   too if the project has it off, and the push sends both (tried against the stand-in). While the
+   project has it off, the auth server answers a sign-up for an address that has a confirmed
+   account with "User already registered", and so tells whoever asks that the address has one;
+   the app passes that on to nobody (seen on the local auth server that has email confirmation
+   on, and phone confirmation off). With both on, the auth server should answer such a sign-up as
+   it answers one for a new address - **to check**, since no server here has both on.
+5. Sign up on a device, with an address whose mail you can read: the code arrives, and typed into
+   the app it signs the new account in.
+
+Once confirmation is on, an account confirmed by hand - with
+`update auth.users set email_confirmed_at = now() where id = '<id>'`, or any other way, since
+the trigger sits on the table - loses its password as well, when a code to confirm it had been
+emailed ("Setting up the hosted project", step 3). Its owner then sets one with "I forgot my
+password", which needs an email of its own. So it does not help someone whose emails do not
+arrive: find out why they do not. A sign-up nobody confirms is deleted after a week, and the
+address can then sign up afresh.
 
 ### Push notifications: none
 
@@ -835,8 +913,10 @@ transits it, so a content-free push keeps message text out of a US processor.
 - **Beta App Review needs a way in.** A fresh account has no friends and no letters, so a reviewer
   who signs up finds no Report or Block button anywhere. Before submitting, create a reviewer
   account and a "Demo Friend" on the hosted project, make them friends, and a day before, send two
-  harmless letters from Demo Friend to the reviewer. Put the reviewer's sign-in in Beta App Review
-  Information, with notes along these lines:
+  harmless letters from Demo Friend to the reviewer. Sign both up in the app, each with an address
+  whose mail you can read: once confirmation is on, each needs its code, and an account confirmed
+  by hand loses its password ("Before a second person can sign up"). Put the reviewer's sign-in in
+  Beta App Review Information, with notes along these lines:
 
   > Report and block: Letters → a letter from Demo Friend → Report this letter, or Block; or
   > Friends → tap Demo Friend → Block / Report. Profile → Safety holds Blocked couriers (each can be
