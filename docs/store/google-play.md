@@ -747,7 +747,8 @@ A short note, not legal advice.
 - [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE, "Before a
       second person can sign up"), and a sign-up and "I forgot my password" tried with the code
       emails on a device, as `app-store.md`, section 7, describes. Then change section 3.10 of both
-      privacy policies as their TO CHECK and PRÜFEN comments say.
+      privacy policies as their TO CHECK and PRÜFEN comments say, and rebuild the pages with a new
+      `EFFECTIVE_DATE` (GO-LIVE, "Where the web pages live").
 - [ ] Supabase DPA signed before the web pages are rebuilt with `LAUNCH_STATE=live`
       (`gdpr-records.md` 5.1; GO-LIVE, "Where the web pages live"), with the safeguard for the USA
       that the privacy policy's section 8 names: until then, its sections 7 and 8 are untrue, and

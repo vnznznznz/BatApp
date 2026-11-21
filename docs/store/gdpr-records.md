@@ -584,7 +584,10 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   E-Mails, die GoTrue schicken kann – zur Anmeldung per Code, zum Adresswechsel, zur Einladung, zur
   erneuten Bestätigung vor einer Änderung –, gibt es nur bei direkter Nutzung der API oder, die
   Einladung, durch den Betreiber; die App hat dafür keine Oberfläche. Auch sie tragen nur einen
-  Code.
+  Code. Hinweise, die GoTrue von sich aus schicken kann (geändertes Passwort, geänderte Adresse und
+  andere; `[auth.email.notification]`), schaltet `supabase/config.toml` nicht ein; ob das gehostete
+  Projekt welche schickt, ist zu prüfen (GO-LIVE, „Setting up the hosted project“, Schritt 2). Ist
+  einer an, gehört er hierher, mit einer Vorlage der App ohne Link.
 - **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO.
 - **Betroffene:** Nutzer; bei falsch eingegebener oder fremder Adresse deren Inhaber.
 - **Daten:** Empfängeradresse; ein Code aus acht Ziffern, der einen Tag gilt; nur der neueste zählt,
@@ -754,10 +757,11 @@ fehlt, steht in 4.8.
 - Anonyme Anmeldung und manuelles Verknüpfen von Identitäten sind aus. Ein Wechsel der E-Mail-Adresse
   muss auf der alten und der neuen Adresse bestätigt werden (`double_confirm_changes`);
   `secure_password_change` ist an.
-- Jede E-Mail von GoTrue trägt einen Code aus acht Ziffern und keinen Link (V10). Ein Link brachte
-  über das URL-Schema der App eine ganze Anmeldung mit, für jede App auf dem Telefon, die auf das
-  Schema hört (`supabase/config.toml`). Die App nutzt deshalb den impliziten Ablauf von supabase-js,
-  nicht PKCE (`src/lib/supabase.ts`).
+- Jede E-Mail, die GoTrue zum Bestätigen, Zurücksetzen, Anmelden, Adresswechsel, Einladen oder
+  erneuten Bestätigen schickt, trägt einen Code aus acht Ziffern und keinen Link (V10). Ein Link
+  brachte über das URL-Schema der App eine ganze Anmeldung mit, für jede App auf dem Telefon, die
+  auf das Schema hört (`supabase/config.toml`). Die App nutzt deshalb den impliziten Ablauf von
+  supabase-js, nicht PKCE (`src/lib/supabase.ts`).
 - Wird eine Adresse bestätigt, der ein Code zum Bestätigen geschickt worden war, nimmt die
   Datenbank dem Konto in derselben Anweisung das Passwort (V1): Wer sich vor der Person, der die
   Adresse gehört, mit ihr registriert hat, meldet sich mit seinem Passwort danach nicht mehr an. Bis

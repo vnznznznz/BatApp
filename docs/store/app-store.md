@@ -642,7 +642,8 @@ it again from step 1, because Apple wants a demo account that does not expire.
       up the hosted project"). Then try a sign-up on a device: the email carries an 8-digit code and
       no link, and the code typed into the app signs the account in. Try "I forgot my password"
       once as well: its code, typed in with a new password, saves the password. Then change section
-      3.10 of both privacy policies as their TO CHECK and PRÜFEN comments say.
+      3.10 of both privacy policies as their TO CHECK and PRÜFEN comments say, and rebuild the pages
+      with a new `EFFECTIVE_DATE` (GO-LIVE, "Where the web pages live").
 - [x] Site repository `vnznznznz.github.io` created (public) and GitHub Pages switched on for it,
       serving `https://vnznznznz.github.io/` (see the top of this file): done on 10 November 2026.
       That it answers over https only is still **to check** in the Pages settings.
