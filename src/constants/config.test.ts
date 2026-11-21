@@ -309,9 +309,12 @@ describe('who can join', () => {
     ["Google's closed test", /at least 12 testers/g],
     ["Google's precise location", /at least 3 km²/g],
     ['when a data protection officer is needed', /ab 20 Personen/g],
-    ['the age of the rule on sexual content', /anyone under 18/g],
+    ['the age of the rule on sexual content', /(?:involving|sent to) anyone under 18/g],
     ["Apple's age ratings", /4\+, 9\+, 13\+, 16\+ and 18\+/g],
-    ["the rating Apple's tables give the app before the override", /\b4\+/g],
+    [
+      "the rating Apple's tables give the app before the override",
+      /(?:at|under|as|expected:) 4\+/g,
+    ],
     ["Play's age groups", /5 and under, 6–8, 9–12, 13–15, 16–17, 18 and over/g],
     ["Play's age groups below the minimum age", /not 5 and under, not 6–8, not 9–12/g],
     [
