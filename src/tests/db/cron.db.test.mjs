@@ -1,112 +1,167 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
+
+import { PGlite } from '@electric-sql/pglite';
 
 import { createCourier, fastForward, makeFriends, rpc } from './fixtures.mjs';
-import { createTestDatabase, migrationFiles } from './harness.mjs';
+import { AUTH_STUB, applyMigrations } from './harness.mjs';
 
 /**
  * The jobs pg_cron runs: delivery every minute, old reports every hour, and the
  * nightly tidy-up the privacy policy relies on.
  *
- * Each migration schedules its job only where pg_cron is available, which
- * PGlite and CI's Postgres are not, so no test ever ran what the jobs run. A
- * command mistyped in a migration would fail every night on the hosted
- * project, and the runbook's look at cron.job shows names and times, not
- * commands. So the jobs are read here out of the migrations as pg_cron would
- * be given them - a name, when it runs, what it runs - and each command is run
- * as written, as the role that scheduled it, on data it has to change.
+ * Each migration schedules its job only where pg_cron is available: it looks
+ * for the extension, creates it, and gives pg_cron a name, a time and a
+ * command. PGlite and CI's Postgres have no pg_cron, so every other database
+ * test goes the way that skips all of that, and nothing went the way the
+ * hosted project goes. A look for pg_cron that never finds it, or a command
+ * mistyped, would leave the hosted project without its jobs, every night, and
+ * the runbook's look at cron.job shows names and times, not commands.
+ *
+ * So PGlite is given a pg_cron of its own here, before the migrations run.
+ * Each migration then finds it, creates it and schedules its job as written;
+ * what was scheduled is read back from cron.job, and each command is run as
+ * pg_cron runs it, on data it has to change.
  */
-
-const MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  '..',
-  'supabase',
-  'migrations',
-);
-
-/** A string literal in SQL, with its quotes doubled inside. */
-const LITERAL = String.raw`'((?:[^']|'')*)'`;
-const CALL = new RegExp(
-  String.raw`cron\.schedule\(\s*${LITERAL}\s*,\s*${LITERAL}\s*,\s*${LITERAL}\s*\)` +
-    String.raw`|cron\.unschedule\(\s*${LITERAL}\s*\)`,
-  'g',
-);
-const unquote = (literal) => literal.replaceAll("''", "'");
 
 /**
- * Every job the migrations leave scheduled, by name. In pg_cron, scheduling a
- * name again replaces the job of that name, and unscheduling it removes it; so
- * here too, in the order the migrations run.
+ * pg_cron, as far as the migrations use it: an extension by that name, with
+ * the table it keeps its jobs in, its log of the runs it made, and
+ * cron.schedule and cron.unschedule as it declares them - in SQL, where
+ * pg_cron's own are C, and without the scheduler that runs them.
  */
-function scheduledJobs() {
-  const jobs = new Map();
-  for (const file of migrationFiles()) {
-    // Comments are left out: what they say is not run.
-    const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8').replace(/^\s*--.*$/gm, '');
-    const calls = [...sql.matchAll(CALL)];
-    const written = sql.match(/cron\.(?:un)?schedule\(/g)?.length ?? 0;
-    assert.equal(
-      calls.length,
-      written,
-      `${file} schedules a job in a way this test cannot read: give cron.schedule three plain string literals`,
-    );
-    for (const [, name, schedule, command, unscheduled] of calls) {
-      if (unscheduled !== undefined) jobs.delete(unquote(unscheduled));
-      else jobs.set(unquote(name), { schedule: unquote(schedule), command: unquote(command) });
-    }
-  }
-  return jobs;
+const PG_CRON = {
+  control: `
+comment = 'Job scheduler for PostgreSQL: a stand-in for the tests, without a scheduler'
+default_version = '1.6'
+relocatable = false
+schema = pg_catalog
+`,
+  script: `
+create schema cron;
+
+create table cron.job (
+  jobid bigserial primary key,
+  schedule text not null,
+  command text not null,
+  nodename text not null default 'localhost',
+  nodeport integer not null default 5432,
+  database text not null default current_database(),
+  username text not null default current_user,
+  active boolean not null default true,
+  jobname text,
+  unique (jobname, username)
+);
+
+create table cron.job_run_details (
+  jobid bigint,
+  runid bigserial primary key,
+  job_pid integer,
+  database text,
+  username text,
+  command text,
+  status text,
+  return_message text,
+  start_time timestamptz,
+  end_time timestamptz
+);
+
+-- A job is run as the role that scheduled it. Scheduling a name again
+-- replaces the job of that name.
+create function cron.schedule(job_name text, schedule text, command text)
+returns bigint
+language sql
+as $$
+  insert into cron.job (jobname, schedule, command)
+  values (job_name, schedule, command)
+  on conflict (jobname, username)
+    do update set schedule = excluded.schedule, command = excluded.command
+  returning jobid
+$$;
+
+create function cron.schedule(schedule text, command text)
+returns bigint
+language sql
+as $$
+  insert into cron.job (schedule, command) values (schedule, command) returning jobid
+$$;
+
+-- Unscheduling a job that is not there is an error in pg_cron.
+create function cron.unschedule(job_name text)
+returns boolean
+language plpgsql
+as $$
+begin
+  delete from cron.job j where j.jobname = job_name and j.username = current_user;
+  if not found then
+    raise exception 'could not find valid entry for job ''%''', job_name;
+  end if;
+  return true;
+end;
+$$;
+
+create function cron.unschedule(job_id bigint)
+returns boolean
+language plpgsql
+as $$
+begin
+  delete from cron.job j where j.jobid = job_id;
+  if not found then
+    raise exception 'could not find valid entry for job %', job_id;
+  end if;
+  return true;
+end;
+$$;
+`,
+};
+
+/**
+ * A test database whose Postgres has pg_cron to offer, as the hosted project's
+ * has, before the migrations run.
+ */
+async function databaseWithPgCron() {
+  const db = new PGlite();
+  await db.waitReady;
+  const { rows } = await db.query(`select setting from pg_config where name = 'SHAREDIR'`);
+  const extensions = `${rows[0].setting}/extension`;
+  db.Module.FS.writeFile(`${extensions}/pg_cron.control`, PG_CRON.control);
+  db.Module.FS.writeFile(`${extensions}/pg_cron--1.6.sql`, PG_CRON.script);
+  const { rows: offered } = await db.query(
+    `select 1 from pg_catalog.pg_available_extensions where name = 'pg_cron'`,
+  );
+  assert.equal(offered.length, 1, `PGlite no longer looks for extensions in ${extensions}`);
+
+  await db.exec(AUTH_STUB);
+  await applyMigrations(db);
+  return db;
 }
 
-const jobs = scheduledJobs();
-
 describe('the jobs pg_cron runs', () => {
+  let db;
+
+  before(async () => {
+    db = await databaseWithPgCron();
+  });
+
+  after(async () => {
+    await db?.close();
+  });
+
   /**
    * Delivery every minute, so a letter lands within a minute of its time even
    * if nobody looks. Old reports hourly, so a report is gone within an hour of
    * its 180 days. The tidy-up once a night, at a time few people are awake.
    */
-  it('are the three the app and the privacy policy rely on, each at its time', () => {
-    assert.deepEqual(Object.fromEntries([...jobs].map(([name, job]) => [name, job.schedule])), {
-      'deliver-due-messages': '* * * * *',
-      'forget-old-reports': '17 * * * *',
-      'tidy-up': '43 4 * * *',
-    });
+  it('are the three the app and the privacy policy rely on, each at its time', async () => {
+    const { rows } = await db.query(`select jobname, schedule from cron.job order by jobname`);
+    assert.deepEqual(rows, [
+      { jobname: 'deliver-due-messages', schedule: '* * * * *' },
+      { jobname: 'forget-old-reports', schedule: '17 * * * *' },
+      { jobname: 'tidy-up', schedule: '43 4 * * *' },
+    ]);
   });
 
   describe('each one, run as pg_cron runs it', () => {
-    let db;
-
-    before(async () => {
-      db = await createTestDatabase();
-      // pg_cron's log of the runs it made, which the tidy-up keeps for a week.
-      // PGlite has no pg_cron, so its table stands in, with pg_cron's columns.
-      await db.exec(`
-        create schema cron;
-        create table cron.job_run_details (
-          jobid bigint,
-          runid bigint primary key,
-          job_pid integer,
-          database text,
-          username text,
-          command text,
-          status text,
-          return_message text,
-          start_time timestamptz,
-          end_time timestamptz
-        );
-      `);
-    });
-
-    after(async () => {
-      await db?.close();
-    });
-
     beforeEach(async () => {
       await db.exec(`
         truncate auth.users cascade;
@@ -122,10 +177,18 @@ describe('the jobs pg_cron runs', () => {
      * migrations run as - here, as on a fresh Supabase project, `postgres` -
      * and with no one signed in.
      */
-    const runJob = (name) => {
-      const job = jobs.get(name);
-      assert.ok(job, `no job named ${name} is scheduled`);
-      return db.query(job.command);
+    const runJob = async (name) => {
+      const { rows } = await db.query(`select command, username from cron.job where jobname = $1`, [
+        name,
+      ]);
+      assert.equal(rows.length, 1, `no job named ${name} is scheduled`);
+      const [{ command, username }] = rows;
+      await db.query(`select set_config('role', $1, false)`, [username]);
+      try {
+        return await db.query(command);
+      } finally {
+        await db.exec(`reset role;`);
+      }
     };
 
     it('deliver-due-messages lands a letter whose time has come, and only that one', async () => {
