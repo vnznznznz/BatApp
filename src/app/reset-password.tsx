@@ -24,13 +24,17 @@ import { CONTACT_URL, openLink } from '@/lib/links';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
-  const { sendPasswordReset } = useAuth();
+  const { sendPasswordReset, unfinished } = useAuth();
+  // A reset whose code has signed the courier in, with the new password not
+  // yet saved - the app closed in between, say - taken up where it was left:
+  // the root layout brings the courier here for it.
+  const [resumed] = useState(() => (unfinished?.flow === 'reset' ? unfinished : null));
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(resumed?.email ?? '');
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   // The address, as sent, once a code has been asked for.
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(resumed?.email ?? null);
   const [busy, setBusy] = useState(false);
   // The keyboard's "go" key is not held back by the button's spinner, and a
   // second tap can come before the spinner is drawn: one code is enough.
@@ -60,7 +64,9 @@ export default function ResetPasswordScreen() {
   }
 
   if (sentTo) {
-    return <NewPasswordForm email={sentTo} onBack={() => setSentTo(null)} />;
+    return (
+      <NewPasswordForm email={sentTo} resumed={resumed !== null} onBack={() => setSentTo(null)} />
+    );
   }
 
   return (
@@ -102,6 +108,17 @@ const NO_EMAIL = 'No email? Look in your spam folder, then ask for the code agai
 const NOT_SAVED =
   'The code was right, and you are signed in, but the new password was not saved. ' +
   'Try again, or sign out.';
+/**
+ * Said of an account a reset's code confirmed that nobody had confirmed
+ * before: set up by a sign-up for the address that was never finished - the
+ * courier's own, or someone else's, with a password and a username of theirs.
+ */
+const NEVER_CONFIRMED =
+  'The code was right, but this address had an account nobody had confirmed: one a sign-up ' +
+  'for it left waiting for its code - perhaps yours, perhaps someone else’s, with a password ' +
+  'and a username you may not have chosen.';
+const REMOVED = `${NEVER_CONFIRMED} It has been removed, with nothing in it, and the address is free: sign up with it to make it yours.`;
+const TO_REMOVE = `${NEVER_CONFIRMED} It has to be removed before the address can be yours, and that could not be done just now.`;
 
 /**
  * The code from the email and the new password, on one screen. The code signs
@@ -110,17 +127,38 @@ const NOT_SAVED =
  * roost. If it is not saved, the code is used up: they are signed in without
  * the password they chose, and are told so, and asked for it again.
  */
-function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void }) {
+function NewPasswordForm({
+  email,
+  resumed,
+  onBack,
+}: {
+  email: string;
+  /** The code has signed the courier in already, on an earlier visit to this screen. */
+  resumed: boolean;
+  onBack: () => void;
+}) {
   const router = useRouter();
-  const { isSettingPassword, sendPasswordReset, verifyResetCode, setNewPassword, signOut } =
-    useAuth();
+  const {
+    isSettingPassword,
+    unfinished,
+    sendPasswordReset,
+    verifyResetCode,
+    setNewPassword,
+    removeUnfinishedAccount,
+    signOut,
+  } = useAuth();
   // The code was right, and signed the courier in, but the password was
   // refused: it is the password alone that is still to be saved, for as long
   // as the code's sign-in holds. Only once it has been refused - the code's
   // session arrives while the password is still on its way, and nothing has
   // gone wrong then.
-  const [notSaved, setNotSaved] = useState(false);
+  const [notSaved, setNotSaved] = useState(resumed);
   const signedInByCode = notSaved && isSettingPassword;
+  // The code confirmed an account nobody had confirmed, and it is still to be
+  // removed: nothing else is to be done with it, a new password least of all.
+  const toRemove = unfinished?.flow === 'reset' && unfinished.remove === true;
+  // ... and once it has been.
+  const [removed, setRemoved] = useState(false);
 
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
@@ -133,13 +171,17 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
   // says so for as long as it is still to be seen on the way.
   const [saved, setSaved] = useState(false);
   // A code has just been asked for, whether or not the address has an account.
-  const { waiting, startWaiting } = useResendWait(true);
+  const { waiting, startWaiting } = useResendWait(!resumed);
   const passwordField = useRef<TextInput>(null);
   // The keyboard stays up while the code is checked, and its "go" key is not
   // held back by the button's spinner. Sent twice, the code was checked twice,
   // and the second check - refused, the first having used it up - is a
   // failure this screen would show while the first was signing the courier in.
   const inFlight = useRef(false);
+  // While the code is checked, or has signed the courier in, nothing on the
+  // screen leads away from it. (Found in review: "Use another address",
+  // pressed while the code was checked, left the hold behind.)
+  const held = busy || isSettingPassword;
 
   function failed(caught: unknown) {
     setFormError(wordsOf(caught));
@@ -171,6 +213,10 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
         // The code field says its own error aloud.
         if (wordsOf(checked.error) === CODE_DID_NOT_WORK) setErrors({ code: CODE_DID_NOT_WORK });
         else failed(checked.error);
+        return;
+      }
+      if (checked.value === 'removed') {
+        setRemoved(true);
         return;
       }
     }
@@ -210,12 +256,58 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
 
   async function leave() {
     setFormError(null);
-    try {
-      await signOut();
-      router.replace('/sign-in');
-    } catch (caught) {
-      failed(caught);
+    const left = await settled(signOut());
+    if (!left.ok) {
+      failed(left.error);
+      return;
     }
+    router.replace('/sign-in');
+  }
+
+  async function remove() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setFormError(null);
+    setBusy(true);
+    const done = await settled(removeUnfinishedAccount());
+    inFlight.current = false;
+    setBusy(false);
+    if (!done.ok) {
+      failed(done.error);
+      return;
+    }
+    setRemoved(true);
+  }
+
+  if (removed) {
+    return (
+      <Screen scroll style={styles.screen}>
+        {/* Signed out: nothing held any more, and the swipe given back. */}
+        <HoldBack holding={false} />
+        <StageHeading key="removed" title="Sign up again" intro={REMOVED} />
+        <View style={styles.form}>
+          <Button label="Sign up" onPress={() => router.replace('/sign-up')} />
+          <Button label="Back" variant="ghost" onPress={() => router.replace('/sign-in')} />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (toRemove && isSettingPassword) {
+    return (
+      <Screen scroll style={styles.screen}>
+        <HoldBack holding={isSettingPassword} />
+        <StageHeading key="remove" title="One more step" intro={TO_REMOVE} />
+        <View style={styles.form}>
+          {formError ? (
+            <Text variant="caption" tone="danger">
+              {formError}
+            </Text>
+          ) : null}
+          <Button label="Try again" loading={busy} onPress={remove} />
+        </View>
+      </Screen>
+    );
   }
 
   if (saved) {
@@ -296,14 +388,14 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
               label="Send the code again"
               variant="ghost"
               loading={sending}
-              disabled={waiting}
+              disabled={waiting || held}
               accessibilityHint={waiting ? WAIT : undefined}
               onPress={sendAgain}
             />
             <Text variant="caption" tone="muted" style={styles.note}>
               {waiting ? (resent ? resentWords(email) : WAIT) : NO_EMAIL}
             </Text>
-            <Button label="Use another address" variant="ghost" onPress={onBack} />
+            <Button label="Use another address" variant="ghost" disabled={held} onPress={onBack} />
             {/* A code that could not be sent is taken for sent, like every
                 answer that would tell whether the address has an account:
                 whoever owns it needs a way to someone who can help. */}

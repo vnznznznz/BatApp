@@ -6,6 +6,7 @@ import { Button } from '@/components/button';
 import { CodeField } from '@/components/code-field';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
+import { TextField } from '@/components/text-field';
 import { BATS_PER_USER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import {
@@ -15,10 +16,10 @@ import {
   type SignUpDetails,
 } from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
-import { settled } from '@/features/auth/settled';
+import { settled, wordsOf } from '@/features/auth/settled';
 import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
-import { EMAIL_CODE_LENGTH, validateEmailCode } from '@/features/auth/validation';
+import { EMAIL_CODE_LENGTH, validateEmailCode, validatePassword } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
 
 type ConfirmEmailProps = {
@@ -35,6 +36,12 @@ type ConfirmEmailProps = {
        */
       reason: 'signed-up';
       details: SignUpDetails;
+      /**
+       * The code has signed the courier in already, on an earlier visit to
+       * this screen - before the app was closed, say - and the account is
+       * still to be set up. The password was never kept: it is asked for.
+       */
+      resumed?: boolean;
     }
   | {
       /**
@@ -47,9 +54,15 @@ type ConfirmEmailProps = {
 
 const WAIT = 'You can ask for a new code a minute after the last one.';
 const NO_EMAIL = 'No email? Look in your spam folder, then ask for the code again.';
+const START_OVER =
+  'Or start over: the account is removed, with nothing in it, and you can sign up again.';
 const UNFINISHED =
-  'Your address is confirmed, and you are signed in, but your account could not be finished ' +
-  'just now. Try again - or sign out, and sign in later with "I forgot my password".';
+  'Your address is confirmed, but your account is not finished: it still has to be given ' +
+  `the password and the name you chose. Try again. ${START_OVER}`;
+const RESUMED =
+  'Your address is confirmed, but your account is not finished: it still has to be given ' +
+  `your password - the one you chose before, or a new one. ${START_OVER}`;
+const STARTED_OVER = 'The account has been removed. You can sign up again.';
 
 /**
  * Asks for the code that confirms an account's address. The right one signs
@@ -61,11 +74,15 @@ const UNFINISHED =
  * difference either. And the account the code confirms is made the one the
  * courier set up before the way in opens: an earlier sign-up for the address,
  * anyone's, may have set it up with a password of its own (see finishSignUp).
+ * Until then nothing on the screen leads anywhere else: signing out would
+ * leave the account, confirmed now, with that password. Starting over removes
+ * it first.
  */
 export function ConfirmEmail(props: ConfirmEmailProps) {
   const { email, onBack } = props;
   // What was typed at sign-up; nothing from signing in.
   const details = props.reason === 'signed-up' ? props.details : null;
+  const resumed = props.reason === 'signed-up' && props.resumed === true;
   const signedUp = details !== null;
   const router = useRouter();
   const {
@@ -73,45 +90,60 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
     confirmEmail,
     confirmSignUp,
     finishSignUp,
+    removeUnfinishedAccount,
     resendConfirmationCode,
-    signOut,
   } = useAuth();
 
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
+  // Asked for only when the screen did not see it typed (`resumed`).
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
+  const [removing, setRemoving] = useState(false);
   // The code was right, and signed the courier in, but the account could not
   // be set up as they set it up: that alone is still to be done, for as long
   // as the code's sign-in holds.
-  const [notFinished, setNotFinished] = useState(false);
+  const [notFinished, setNotFinished] = useState(resumed);
   const unfinished = notFinished && isSettingPassword;
   // An earlier sign-up's account made way for the courier's, and a new code
   // has gone out for theirs.
   const [setUpAgain, setSetUpAgain] = useState(false);
   // A code has just gone - or the address has an account, and none has: the
   // minute is waited for both alike. One from signing in may be days old.
-  const { waiting, startWaiting } = useResendWait(signedUp);
+  const { waiting, startWaiting } = useResendWait(signedUp && !resumed);
   // The number pad's "go" key is not held back by the button's spinner, and a
   // code sent twice is refused the second time, the first having used it up.
   const inFlight = useRef(false);
+  // While a code is checked, or the account it confirmed is not finished,
+  // nothing on the screen leads away from it. (Found in review: "Sign in
+  // instead", pressed while the code was checked, led into the app.)
+  const held = busy || removing || isSettingPassword;
+  // The password the account is to be given: as typed at sign-up, or here.
+  const chosen = details ? { ...details, password: details.password || password } : null;
+  const askForPassword = details !== null && !details.password;
 
   function failed(error: unknown, { atTheCode = false } = {}) {
-    const message = error instanceof Error ? error.message : 'Something went wrong.';
     // The code field says its own error aloud.
-    if (atTheCode && message === CODE_DID_NOT_WORK) {
-      setCodeError(message);
+    if (atTheCode && wordsOf(error) === CODE_DID_NOT_WORK) {
+      setCodeError(CODE_DID_NOT_WORK);
       return;
     }
-    setFormError(message);
-    announce(message);
+    setFormError(wordsOf(error));
+    announce(wordsOf(error));
   }
 
   async function confirm() {
     if (inFlight.current) return;
     setFormError(null);
+    if (unfinished && askForPassword) {
+      const invalid = validatePassword(password);
+      setPasswordError(invalid);
+      if (invalid) return;
+    }
     if (!unfinished) {
       const invalid = validateEmailCode(code);
       setCodeError(invalid);
@@ -128,86 +160,124 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   /** The code, unless it has signed the courier in already, and then the account. */
   async function confirmThenFinish() {
     if (!unfinished) {
+      // A code to check: whatever was left unfinished before was signed out
+      // of, and this one starts afresh.
+      setNotFinished(false);
       // Signed in. From signing in, the root layout sends the courier on
       // (src/app/_layout.tsx); after signing up it waits for the account.
       const checked = await settled(
-        details ? confirmSignUp(email, code) : confirmEmail(email, code),
+        chosen ? confirmSignUp(chosen, code) : confirmEmail(email, code),
       );
       if (!checked.ok) {
         failed(checked.error, { atTheCode: true });
         return;
       }
     }
-    if (details) await finish(details);
+    if (chosen) await finish(chosen);
   }
 
-  async function finish(chosen: SignUpDetails) {
-    try {
-      const outcome = await finishSignUp(chosen);
+  async function finish(account: SignUpDetails) {
+    const done = await settled(finishSignUp(account));
+    if (done.ok) {
       // Signed in, the account the courier's: the root layout sends them on.
-      if (outcome === 'signed in') return;
+      if (done.value === 'signed in') return;
       setCode('');
       setResent(false);
       setSetUpAgain(true);
       startWaiting();
       announce(stageWords('One more code', setUpAgainWords(email)));
-    } catch (error) {
-      // Signed out, the earlier account gone: the code stage, with the reason.
-      // Or asked again on the screen that says the account is not finished:
-      // the reason is all that is new.
-      if (error instanceof SetUpAgainFailed || unfinished) {
-        failed(error);
-        return;
-      }
-      // Still signed in by the code, and held: the screen becomes the one
-      // that asks to try again. The button pressed stays where it was, under
-      // another name, and a screen reader on it hears what has become of the
-      // screen, and why.
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
-      setNotFinished(true);
-      setFormError(message);
-      announce(`${stageWords('Almost there', UNFINISHED)} ${message}`);
+      return;
     }
+    // Signed out: the code stage, with the reason.
+    if (done.error instanceof SetUpAgainFailed) {
+      failed(done.error);
+      return;
+    }
+    // Asked again on the screen that says the account is not finished: the
+    // reason is all that is new.
+    if (unfinished) {
+      failed(done.error);
+      return;
+    }
+    // Still signed in by the code, and held: the screen becomes the one that
+    // asks to try again. The button pressed stays where it was, under another
+    // name, and a screen reader on it hears what has become of the screen, and
+    // why.
+    setNotFinished(true);
+    setFormError(wordsOf(done.error));
+    announce(`${stageWords('Almost there', UNFINISHED)} ${wordsOf(done.error)}`);
+  }
+
+  async function startOver() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setFormError(null);
+    setRemoving(true);
+    const removed = await settled(removeUnfinishedAccount());
+    inFlight.current = false;
+    setRemoving(false);
+    if (!removed.ok) {
+      failed(removed.error);
+      return;
+    }
+    // Signed out, the account gone: back to the form, with what was typed.
+    announce(STARTED_OVER);
+    onBack();
   }
 
   async function sendAgain() {
     setFormError(null);
     setResent(false);
     setSending(true);
-    try {
-      await resendConfirmationCode(email);
-      setResent(true);
-      startWaiting();
-      announce(resentWords(email, signedUp));
-    } catch (error) {
-      failed(error);
-    }
+    const asked = await settled(resendConfirmationCode(email));
     setSending(false);
-  }
-
-  async function leave() {
-    setFormError(null);
-    try {
-      await signOut();
-      router.replace('/sign-in');
-    } catch (error) {
-      failed(error);
+    if (!asked.ok) {
+      failed(asked.error);
+      return;
     }
+    setResent(true);
+    startWaiting();
+    announce(resentWords(email, signedUp));
   }
 
   if (unfinished) {
     return (
       <Screen scroll avoidKeyboard style={styles.screen}>
         <HoldBack holding={isSettingPassword} />
-        <StageHeading title="Almost there" intro={UNFINISHED} />
+        <StageHeading title="Almost there" intro={askForPassword ? RESUMED : UNFINISHED} />
         <View style={styles.form}>
+          {askForPassword ? (
+            <TextField
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              error={passwordError}
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="new-password"
+              textContentType="newPassword"
+              returnKeyType="go"
+              onSubmitEditing={confirm}
+            />
+          ) : null}
           {formError ? (
             <Text variant="caption" tone="danger">
               {formError}
             </Text>
           ) : null}
-          <Button label="Try again" loading={busy} onPress={confirm} />
-          <Button label="Sign out" variant="ghost" onPress={leave} />
+          <Button
+            label={askForPassword ? 'Finish' : 'Try again'}
+            loading={busy}
+            disabled={removing}
+            onPress={confirm}
+          />
+          <Button
+            label="Start over"
+            variant="ghost"
+            loading={removing}
+            disabled={busy}
+            onPress={startOver}
+          />
         </View>
       </Screen>
     );
@@ -257,7 +327,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
           label="Send the code again"
           variant="ghost"
           loading={sending}
-          disabled={waiting}
+          disabled={waiting || held}
           accessibilityHint={waiting ? WAIT : undefined}
           onPress={sendAgain}
         />
@@ -270,9 +340,10 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
             <Button
               label="Sign in instead"
               variant="ghost"
+              disabled={held}
               onPress={() => router.replace('/sign-in')}
             />
-            <Button label="Change the address" variant="ghost" onPress={onBack} />
+            <Button label="Change the address" variant="ghost" disabled={held} onPress={onBack} />
             {/* A mistyped address has an account now, with the username, until
                 the tidy-up deletes a sign-up that was never confirmed. */}
             <Text variant="caption" tone="muted" style={styles.note}>
@@ -281,7 +352,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
             </Text>
           </>
         ) : (
-          <Button label="Back" variant="ghost" onPress={onBack} />
+          <Button label="Back" variant="ghost" disabled={held} onPress={onBack} />
         )}
       </View>
     </Screen>

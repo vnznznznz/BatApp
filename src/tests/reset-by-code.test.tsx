@@ -238,9 +238,16 @@ describe('a password reset by code', () => {
     jest.restoreAllMocks();
   });
 
-  /** Left some other way without a new password, the courier is signed in all the same, and in the app. */
-  it('takes a courier who goes back from the reset screen signed in to the roost', async () => {
-    mockServer.passwordChange.mockResolvedValue({ data: { user: null }, error: SAME });
+  /**
+   * Left some other way without a new password - a browser's back button -
+   * the courier was signed in all the same, and taken into the app, the
+   * password unknown. (Found in review: the root layout held the way in on
+   * this screen only.) They are taken back to it, and asked for the password.
+   */
+  it('takes a courier who goes back from the reset screen back to it, and asks for the password', async () => {
+    mockServer.passwordChange
+      .mockResolvedValueOnce({ data: { user: null }, error: SAME })
+      .mockResolvedValue({ data: { user: SESSION.user }, error: null });
     const app = renderRouter(routes, { initialUrl: '/sign-in', wrapper: withInsets });
     await app;
     await act(() => router.push('/reset-password'));
@@ -255,6 +262,39 @@ describe('a password reset by code', () => {
 
     await act(() => router.back());
 
+    expect(app.getPathname()).toBe('/reset-password');
+    expect(screen.queryByText('Your roost')).toBeNull();
+    expect(screen.getByText('Your new password')).toBeOnTheScreen();
+
+    await user.type(screen.getByLabelText('New password'), 'a brand new password');
+    await user.press(screen.getByRole('button', { name: 'Save the new password' }));
+
+    expect(mockServer.passwordChange).toHaveBeenLastCalledWith({
+      password: 'a brand new password',
+    });
     expect(app.getPathname()).toBe('/home');
+  });
+
+  /** "Use another address" led off the screen while the code was checked. (Found in review.) */
+  it('offers no way off the reset screen while the code is checked', async () => {
+    let answer: () => void = () => {};
+    mockServer.verify.mockImplementationOnce(
+      () => new Promise((resolve) => (answer = () => resolve(codeRight()))),
+    );
+    mockServer.passwordChange.mockResolvedValue({ data: { user: null }, error: SAME });
+    const app = renderRouter(routes, { initialUrl: '/reset-password', wrapper: withInsets });
+    await app;
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.press(screen.getByRole('button', { name: 'Send the code' }));
+    await user.type(screen.getByLabelText('Code'), '87654321');
+    await user.type(screen.getByLabelText('New password'), 'the old password');
+    await user.press(screen.getByRole('button', { name: 'Set the new password' }));
+
+    await user.press(screen.getByRole('button', { name: 'Use another address' }));
+    await act(async () => answer());
+
+    expect(app.getPathname()).toBe('/reset-password');
+    expect(screen.getByText('The new password has to differ from the old one.')).toBeOnTheScreen();
   });
 });

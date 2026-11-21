@@ -24,6 +24,7 @@ const mockConfirmSignUp = jest.fn();
 const mockFinishSignUp = jest.fn();
 const mockResendConfirmationCode = jest.fn();
 const mockSignOut = jest.fn();
+const mockRemoveUnfinishedAccount = jest.fn();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 
@@ -62,6 +63,8 @@ const mockAuth = { real: false, serverSignUp: jest.fn(), serverSettings: jest.fn
  */
 const mockHold = {
   current: false,
+  /** What the code that holds the way in is for, as the app's context says once it has signed in. */
+  unfinished: null as object | null,
   listeners: new Set<() => void>(),
   set(next: boolean) {
     mockHold.current = next;
@@ -86,12 +89,14 @@ jest.mock('@/features/auth/auth-context', () => {
         ? actual.useAuth()
         : {
             isSettingPassword,
+            unfinished: isSettingPassword ? mockHold.unfinished : null,
             signUp: mockSignUp,
             confirmEmail: mockConfirmEmail,
             confirmSignUp: mockConfirmSignUp,
             finishSignUp: mockFinishSignUp,
             resendConfirmationCode: mockResendConfirmationCode,
             signOut: mockSignOut,
+            removeUnfinishedAccount: mockRemoveUnfinishedAccount,
           };
     },
   };
@@ -225,6 +230,9 @@ beforeEach(() => {
     return 'signed in';
   });
   mockSignOut.mockReset().mockImplementation(async () => mockHold.set(false));
+  mockHold.unfinished = null;
+  // Removed, the account is gone and the courier signed out.
+  mockRemoveUnfinishedAccount.mockReset().mockImplementation(async () => mockHold.set(false));
   mockResendConfirmationCode.mockReset();
   mockPush.mockReset();
   mockReplace.mockReset();
@@ -486,6 +494,13 @@ describe('SignUpScreen', () => {
       'If anna@example.com is new here, a code is on its way to it. Type it in below, and your ' +
       '3 bats will be waiting. If you already have an account, sign in instead.';
     const WAIT = 'You can ask for a new code a minute after the last one.';
+    /** What the form was filled in with, which the code confirms the account for. */
+    const TYPED = {
+      email: 'anna@example.com',
+      password: 'a-good-password',
+      username: 'AnnaWeber',
+      displayName: 'Anna Weber',
+    };
 
     let user: ReturnType<typeof userEvent.setup>;
 
@@ -572,7 +587,7 @@ describe('SignUpScreen', () => {
       await user.type(codeField(), '12345678');
       await user.press(button('Confirm'));
 
-      expect(mockConfirmSignUp).toHaveBeenCalledWith('anna@example.com', '12345678');
+      expect(mockConfirmSignUp).toHaveBeenCalledWith(TYPED, '12345678');
       expect(mockFinishSignUp).toHaveBeenCalledWith({
         email: 'anna@example.com',
         password: 'a-good-password',
@@ -597,9 +612,9 @@ describe('SignUpScreen', () => {
 
     describe('when the account could not be set up after the code', () => {
       const UNFINISHED =
-        'Your address is confirmed, and you are signed in, but your account could not be ' +
-        'finished just now. Try again - or sign out, and sign in later with "I forgot my ' +
-        'password".';
+        'Your address is confirmed, but your account is not finished: it still has to be ' +
+        'given the password and the name you chose. Try again. Or start over: the account is ' +
+        'removed, with nothing in it, and you can sign up again.';
       const NO_CONNECTION = 'No connection. Check your network and try again.';
 
       beforeEach(() => {
@@ -648,24 +663,44 @@ describe('SignUpScreen', () => {
         expect(mockFinishSignUp).toHaveBeenCalledTimes(2);
       });
 
-      it('signs out instead, and goes to sign in', async () => {
+      /**
+       * Signing out was offered here, and left the account as the code had
+       * confirmed it: with the password of whoever signed up for the address
+       * first, who could sign in with it from then on - and "I forgot my
+       * password" later kept their username and name. (Found in review.)
+       */
+      it('offers no way to sign out that leaves the account behind', async () => {
         await confirmedUnfinished();
 
-        await user.press(button('Sign out'));
-
-        expect(mockSignOut).toHaveBeenCalledTimes(1);
-        expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+        expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+        expect(screen.queryByText(/I forgot my password/)).toBeNull();
       });
 
-      it('says so when signing out does not work', async () => {
-        const STUCK = 'This device could not be signed out. Try again.';
-        mockSignOut.mockRejectedValue(new Error(STUCK));
+      it('starts over: removes the account, and goes back to the form with what was typed', async () => {
         await confirmedUnfinished();
 
-        await user.press(button('Sign out'));
+        await user.press(button('Start over'));
+
+        expect(mockRemoveUnfinishedAccount).toHaveBeenCalledTimes(1);
+        expect(mockSignOut).not.toHaveBeenCalled();
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(
+          'The account has been removed. You can sign up again.',
+        );
+        expect(screen.getByLabelText('Username').props.value).toBe('AnnaWeber');
+        expect(screen.getByLabelText('Email').props.value).toBe('anna@example.com');
+        expect(button('Create account')).toBeOnTheScreen();
+      });
+
+      it('stays, held, and says why, when the account cannot be removed', async () => {
+        const STUCK = 'Your account could not be deleted. Please try again.';
+        mockRemoveUnfinishedAccount.mockRejectedValue(new Error(STUCK));
+        await confirmedUnfinished();
+
+        await user.press(button('Start over'));
 
         expect(screen.getByText(STUCK)).toBeOnTheScreen();
-        expect(mockReplace).not.toHaveBeenCalled();
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(STUCK);
+        expect(screen.getByText('Almost there')).toBeOnTheScreen();
       });
 
       /**
@@ -699,7 +734,7 @@ describe('SignUpScreen', () => {
         expect(swipeBack()).toBe(false);
         expect(handled()).toBe(true);
 
-        await user.press(button('Sign out'));
+        await user.press(button('Start over'));
         expect(swipeBack()).toBe(true);
         expect(handled()).toBe(false);
         jest.restoreAllMocks();
@@ -759,7 +794,7 @@ describe('SignUpScreen', () => {
 
       await user.type(codeField(), '87654321');
       await user.press(button('Confirm'));
-      expect(mockConfirmSignUp).toHaveBeenLastCalledWith('anna@example.com', '87654321');
+      expect(mockConfirmSignUp).toHaveBeenLastCalledWith(TYPED, '87654321');
     });
 
     it('confirms with the code from the keyboard’s key too, and only once while it is checked', async () => {
@@ -773,7 +808,7 @@ describe('SignUpScreen', () => {
       await user.type(codeField(), '', { skipPress: true, submitEditing: true });
 
       expect(mockConfirmSignUp).toHaveBeenCalledTimes(1);
-      expect(mockConfirmSignUp).toHaveBeenCalledWith('anna@example.com', '12345678');
+      expect(mockConfirmSignUp).toHaveBeenCalledWith(TYPED, '12345678');
     });
 
     it('sends nothing until the code is whole, and says why', async () => {
@@ -808,7 +843,7 @@ describe('SignUpScreen', () => {
       await user.press(button('Confirm'));
 
       expect(mockConfirmSignUp).toHaveBeenCalledTimes(2);
-      expect(mockConfirmSignUp).toHaveBeenLastCalledWith('anna@example.com', '87654321');
+      expect(mockConfirmSignUp).toHaveBeenLastCalledWith(TYPED, '87654321');
     });
 
     it('says other failures under the code, aloud', async () => {
@@ -904,6 +939,133 @@ describe('SignUpScreen', () => {
      * gets "User already registered" (GoTrue v2.197, confirmation on). What the
      * screen then shows has to be the same, to the last word.
      */
+    /**
+     * "Sign in instead", pressed while the code was checked, left the screen
+     * that holds the way in: the code then signed the courier in somewhere
+     * that does not, and the root layout took them into the app before the
+     * account was theirs. (Found in review.)
+     */
+    it('offers no way off the screen while the code is checked', async () => {
+      mockConfirmSignUp.mockImplementation(async () => {
+        mockHold.set(true);
+        await new Promise(() => {});
+      });
+      await signedUp();
+      await passes(60_000);
+      expect(button('Sign in instead')).toBeEnabled();
+      expect(button('Change the address')).toBeEnabled();
+      expect(button('Send the code again')).toBeEnabled();
+
+      await user.type(codeField(), '12345678');
+      await user.press(button('Confirm'));
+
+      expect(button('Sign in instead')).toBeDisabled();
+      expect(button('Change the address')).toBeDisabled();
+      expect(button('Send the code again')).toBeDisabled();
+      await user.press(button('Sign in instead'));
+      await user.press(button('Change the address'));
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(screen.getByText('Check your email')).toBeOnTheScreen();
+    });
+
+    /** However the way in came to be held, the screen that holds it is not left. */
+    it('offers no way off the screen while the way in is held', async () => {
+      await signedUp();
+      await passes(60_000);
+
+      await act(async () => mockHold.set(true));
+
+      expect(button('Sign in instead')).toBeDisabled();
+      expect(button('Change the address')).toBeDisabled();
+      expect(button('Send the code again')).toBeDisabled();
+    });
+
+    /**
+     * The app closed - or the screen left in a browser - once the code had
+     * signed the courier in and before the account was set up. The password
+     * typed at sign-up was never kept; any password will do, the code having
+     * proved the address theirs. (Found in review: the app opened in the roost,
+     * with whatever password and username an earlier sign-up had given the
+     * account.)
+     */
+    describe('taken up again after the code has signed the courier in', () => {
+      const RESUMED =
+        'Your address is confirmed, but your account is not finished: it still has to be ' +
+        'given your password - the one you chose before, or a new one. Or start over: the ' +
+        'account is removed, with nothing in it, and you can sign up again.';
+      const LEFT = {
+        flow: 'sign-up',
+        email: 'anna@example.com',
+        username: 'AnnaWeber',
+        displayName: 'Anna Weber',
+      };
+
+      beforeEach(() => {
+        mockHold.current = true;
+        mockHold.unfinished = LEFT;
+      });
+
+      it('asks for a password to finish the account with, and nothing else', async () => {
+        await renderScreen(<SignUpScreen />);
+
+        expect(screen.getByText('Almost there')).toBeOnTheScreen();
+        expect(screen.getByText(RESUMED)).toBeOnTheScreen();
+        expect(screen.queryByLabelText('Code')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+
+        await user.type(screen.getByLabelText('Password'), 'another-password');
+        await user.press(button('Finish'));
+
+        expect(mockFinishSignUp).toHaveBeenCalledWith({ ...TYPED, password: 'another-password' });
+        expect(mockConfirmSignUp).not.toHaveBeenCalled();
+      });
+
+      it('sends nothing without a password the auth server takes', async () => {
+        await renderScreen(<SignUpScreen />);
+
+        await user.press(button('Finish'));
+
+        expect(mockFinishSignUp).not.toHaveBeenCalled();
+        expect(screen.getByLabelText('Password')).toHaveProp('aria-invalid', true);
+      });
+
+      it('confirms the new code with that password, once the account had to be set up again', async () => {
+        mockFinishSignUp
+          .mockImplementationOnce(async () => {
+            mockHold.set(false);
+            return 'new code';
+          })
+          .mockReturnValueOnce(new Promise(() => {}));
+        await renderScreen(<SignUpScreen />);
+        await user.type(screen.getByLabelText('Password'), 'another-password');
+        await user.press(button('Finish'));
+        expect(screen.getByText('One more code')).toBeOnTheScreen();
+
+        await user.type(codeField(), '87654321');
+        await user.press(button('Confirm'));
+
+        expect(mockConfirmSignUp).toHaveBeenCalledWith(
+          { ...TYPED, password: 'another-password' },
+          '87654321',
+        );
+        // The new account is being set up: nothing is left unfinished to ask about.
+        expect(screen.getByText('One more code')).toBeOnTheScreen();
+        expect(screen.queryByText('Almost there')).toBeNull();
+      });
+
+      it('starts over to a form with what was typed, but the password', async () => {
+        await renderScreen(<SignUpScreen />);
+
+        await user.press(button('Start over'));
+
+        expect(mockRemoveUnfinishedAccount).toHaveBeenCalledTimes(1);
+        expect(screen.getByLabelText('Your name').props.value).toBe('Anna Weber');
+        expect(screen.getByLabelText('Username').props.value).toBe('AnnaWeber');
+        expect(screen.getByLabelText('Email').props.value).toBe('anna@example.com');
+        expect(screen.getByLabelText('Password').props.value).toBe('');
+      });
+    });
+
     it('shows exactly the same for an address that has an account as for a new one', async () => {
       mockAuth.real = true;
       // With confirmation on; with it off, see the test above for that.

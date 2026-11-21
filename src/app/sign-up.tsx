@@ -11,6 +11,7 @@ import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constan
 import { Spacing } from '@/constants/theme';
 import { ALREADY_REGISTERED, USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
 import { ConfirmEmail } from '@/features/auth/confirm-email';
+import { HoldBack } from '@/features/auth/hold-back';
 import { settled, wordsOf } from '@/features/auth/settled';
 import {
   validateDisplayName,
@@ -25,17 +26,23 @@ type Errors = Partial<Record<'email' | 'password' | 'username' | 'displayName', 
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, unfinished } = useAuth();
+  // A sign-up whose code has signed the courier in, with the account not yet
+  // set up - the app closed in between, say - taken up where it was left: the
+  // root layout brings the courier here for it.
+  const [resumed] = useState(() => (unfinished?.flow === 'sign-up' ? unfinished : null));
 
-  const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState(resumed?.displayName ?? '');
+  const [username, setUsername] = useState(resumed?.username ?? '');
+  const [email, setEmail] = useState(resumed?.email ?? '');
   const [password, setPassword] = useState('');
   const [oldEnough, setOldEnough] = useState(false);
   const [ageError, setAgeError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(resumed?.email ?? null);
+  // Until the courier goes back to the form from it.
+  const [resuming, setResuming] = useState(resumed !== null);
   const [busy, setBusy] = useState(false);
   // The fields the keyboard's "next" key moves on to, in order.
   const usernameField = useRef<TextInput>(null);
@@ -97,13 +104,21 @@ export default function SignUpScreen() {
         email={sentTo}
         reason="signed-up"
         details={{ email, password, username, displayName }}
-        onBack={() => setSentTo(null)}
+        resumed={resuming}
+        onBack={() => {
+          setResuming(false);
+          setSentTo(null);
+        }}
       />
     );
   }
 
   return (
     <Screen scroll avoidKeyboard style={styles.screen}>
+      {/* Nothing is held on the form. Said here too: the code screen's swipe, taken
+          away while it held the way in, is not given back by its going - and
+          starting over comes back to the form in the same moment as the hold ends. */}
+      <HoldBack holding={false} />
       <Text variant="title">Join the roost</Text>
       <Text variant="caption" tone="secondary" style={styles.subtitle}>
         {BATS_PER_USER} bats come with the account. There is nothing to buy.

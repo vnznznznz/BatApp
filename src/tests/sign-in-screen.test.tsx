@@ -317,6 +317,19 @@ describe('SignInScreen', () => {
       expect(button('Send the code again')).toBeDisabled();
     });
 
+    it('offers no way back to the form while the code is checked', async () => {
+      mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+      await signedInUnconfirmed();
+      await user.type(screen.getByLabelText('Code'), '12345678');
+
+      await user.press(button('Confirm'));
+
+      expect(button('Back')).toBeDisabled();
+      expect(button('Send the code again')).toBeDisabled();
+      await user.press(button('Back'));
+      expect(screen.getByText('Confirm your address')).toBeOnTheScreen();
+    });
+
     it('goes back to the form, with the address still there', async () => {
       await signedInUnconfirmed();
 

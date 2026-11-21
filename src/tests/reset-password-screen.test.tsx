@@ -19,6 +19,7 @@ const mockSendPasswordReset = jest.fn();
 const mockVerifyResetCode = jest.fn();
 const mockSetNewPassword = jest.fn();
 const mockSignOut = jest.fn();
+const mockRemoveUnfinishedAccount = jest.fn();
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
 
@@ -50,10 +51,17 @@ jest.mock('expo-router', () => {
  * would - the code signs the courier in and holds the way in, the password
  * saved lets go of it, signing out ends both.
  */
+type MockAuthState = {
+  session: object | null;
+  isSettingPassword: boolean;
+  /** What the code that holds the way in is for, once it has signed the courier in. */
+  unfinished: object | null;
+};
+
 const mockAuthState = {
-  current: { session: null as object | null, isSettingPassword: false },
+  current: { session: null, isSettingPassword: false, unfinished: null } as MockAuthState,
   listeners: new Set<() => void>(),
-  set(next: Partial<{ session: object | null; isSettingPassword: boolean }>) {
+  set(next: Partial<MockAuthState>) {
     this.current = { ...this.current, ...next };
     this.listeners.forEach((listener) => listener());
   },
@@ -75,6 +83,7 @@ jest.mock('@/features/auth/auth-context', () => {
       verifyResetCode: mockVerifyResetCode,
       setNewPassword: mockSetNewPassword,
       signOut: mockSignOut,
+      removeUnfinishedAccount: mockRemoveUnfinishedAccount,
     }),
   };
 });
@@ -186,7 +195,7 @@ beforeEach(() => {
       },
     };
   });
-  mockAuthState.current = { session: null, isSettingPassword: false };
+  mockAuthState.current = { session: null, isSettingPassword: false, unfinished: null };
   mockSendPasswordReset.mockReset().mockResolvedValue(undefined);
   mockVerifyResetCode.mockReset().mockImplementation(async () => {
     mockAuthState.set({ session: SESSION, isSettingPassword: true });
@@ -196,6 +205,10 @@ beforeEach(() => {
   });
   mockSignOut.mockReset().mockImplementation(async () => {
     mockAuthState.set({ session: null, isSettingPassword: false });
+  });
+  // Removed, the account is gone and the courier signed out.
+  mockRemoveUnfinishedAccount.mockReset().mockImplementation(async () => {
+    mockAuthState.set({ session: null, isSettingPassword: false, unfinished: null });
   });
   mockReplace.mockReset();
   mockBack.mockReset();
@@ -492,7 +505,7 @@ describe('ResetPasswordScreen', () => {
 
     /** Only a code makes these words true; signed in some other way, nobody is told them. */
     it('asks for the code of a courier signed in some other way', async () => {
-      mockAuthState.current = { session: SESSION, isSettingPassword: false };
+      mockAuthState.current = { session: SESSION, isSettingPassword: false, unfinished: null };
 
       await askedForACode();
 
@@ -717,6 +730,119 @@ describe('ResetPasswordScreen', () => {
       expect(swipeBack()).toBe(true);
       expect(await pressBackOnAndroid()).toBe(false);
     });
+  });
+
+  /**
+   * "Use another address", pressed while the code was checked, left the
+   * screen that holds the way in: with a refused password the courier was
+   * then on the address form, signed in, with nothing said - and "Back" led
+   * into the app. (Found in review.)
+   */
+  it('offers no way off the screen while the code is checked, or has signed the courier in', async () => {
+    mockVerifyResetCode.mockImplementation(async () => {
+      mockAuthState.set({ session: SESSION, isSettingPassword: true });
+      await new Promise(() => {});
+    });
+    await askedForACode();
+    await passes(60_000);
+    expect(button('Use another address')).toBeEnabled();
+    expect(button('Send the code again')).toBeEnabled();
+
+    await typedCodeAndPassword();
+
+    expect(button('Use another address')).toBeDisabled();
+    expect(button('Send the code again')).toBeDisabled();
+    await user.press(button('Use another address'));
+    expect(screen.getByLabelText('Code')).toBeOnTheScreen();
+  });
+
+  /**
+   * GoTrue confirms an address with a reset's code too. An account a sign-up
+   * had left waiting for its code - perhaps a stranger's, with their password,
+   * username and name - became the courier's that way, all of it kept but the
+   * password. The context removes it instead (auth-context.test.tsx); the
+   * screen says so, and leads to signing up. (Found in review.)
+   */
+  describe('an account the code confirmed that nobody had confirmed', () => {
+    const NEVER_CONFIRMED =
+      'The code was right, but this address had an account nobody had confirmed: one a ' +
+      'sign-up for it left waiting for its code - perhaps yours, perhaps someone else’s, with ' +
+      'a password and a username you may not have chosen.';
+    const REMOVED = `${NEVER_CONFIRMED} It has been removed, with nothing in it, and the address is free: sign up with it to make it yours.`;
+    const TO_REMOVE = `${NEVER_CONFIRMED} It has to be removed before the address can be yours, and that could not be done just now.`;
+    const NOT_ANSWERED =
+      'Your account may or may not have been deleted - no answer came back. Check again once ' +
+      'you are online.';
+    const LEFT = { flow: 'reset', email: 'anna@example.com', remove: true };
+
+    it('says it has been removed, saves no password, and leads to signing up', async () => {
+      mockVerifyResetCode.mockResolvedValue('removed');
+      await askedForACode();
+
+      await typedCodeAndPassword();
+
+      expect(screen.getByText('Sign up again')).toBeOnTheScreen();
+      expect(screen.getByText(REMOVED)).toBeOnTheScreen();
+      expect(mockSetNewPassword).not.toHaveBeenCalled();
+      await user.press(button('Sign up'));
+      expect(mockReplace).toHaveBeenCalledWith('/sign-up');
+    });
+
+    it('holds the courier, and asks again, while it could not be removed', async () => {
+      mockVerifyResetCode.mockImplementation(async () => {
+        mockAuthState.set({ session: SESSION, isSettingPassword: true, unfinished: LEFT });
+        throw new Error(NOT_ANSWERED);
+      });
+      await askedForACode();
+
+      await typedCodeAndPassword();
+
+      expect(screen.getByText('One more step')).toBeOnTheScreen();
+      expect(screen.getByText(TO_REMOVE)).toBeOnTheScreen();
+      expect(screen.getByText(NOT_ANSWERED)).toBeOnTheScreen();
+      expect(screen.queryByLabelText('New password')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+      expect(mockSetNewPassword).not.toHaveBeenCalled();
+      expect(swipeBack()).toBe(false);
+
+      await user.press(button('Try again'));
+
+      expect(mockRemoveUnfinishedAccount).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(REMOVED)).toBeOnTheScreen();
+      expect(swipeBack()).toBe(true);
+    });
+
+    it('asks to remove it at once when the app opens on it', async () => {
+      mockAuthState.current = { session: SESSION, isSettingPassword: true, unfinished: LEFT };
+
+      await renderScreen(<ResetPasswordScreen />);
+
+      expect(screen.getByText('One more step')).toBeOnTheScreen();
+      expect(screen.queryByLabelText('Email')).toBeNull();
+    });
+  });
+
+  /**
+   * The app closed once the code had signed the courier in, and before the
+   * new password was saved: it opened in the roost, the password unknown.
+   * The root layout brings the courier back here instead. (Found in review.)
+   */
+  it('asks for the new password alone when the app opens on a reset its code signed in for', async () => {
+    mockAuthState.current = {
+      session: SESSION,
+      isSettingPassword: true,
+      unfinished: { flow: 'reset', email: 'anna@example.com', remove: false },
+    };
+    await renderScreen(<ResetPasswordScreen />);
+
+    expect(screen.getByText('Your new password')).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Code')).toBeNull();
+
+    await user.type(screen.getByLabelText('New password'), 'a new password');
+    await user.press(button('Save the new password'));
+
+    expect(mockVerifyResetCode).not.toHaveBeenCalled();
+    expect(mockSetNewPassword).toHaveBeenCalledWith('a new password');
   });
 
   /** The keyboard's own keys, as on the sign-in and sign-up forms. */

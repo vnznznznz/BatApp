@@ -42,7 +42,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { session, isRestoring, isSettingPassword } = useAuth();
+  const { session, isRestoring, isSettingPassword, unfinished } = useAuth();
   const router = useRouter();
   const segment = useSegments()[0];
   const inApp = segment === '(app)';
@@ -55,10 +55,13 @@ function RootNavigator() {
   // A code from an email signs the courier in before the password they chose
   // is saved: the new one of a reset, or the one typed at sign-up - which
   // replaces whatever password an earlier sign-up for the address gave the
-  // account. Saving it can fail. Until it is saved they stay on the screen
-  // that asked for the code, which says what happened and asks again.
-  const settingPassword =
-    isSettingPassword && (segment === 'reset-password' || segment === 'sign-up');
+  // account. Saving it can fail. Until it is saved they are held: nowhere but
+  // on the screen that asked for the code, which says what happened and asks
+  // again - taken back to it from anywhere else they find themselves, gone
+  // back in a browser or with the app opened again after it was closed.
+  // (Found in review: held only on those two screens, the courier left the
+  // hold behind by any other way off them.)
+  const holdOn = unfinished?.flow === 'reset' ? 'reset-password' : unfinished ? 'sign-up' : null;
 
   useEffect(() => {
     // Holding the splash until the stored session has been read is what stops
@@ -78,10 +81,17 @@ function RootNavigator() {
   // Dismissing first leaves the roost as the only screen in the stack, so back
   // does not return to a sign-in form for an account that is signed in.
   useEffect(() => {
-    if (isRestoring || !session || inApp || forAnyone || settingPassword) return;
+    if (isRestoring || !session) return;
+    if (isSettingPassword) {
+      if (holdOn && segment !== holdOn) {
+        router.replace(holdOn === 'reset-password' ? '/reset-password' : '/sign-up');
+      }
+      return;
+    }
+    if (inApp || forAnyone) return;
     if (router.canDismiss()) router.dismissAll();
     router.replace('/home');
-  }, [isRestoring, session, inApp, forAnyone, settingPassword, router]);
+  }, [isRestoring, session, isSettingPassword, holdOn, segment, inApp, forAnyone, router]);
 
   if (isRestoring) return null;
 

@@ -57,12 +57,19 @@ jest.mock('expo-splash-screen', () => ({
   hideAsync: jest.fn(() => Promise.resolve(true)),
 }));
 
-type MockAuth = { session: object | null; isRestoring: boolean; isSettingPassword: boolean };
+type MockAuth = {
+  session: object | null;
+  isRestoring: boolean;
+  isSettingPassword: boolean;
+  /** What the code that holds the way in is for, once it has signed the courier in. */
+  unfinished: { flow: 'sign-up' | 'reset' } | null;
+};
 
 const mockAuth: MockAuth = {
   session: null,
   isRestoring: false,
   isSettingPassword: false,
+  unfinished: null,
 };
 
 /**
@@ -145,6 +152,7 @@ beforeEach(() => {
   mockAuth.session = SESSION;
   mockAuth.isRestoring = false;
   mockAuth.isSettingPassword = false;
+  mockAuth.unfinished = null;
 });
 
 describe('the root guard', () => {
@@ -254,11 +262,30 @@ describe('the root guard', () => {
       expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
     });
 
-    /** Gone back from the reset screen, they are signed in, and in the app. */
-    it('holds nobody anywhere else', async () => {
+    /**
+     * Gone back from the reset screen - in a browser, say - they were signed
+     * in, and taken into the app, with the password not saved. (Found in
+     * review.) Held wherever they are, they are taken back to it, as they are
+     * when the app opens after it was closed.
+     */
+    it.each([
+      ['the sign-in form', ['sign-in']],
+      ['the welcome screen, as the app opens', []],
+      ['the house rules', ['rules']],
+      ['the app itself', ['(app)', 'home']],
+    ])('takes a courier back to the reset screen from %s', async (_, segments) => {
+      mockAuth.unfinished = { flow: 'reset' };
+
+      await openTheAppOn(...segments);
+
+      expect(mockNavigation).toEqual(['replace /reset-password']);
+    });
+
+    /** Until the code has signed the courier in, what it is for is not known: nowhere to go. */
+    it('sends nobody anywhere while the code is still being checked', async () => {
       await openTheAppOn('sign-in');
 
-      expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+      expect(mockNavigation).toEqual([]);
     });
   });
 
@@ -286,6 +313,34 @@ describe('the root guard', () => {
       await authChanges({ isSettingPassword: false });
 
       expect(mockNavigation).toEqual(['dismissAll', 'replace /home']);
+    });
+
+    /**
+     * Gone from the sign-up screen while the code was checked - "Sign in
+     * instead", or a browser's back - the code then signed the courier in on
+     * a screen that did not hold them, and the root layout took them into the
+     * app before the account was theirs. And the app, closed then, opened in
+     * it. (Found in review.)
+     */
+    it.each([
+      ['the sign-in form', ['sign-in']],
+      ['the welcome screen, as the app opens', []],
+      ['the page for a link that leads nowhere', ['+not-found']],
+      ['the app itself', ['(app)', 'letters']],
+    ])('takes a courier back to the sign-up screen from %s', async (_, segments) => {
+      mockAuth.unfinished = { flow: 'sign-up' };
+
+      await openTheAppOn(...segments);
+
+      expect(mockNavigation).toEqual(['replace /sign-up']);
+    });
+
+    it('leaves a courier on the sign-up screen there', async () => {
+      mockAuth.unfinished = { flow: 'sign-up' };
+
+      await openTheAppOn('sign-up');
+
+      expect(mockNavigation).toEqual([]);
     });
   });
 
