@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -174,6 +182,60 @@ describe('the public web pages', () => {
       build({ ...DETAILS, EFFECTIVE_DATE: date }, out);
       build({ ...LIVE, EFFECTIVE_DATE: date }, out);
     }
+  });
+});
+
+/**
+ * The pages carry the operator's name, address and email, and this repository
+ * is public. "--out ." - the site's checkout mistyped - wrote them into it,
+ * untracked, one `git add -A` from being published with the code.
+ */
+describe('where the pages are built', () => {
+  const REPOSITORY = join(HERE, '..');
+  /**
+   * Every build that is to be refused below lacks a detail as well: were the
+   * check gone, it would stop at that rather than write the pages into this
+   * repository, and still fail the test by its reason.
+   */
+  const NO_NAME = { ...DETAILS };
+  delete NO_NAME.OPERATOR_NAME;
+
+  /** The build run from `cwd`, as an operator would run it there. */
+  const buildFrom = (cwd, env, out) =>
+    execFileSync(process.execPath, [SCRIPT, '--out', out, '--migrations', migrations], {
+      cwd,
+      env: { PATH: process.env.PATH ?? '', ...env },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+
+  const INSIDE = /build-store-pages: --out .+ is inside this repository, which is public/;
+
+  for (const [where, out] of [
+    ['this repository, as "."', '.'],
+    ['this repository, by its whole path', REPOSITORY],
+    ['a folder inside it', 'docs/store'],
+    ['a folder still to be made inside it', join('site', 'night-courier')],
+  ]) {
+    it(`is never ${where}`, () => {
+      assert.throws(() => buildFrom(REPOSITORY, NO_NAME, out), INSIDE);
+    });
+  }
+
+  it('is never inside this repository by way of a link to it', () => {
+    symlinkSync(REPOSITORY, join(scratch, 'link'));
+
+    assert.throws(() => buildFrom(scratch, NO_NAME, join('link', 'site')), INSIDE);
+  });
+
+  it('may be a folder beside this repository whose name begins as its own does', () => {
+    assert.throws(() => buildFrom(REPOSITORY, NO_NAME, `${REPOSITORY}-site`), /set OPERATOR_NAME/);
+  });
+
+  it('may be anywhere outside it', () => {
+    buildFrom(REPOSITORY, DETAILS, out);
+
+    assert.deepEqual(readdirSync(join(out, 'night-courier')).length, 3);
   });
 });
 

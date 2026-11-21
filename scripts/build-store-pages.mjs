@@ -32,11 +32,12 @@
  * loaded from anywhere else. Then commit and push there. docs/GO-LIVE.md,
  * "The web pages", has the whole procedure.
  *
- * Refuses to build when a value is missing, a date does not exist or is still
- * to come, a live build has no date for the agreement, a placeholder is left
- * over, a link within a page leads nowhere, a page would load anything from
- * another site - the privacy policy promises it does not - or this tree's
- * migrations lack a function that a promise on the pages rests on.
+ * Refuses to build into this repository, which is public, by any path; and
+ * when a value is missing, a date does not exist or is still to come, a live
+ * build has no date for the agreement, a placeholder is left over, a link
+ * within a page leads nowhere, a page would load anything from another site -
+ * the privacy policy promises it does not - or this tree's migrations lack a
+ * function that a promise on the pages rests on.
  *
  * --sources <folder> builds from another folder than docs/store/, and
  * --migrations <folder> looks for the functions in another folder than
@@ -44,8 +45,8 @@
  * document, or a tree without a migration, would do.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { marked } from 'marked';
@@ -77,6 +78,32 @@ const option = (name) => {
 const outArg = option('--out');
 if (!outArg) fail('pass --out <the site repository checkout>');
 const OUT = resolve(outArg);
+
+/**
+ * The folder `path` names as the file system has it: through every link, as
+ * far as the folders exist, and the rest as written.
+ */
+function realFolder(path) {
+  const rest = [];
+  let existing = resolve(path);
+  while (!existsSync(existing)) {
+    rest.unshift(basename(existing));
+    existing = dirname(existing);
+  }
+  return join(realpathSync.native(existing), ...rest);
+}
+
+// The pages carry the operator's name, address and email, and this repository
+// is public: built anywhere inside it - "--out ." for the site's checkout,
+// mistyped - they are one `git add -A` from being published with the code.
+// Asked before anything else, so that nothing is written there. A folder
+// beside it whose name begins as its own does is outside it.
+const fromRoot = relative(realFolder(ROOT), realFolder(OUT));
+if (!(fromRoot === '..' || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)))
+  fail(
+    `--out ${outArg} is inside this repository, which is public, and the pages carry the ` +
+      "operator's details. Pass the checkout of the site repository, outside this one",
+  );
 const SOURCES = resolve(option('--sources') ?? join(ROOT, 'docs', 'store'));
 const MIGRATIONS = resolve(option('--migrations') ?? OWN_MIGRATIONS);
 
