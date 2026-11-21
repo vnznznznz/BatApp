@@ -1,5 +1,5 @@
 import fixture from '@/features/cities/fold-parity.fixture.json';
-import { describeCity, fold, MIN_QUERY_LENGTH } from '@/features/cities/search';
+import { cityName, describeCity, fold, MIN_QUERY_LENGTH } from '@/features/cities/search';
 
 describe('fold', () => {
   it('lower-cases and strips diacritics', () => {
@@ -133,6 +133,23 @@ describe('describeCity', () => {
   it('says where a city is that shares its name and country with another', () => {
     expect(describeCity({ name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' })).toBe(
       'Friedberg (near Augsburg), DE',
+    );
+  });
+});
+
+/**
+ * Where a city's name stands without its country - the lists of letters, the
+ * flight path, a letter just sent - "Friedberg" alone could be either.
+ */
+describe('cityName', () => {
+  it('is the name alone for a city whose name is its own', () => {
+    expect(cityName({ name: 'Rösrath' })).toBe('Rösrath');
+    expect(cityName({ name: 'Rösrath', qualifier: null })).toBe('Rösrath');
+  });
+
+  it('says where a city is that shares its name and country with another', () => {
+    expect(cityName({ name: 'Friedberg', qualifier: 'near Augsburg' })).toBe(
+      'Friedberg (near Augsburg)',
     );
   });
 });

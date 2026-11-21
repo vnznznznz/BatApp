@@ -13,7 +13,7 @@ import { TextField } from '@/components/text-field';
 import { MESSAGE_MAX_LENGTH } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
-import { describeCity } from '@/features/cities/search';
+import { cityName, describeCity } from '@/features/cities/search';
 import {
   fetchFriendships,
   friendName,
@@ -113,9 +113,14 @@ export default function ComposeScreen() {
   const friends = groupFriendships(friendships.data ?? []).friends;
   const recipient = to ? (friends.find((f) => f.friend.id === to) ?? null) : null;
   const name = recipient ? friendName(recipient.friend) : null;
-  const city = recipient?.friend.city?.name ?? null;
+  // Where the bat flies to and from, as the letter sent says and draws it: a
+  // town that shares its name says where it is. "It will reach Anna in
+  // Friedberg" was either of two. (Found in review.)
+  const recipientCity = recipient?.friend.city;
+  const city = recipientCity ? cityName(recipientCity) : null;
   // While a move settles, letters still leave from the old city.
-  const from = (profile?.move?.from ?? profile?.city)?.name ?? null;
+  const home = profile?.move?.from ?? profile?.city;
+  const from = home ? cityName(home) : null;
 
   const bats = roost.data ?? [];
   const atHome = countAtHome(bats);
@@ -536,17 +541,22 @@ function FriendRow({
   const started = previewOf(useDraft(courierId, friendship.friend.id));
   const { unanswered } = useSend(courierId, friendship.friend.id);
   const inDoubt = unanswered?.unknown ? previewOf(unanswered.words) : '';
+  // The way there goes where a row has two lines: for a town that shares its
+  // name, "La Ceiba (131 km from San Pedro Sula), HN · 9,296 km · about 4d
+  // 20h" lost its distance and flight time on the one line of a 360 px
+  // screen. (Found in review.) A letter to the friend is pointed out on the
+  // line above it, whose start says what kind of letter it is.
   return (
     <ListRow
       title={friendName(friendship.friend)}
-      subtitle={describeRoute(friendship)}
-      detail={
+      subtitle={
         inDoubt
           ? `A letter that may or may not have gone: ${asOneLine(inDoubt)}`
           : started
             ? `A letter you started: ${asOneLine(started)}`
             : undefined
       }
+      detail={describeRoute(friendship)}
       disabled={!friendship.route}
       onPress={onPress}
     />

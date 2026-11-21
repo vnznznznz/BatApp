@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { AccessibilityInfo, Alert, AppState, type AppStateStatus } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
@@ -359,6 +359,28 @@ describe('LetterScreen', () => {
       expect(
         screen.getByRole('image', { name: describeProgress(progress, 'Berlin', 'Vienna') }),
       ).toBeOnTheScreen();
+    });
+
+    /**
+     * A flight from one Friedberg to the other was drawn from "Friedberg" to
+     * "Friedberg". (Found in review.) The path names a town that shares its
+     * name by where it is, in its labels and to a screen reader alike.
+     */
+    it('names the ends of the path by where they are when another town has their name', async () => {
+      const letter = sentLetter({
+        origin: { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' },
+        destination: { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Frankfurt am Main' },
+      });
+      mockedReadMessage.mockResolvedValue(letter);
+      await renderScreen(<LetterScreen />);
+      await screen.findByText('Ben Okafor');
+
+      const from = 'Friedberg (near Augsburg)';
+      const to = 'Friedberg (near Frankfurt am Main)';
+      const progress = flightProgress(letter.sentAt, letter.deliverAt, NOW);
+      const path = screen.getByRole('image', { name: describeProgress(progress, from, to) });
+      expect(within(path).getByText(from)).toBeOnTheScreen();
+      expect(within(path).getByText(to)).toBeOnTheScreen();
     });
 
     it('draws no flight for a letter that has landed', async () => {

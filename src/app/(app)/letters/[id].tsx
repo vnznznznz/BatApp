@@ -8,7 +8,7 @@ import { FlightPath } from '@/components/flight-path';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
-import { describeCity } from '@/features/cities/search';
+import { cityName, describeCity } from '@/features/cities/search';
 import { correspondentName, readMessage, type Letter } from '@/features/messages/messages';
 import { AccountClosedActions } from '@/features/profile/account-closed';
 import { blockCourier } from '@/features/safety/safety';
@@ -160,8 +160,8 @@ export default function LetterScreen() {
       {!data.delivered ? (
         <View style={styles.path}>
           <FlightPath
-            from={data.origin.name}
-            to={data.destination.name}
+            from={cityName(data.origin)}
+            to={cityName(data.destination)}
             progress={flightProgress(data.sentAt, data.deliverAt, now)}
             active={focused}
           />

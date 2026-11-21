@@ -106,7 +106,16 @@ export const CITY_DATA_CREDIT =
 export function describeCity(
   city: Pick<City, 'name' | 'countryCode'> & { qualifier?: string | null },
 ): string {
-  return city.qualifier
-    ? `${city.name} (${city.qualifier}), ${city.countryCode}`
-    : `${city.name}, ${city.countryCode}`;
+  return `${cityName(city)}, ${city.countryCode}`;
+}
+
+/**
+ * A city's name as short as it can be and still be told apart: "Rösrath" -
+ * and "Friedberg (near Augsburg)" for one of two towns of the same name in
+ * the same country. For where a name stands without its country, as on the
+ * lists of letters and the flight path: "Friedberg" alone was either one.
+ * (Found in review.)
+ */
+export function cityName(city: Pick<City, 'name'> & { qualifier?: string | null }): string {
+  return city.qualifier ? `${city.name} (${city.qualifier})` : city.name;
 }

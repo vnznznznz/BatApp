@@ -379,6 +379,53 @@ describe('ComposeScreen', () => {
       expect(screen.queryByLabelText('Your letter')).toBeNull();
     });
 
+    /**
+     * The way to a friend in a town that shares its name with another is
+     * long: "La Ceiba (131 km from San Pedro Sula), HN · 9,296 km · about 4d
+     * 20h". On the one line it had, a 360 px screen cut off the distance and
+     * the flight time. (Found in review.) It may take two lines.
+     */
+    it('gives the way to a friend two lines, so that a long one is not cut off', async () => {
+      const inLaCeiba = {
+        name: 'La Ceiba',
+        countryCode: 'HN',
+        qualifier: '131 km from San Pedro Sula',
+      };
+      serveFriends(() => [
+        {
+          ...anna,
+          friend: { ...anna.friend, city: inLaCeiba },
+          route: { distanceKm: 9296.2, flightSeconds: 418_329 },
+        },
+      ]);
+      await renderScreen(<ComposeScreen />);
+
+      const route = await screen.findByText(
+        'La Ceiba (131 km from San Pedro Sula), HN · 9,296 km · about 4d 20h',
+      );
+      expect(route).toHaveProp('numberOfLines', 2);
+    });
+
+    /** Beside a letter started to them, the way there keeps its two lines. */
+    it('keeps the two lines for the way when a letter to the friend was started', async () => {
+      serveFriends(() => [anna, eva]);
+      const toAnna = await openLetterTo('user-anna');
+      await fireEvent.changeText(letterField(), 'Dear Anna,\n\nThe chestnuts are out again.');
+      await toAnna.unmount();
+      delete mockParams.to;
+
+      await renderScreen(<ComposeScreen />);
+
+      const annaRow = await screen.findByRole('button', { name: /^Anna Weber/ });
+      expect(within(annaRow).getByText('Munich, DE · 505 km · about 6h 18m')).toHaveProp(
+        'numberOfLines',
+        2,
+      );
+      expect(
+        within(annaRow).getByText('A letter you started: Dear Anna, The chestnuts are out again.'),
+      ).toBeOnTheScreen();
+    });
+
     it('offers only friends, not people with a request still open either way', async () => {
       await renderScreen(<ComposeScreen />);
       await screen.findByText('Who is it for?');
@@ -1034,6 +1081,40 @@ describe('ComposeScreen', () => {
       expect(
         await screen.findByRole('image', { name: 'Bat 0% of the way from Berlin to Munich' }),
       ).toBeOnTheScreen();
+    });
+
+    /**
+     * "It will reach Anna Weber in Friedberg" was either of two towns in
+     * Germany, and so was each end of the flight drawn under it. (Found in
+     * review.)
+     */
+    it('says where a town is that shares its name with another, in words and on the path', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        city: {
+          id: 2924802,
+          name: 'Friedberg',
+          countryCode: 'DE',
+          qualifier: 'near Frankfurt am Main',
+        },
+      };
+      const inFriedberg = { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' };
+      serveFriends(() => [{ ...anna, friend: { ...anna.friend, city: inFriedberg } }]);
+      const { deliverAt } = dispatchToAnna();
+      await openLetterTo('user-anna');
+
+      await writeAndSend('See you at the lake.');
+
+      expect(
+        await screen.findByText(
+          `It will reach Anna Weber in Friedberg (near Augsburg) in 6h 20m, at ${formatTimestamp(deliverAt)}.`,
+        ),
+      ).toBeOnTheScreen();
+      const path = screen.getByRole('image', {
+        name: 'Bat 0% of the way from Friedberg (near Frankfurt am Main) to Friedberg (near Augsburg)',
+      });
+      expect(within(path).getByText('Friedberg (near Frankfurt am Main)')).toBeOnTheScreen();
+      expect(within(path).getByText('Friedberg (near Augsburg)')).toBeOnTheScreen();
     });
 
     it('counts down to the landing', async () => {
