@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -52,13 +52,18 @@ export function ConfirmEmail({ email, reason, onBack }: ConfirmEmailProps) {
   // A code has just gone - or the address has an account, and none has: the
   // minute is waited for both alike. One from signing in may be days old.
   const { waiting, startWaiting } = useResendWait(signedUp);
+  // The number pad's "go" key is not held back by the button's spinner, and a
+  // code sent twice is refused the second time, the first having used it up.
+  const inFlight = useRef(false);
 
   async function confirm() {
+    if (inFlight.current) return;
     const invalid = validateEmailCode(code);
     setCodeError(invalid);
     setFormError(null);
     if (invalid) return;
 
+    inFlight.current = true;
     setBusy(true);
     try {
       await confirmEmail(email, code);
@@ -72,8 +77,10 @@ export function ConfirmEmail({ email, reason, onBack }: ConfirmEmailProps) {
         setFormError(message);
         announce(message);
       }
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function sendAgain() {

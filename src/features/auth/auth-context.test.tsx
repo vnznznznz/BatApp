@@ -1820,6 +1820,84 @@ describe('what the courier is told when the auth server says no', () => {
       expect(auth.isFinishingReset).toBe(false);
     });
 
+    /**
+     * Two checks of the same code at once: the form sent again before it had
+     * drawn its spinner. The second is refused, the first having used the
+     * code up, and its refusal let go of the way in while the first was still
+     * bringing the session the code was right for - and the root layout took
+     * the courier into the app before the new password was saved. (Found in
+     * review.)
+     */
+    it('holds the way in while any check of a code is out, whatever another one is answered', async () => {
+      let answerTheFirst: () => void = () => {};
+      let checks = 0;
+      network = (request) => {
+        if (!isVerify(request)) return json(200, []);
+        checks += 1;
+        if (checks > 1) return authRefusal(403, 'otp_expired', 'Token has expired or is invalid');
+        return new Promise<Response>((resolve) => {
+          answerTheFirst = () => resolve(json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)));
+        });
+      };
+      await openedSignedOut();
+      let first: Promise<string> = Promise.resolve('never asked');
+      await act(async () => {
+        first = outcomeOf(auth.verifyResetCode('anna@example.test', '87654321'));
+        await jest.advanceTimersByTimeAsync(0);
+      });
+
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
+      ).toBe(CODE_DID_NOT_WORK);
+      expect(auth.isFinishingReset).toBe(true);
+
+      await act(async () => {
+        answerTheFirst();
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      await passes(A_MOMENT);
+
+      expect(await first).toBe('done');
+      expect(state()).toBe('signed in');
+      expect(auth.isFinishingReset).toBe(true);
+      expect(rendered.filter((given) => given.session !== null && !given.isFinishingReset)).toEqual(
+        [],
+      );
+    });
+
+    /** And the other way round: the first check is refused while the second brings the session. */
+    it('holds the way in for a check still out when an earlier one is refused', async () => {
+      let refuseTheFirst: () => void = () => {};
+      let checks = 0;
+      network = (request) => {
+        if (!isVerify(request)) return json(200, []);
+        checks += 1;
+        if (checks > 1) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        return new Promise<Response>((resolve) => {
+          refuseTheFirst = () =>
+            resolve(authRefusal(403, 'otp_expired', 'Token has expired or is invalid'));
+        });
+      };
+      await openedSignedOut();
+      let first: Promise<string> = Promise.resolve('never asked');
+      await act(async () => {
+        first = outcomeOf(auth.verifyResetCode('anna@example.test', '87654321'));
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(
+        await outcomeOf(asked(() => auth.verifyResetCode('anna@example.test', '87654321'))),
+      ).toBe('done');
+
+      await act(async () => {
+        refuseTheFirst();
+        await jest.advanceTimersByTimeAsync(0);
+      });
+
+      expect(await first).toBe(CODE_DID_NOT_WORK);
+      expect(state()).toBe('signed in');
+      expect(auth.isFinishingReset).toBe(true);
+    });
+
     /** The code was right, but the session it brought could not be kept on the device. */
     it('holds nothing when the session the code brings cannot be kept', async () => {
       codeRightThen(updated);

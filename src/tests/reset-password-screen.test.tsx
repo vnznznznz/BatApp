@@ -216,6 +216,31 @@ describe('ResetPasswordScreen', () => {
       expect(screen.queryByText('Check your email')).toBeNull();
     });
 
+    it('asks again once the answer has come', async () => {
+      const NO_CONNECTION = 'No connection. Check your network and try again.';
+      mockSendPasswordReset.mockRejectedValueOnce(new Error(NO_CONNECTION));
+      await renderScreen(<ResetPasswordScreen />);
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+      await user.press(button('Send the code'));
+
+      await user.press(button('Send the code'));
+
+      expect(mockSendPasswordReset).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(SENT)).toBeOnTheScreen();
+    });
+
+    /** The keyboard's "go" key is not held back by the button's spinner. */
+    it('asks for one code, however often the form is sent while it is being asked for', async () => {
+      mockSendPasswordReset.mockReturnValue(new Promise(() => {}));
+      await renderScreen(<ResetPasswordScreen />);
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+
+      await user.press(button('Send the code'));
+      await user.type(screen.getByLabelText('Email'), '', { skipPress: true, submitEditing: true });
+
+      expect(mockSendPasswordReset).toHaveBeenCalledTimes(1);
+    });
+
     it('asks nothing for an address that cannot be one', async () => {
       await renderScreen(<ResetPasswordScreen />);
 
@@ -252,6 +277,29 @@ describe('ResetPasswordScreen', () => {
       expect(mockReplace).not.toHaveBeenCalled();
       expect(screen.getByText('Your new password is saved')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Code')).toBeNull();
+    });
+
+    /**
+     * The keyboard stays up while the code is being checked, and its "go" key
+     * is not held back by the button's spinner. Sent twice, the second check
+     * of the code was refused - the first had used it up - and let go of the
+     * way into the app before the new password was saved. (Found in review.)
+     */
+    it('checks the code once, however often the form is sent while it is being checked', async () => {
+      mockVerifyResetCode.mockReturnValue(new Promise(() => {}));
+      await askedForACode();
+      await user.type(screen.getByLabelText('Code'), '87654321');
+      await user.type(screen.getByLabelText('New password'), 'a new password');
+
+      await user.press(button('Set the new password'));
+      await user.type(screen.getByLabelText('New password'), '', {
+        skipPress: true,
+        submitEditing: true,
+      });
+      await user.press(button('Set the new password'));
+
+      expect(mockVerifyResetCode).toHaveBeenCalledTimes(1);
+      expect(mockSetNewPassword).not.toHaveBeenCalled();
     });
 
     it('sends nothing until the code is whole and the password one the server takes', async () => {
@@ -350,6 +398,20 @@ describe('ResetPasswordScreen', () => {
         expect(mockedAnnounce).toHaveBeenCalledWith(SAME);
         expect(screen.queryByLabelText('Code')).toBeNull();
         expect(screen.getByLabelText('New password').props.value).toBe('a new password');
+      });
+
+      it('saves the password once, however often the form is sent while it is being saved', async () => {
+        await askedForACode();
+        await typedCodeAndPassword();
+        mockSetNewPassword.mockReturnValue(new Promise(() => {}));
+
+        await user.press(button('Save the new password'));
+        await user.type(screen.getByLabelText('New password'), '', {
+          skipPress: true,
+          submitEditing: true,
+        });
+
+        expect(mockSetNewPassword).toHaveBeenCalledTimes(2);
       });
 
       it('saves another password, with no code asked for again', async () => {

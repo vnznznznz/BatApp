@@ -98,7 +98,15 @@ const signOutsSoFar = () => signOutsAnnounced;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
-  const [isFinishingReset, setIsFinishingReset] = useState(false);
+  // How many reset codes are being checked just now, and whether one of them
+  // has signed the courier in with the new password still to be saved. Either
+  // holds the way in. Counted, not one flag: the form can send the same code
+  // twice before it has drawn its spinner, and the second check - refused,
+  // the first having used the code up - must not let go of the hold the
+  // first still needs for the session it brings.
+  const [resetCodesOut, setResetCodesOut] = useState(0);
+  const [signedInByResetCode, setSignedInByResetCode] = useState(false);
+  const isFinishingReset = resetCodesOut > 0 || signedInByResetCode;
 
   useEffect(() => {
     let active = true;
@@ -129,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!active) return;
       // A reset cannot be finished without the session its code brought. Every
       // sign-out is announced, the app's own included (see signOutsAnnounced).
-      if (event === 'SIGNED_OUT') setIsFinishingReset(false);
+      if (event === 'SIGNED_OUT') setSignedInByResetCode(false);
       // The client also says "no session" when it only could not renew one
       // just now. Whoever is signed in stays so for as long as the session is
       // on this device; the client removes it before it announces a sign-out.
@@ -274,21 +282,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signedOutUnheard = false;
         // Before the code goes: the session it brings is announced while the
         // answer is still arriving, and must find the way into the app held.
-        setIsFinishingReset(true);
-        let error: AuthError | null;
+        setResetCodesOut((count) => count + 1);
         try {
-          ({ error } = await supabase.auth.verifyOtp({
+          const { error } = await supabase.auth.verifyOtp({
             type: 'recovery',
             email: email.trim(),
             token: code,
-          }));
-        } catch (cause) {
-          setIsFinishingReset(false);
-          throw cause;
-        }
-        if (error) {
-          setIsFinishingReset(false);
-          throw explained(error);
+          });
+          if (error) throw explained(error);
+          // Held on past this check, until the new password is saved.
+          setSignedInByResetCode(true);
+        } finally {
+          setResetCodesOut((count) => count - 1);
         }
       },
 
@@ -298,7 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // courier can try another password, or sign out.
         if (error) throw explained(error);
         // The reset is finished, and the way into the app opens.
-        setIsFinishingReset(false);
+        setSignedInByResetCode(false);
       },
 
       async deleteAccount() {

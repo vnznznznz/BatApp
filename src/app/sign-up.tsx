@@ -40,8 +40,12 @@ export default function SignUpScreen() {
   const usernameField = useRef<TextInput>(null);
   const emailField = useRef<TextInput>(null);
   const passwordField = useRef<TextInput>(null);
+  // The keyboard's "go" key is not held back by the button's spinner, and a
+  // second tap can come before the spinner is drawn: once is enough.
+  const inFlight = useRef(false);
 
   async function submit() {
+    if (inFlight.current) return;
     const next: Errors = {
       displayName: validateDisplayName(displayName),
       username: validateUsername(username),
@@ -59,6 +63,7 @@ export default function SignUpScreen() {
     if (tooYoung) announce(tooYoung);
     if (Object.values(next).some(Boolean) || tooYoung) return;
 
+    inFlight.current = true;
     setBusy(true);
     try {
       const { needsEmailConfirmation } = await signUp({ email, password, username, displayName });
@@ -73,6 +78,7 @@ export default function SignUpScreen() {
       if (message === USERNAME_MAY_BE_TAKEN) setErrors({ ...next, username: message });
       else setFormError(message);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }

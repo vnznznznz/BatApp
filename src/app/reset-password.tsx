@@ -29,27 +29,32 @@ export default function ResetPasswordScreen() {
   // The address, as sent, once a code has been asked for.
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The keyboard's "go" key is not held back by the button's spinner, and a
+  // second tap can come before the spinner is drawn: one code is enough.
+  const inFlight = useRef(false);
 
   async function submit() {
+    if (inFlight.current) return;
     const next = validateEmail(email);
     setError(next);
     setFormError(null);
     if (next) return;
 
+    inFlight.current = true;
     setBusy(true);
     try {
       await sendPasswordReset(email);
+      // Shown whether or not the address is registered: telling the difference
+      // would let anyone check who has an account here.
+      setSentTo(email.trim());
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Something went wrong.';
       setFormError(message);
       announce(message);
+    } finally {
+      inFlight.current = false;
       setBusy(false);
-      return;
     }
-    // Shown whether or not the address is registered: telling the difference
-    // would let anyone check who has an account here.
-    setSentTo(email.trim());
-    setBusy(false);
   }
 
   if (sentTo) {
@@ -120,6 +125,11 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
   // A code has just been asked for, whether or not the address has an account.
   const { waiting, startWaiting } = useResendWait(true);
   const passwordField = useRef<TextInput>(null);
+  // The keyboard stays up while the code is checked, and its "go" key is not
+  // held back by the button's spinner. Sent twice, the code was checked twice,
+  // and the second check - refused, the first having used it up - is a
+  // failure this screen would show while the first was signing the courier in.
+  const inFlight = useRef(false);
 
   function failed(caught: unknown) {
     const message = caught instanceof Error ? caught.message : 'Something went wrong.';
@@ -128,6 +138,7 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
   }
 
   async function submit() {
+    if (inFlight.current) return;
     const next = {
       code: signedInByCode ? null : validateEmailCode(code),
       password: validatePassword(password),
@@ -136,28 +147,32 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
     setFormError(null);
     if (next.code || next.password) return;
 
+    inFlight.current = true;
     setBusy(true);
-    if (!signedInByCode) {
-      try {
-        await verifyResetCode(email, code);
-      } catch (caught) {
-        // The code field says its own error aloud.
-        if (caught instanceof Error && caught.message === CODE_DID_NOT_WORK) {
-          setErrors({ code: caught.message });
-        } else {
-          failed(caught);
-        }
-        setBusy(false);
-        return;
-      }
-    }
     try {
-      await setNewPassword(password);
-      setSaved(true);
-    } catch (caught) {
-      failed(caught);
+      if (!signedInByCode) {
+        try {
+          await verifyResetCode(email, code);
+        } catch (caught) {
+          // The code field says its own error aloud.
+          if (caught instanceof Error && caught.message === CODE_DID_NOT_WORK) {
+            setErrors({ code: caught.message });
+          } else {
+            failed(caught);
+          }
+          return;
+        }
+      }
+      try {
+        await setNewPassword(password);
+        setSaved(true);
+      } catch (caught) {
+        failed(caught);
+      }
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function sendAgain() {

@@ -150,6 +150,43 @@ describe('SignInScreen', () => {
     });
   });
 
+  /** The keyboard's "go" key is not held back by the button's spinner. */
+  it('signs in once, however often the form is sent while it is being answered', async () => {
+    mockSignIn.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderScreen(<SignInScreen />);
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.type(screen.getByLabelText('Password'), 'a-good-password');
+
+    await user.press(screen.getByRole('button', { name: 'Sign in' }));
+    await user.type(screen.getByLabelText('Password'), '', {
+      skipPress: true,
+      submitEditing: true,
+    });
+
+    expect(mockSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('can be sent again once the answer has come', async () => {
+    const NO_MATCH = 'That email and password do not match an account.';
+    mockSignIn
+      .mockRejectedValueOnce(new Error(NO_MATCH))
+      .mockResolvedValue({ needsEmailConfirmation: false });
+    const user = userEvent.setup();
+    await renderScreen(<SignInScreen />);
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.type(screen.getByLabelText('Password'), 'a-wrong-password');
+    await user.press(screen.getByRole('button', { name: 'Sign in' }));
+    expect(screen.getByText(NO_MATCH)).toBeOnTheScreen();
+
+    await user.clear(screen.getByLabelText('Password'));
+    await user.type(screen.getByLabelText('Password'), 'a-good-password');
+    await user.press(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(mockSignIn).toHaveBeenCalledTimes(2);
+    expect(mockSignIn).toHaveBeenLastCalledWith('anna@example.com', 'a-good-password');
+  });
+
   /**
    * "Check your email and confirm your address first" was all the form said,
    * and it led nowhere: a link that had run out could not be sent again. The
@@ -197,6 +234,20 @@ describe('SignInScreen', () => {
       await user.type(screen.getByLabelText('Code'), '87654321');
       await user.press(button('Confirm'));
 
+      expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '87654321');
+    });
+
+    it('confirms with the code from the keyboard’s key too, and only once while it is checked', async () => {
+      mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+      await signedInUnconfirmed();
+      expect(screen.getByLabelText('Code')).toHaveProp('returnKeyType', 'go');
+
+      await user.type(screen.getByLabelText('Code'), '87654321', { submitEditing: true });
+      expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
+      await user.press(button('Confirm'));
+      await user.type(screen.getByLabelText('Code'), '', { skipPress: true, submitEditing: true });
+
+      expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
       expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '87654321');
     });
 

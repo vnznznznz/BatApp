@@ -391,6 +391,20 @@ describe('SignUpScreen', () => {
       expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '12345678');
     });
 
+    it('confirms with the code from the keyboard’s key too, and only once while it is checked', async () => {
+      mockConfirmEmail.mockReturnValue(new Promise(() => {}));
+      await signedUp();
+      expect(codeField()).toHaveProp('returnKeyType', 'go');
+
+      await user.type(codeField(), '12345678', { submitEditing: true });
+      expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
+      await user.press(button('Confirm'));
+      await user.type(codeField(), '', { skipPress: true, submitEditing: true });
+
+      expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
+      expect(mockConfirmEmail).toHaveBeenCalledWith('anna@example.com', '12345678');
+    });
+
     it('sends nothing until the code is whole, and says why', async () => {
       await signedUp();
 
@@ -410,6 +424,22 @@ describe('SignUpScreen', () => {
 
       expect(screen.getAllByText(CODE_DID_NOT_WORK)).toHaveLength(1);
       expect(codeField()).toHaveProp('accessibilityHint', CODE_DID_NOT_WORK);
+    });
+
+    it('takes another code after one that did not work', async () => {
+      mockConfirmEmail
+        .mockRejectedValueOnce(new Error(CODE_DID_NOT_WORK))
+        .mockResolvedValue(undefined);
+      await signedUp();
+      await user.type(codeField(), '12345678');
+      await user.press(button('Confirm'));
+
+      await user.clear(codeField());
+      await user.type(codeField(), '87654321');
+      await user.press(button('Confirm'));
+
+      expect(mockConfirmEmail).toHaveBeenCalledTimes(2);
+      expect(mockConfirmEmail).toHaveBeenLastCalledWith('anna@example.com', '87654321');
     });
 
     it('says other failures under the code, aloud', async () => {
@@ -700,6 +730,22 @@ describe('SignUpScreen', () => {
       await user.type(screen.getByLabelText('Email'), 'anna@example.com', { submitEditing: true });
       expect(focused()).toEqual(['Username', 'Email', 'Password']);
       expect(mockSignUp).not.toHaveBeenCalled();
+    });
+
+    /** The keyboard's "go" key is not held back by the button's spinner. */
+    it('creates one account, however often the form is sent while it is being answered', async () => {
+      mockSignUp.mockReturnValue(new Promise(() => {}));
+      const user = userEvent.setup();
+      await renderScreen(<SignUpScreen />);
+      await fillForm();
+
+      await user.press(button('Create account'));
+      await user.type(screen.getByLabelText('Password'), '', {
+        skipPress: true,
+        submitEditing: true,
+      });
+
+      expect(mockSignUp).toHaveBeenCalledTimes(1);
     });
 
     it('creates the account from the password’s key', async () => {

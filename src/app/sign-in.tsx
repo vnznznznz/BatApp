@@ -23,13 +23,18 @@ export default function SignInScreen() {
   // The address, as sent, while it is waiting for the code that confirms it.
   const [unconfirmed, setUnconfirmed] = useState<string | null>(null);
   const passwordField = useRef<TextInput>(null);
+  // The keyboard's "go" key is not held back by the button's spinner, and a
+  // second tap can come before the spinner is drawn: once is enough.
+  const inFlight = useRef(false);
 
   async function submit() {
+    if (inFlight.current) return;
     const next = { email: validateEmail(email), password: validatePassword(password) };
     setErrors(next);
     setFormError(null);
     if (next.email || next.password) return;
 
+    inFlight.current = true;
     setBusy(true);
     try {
       const { needsEmailConfirmation } = await signIn(email, password);
@@ -39,6 +44,7 @@ export default function SignInScreen() {
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
