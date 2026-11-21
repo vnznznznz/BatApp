@@ -27,8 +27,12 @@ import { useLingering } from '@/lib/use-lingering';
 type ConfirmEmailProps = {
   /** The address the code went to, as it was sent. */
   email: string;
-  /** Back to the form the courier came from, everything typed still in it. */
-  onBack: () => void;
+  /**
+   * Back to the form the courier came from, everything typed still in it -
+   * with what the form is to say, when the way back was signing out or
+   * starting over: said aloud here, and drawn there.
+   */
+  onBack: (notice?: string) => void;
 } & (
   | {
       /**
@@ -264,7 +268,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
     }
     // Signed out, the account gone: back to the form, with what was typed.
     announce(STARTED_OVER);
-    onBack();
+    onBack(STARTED_OVER);
   }
 
   /**
@@ -285,7 +289,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
       return;
     }
     announce(SIGNED_OUT);
-    onBack();
+    onBack(SIGNED_OUT);
   }
 
   async function sendAgain() {
@@ -422,7 +426,12 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
               disabled={held}
               onPress={() => router.replace('/sign-in')}
             />
-            <Button label="Change the address" variant="ghost" disabled={held} onPress={onBack} />
+            <Button
+              label="Change the address"
+              variant="ghost"
+              disabled={held}
+              onPress={() => onBack()}
+            />
             {/* A mistyped address has an account now, with the username, until
                 the tidy-up deletes a sign-up that was never confirmed. */}
             <Text variant="caption" tone="muted" style={styles.note}>
@@ -431,7 +440,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
             </Text>
           </>
         ) : (
-          <Button label="Back" variant="ghost" disabled={held} onPress={onBack} />
+          <Button label="Back" variant="ghost" disabled={held} onPress={() => onBack()} />
         )}
       </View>
     </Screen>

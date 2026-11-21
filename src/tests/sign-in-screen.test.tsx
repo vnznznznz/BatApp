@@ -455,18 +455,44 @@ describe('SignInScreen', () => {
         expect(mockConfirmEmail).toHaveBeenCalledTimes(1);
       });
 
+      /**
+       * Said aloud alone, the way back in reached nobody who reads the screen,
+       * and the form still held the password confirming the address had taken
+       * away: signing in with it again was answered as a wrong password.
+       * (Found in review, in the browser.)
+       */
       it('signs out instead, and goes back to the form, saying how to sign in now', async () => {
+        const SIGNED_OUT = 'Signed out. To sign in, set a password with "I forgot my password".';
         await notSaved();
         mockSignOut.mockImplementation(async () => mockHold.set(false));
 
         await user.press(button('Sign out'));
 
         expect(mockSignOut).toHaveBeenCalledTimes(1);
-        expect(mockedAnnounce).toHaveBeenLastCalledWith(
-          'Signed out. To sign in, set a password with "I forgot my password".',
-        );
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(SIGNED_OUT);
+        expect(mockedAnnounce).toHaveBeenCalledTimes(2);
+        expect(screen.getByText(SIGNED_OUT)).toBeOnTheScreen();
+        // The address as typed; the password that no longer works, gone.
+        expect(screen.getByLabelText('Email').props.value.trim()).toBe('anna@example.com');
+        expect(screen.getByLabelText('Password').props.value).toBe('');
         expect(screen.getByRole('button', { name: 'Sign in' })).toBeOnTheScreen();
         expect(mockFinishSignIn).toHaveBeenCalledTimes(1);
+      });
+
+      it('says how to sign in now until the courier tries again', async () => {
+        const SIGNED_OUT = 'Signed out. To sign in, set a password with "I forgot my password".';
+        await notSaved();
+        mockSignOut.mockImplementation(async () => mockHold.set(false));
+        await user.press(button('Sign out'));
+        const NO_MATCH = 'That email and password do not match an account.';
+        mockSignIn.mockRejectedValue(new Error(NO_MATCH));
+
+        await user.type(screen.getByLabelText('Password'), 'a-new-password');
+        await user.press(button('Sign in'));
+
+        // Still on the form: what it says now is why this try failed.
+        expect(screen.getByText(NO_MATCH)).toBeOnTheScreen();
+        expect(screen.queryByText(SIGNED_OUT)).toBeNull();
       });
 
       it('asks for a code again, with the reason, once the code’s sign-in has ended', async () => {

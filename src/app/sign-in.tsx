@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
+import { Card } from '@/components/card';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
@@ -31,6 +32,10 @@ export default function SignInScreen() {
   const [unconfirmed, setUnconfirmed] = useState<string | null>(resumed?.email ?? null);
   // Until the courier goes back to the form from it.
   const [resuming, setResuming] = useState(resumed !== null);
+  // What the code screen has to say on the way back to the form: signed out,
+  // and how to sign in now. Read aloud alone, it reached nobody who reads the
+  // screen. (Found in review.) Until the courier tries again.
+  const [notice, setNotice] = useState<string | null>(null);
   const passwordField = useRef<TextInput>(null);
   // The keyboard's "go" key is not held back by the button's spinner, and a
   // second tap can come before the spinner is drawn: once is enough.
@@ -48,6 +53,7 @@ export default function SignInScreen() {
     const next = { email: validateEmail(email), password: validatePassword(password) };
     setErrors(next);
     setFormError(null);
+    setNotice(null);
     if (next.email || next.password) return;
 
     inFlight.current = true;
@@ -76,9 +82,14 @@ export default function SignInScreen() {
         reason="not-confirmed"
         password={password}
         resumed={resuming}
-        onBack={() => {
+        onBack={(said) => {
           setResuming(false);
           setUnconfirmed(null);
+          if (!said) return;
+          setNotice(said);
+          // Confirming the address took the account's password away: signing
+          // in with it again was answered as a wrong password.
+          setPassword('');
         }}
       />
     );
@@ -90,6 +101,12 @@ export default function SignInScreen() {
       <Text variant="caption" tone="secondary" style={styles.subtitle}>
         Your bats have been waiting.
       </Text>
+
+      {notice ? (
+        <Card style={styles.notice}>
+          <Text variant="body">{notice}</Text>
+        </Card>
+      ) : null}
 
       <View style={styles.form}>
         <TextField
@@ -147,5 +164,6 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
   subtitle: { marginTop: Spacing.xs },
+  notice: { marginTop: Spacing.lg },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
 });
