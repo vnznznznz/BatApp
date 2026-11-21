@@ -1,6 +1,7 @@
 import { act } from '@testing-library/react-native';
 import { renderRouter, screen } from 'expo-router/testing-library';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { Text } from 'react-native';
 
 import AppLayout from '@/app/(app)/_layout';
@@ -26,7 +27,7 @@ const SIGNED_OUT = {
   session: null as object | null,
   isRestoring: false,
   isSettingPassword: false,
-  unfinished: null,
+  unfinished: null as object | null,
 };
 
 const mockAuth = {
@@ -147,6 +148,51 @@ describe('the way into the app', () => {
     await authBecomes({ session: SESSION });
 
     expect(app.route()).toBe('/home');
+    expect(theRoost()).toBeOnTheScreen();
+  });
+});
+
+/**
+ * A code from an email signs the courier in before what it is for is done -
+ * a reset's new password saved, a sign-up's account set up - and the root
+ * layout leads them back to the screen that asked for it. Opened on a screen
+ * of the app, the app drew that screen on the way. (Found in review.)
+ */
+describe('while a code holds the way in', () => {
+  const HELD = {
+    session: SESSION,
+    isSettingPassword: true,
+    unfinished: { flow: 'reset', email: 'mara@example.com' },
+  };
+
+  it('draws nothing of the app on the way back to the screen that asked for the code', async () => {
+    let letters = 0;
+    function Letters() {
+      useEffect(() => {
+        letters += 1;
+      }, []);
+      return <Text>The letters</Text>;
+    }
+    mockAuth.state = { ...mockAuth.state, ...HELD };
+
+    const app = renderRouter(
+      {
+        ...APP,
+        '(app)/letters/index': Letters,
+        'reset-password': () => <Text>The reset form</Text>,
+      },
+      { initialUrl: '/letters' },
+    );
+    await app;
+
+    expect(app.getPathname()).toBe('/reset-password');
+    expect(screen.getByText('The reset form')).toBeOnTheScreen();
+    expect(letters).toBe(0);
+    expect(theRoost()).toBeNull();
+
+    await authBecomes({ isSettingPassword: false, unfinished: null });
+
+    expect(app.getPathname()).toBe('/home');
     expect(theRoost()).toBeOnTheScreen();
   });
 });

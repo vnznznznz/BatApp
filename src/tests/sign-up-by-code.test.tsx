@@ -2,10 +2,11 @@ import { AuthRetryableFetchError, type Session } from '@supabase/supabase-js';
 import { act, fireEvent, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Text } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
+import AppLayout from '@/app/(app)/_layout';
 import RootLayout from '@/app/_layout';
 import SignUpScreen from '@/app/sign-up';
 
@@ -219,5 +220,52 @@ describe('a sign-up confirmed by code', () => {
     expect(mockServer.passwordChange).toHaveBeenCalledWith({ password: 'a-good-password' });
     expect(app.getPathname()).toBe('/home');
     expect(mockKeychain.has('night-courier.unfinished')).toBe(false);
+  });
+
+  /**
+   * Opened again on a screen of the app itself - a link, or the address a
+   * browser was left on - with the account not set up. The root layout leads
+   * the courier back to the sign-up screen, but only once the screen asked for
+   * had been drawn: the roost mounted, and with the real one, asked the
+   * database for an account that may still be as a stranger's sign-up left it.
+   * (Found in review.) Nothing of the app is drawn while the way in is held.
+   */
+  it('draws nothing of the app on the way back when the app opens on one of its screens', async () => {
+    mockStored.session = SESSION;
+    mockServer.session = SESSION;
+    mockKeychain.set(
+      'night-courier.unfinished',
+      JSON.stringify({
+        flow: 'sign-up',
+        email: 'anna@example.com',
+        username: 'annaweber',
+        displayName: 'Anna Weber',
+      }),
+    );
+    mockServer.passwordChange.mockResolvedValue({ data: { user: SESSION.user }, error: null });
+    let roosts = 0;
+    function Roost() {
+      useEffect(() => {
+        roosts += 1;
+      }, []);
+      return <Text>Your roost</Text>;
+    }
+    const app = renderRouter(
+      { ...routes, '(app)/_layout': AppLayout, '(app)/home': Roost },
+      { initialUrl: '/home', wrapper: withInsets },
+    );
+    await app;
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    expect(app.getPathname()).toBe('/sign-up');
+    expect(screen.getByText('Almost there')).toBeOnTheScreen();
+    expect(roosts).toBe(0);
+
+    await user.type(screen.getByLabelText('Password'), 'a-good-password');
+    await user.press(screen.getByRole('button', { name: 'Finish' }));
+
+    expect(app.getPathname()).toBe('/home');
+    expect(screen.getByText('Your roost')).toBeOnTheScreen();
+    expect(roosts).toBe(1);
   });
 });

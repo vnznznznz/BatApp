@@ -24,9 +24,16 @@ export const unstable_settings = { initialRouteName: 'home' };
  * otherwise has to know to swipe for.
  */
 export default function AppLayout() {
-  const { session } = useAuth();
+  const { session, isSettingPassword } = useAuth();
 
   if (!session) return <Redirect href="/" />;
+  // Signed in by a code whose work is not done: the root layout takes the
+  // courier back to the screen that asked for it. Until then nothing of the
+  // app is drawn. Opened on one of its screens - a link, an address left in a
+  // browser - the roost mounted on the way, and asked the database for an
+  // account that may still be as a stranger's sign-up left it. (Found in
+  // review.)
+  if (isSettingPassword) return null;
 
   return (
     <Stack
