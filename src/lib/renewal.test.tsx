@@ -21,9 +21,6 @@ import { SESSION_KEY } from '@/lib/session-store';
  * the real client: if a new version names it differently, this fails.
  */
 
-// The first render compiles React Native's components on a cold cache.
-jest.setTimeout(20_000);
-
 const mockKeychain = new Map<string, string>();
 
 jest.mock('expo-secure-store', () => ({

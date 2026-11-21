@@ -7,11 +7,6 @@ import CityPickerScreen from '@/app/(app)/city-picker';
 import { CITY_DATA_CREDIT, searchCities, type City } from '@/features/cities/search';
 import type { CityCondition, CitySave, Profile } from '@/features/profile/use-profile';
 
-// React Native loads its components on first use, and with a cold transform
-// cache the first render compiles them: seconds of work that would otherwise
-// count against whichever test runs first.
-jest.setTimeout(20_000);
-
 const mockBack = jest.fn();
 /** Whether the picker is still in front when a save comes back. */
 const mockFocus = { focused: true };
