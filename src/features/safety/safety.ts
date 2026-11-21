@@ -128,16 +128,31 @@ export type ReportSubject = { courier: string; letter?: string };
 
 /**
  * Whether "Also block" was on the last time each person using the app reported
- * each letter, or each courier without a letter, for as long as the app runs.
- * Someone who reported a letter but kept the friend did so on purpose, and
- * reporting the same letter again starts from that. Another letter is a new
- * event, often a worse one, so it starts from the default again.
+ * each letter, or each courier without a letter, while the app runs. Someone
+ * who reported a letter but kept the friend did so on purpose, and reporting
+ * the same letter again starts from that. Another letter is a new event, often
+ * a worse one, so it starts from the default again.
  *
- * Kept per person because signing out does not restart the app, and kept in
- * memory only: it says whom someone chose not to block, which is nobody
- * else's business.
+ * Kept in memory only, per person, and forgotten the moment anyone signs out,
+ * as the letters not sent yet are (drafts.ts): it says whom someone chose not
+ * to block, which is nobody else's business, and signing out does not restart
+ * the app. (Found in the merged tree: it outlasted sign-outs and deletions.)
  */
 const blockChoices = new Map<string, boolean>();
+let listening = false;
+
+/**
+ * Asks the client, once, to say when someone signs out. Not done on import: a
+ * module of calls should not reach for the session until there is a choice to
+ * forget.
+ */
+function forgetOnSignOut() {
+  if (listening) return;
+  listening = true;
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') forgetBlockChoices();
+  });
+}
 
 function choiceKey(reporterId: string, subject: ReportSubject): string {
   return subject.letter
@@ -156,10 +171,12 @@ export function rememberBlockChoice(
   subject: ReportSubject,
   block: boolean,
 ): void {
-  if (reporterId) blockChoices.set(choiceKey(reporterId, subject), block);
+  if (!reporterId) return;
+  forgetOnSignOut();
+  blockChoices.set(choiceKey(reporterId, subject), block);
 }
 
-/** Back to the default for everything - for tests, which each start as a freshly opened app. */
+/** Back to the default for everything: at a sign-out, and for tests, each a freshly opened app. */
 export function forgetBlockChoices(): void {
   blockChoices.clear();
 }
