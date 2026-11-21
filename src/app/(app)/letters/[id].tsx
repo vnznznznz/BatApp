@@ -8,7 +8,7 @@ import { FlightPath } from '@/components/flight-path';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
-import { describeCity } from '@/features/cities/search';
+import { cityName, describeCity } from '@/features/cities/search';
 import { correspondentName, readMessage, type Letter } from '@/features/messages/messages';
 import { AccountClosedActions } from '@/features/profile/account-closed';
 import { blockCourier } from '@/features/safety/safety';
@@ -160,8 +160,8 @@ export default function LetterScreen() {
       {!data.delivered ? (
         <View style={styles.path}>
           <FlightPath
-            from={data.origin.name}
-            to={data.destination.name}
+            from={cityName(data.origin)}
+            to={cityName(data.destination)}
             progress={flightProgress(data.sentAt, data.deliverAt, now)}
             active={focused}
           />
@@ -179,10 +179,18 @@ export default function LetterScreen() {
       {received ? (
         <>
           <View style={styles.actions}>
+            {/* With their name: if the friendship has ended since the letter
+                came, compose can say who it is that can no longer be written
+                to. (Found in the browser.) */}
             <Button
               label="Write back"
               disabled={blocking}
-              onPress={() => router.push({ pathname: '/compose', params: { to: data.other.id } })}
+              onPress={() =>
+                router.push({
+                  pathname: '/compose',
+                  params: { to: data.other.id, name: correspondentName(data.other) },
+                })
+              }
             />
           </View>
 

@@ -22,11 +22,18 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => mockAuth,
 }));
 
-jest.mock('@/lib/links', () => ({
-  ...jest.requireActual('@/lib/links'),
-  CONTACT_URL: 'https://night-courier.example/help',
-  openLink: jest.fn(),
-}));
+/** The contact address the build was given; null for a build without one. */
+const mockContact: { url: string | null } = { url: null };
+
+// Read when the screen renders, not when the module is loaded: a getter in
+// an object spread would be read at once, before any test has set it.
+jest.mock('@/lib/links', () =>
+  Object.defineProperty(
+    { ...jest.requireActual('@/lib/links'), openLink: jest.fn() },
+    'CONTACT_URL',
+    { get: () => mockContact.url, enumerable: true },
+  ),
+);
 
 /** Fixed insets so the screen renders deterministically outside a device. */
 const metrics: Metrics = {
@@ -40,6 +47,7 @@ const renderScreen = (ui: ReactElement) =>
 beforeEach(() => {
   mockPush.mockClear();
   mockAuth.session = null;
+  mockContact.url = 'https://night-courier.example/help';
   forgetFarewell();
 });
 
@@ -99,6 +107,25 @@ describe('WelcomeScreen', () => {
    * was shown signed out - only a screen reader heard it. (Found in the
    * browser.)
    */
+  /**
+   * A build without a contact address shows no Contact anywhere. The words
+   * still read right there: they name whom to write to, not a button that is
+   * not there, nor a page the app never names. (Found in review.)
+   */
+  it('says what has happened, and whom to ask, in a build without a contact address', async () => {
+    mockContact.url = null;
+    noteAccountSuspended();
+
+    await renderScreen(<WelcomeScreen />);
+
+    expect(
+      screen.getByText(
+        'This account has been suspended. To ask why, write to the person who runs Night Courier.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+  });
+
   it('keeps the word until it is shown to someone signed out', async () => {
     noteAccountSuspended();
     mockAuth.session = { user: { id: 'user-sam' } };

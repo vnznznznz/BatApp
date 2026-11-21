@@ -9,6 +9,7 @@ import { Screen } from '@/components/screen';
 import { SegmentedControl } from '@/components/segmented-control';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
+import { cityName } from '@/features/cities/search';
 import {
   asOneLine,
   correspondentName,
@@ -78,7 +79,9 @@ function ReceivedList() {
         return (
           <ListRow
             title={correspondentName(letter.sender)}
-            subtitle={`From ${letter.origin.name} · ${formatDistance(letter.distanceKm)} · ${formatTimestamp(letter.arrivedAt)}`}
+            // A town that shares its name says where it is: "From Friedberg"
+            // was either of two. (Found in review.)
+            subtitle={`From ${cityName(letter.origin)} · ${formatDistance(letter.distanceKm)} · ${formatTimestamp(letter.arrivedAt)}`}
             detail={asOneLine(letter.preview)}
             emphasised={unread}
             leading={<UnreadDot visible={unread} label="Unread" />}
@@ -118,15 +121,16 @@ function SentList() {
       empty="You have not sent a letter yet."
       renderItem={(letter: SentLetter) => {
         const remaining = letter.deliverAt.getTime() - now;
+        const to = cityName(letter.destination);
         return (
           <ListRow
             title={`To ${correspondentName(letter.recipient)}`}
             subtitle={
               letter.delivered
-                ? `Landed in ${letter.destination.name} · ${formatTimestamp(letter.deliverAt)}`
+                ? `Landed in ${to} · ${formatTimestamp(letter.deliverAt)}`
                 : remaining > 0
-                  ? `In the air to ${letter.destination.name} · lands in ${formatDuration(remaining)}`
-                  : `In the air to ${letter.destination.name} · landing any moment now`
+                  ? `In the air to ${to} · lands in ${formatDuration(remaining)}`
+                  : `In the air to ${to} · landing any moment now`
             }
             detail={asOneLine(letter.preview)}
             onPress={() => router.push({ pathname: '/letters/[id]', params: { id: letter.id } })}

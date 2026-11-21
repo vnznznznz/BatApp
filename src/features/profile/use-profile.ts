@@ -120,8 +120,12 @@ export function toProfile(row: Row, now: number = Date.now()): Profile {
  * away from, while the move is younger than RELOCATION_HOURS, and from the
  * courier's city otherwise. `now` is this device's clock, by which the app
  * says everything it says about a move.
+ *
+ * Exported for departing-filter.fixture.json, whose filters use-profile.test.ts
+ * checks against this and relocation.db.test.mjs applies as PostgREST would,
+ * next to what `private.settle_city` decides for the same rows.
  */
-function departingFrom(departing: number | null, now: number): string {
+export function departingFrom(departing: number | null, now: number): string {
   const dayBefore = new Date(now - RELOCATION_HOURS * 3_600_000).toISOString();
   // No move settling: none made, or the last one a day ago or more.
   const noMove = `settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.${dayBefore}`;
@@ -161,6 +165,9 @@ export function useProfile() {
   // after loading again, to tell an account that has gone from one that is
   // still there.
   const shown = useRef<Profile | null | undefined>(undefined);
+  // The request that answered with it, so that the save can tell an answer
+  // read after it from one read before.
+  const shownBy = useRef(0);
 
   // Resolves with whether the load is worth making again unasked: it failed,
   // and it is still the newest.
@@ -181,6 +188,7 @@ export function useProfile() {
       setError('Your profile could not be loaded. Check your connection.');
     } else if (data) {
       shown.current = toProfile(data);
+      shownBy.current = request;
       setProfile(shown.current);
       setIsGone(false);
       setError(null);
@@ -190,6 +198,7 @@ export function useProfile() {
       // This device's sign-in goes on working for up to an hour all the same,
       // and what it showed of the profile is no longer true.
       shown.current = null;
+      shownBy.current = request;
       setProfile(null);
       setIsGone(true);
       setError(GONE);
@@ -212,7 +221,9 @@ export function useProfile() {
 
   const updateDisplayName = useCallback(
     async (displayName: string) => {
-      if (!userId) return;
+      // With nobody signed in there is no row to save to. Returning quietly
+      // let the profile say "Saved." over a name that went nowhere.
+      if (!userId) throw new Error('Your session has ended. Sign in again.');
       const { error: failure } = await supabase
         .from('profiles')
         .update({ display_name: displayName.trim() })
@@ -239,7 +250,8 @@ export function useProfile() {
    * With nobody signed in, or with the account gone - deleted on another
    * device while the picker asked - there is no row to save to, and that is
    * an error: the picker would ask again about a city it cannot save.
-   * (Found in review.)
+   * (Found in review.) So is a save that changed no row when the profile
+   * could not be read again after it, to tell which of these it was.
    */
   const updateCity = useCallback(
     async (cityId: number, condition?: CityCondition): Promise<CitySave> => {
@@ -259,10 +271,19 @@ export function useProfile() {
             : change.or(departingFrom(condition.departing, Date.now()))
       ).select('id');
       if (failure) throw toRpcError(failure, 'That city could not be saved.');
+      // Every load asked for from here on reads the row as the save left it.
+      const askedBefore = latest.current;
       await load();
       if ((data ?? []).length > 0) return { saved: true };
 
-      // Loaded again, the row tells which it was.
+      // Loaded again, the row tells which it was - read by that load, or by a
+      // newer one. When neither has answered - no answer came, or a newer load
+      // took its place and is still out - what is shown was read before the
+      // save: the profile the question was asked from, or one read while the
+      // save was out. Taken for the row as it is, it had an account deleted
+      // since asked again as if a letter had come in between. (Found in
+      // review.)
+      if (shownBy.current <= askedBefore) throw new Error('That city could not be saved.');
       if (shown.current === null) throw new Error(GONE);
       if (!condition || !shown.current) throw new Error('That city could not be saved.');
       return { saved: false, profile: shown.current };

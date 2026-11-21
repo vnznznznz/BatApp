@@ -1441,7 +1441,7 @@ describe('deleting the account', () => {
     const session = await signedIn();
 
     expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe(
-      'This account has been suspended. Write to the contact address on the help page.',
+      'This account has been suspended. To ask why, write to the person who runs Night Courier.',
     );
 
     expect(sent.filter(isWhoAmI)).toEqual([]);
@@ -2570,7 +2570,7 @@ describe('what the courier is told when the auth server says no', () => {
         // code to a banned account, and answers its check 403 user_banned).
         'the account is suspended',
         () => authRefusal(403, 'user_banned', 'User is banned'),
-        'This account has been suspended. Write to the contact address on the help page.',
+        'This account has been suspended. To ask why, write to the person who runs Night Courier.',
       ],
     ])('says so plainly, and holds nothing, when %s', async (_, answer, words) => {
       network = answer;

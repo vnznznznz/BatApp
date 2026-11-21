@@ -256,6 +256,25 @@ describe('LettersScreen', () => {
     });
 
     /**
+     * "From Friedberg" was either of two towns in Germany. (Found in review.)
+     * A town that shares its name with another says where it is; one that
+     * does not stays as short as it was.
+     */
+    it('says where a town is that shares its name with another', async () => {
+      const letter = received({
+        origin: { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Augsburg' },
+      });
+      mockedFetchInbox.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          `From Friedberg (near Augsburg) · 255 km · ${formatTimestamp(letter.arrivedAt)}`,
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    /**
      * Letters start with a greeting and a blank line. Kept as written, a
      * two-line preview would show "Dear Mara," and then nothing.
      */
@@ -564,6 +583,36 @@ describe('LettersScreen', () => {
         await screen.findByText(`Landed in Vienna · ${formatTimestamp(letter.deliverAt)}`),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/^In the air/)).toBeNull();
+    });
+
+    /** "In the air to Friedberg" was either of two towns in Germany. (Found in review.) */
+    it('says where a town is that shares its name with another, in the air and landed', async () => {
+      const friedberg = {
+        name: 'Friedberg',
+        countryCode: 'DE',
+        qualifier: 'near Frankfurt am Main',
+      };
+      const landed = sent({
+        id: 'landed',
+        destination: friedberg,
+        delivered: true,
+        sentAt: new Date(NOW - 9 * HOUR),
+        deliverAt: new Date(NOW - 2 * HOUR),
+      });
+      mockedFetchSent.mockResolvedValue([sent({ destination: friedberg }), landed]);
+      await renderScreen(<LettersScreen />);
+      await showSent();
+
+      expect(
+        await screen.findByText(
+          'In the air to Friedberg (near Frankfurt am Main) · lands in 2h 30m',
+        ),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          `Landed in Friedberg (near Frankfurt am Main) · ${formatTimestamp(landed.deliverAt)}`,
+        ),
+      ).toBeOnTheScreen();
     });
 
     it('still says at what time a letter of last week landed once the year has turned', async () => {

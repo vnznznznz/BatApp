@@ -1,0 +1,26 @@
+{
+  "note": "What useProfile's departingFrom sends at `now` to save a move only while the bats leave from each city, or from nowhere. use-profile.test.ts checks it against the function; relocation.db.test.mjs applies each filter as PostgREST would and compares it with private.settle_city.",
+  "now": "2026-10-31T12:00:30.000Z",
+  "filters": [
+    {
+      "city": ["Berlin", "DE"],
+      "departing": 2950159,
+      "filter": "and(settled_city_id.eq.2950159,city_changed_at.gt.2026-10-30T12:00:30.000Z),and(city_id.eq.2950159,or(settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.2026-10-30T12:00:30.000Z))"
+    },
+    {
+      "city": ["Munich", "DE"],
+      "departing": 2867714,
+      "filter": "and(settled_city_id.eq.2867714,city_changed_at.gt.2026-10-30T12:00:30.000Z),and(city_id.eq.2867714,or(settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.2026-10-30T12:00:30.000Z))"
+    },
+    {
+      "city": ["Hamburg", "DE"],
+      "departing": 2911298,
+      "filter": "and(settled_city_id.eq.2911298,city_changed_at.gt.2026-10-30T12:00:30.000Z),and(city_id.eq.2911298,or(settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.2026-10-30T12:00:30.000Z))"
+    },
+    {
+      "city": null,
+      "departing": null,
+      "filter": "and(city_id.is.null,or(settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.2026-10-30T12:00:30.000Z))"
+    }
+  ]
+}

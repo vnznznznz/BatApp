@@ -12,7 +12,7 @@ import { fetchRoost } from '@/features/roost/roost';
 
 const mockPush = jest.fn();
 /** The route's params: the letter's id, and who a reply on top of it is for. */
-const mockParams: { id: string; to?: string } = { id: 'letter-from-anna' };
+const mockParams: { id: string; to?: string; name?: string } = { id: 'letter-from-anna' };
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -132,20 +132,28 @@ function Stack({ replyOpen }: { replyOpen: boolean }) {
 type Rendered = Awaited<ReturnType<typeof render>>;
 
 /** Presses "Write back" and opens what the letter asked the router for. */
-async function writeBack(view: Rendered) {
+async function openReply(view: Rendered) {
   mockPush.mockClear();
   await fireEvent.press(screen.getByRole('button', { name: 'Write back' }));
 
-  const [route] = mockPush.mock.lastCall as [{ pathname: string; params: { to: string } }];
+  const [route] = mockPush.mock.lastCall as [
+    { pathname: string; params: { to: string; name: string } },
+  ];
   expect(route.pathname).toBe('/compose');
-  mockParams.to = route.params.to;
+  Object.assign(mockParams, route.params);
   await view.rerender(<Stack replyOpen />);
+}
+
+/** Writes back, and resolves with the field the reply is written in. */
+async function writeBack(view: Rendered) {
+  await openReply(view);
   return screen.findByLabelText('Your letter');
 }
 
 /** The header's arrow, a swipe from the edge, Android's back button. */
 async function goBack(view: Rendered) {
   delete mockParams.to;
+  delete mockParams.name;
   await view.rerender(<Stack replyOpen={false} />);
 }
 
@@ -153,6 +161,7 @@ beforeEach(() => {
   jest.useFakeTimers({ now: NOW });
   mockPush.mockReset();
   delete mockParams.to;
+  delete mockParams.name;
   forgetAllDrafts();
   jest.mocked(readMessage).mockReset().mockResolvedValue(fromAnna);
   jest.mocked(fetchFriendships).mockReset().mockResolvedValue([anna]);
@@ -187,5 +196,25 @@ describe('writing back to a letter', () => {
     expect(screen.getByText(/The harbour was loud tonight/)).toBeOnTheScreen();
 
     expect(await writeBack(view)).toHaveDisplayValue('Dear Anna,\n\nWhich ship was it?');
+  });
+
+  /**
+   * The friendship can end after the letter came. Writing back then opened
+   * "You can only write to friends", and did not say that the one written
+   * back to was no longer among them. (Found in the browser.)
+   */
+  it('says by name that the sender is no longer a friend', async () => {
+    jest.mocked(fetchFriendships).mockResolvedValue([]);
+    const view = await render(<Stack replyOpen={false} />);
+    await screen.findByText(/The harbour was loud tonight/);
+
+    await openReply(view);
+
+    expect(
+      await screen.findByText(
+        'Anna Weber is no longer among your friends, so you cannot write to them.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Your letter')).toBeNull();
   });
 });
