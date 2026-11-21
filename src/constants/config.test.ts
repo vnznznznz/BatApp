@@ -281,7 +281,8 @@ describe('who can join', () => {
       String.raw`aged ${NUMBER}(?: to ${NUMBER})?`,
       String.raw`${NUMBER} (?:and|or) (?:over|older|up)\b`,
       String.raw`(?:at least|under|younger than|below) ${NUMBER}`,
-      String.raw`(?:minimum )?age (?:of |is |was |to )?${NUMBER}`,
+      // As one age is given, and as it is said to have changed to another.
+      String.raw`(?:minimum )?age (?:of |is |was |to |(?:is now|went|goes|rose|changed|moved|was (?:raised|lowered|set)) to )?${NUMBER}`,
       String.raw`minimum of ${NUMBER}`,
       String.raw`${NUMBER}- to ${NUMBER}-year-old`,
       String.raw`${NUMBER}-year-old`,
@@ -354,6 +355,27 @@ describe('who can join', () => {
     join('docs', 'GO-LIVE.md'),
     join('docs', 'ROADMAP.md'),
   ];
+
+  /**
+   * Each way the documents give an age, as they write it. "Went to" was not
+   * one of the phrases: the roadmap's "since the minimum age went to 13",
+   * changed to 14, passed. (Found in review.)
+   */
+  it.each([
+    'a minimum age of 14',
+    'the minimum age is 14',
+    'since the minimum age went to 14,',
+    'the age rose to 14',
+    'the minimum age was raised to 14',
+    'I am 14 or older',
+    'aged 14 to 16',
+    'at least 14',
+    'under 14',
+    'ab 14 Jahren',
+    '14+',
+  ])('finds the age in "%s"', (sentence) => {
+    expect([...sentence.matchAll(AGE_GIVEN)].flatMap((match) => match.slice(1))).toContain('14');
+  });
 
   it('is every age the documents give, wherever they give one', () => {
     const contradicting: string[] = [];
