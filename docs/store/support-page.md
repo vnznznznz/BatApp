@@ -36,12 +36,13 @@ Notes for the operator - remove before publishing, like every comment in this fi
    anyone but the operator, and what helps is writing to the contact address, as "No email?" ends.
    Keep that ending in any case. "Confirming your email address" applies once email confirmation
    is switched on (enable_confirmations in supabase/config.toml); until then the app asks for no
-   such code. A code's day is otp_expiry = 86400: if the hosted project allows less, change "a day"
-   here, in the privacy policy (3.10) and in the templates together. Confirming an address by hand
-   does not help someone whose emails do not arrive, so this page does not offer it: it takes the
-   password away when a code to confirm the address had been emailed
-   (supabase/migrations/20261121160000_confirmation_clears_password.sql), and setting a new one
-   needs an email of its own (GO-LIVE, end of "Before a second person can sign up: custom SMTP").
+   such code. A code's day is otp_expiry = 86400: if the hosted project allows less, change it in
+   every place GO-LIVE ("Setting up the hosted project", step 2) lists, this page in both languages
+   among them. Confirming an address by hand does not help someone whose emails do not arrive, so
+   this page does not offer it: it takes the password away when a code to confirm the address had
+   been emailed (supabase/migrations/20261121160000_confirmation_clears_password.sql), and setting a
+   new one needs an email of its own (GO-LIVE, end of "Before a second person can sign up: custom
+   SMTP").
 6. "Your account has been suspended" follows signIn and verifyResetCode in
    src/features/auth/auth-context.tsx and the words of REFUSALS.account_suspended in
    src/lib/rpc-error.ts, which send a suspended courier to "the person who runs Night Courier";

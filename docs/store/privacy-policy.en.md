@@ -480,14 +480,17 @@ private.unconfirmed_sign_up_lifetime() (tidy_up). The code's 8 digits and its da
 and otp_expiry = 86400 in supabase/config.toml, and the templates in supabase/templates say the
 same. The hosted project sends them only once config push has carried them there (docs/GO-LIVE.md,
 "Setting up the hosted project"); its own templates carry a link. After that push, check that the
-hosted project took the day, and if it allows less, write that here, on the help page and in the
-templates. The auth server can also send notices of its own, of a changed password or address among
-others ([auth.email.notification]); supabase/config.toml turns none of them on. Whether the hosted
-project sends any is to check (docs/GO-LIVE.md, "Setting up the hosted project", step 2). If one is
-on, name it here and give it a template of the app's without a link, as GO-LIVE says, or turn it
-off. What makes such an account yours: finishSignUp and verifyResetCode in
-src/features/auth/auth-context.tsx, and the migration
-20261121160000_confirmation_clears_password.sql. -->
+hosted project took the day, and if it allows less, change it in every place docs/GO-LIVE.md
+("Setting up the hosted project", step 2) lists, this section in both languages among them. Once
+confirmation is on, also drop "While email addresses are not yet confirmed at sign-up (section
+3.10), trying to sign up with it says so; after that," in section 4 and keep "the answers of the
+sign-in server can give it away" (docs/GO-LIVE.md, "Known gaps already logged"). The auth server can
+also send notices of its own, of a changed password or address among others
+([auth.email.notification]); supabase/config.toml turns none of them on. Whether the hosted project
+sends any is to check (docs/GO-LIVE.md, "Setting up the hosted project", step 2). If one is on, name
+it here and give it a template of the app's without a link, as GO-LIVE says, or turn it off. What
+makes such an account yours: finishSignUp and verifyResetCode in src/features/auth/auth-context.tsx,
+and the migration 20261121160000_confirmation_clears_password.sql. -->
 
 <!-- TO CHECK (legal): confirming an address takes over, or deletes, an account that an earlier,
 unconfirmed sign-up for it had set up - perhaps someone else's - with its password and name. Whether
@@ -572,6 +575,10 @@ legitimate interest in finding and fixing crashes.
   refused, but not counted. One account can make at most 20 new requests an hour (section 3.3), and
   each request shows you the sender's username and display name. They learn nothing more from that
   until you accept.
+- **Anyone who knows your email address** can find out whether it has a Night Courier account.
+  While email addresses are not yet confirmed at sign-up (section 3.10), trying to sign up with it
+  says so; after that, the answers of the sign-in server can still give it away. They learn nothing
+  else about your account from that.
 - **Other users** do not see whom you have blocked or reported (although that person may guess,
   sections 3.6 and 3.7), whether you are online, or whether you are writing.
 

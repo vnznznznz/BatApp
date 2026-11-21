@@ -526,13 +526,17 @@ otp_length und otp_expiry = 86400 in supabase/config.toml, und die Vorlagen in s
 sagen dasselbe. Das gehostete Projekt verschickt sie erst, wenn config push sie dorthin gebracht
 hat (docs/GO-LIVE.md, "Setting up the hosted project"); seine eigenen Vorlagen enthalten einen
 Link. Nach diesem push prüfen, ob das gehostete Projekt den Tag übernommen hat, und wenn es weniger
-erlaubt, das hier, auf der Hilfeseite und in den Vorlagen eintragen. Der Auth-Server kann auch
-eigene Hinweise schicken, unter anderem über ein geändertes Passwort oder eine geänderte Adresse
-([auth.email.notification]); supabase/config.toml schaltet keinen davon ein. Ob das gehostete
-Projekt welche schickt, ist zu prüfen (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 2).
-Ist einer an, ihn hier nennen und ihm, wie GO-LIVE sagt, eine Vorlage der App ohne Link geben, oder
-ihn ausschalten. Was ein solches Konto zu deinem macht: finishSignUp und verifyResetCode in
-src/features/auth/auth-context.tsx und die Migration
+erlaubt, es überall ändern, wo docs/GO-LIVE.md ("Setting up the hosted project", Schritt 2) es
+aufzählt, auch hier in beiden Sprachen. Sobald die Bestätigung an ist, in Abschnitt 4 auch "Solange
+E-Mail-Adressen bei der Registrierung noch nicht bestätigt werden (Abschnitt 3.10), sagt das ein
+Registrierungsversuch mit ihr offen; danach" streichen und "können es die Antworten des
+Anmeldeservers verraten" stehen lassen (docs/GO-LIVE.md, "Known gaps already logged"). Der
+Auth-Server kann auch eigene Hinweise schicken, unter anderem über ein geändertes Passwort oder eine
+geänderte Adresse ([auth.email.notification]); supabase/config.toml schaltet keinen davon ein. Ob
+das gehostete Projekt welche schickt, ist zu prüfen (docs/GO-LIVE.md, "Setting up the hosted
+project", Schritt 2). Ist einer an, ihn hier nennen und ihm, wie GO-LIVE sagt, eine Vorlage der App
+ohne Link geben, oder ihn ausschalten. Was ein solches Konto zu deinem macht: finishSignUp und
+verifyResetCode in src/features/auth/auth-context.tsx und die Migration
 20261121160000_confirmation_clears_password.sql. -->
 
 <!-- PRÜFEN (rechtlich): Das Bestätigen einer Adresse übernimmt oder löscht ein Konto, das eine
@@ -634,6 +638,10 @@ Contacts) und google-play.md (Location → Approximate location, Contacts). -->
   mitgezählt. Ein Konto kann höchstens 20 neue Anfragen pro Stunde stellen (Abschnitt 3.3), und jede
   Anfrage zeigt dir Benutzernamen und Anzeigenamen der Person, die sie schickt. Mehr erfährt er
   dadurch nicht, bis du annimmst.
+- **Wer deine E-Mail-Adresse kennt**, kann herausfinden, ob es zu ihr ein Konto bei Night Courier
+  gibt. Solange E-Mail-Adressen bei der Registrierung noch nicht bestätigt werden (Abschnitt 3.10),
+  sagt das ein Registrierungsversuch mit ihr offen; danach können es noch die Antworten des
+  Anmeldeservers verraten. Mehr über dein Konto erfährt man dadurch nicht.
 - **Andere Nutzer** sehen nicht, wen du blockiert oder gemeldet hast (auch wenn die Person es sich
   denken kann, Abschnitte 3.6 und 3.7), ob du gerade online bist oder ob du gerade schreibst.
 
