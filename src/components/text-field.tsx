@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Ref } from 'react';
 import { Platform, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Text } from '@/components/text';
@@ -10,6 +10,8 @@ export type TextFieldProps = Omit<TextInputProps, 'style'> & {
   /** Shown beneath the field and announced to assistive technology. */
   error?: string | null;
   hint?: string;
+  /** The text input itself, for a form that moves the focus to it. */
+  ref?: Ref<TextInput>;
 };
 
 export function TextField({
@@ -20,6 +22,7 @@ export function TextField({
   accessibilityHint,
   onFocus,
   onBlur,
+  ref,
   ...rest
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
@@ -37,6 +40,7 @@ export function TextField({
       </Text>
 
       <TextInput
+        ref={ref}
         accessibilityLabel={label}
         // The error, while there is one, is what a screen reader should hear
         // on returning to the field. aria-invalid reaches assistive technology

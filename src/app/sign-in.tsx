@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
@@ -19,6 +19,7 @@ export default function SignInScreen() {
   const [errors, setErrors] = useState<{ email?: string | null; password?: string | null }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const passwordField = useRef<TextInput>(null);
 
   async function submit() {
     const next = { email: validateEmail(email), password: validatePassword(password) };
@@ -56,8 +57,13 @@ export default function SignInScreen() {
           keyboardType="email-address"
           textContentType="emailAddress"
           returnKeyType="next"
+          // On to the password without letting go of the focus first, which
+          // would close the keyboard for the password to open it again.
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordField.current?.focus()}
         />
         <TextField
+          ref={passwordField}
           label="Password"
           value={password}
           onChangeText={setPassword}

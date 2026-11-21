@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Screen } from '@/components/screen';
@@ -35,6 +35,10 @@ export default function SignUpScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The fields the keyboard's "next" key moves on to, in order.
+  const usernameField = useRef<TextInput>(null);
+  const emailField = useRef<TextInput>(null);
+  const passwordField = useRef<TextInput>(null);
 
   async function submit() {
     const next: Errors = {
@@ -104,8 +108,13 @@ export default function SignUpScreen() {
           autoCapitalize="words"
           autoComplete="name"
           returnKeyType="next"
+          // On without letting go of the focus first, which would close the
+          // keyboard for the next field to open it again.
+          submitBehavior="submit"
+          onSubmitEditing={() => usernameField.current?.focus()}
         />
         <TextField
+          ref={usernameField}
           label="Username"
           value={username}
           onChangeText={setUsername}
@@ -114,8 +123,11 @@ export default function SignUpScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => emailField.current?.focus()}
         />
         <TextField
+          ref={emailField}
           label="Email"
           value={email}
           onChangeText={setEmail}
@@ -125,8 +137,11 @@ export default function SignUpScreen() {
           keyboardType="email-address"
           textContentType="emailAddress"
           returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordField.current?.focus()}
         />
         <TextField
+          ref={passwordField}
           label="Password"
           value={password}
           onChangeText={setPassword}

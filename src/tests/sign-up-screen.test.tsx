@@ -1,7 +1,7 @@
 import { AuthRetryableFetchError } from '@supabase/supabase-js';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DeviceEventEmitter, Platform, StyleSheet } from 'react-native';
+import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
@@ -337,6 +337,71 @@ describe('SignUpScreen', () => {
 
     expect(screen.getByText(hint)).toBeOnTheScreen();
     expect(screen.getByLabelText('Your name').props.accessibilityHint).toBe(hint);
+  });
+
+  describe('moving through the form', () => {
+    let focus: jest.SpiedFunction<TextInput['focus']>;
+
+    /** The fields the form has moved the focus to, by label, in order. */
+    const focused = () =>
+      focus.mock.contexts.map((field) => (field as TextInput).props.accessibilityLabel);
+
+    beforeEach(() => {
+      focus = jest.spyOn(TextInput.prototype, 'focus');
+    });
+
+    afterEach(() => {
+      focus.mockRestore();
+    });
+
+    /**
+     * The keyboard's "next" key only closed the keyboard: nothing moved the
+     * focus on, so each field had to be tapped into by hand.
+     */
+    it('goes from each field to the next with the keyboard’s key, keeping the keyboard up', async () => {
+      const user = userEvent.setup();
+      await renderScreen(<SignUpScreen />);
+
+      for (const label of ['Your name', 'Username', 'Email']) {
+        const field = screen.getByLabelText(label);
+        expect(field).toHaveProp('returnKeyType', 'next');
+        // Letting go of the focus first would close the keyboard, and the next
+        // field would open it again.
+        expect(field).toHaveProp('submitBehavior', 'submit');
+      }
+
+      await user.type(screen.getByLabelText('Your name'), 'Anna Weber', { submitEditing: true });
+      expect(focused()).toEqual(['Username']);
+
+      await user.type(screen.getByLabelText('Username'), 'anna', { submitEditing: true });
+      expect(focused()).toEqual(['Username', 'Email']);
+
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com', { submitEditing: true });
+      expect(focused()).toEqual(['Username', 'Email', 'Password']);
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
+
+    it('creates the account from the password’s key', async () => {
+      mockSignUp.mockResolvedValue({ needsEmailConfirmation: false });
+      const user = userEvent.setup();
+      await renderScreen(<SignUpScreen />);
+      await user.type(screen.getByLabelText('Your name'), 'Anna Weber');
+      await user.type(screen.getByLabelText('Username'), 'anna');
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+      await fireEvent(ageSwitch(), 'valueChange', true);
+
+      await user.type(screen.getByLabelText('Password'), 'a-good-password', {
+        submitEditing: true,
+      });
+
+      expect(screen.getByLabelText('Password')).toHaveProp('returnKeyType', 'go');
+      expect(mockSignUp).toHaveBeenCalledWith({
+        displayName: 'Anna Weber',
+        username: 'anna',
+        email: 'anna@example.com',
+        password: 'a-good-password',
+      });
+    });
   });
 
   describe('the keyboard', () => {

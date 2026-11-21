@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { createRef } from 'react';
+import { AccessibilityInfo, Platform, TextInput } from 'react-native';
 
 import { TextField } from '@/components/text-field';
 import { Colors } from '@/constants/theme';
@@ -103,5 +104,19 @@ describe('TextField colours', () => {
     await render(<TextField label="Your letter" value="Dear Ben," multiline />);
 
     expect(screen.getByLabelText('Your letter')).toHaveProp('selectionColor', Colors.accent);
+  });
+});
+
+describe('TextField and the focus', () => {
+  /**
+   * A form moves the focus to its next field when "next" is pressed, so it
+   * needs the text input itself. React 19 passes a ref as an ordinary prop.
+   */
+  it('hands its ref to the text input, so a form can move the focus to it', async () => {
+    const field = createRef<TextInput>();
+    await render(<TextField ref={field} label="Password" value="" />);
+
+    expect(field.current).toBeInstanceOf(TextInput);
+    expect(field.current?.props).toMatchObject({ accessibilityLabel: 'Password' });
   });
 });

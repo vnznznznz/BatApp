@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DeviceEventEmitter, Platform, StyleSheet } from 'react-native';
+import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignInScreen from '@/app/sign-in';
@@ -84,6 +84,55 @@ afterEach(async () => {
 });
 
 describe('SignInScreen', () => {
+  describe('moving through the form', () => {
+    let focus: jest.SpiedFunction<TextInput['focus']>;
+
+    /** The fields the form has moved the focus to, by label, in order. */
+    const focused = () =>
+      focus.mock.contexts.map((field) => (field as TextInput).props.accessibilityLabel);
+
+    beforeEach(() => {
+      focus = jest.spyOn(TextInput.prototype, 'focus');
+    });
+
+    afterEach(() => {
+      focus.mockRestore();
+    });
+
+    /**
+     * The keyboard's "next" key only closed the keyboard: nothing moved the
+     * focus on, so the password had to be tapped into by hand.
+     */
+    it('goes on to the password from the email address, keeping the keyboard up', async () => {
+      const user = userEvent.setup();
+      await renderScreen(<SignInScreen />);
+      const email = screen.getByLabelText('Email');
+      expect(email).toHaveProp('returnKeyType', 'next');
+      // Submitting without letting go of the focus: letting go first would
+      // close the keyboard, and the password would open it again.
+      expect(email).toHaveProp('submitBehavior', 'submit');
+
+      await user.type(email, 'anna@example.com', { submitEditing: true });
+
+      expect(focused()).toEqual(['Password']);
+      expect(mockSignIn).not.toHaveBeenCalled();
+    });
+
+    it('signs in from the password’s key', async () => {
+      mockSignIn.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      await renderScreen(<SignInScreen />);
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+
+      await user.type(screen.getByLabelText('Password'), 'a-good-password', {
+        submitEditing: true,
+      });
+
+      expect(mockSignIn).toHaveBeenCalledWith('anna@example.com', 'a-good-password');
+      expect(screen.getByLabelText('Password')).toHaveProp('returnKeyType', 'go');
+    });
+  });
+
   describe('the keyboard', () => {
     /**
      * A KeyboardAvoidingView inside a scroll view has no fixed height: its own
