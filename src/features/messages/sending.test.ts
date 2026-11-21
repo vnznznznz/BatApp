@@ -361,11 +361,50 @@ describe('sendLetter', () => {
     await writeAndSend(anna, 'Dear Anna,');
 
     expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
-    expect(readSend(MARA, 'user-anna').unanswered).toMatchObject({
+    // Noted as any letter in doubt is: asked after once more, a moment later,
+    // by the screen showing it. Refused again, it is left as it is (see
+    // askAfterLetter).
+    expect(readSend(MARA, 'user-anna').unanswered).toEqual({
       ref: mockedSendMessage.mock.calls[0]?.[2],
       words: 'Dear Anna,',
       unknown: true,
+      since: NOW,
+      askAt: NOW + 2 * SECOND,
     });
+  });
+
+  /**
+   * A suspended account is refused before the server looks for the letter's
+   * reference at all (private.caller(), in send_message's declarations), so the
+   * refusal says nothing about a letter that may have gone under it. Taken for
+   * "nothing went", the letter stopped being in doubt: its words went back to
+   * being merely unsent, and nothing asked after it again. (Found in review,
+   * on the real server: once the suspension was lifted, the same reference
+   * was answered with the letter that had gone.)
+   */
+  it('keeps a letter in doubt when the same words are refused for a suspended account', async () => {
+    mockedSendMessage.mockRejectedValueOnce(noAnswer());
+    mockedFetchSentLetter.mockRejectedValue(suspended());
+    await writeAndSend(anna, 'Dear Anna,');
+    const inDoubt = readSend(MARA, 'user-anna').unanswered;
+    told = [];
+
+    mockedSendMessage.mockRejectedValueOnce(suspended());
+    await sendLetter(MARA, anna);
+
+    expect(mockedSendMessage.mock.calls[1]?.[2]).toBe(inDoubt?.ref);
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    // As it was: still in doubt, and with no new time to ask after it.
+    expect(readSend(MARA, 'user-anna').unanswered).toBe(inDoubt);
+  });
+
+  it('notes nothing unanswered when the words of a new letter are refused for a suspended account', async () => {
+    mockedSendMessage.mockRejectedValueOnce(suspended());
+
+    await writeAndSend(anna, 'Dear Anna,');
+
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    expect(readSend(MARA, 'user-anna').unanswered).toBeNull();
   });
 
   it('holds changed words back with the reason when asking after the first letter is refused', async () => {

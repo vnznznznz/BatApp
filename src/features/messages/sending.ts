@@ -63,8 +63,11 @@ export type Outcome =
       changed: boolean;
     }
   /**
-   * Nothing went. `message` says why: the server refused it, or refused to say
-   * what became of an earlier send - or that the letter did not go.
+   * This press sent nothing. `message` says why: the server refused it, or
+   * said that the letter did not go - or it refused to say what became of a
+   * send that got no answer, and that letter may have gone: it stays in doubt
+   * with its reference (see drafts.ts), and the server will not say until it
+   * answers again.
    */
   | { kind: 'held'; message: string }
   /** No answer, and no way of asking yet. It is noted with the letter as unanswered. */
@@ -230,8 +233,14 @@ async function carry(
     };
   } catch (caught) {
     if (caught instanceof RpcError && caught.reason !== null) {
-      // Refused, with a reason: the server looked, and made no letter of this.
-      // That also answers whatever was open about the same reference.
+      // A suspended account is refused before the server looks for the
+      // reference at all, so that answers nothing about it: whatever was
+      // open stays as it was. (Found in review.)
+      if (caught.reason === 'account_suspended') {
+        return { outcome: { kind: 'held', message: caught.message }, unanswered: open };
+      }
+      // Refused for any other reason: the server looked, and made no letter
+      // of this. That also answers whatever was open about the same reference.
       return {
         outcome: { kind: 'held', message: caught.message },
         unanswered: open ? { ...open, unknown: false } : null,
@@ -243,7 +252,9 @@ async function carry(
     const found = await ask(ref);
     if (found instanceof RpcError) {
       // The letter is in doubt still, and the refusal says why that will not
-      // change for now.
+      // change for now. Noted as any letter in doubt is, the screen showing
+      // it asks once more a moment later; refused again, it is left as it is
+      // (see askAfterLetter).
       return {
         outcome: { kind: 'held', message: found.message },
         unanswered: { ref, words, unknown: true, since, askAt: nextAsk(since) },
