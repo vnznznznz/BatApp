@@ -19,19 +19,20 @@ below), never written here:
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `{{OPERATOR_NAME}}`      | The operator's name                                                                                                                                                                                                                                                    |
 | `{{OPERATOR_ADDRESS}}`   | The operator's postal address. Published only in the hosted privacy policy, section 1; the support page points there for it. In App Store Connect only where a form asks for it, and on the App Store page only if the EU trader declaration were "trader" (section 7) |
-| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                                                                                                                                                                                              |
-| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Planned: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html`                      |
-| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route. Planned: `https://vnznznznz.github.io/night-courier/`                                                                                                                                |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                                               |
+| `{{CONTACT_EMAIL}}`      | The contact address: on the support page, which the app's Contact button opens, and in the privacy policy                                                                                                                                                              |
+| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html`  |
+| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route, also behind the app's Contact button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/`                                                                      |
+| `{{EFFECTIVE_DATE}}`     | The date of this version of the privacy policy: the day it was last changed and rebuilt, never one still to come                                                                                                                                                       |
 
-The planned addresses are named here, in section 2 and in the checklists for reference only. Where a
+The addresses are named here, in section 2 and in the checklists for reference only. Where a
 text below is pasted into App Store Connect, it keeps the placeholder, and the address replaces it
 as it is typed in.
 
 **Where the web pages live.** The privacy policy and the support page are published with GitHub
-Pages, as a user site: a public repository named `vnznznznz.github.io`, which the operator still has
-to create, served at `https://vnznznznz.github.io/`. Night Courier's pages go in its folder
-`night-courier/`: `index.html` (from `support-page.md`), `privacy-policy.de.html` (binding) and
+Pages, as a user site: a public repository named `vnznznznz.github.io`, served at
+`https://vnznznznz.github.io/` and live since 10 November 2026 (GO-LIVE, "Where the web pages
+live", says how they are rebuilt, and with which `LAUNCH_STATE`). Night Courier's pages are in its
+folder `night-courier/`: `index.html` (from `support-page.md`), `privacy-policy.de.html` (binding) and
 `privacy-policy.en.html`. The Markdown sources in this repository keep their placeholders; the
 filled-in pages, with the operator's name and postal address, exist only in the site repository,
 never in this one. That repository is public as well, and git keeps every earlier version of a page
@@ -117,7 +118,7 @@ this repository's own vector source, and the app uses the system fonts.
 | Support URL (per version) | `{{SUPPORT_URL}}`: a web page, not a `mailto:` link                      |
 | Marketing URL             | Leave empty                                                              |
 
-The planned values are in the placeholder table at the top: the support page at
+The values are in the placeholder table at the top: the support page at
 `https://vnznznznz.github.io/night-courier/`, the German privacy policy beside it. The in-app button
 has one address, the German page, so the German page should lead to the English one and back.
 Whether the Privacy Policy URL can differ per localisation, so that the English listing could point
@@ -126,8 +127,8 @@ to `privacy-policy.en.html`, is **to check**.
 Apple's field reference says the Support URL "must lead to actual contact information (legal
 address, email address, telephone number), as may be required by local law". Make it an https
 page, as the app's own web links must be. GitHub Pages serves `github.io` addresses over https;
-that "Enforce HTTPS" is on in the site repository's Pages settings is **to check** once the site
-exists. `{{SUPPORT_URL}}` is the support page (`support-page.md`). It names `{{OPERATOR_NAME}}`
+that "Enforce HTTPS" is on in the site repository's Pages settings is **to check**, now that the
+site exists. `{{SUPPORT_URL}}` is the support page (`support-page.md`). It names `{{OPERATOR_NAME}}`
 and `{{CONTACT_EMAIL}}`, and for the postal address it points to the privacy policy, section 1, so
 that the address is published on one page only. Whether Apple accepts a link to the address
 instead of the address itself is **to check**; if it does not, use `{{PRIVACY_POLICY_URL}}` as the
@@ -627,7 +628,8 @@ it again from step 1, because Apple wants a demo account that does not expire.
       no Paid Apps agreement and no banking or tax forms (**to check** on the Agreements page).
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project"), step 4
       included: `cron.job` lists `deliver-due-messages`, `forget-old-reports` and `tidy-up`, and
-      `select private.tidy_up();` returns `{}`. Anything else names a step the job skips for want of
+      `select private.tidy_up();` returns an empty list (`[]`; psql prints `{}`). Anything else
+      names a step the job skips for want of
       a privilege; until that is fixed, what section 3 and the privacy policy say about the sign-in
       log (30 days), sessions (90 days unused), the names from sign-up and removed accounts is
       wrong.
@@ -638,31 +640,43 @@ it again from step 1, because Apple wants a demo account that does not expire.
       **to check**: the app does not sign in from a link (`detectSessionInUrl` is off in
       `src/lib/supabase.ts`). Then change section 3.10 of both privacy policies as their TO CHECK
       and PRÜFEN comments say.
-- [ ] Site repository `vnznznznz.github.io` created (public) and GitHub Pages switched on for it,
-      serving `https://vnznznznz.github.io/` over https (see the top of this file).
-- [ ] Privacy policy published at `{{PRIVACY_POLICY_URL}}` (planned:
-      `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, with
-      `privacy-policy.en.html` beside it), with `{{OPERATOR_NAME}}`, `{{OPERATOR_ADDRESS}}`,
-      `{{CONTACT_EMAIL}}` and `{{EFFECTIVE_DATE}}` filled in only in the site repository's copy,
-      never in this repository. It is the only public page with the postal address. It names where
-      the data is: the database in Zurich, Switzerland, with Supabase (a US company) as processor,
-      and the USA for Supabase Inc., Microsoft (the mailbox), GitHub (the web pages), and Apple and
-      Google (for testers). Check Supabase's sub-processor list before writing "hosted in
-      Switzerland" without that qualification.
-- [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the privacy policy is published: its
-      sections 7 and 8 say the agreement exists. **To check:** whether Supabase Inc. is certified
+- [x] Site repository `vnznznznz.github.io` created (public) and GitHub Pages switched on for it,
+      serving `https://vnznznznz.github.io/` (see the top of this file): done on 10 November 2026.
+      That it answers over https only is still **to check** in the Pages settings.
+- [x] Privacy policy published at `{{PRIVACY_POLICY_URL}}`
+      (`https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, with
+      `privacy-policy.en.html` beside it) since 10 November 2026, with `{{OPERATOR_NAME}}`,
+      `{{OPERATOR_ADDRESS}}`, `{{CONTACT_EMAIL}}` and `{{EFFECTIVE_DATE}}` filled in only in the
+      site repository's copy, never in this repository. It is the only public page with the postal
+      address. It names where the data is: the database in Zurich, Switzerland, with Supabase (a US
+      company) as processor, and the USA for Supabase Inc., Microsoft (the mailbox), GitHub (the
+      web pages), and Apple and Google (for testers).
+- [ ] What the published policy says, checked against the real project: its TO CHECK and PRÜFEN
+      notes were still open when it went up. Until they are worked through and the next item is
+      done, every rebuild uses `LAUNCH_STATE=before-launch` (GO-LIVE, "Where the web pages live").
+      Among them: read Supabase's sub-processor list before the policy says "hosted in
+      Switzerland" without that qualification. And the two periods the policy does not give yet,
+      for Supabase's server logs and for backups (its sections 3.9 and 9): the description's last
+      line under YOUR DATA says the policy tells how long everything is kept, so both have to
+      stand in the policy before the description is used, here and in `google-play.md`.
+- [ ] Supabase DPA signed (`gdpr-records.md`, 5.1) before the web pages are rebuilt with
+      `LAUNCH_STATE=live` (GO-LIVE, "Where the web pages live"): sections 7 and 8 of the privacy
+      policy say the agreement exists, and until then every page carries the notice that Night
+      Courier has not started. **To check:** whether Supabase Inc. is certified
       under the Swiss-US Data Privacy Framework, or else which contractual safeguards (such as the
       standard contractual clauses) the DPA gives, and whether it covers disclosures under the Swiss
       DSG as well as the GDPR.
-- [ ] Support page (`support-page.md`) live at `{{SUPPORT_URL}}` (planned:
-      `https://vnznznznz.github.io/night-courier/`, the site's `night-courier/index.html`), with its
-      placeholders filled in only in the site repository's copy. It points to the privacy policy
-      for the postal address and does not repeat it (section 2). If Apple wants the address on the
-      Support URL itself, use `{{PRIVACY_POLICY_URL}}` there instead.
+- [x] Support page (`support-page.md`) live at `{{SUPPORT_URL}}`
+      (`https://vnznznznz.github.io/night-courier/`, the site's `night-courier/index.html`) since
+      10 November 2026, with its placeholders filled in only in the site repository's copy. It
+      points to the privacy policy for the postal address and does not repeat it (section 2). If
+      Apple wants the address on the Support URL itself, use `{{PRIVACY_POLICY_URL}}` there
+      instead.
 - [ ] The EAS environment for the build has `EXPO_PUBLIC_SUPABASE_URL` and
       `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted project, `EXPO_PUBLIC_CONTACT_URL`
-      (`mailto:{{CONTACT_EMAIL}}` or `{{SUPPORT_URL}}`) and `EXPO_PUBLIC_PRIVACY_POLICY_URL`
-      (`{{PRIVACY_POLICY_URL}}`). These stay settings of the EAS environment and are never
+      (`{{SUPPORT_URL}}`, the help page, which carries the contact address so that the app
+      bundle need not) and `EXPO_PUBLIC_PRIVACY_POLICY_URL` (`{{PRIVACY_POLICY_URL}}`). These
+      stay settings of the EAS environment and are never
       committed. On a device, Contact shows in the profile and the house rules, and Privacy policy
       shows there and on the sign-up form. Tap each once to see that it opens the right page.
 - [ ] App record created (section 1). App Information filled in (section 2), including the age
@@ -751,7 +765,8 @@ Collected from above, so none is lost:
 10. The trader declaration at the time of any App Store release (non-trader expected), and whether
     App Store Connect asks for it before external TestFlight testing.
 11. That a password stored only as a bcrypt hash needs no entry under Other Data Types.
-12. That `select private.tidy_up();` returns `{}` on the hosted project (GO-LIVE, "Setting up the
+12. That `select private.tidy_up();` returns an empty list on the hosted project (GO-LIVE,
+    "Setting up the
     hosted project", step 4), which the 30 days and the 90 days in section 3 rest on, and how long
     Supabase's plan keeps its logs.
 13. What App Store Connect shows about a tester who joined through the public link (section 6,

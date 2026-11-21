@@ -11,16 +11,29 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+
+# EAS: the signing credentials it can keep in the project folder, which are
+# secrets, and the apps a local build leaves there, which are large and can be
+# built again.
+credentials.json
+*.apk
+*.aab
+*.ipa
 
 # Metro
 .metro-health-check*
 
 # testing
 coverage/
+
+# Screenshots taken while trying the app. They show accounts and letters, and
+# nothing in the repository uses them.
+screenshots/
 
 # debug
 npm-debug.*

@@ -103,6 +103,10 @@ const RETENTION =
   'days after it was made. If it is passed to the police before then, the police keep their own ' +
   'copy, under their own rules. If an account is removed, every letter between it and anyone ' +
   'else goes with it, so keep a copy of anything you may need: a screenshot will do.';
+const COPYING =
+  'Reporting also blocks, unless you switch that off, and the letters of a courier you have ' +
+  'blocked are hidden from you. To copy them, unblock the courier first: Your profile, then ' +
+  'Blocked couriers. You can block them again afterwards, from one of their letters.';
 const GET_IN_TOUCH =
   'For a question, something to add to a report, or a request about your data, get in touch.';
 
@@ -214,6 +218,24 @@ describe('RulesScreen', () => {
       await renderScreen(<RulesScreen />);
 
       expect(within(sectionOf('If someone breaks them')).getByText(RETENTION)).toBeOnTheScreen();
+    });
+
+    /**
+     * The copy has to be possible. A report blocks unless that is switched
+     * off, and a block hides every letter from that courier - the reported one
+     * too - so whoever is told to keep a copy finds nothing to copy until they
+     * unblock (list_inbox and read_message leave such letters out; found in
+     * review, with the week after a threat in mind).
+     */
+    it('says that a blocked courier has to be unblocked before their letters can be copied, and where', async () => {
+      await renderScreen(<RulesScreen />);
+
+      const section = sectionOf('If someone breaks them');
+      expect(within(section).getByText(COPYING)).toBeOnTheScreen();
+      // Straight after the advice to keep a copy, which it makes possible.
+      const texts = within(section).getAllByText(/./);
+      expect(texts.at(-2)).toBe(within(section).getByText(RETENTION));
+      expect(texts.at(-1)).toBe(within(section).getByText(COPYING));
     });
   });
 

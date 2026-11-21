@@ -1,14 +1,26 @@
 # Night Courier — Supabase project configuration.
 #
-# Apply to the linked project with:
+# The local stack (`npx supabase@3.2.0 start`) reads this file as it is. A
+# hosted project gets it with:
 #
-#   npx supabase link --project-ref <your-project-ref>
-#   npx supabase config push
+#   npx supabase@3.2.0 link --project-ref <your-project-ref>
+#   npx supabase@3.2.0 config diff          # read what would change
+#   npx supabase@3.2.0 config push --yes
 #
-# CAUTION: `config push` replaces the linked project's configuration with what
-# this file describes, filling in CLI defaults for anything omitted. Any setting
-# changed in the dashboard but not recorded here will be reverted. Add settings
-# to this file rather than to the dashboard, and this stays the source of truth.
+# `config push` sends the settings this file declares, where the project
+# differs, and nothing else: whatever the file does not mention stays as it is
+# on the project - the SMTP settings made in the dashboard, for one. So a
+# setting that has to hold belongs in this file. One changed in the dashboard
+# alone is put back by the next push if the file says otherwise, and is written
+# down nowhere if the file is silent.
+#
+# The push asks before it writes, and where nobody can answer - a script, a
+# session - it stops and changes nothing; that is what `--yes` is for. The
+# checks that show a push arrived are in docs/GO-LIVE.md, "Setting up the
+# hosted project".
+#
+# The version is named on purpose. `npx supabase` alone is whatever is newest,
+# and versions differ in what these commands do: see scripts/supabase-cli.mjs.
 
 project_id = "night-courier"
 
@@ -17,6 +29,17 @@ enabled = true
 
 # The app is a native one and has no website. These are what a link in an auth
 # email is allowed to return to.
+#
+# Each entry stands for itself and nothing longer. Review asked the local stack
+# for links back to nightcourier://reset and to an Expo Go address, and both
+# came back as plain nightcourier://. So the screen that one day finishes a
+# password reset needs "nightcourier://**" here, or its link will quietly land
+# somewhere else. "exp://" is for Expo Go in development and harmless as it
+# stands; with a wildcard it would let a link open any Expo Go project, so it
+# must never be given one on the hosted project.
+#
+# What such a link carries today is a whole session: docs/GO-LIVE.md, "Known
+# gaps already logged".
 site_url = "nightcourier://"
 additional_redirect_urls = ["nightcourier://", "exp://"]
 
@@ -34,7 +57,9 @@ enable_manual_linking = false
 minimum_password_length = 8
 
 [auth.email]
-enable_signup = true
+# Sign-up by email is allowed. (`enabled` is this CLI's name for what version 2
+# called `enable_signup`.)
+enabled = true
 
 # OFF, deliberately and temporarily.
 #
@@ -53,8 +78,11 @@ enable_confirmations = false
 # new address — that one is an account-takeover route, not a convenience.
 double_confirm_changes = true
 secure_password_change = true
-max_frequency = "1s"
 
+# No `max_frequency` here. The local stack's own default is one second between
+# two emails to the same address; a push would carry a line here to the hosted
+# project and lower its sixty seconds to that.
+
+# No sign-up by phone number, so there is nothing to confirm either.
 [auth.sms]
-enable_signup = false
-enable_confirmations = false
+enabled = false

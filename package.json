@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "main": "expo-router/entry",
+  "engines": {
+    "node": "^22.13.0 || >=24.3.0"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run generate:routes && tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -17,8 +20,10 @@
     "test:watch": "jest --watch",
     "test:db": "node --test src/tests/db/*.test.mjs",
     "build:pages": "node scripts/build-store-pages.mjs",
+    "check:build-env": "node scripts/check-build-env.js",
     "test:scripts": "node --test scripts/*.test.mjs",
     "generate:assets": "node scripts/generate-assets.mjs",
+    "generate:routes": "expo customize tsconfig.json",
     "generate:types": "node scripts/generate-types.mjs",
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run test:db && npm run test:scripts"
   },
@@ -44,6 +49,7 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
     "@electric-sql/pglite": "^0.5.5",
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^29.5.14",

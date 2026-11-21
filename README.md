@@ -44,12 +44,15 @@ updates. Not done yet: the hosted Supabase project (see
 
 ## Requirements
 
-- Node.js 20.19+ (developed on 22.22)
+- Node.js 22, version 22.13 or newer (developed on 22.23; CI runs 22). Node 24.3+ also fits
+  what the installed packages declare. Node 20 does not: the Supabase client and the test
+  library both ask for 22. `engines` in `package.json` says the same, so `npm install` warns on
+  a Node that does not fit, and CI installs with `--engine-strict`, which refuses one.
 - npm 10+
 - An iOS or Android device with [Expo Go](https://expo.dev/go), or a simulator
 - macOS with Xcode is only required for local native iOS builds; cloud builds via EAS do not
   need it
-- Docker, only to run the backend locally with `npx supabase start`
+- Docker, only to run the backend locally with `npx supabase@3.2.0 start`
 
 ## Getting started
 
@@ -65,28 +68,57 @@ A build anyone else will use also needs `EXPO_PUBLIC_CONTACT_URL` and
 `EXPO_PUBLIC_PRIVACY_POLICY_URL` in `.env` (see `.env.example`); without them the Contact and
 Privacy policy buttons are hidden.
 
+A production bundle (`npx expo export`, an EAS build) has these values written into it while it is
+built. Without the Supabase URL and key, or with the placeholders of `.env.example`, it is not
+built at all: `metro.config.js` stops it with a message, rather than letting an app through that
+fails on its first screen. `node scripts/check-build-env.js --for-others` says beforehand whether
+the values are complete, the two links included. An EAS build never sees `.env`, which is not in
+git: set all four values in the EAS environment.
+
 ### The Supabase project
 
-The app needs its schema in your Supabase project. Once, after creating the project:
+The app needs its settings and its schema in your Supabase project. Once, after creating the
+project, with a personal access token in `SUPABASE_ACCESS_TOKEN` and the project's database
+password in `SUPABASE_DB_PASSWORD`:
 
 ```bash
-npx supabase link --project-ref <your-project-ref>
-npx supabase config push
-npx supabase db push
+npx supabase@3.2.0 link --project-ref <your-project-ref>
+npx supabase@3.2.0 config diff                  # read what the next command will change
+npx supabase@3.2.0 config push --yes
+[ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --dry-run   # which migrations, and into which database
+[ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --yes
 ```
 
-`db push` applies everything in `supabase/migrations`: the tables, the row level security, the
-functions the app calls, the 4,310 cities, and the delivery job (pg_cron is enabled by the
-migration). Run it again whenever a migration is added. `config push` applies
-`supabase/config.toml`, which **replaces** dashboard auth settings - read the warning at its top
-first.
+Every command names the CLI version, on purpose: `npx supabase` alone runs whatever is newest, and
+the versions differ in what the same words do. With this one:
+
+- A command changes the hosted project only when it is given `--yes`. Without it the command asks,
+  and where nobody can answer - a script, a session - it stops and changes nothing.
+- `db push` goes to the **local** stack unless it is given `--remote`, even in a linked directory.
+- `db push --remote` connects to the project's Postgres with the database password, which it reads
+  from `SUPABASE_DB_PASSWORD`. Without one it does not stop: it connects through a temporary login
+  role that it asks the API for, a way not yet tried on a real project. The `[ -n ... ]` in front
+  makes the command do nothing instead, and exit with 1. A session gives each command a shell of
+  its own, so a variable exported by one command is gone in the next: GO-LIVE keeps the password
+  in a file and hands it to each command.
+- Each command first prints where it is going: `Target: project <name> (<ref>)`. Read that line.
+
+`db push --remote` applies everything in `supabase/migrations`: the tables, the row level security,
+the functions the app calls, the 4,310 cities, and the delivery job (pg_cron is enabled by the
+migration). Run it again whenever a migration is added. It does not run `supabase/seed.sql`.
+`config push` sends the settings that `supabase/config.toml` declares and leaves everything else on
+the project as it is - read the note at the top of that file first.
+
+For the real project, follow "Setting up the hosted project" in
+[`docs/GO-LIVE.md`](docs/GO-LIVE.md): the same commands, with a check after each one that shows it
+arrived.
 
 ### Running everything locally
 
 With Docker, the whole backend runs on your machine and nothing touches the hosted project:
 
 ```bash
-npx supabase start
+npx supabase@3.2.0 start
 ```
 
 Put the printed API URL and publishable key into `.env` (`http://127.0.0.1:54321` - plain http is
@@ -120,19 +152,23 @@ should ever have.
 | ------------------------- | ----------------------------------------------------------- |
 | `npm start`               | Start the Expo dev server                                   |
 | `npm run ios` / `android` | Start and open a simulator                                  |
-| `npm run typecheck`       | `tsc --noEmit`                                              |
+| `npm run typecheck`       | Generate the route types, then `tsc --noEmit`               |
 | `npm run lint`            | ESLint over the whole repo, warnings treated as errors      |
 | `npm run format`          | Rewrite files with Prettier                                 |
 | `npm test`                | Jest                                                        |
 | `npm run test:db`         | The database tests: migrations replayed in PGlite           |
-| `npm run verify`          | typecheck + lint + format check + tests (what CI runs)      |
+| `npm run verify`          | typecheck + lint + format check + tests (CI runs it too)    |
+| `npm run check:build-env` | Say whether `.env` has what a production build needs        |
 | `npm run generate:assets` | Redraw the app artwork from source                          |
 | `npm run generate:types`  | Regenerate `src/lib/database.types.ts` from the local stack |
 
-Run `npm run verify` before every commit. CI runs exactly the same command.
+Run `npm run verify` before every commit. CI runs the same command, and in a second job bundles
+the app for the web and for iOS (`npx expo export`): only the bundler notices an image that is not
+there or an import it cannot resolve, and nothing in `verify` builds the app.
 
 The concurrency tests (`src/tests/db/concurrency.pg.test.mjs`) need a real Postgres, because the
-races they check cannot happen on PGlite's single connection. CI provides one. Locally they are
+races they check cannot happen on PGlite's single connection. CI provides one - version 17, which
+is what the local Supabase stack and a new hosted project run. Locally they are
 skipped, saying so, unless you point them at a server where they may create a scratch database:
 
 ```bash
@@ -175,11 +211,27 @@ The visual identity is original to this project.
 
 ## A note on `npm audit`
 
-A fresh install reports 22 advisories. All of them resolve to three issues (`image-size` ×2,
-`uuid` ×1) inside Expo's and React Native's **build-time** dependency tree — asset measurement
-and prebuild config. None of them are reachable from the shipped app at runtime, and there is no
-non-breaking fix: `npm audit fix --force` downgrades Expo itself. They are left in place
-deliberately and should be re-checked when Expo publishes an SDK bump.
+`npm audit` reports advisories on a fresh install, and how many changes from week to week with
+the advisory database - so no number is written here; run it to see today's. Nearly everything it
+names is in what the build tools bring along: Expo's and React Native's command-line tools, the
+linter's parser. None of that is in the app. The one exception when this was last looked at (17
+November 2026, in the bundles' source maps) was `decode-uri-component`, which `expo-router`
+brings in through `query-string` and which is in every bundle; the only fix npm knows of is the
+`expo-router` of the next Expo SDK.
+
+Do not answer the report with `npm audit fix`:
+
+- With `--force`, npm says it will install another Expo SDK altogether.
+- Without it, it looks harmless and is not. Tried in a separate copy on 17 November 2026, it left
+  `package.json` alone but rearranged the lockfile around a second `expo-router`, from the next
+  SDK, nested under `expo`. The typecheck, the linter and every test still passed, and the iOS
+  and Android bundles were built - but `npm ls` called the tree invalid, and the web bundle was
+  no longer built at all.
+
+What can be taken safely is a fix that lies within the versions a package's dependents already
+ask for: `npm update <package>` for that package alone, then `npm run verify` and the three
+bundles (`npx expo export --platform web`, `ios` and `android`). The rest waits for the next Expo
+SDK, and is worth looking at again then.
 
 ## Licence and intent
 

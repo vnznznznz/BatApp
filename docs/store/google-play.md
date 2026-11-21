@@ -18,22 +18,22 @@ operator's details, this file names a placeholder, and the real value is typed s
 Console (or into the filled-in web pages, which live only in the site repository described below),
 never written here:
 
-| Placeholder              | Means                                                                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                                                                                                                                                              |
-| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there                                                                                                                                              |
-| `{{CONTACT_EMAIL}}`      | The contact address, also behind the app's Contact button                                                                                                                                                                                         |
-| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Planned: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html` |
-| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route and the deletion steps; no postal address. Planned: `https://vnznznznz.github.io/night-courier/`                                                                 |
-| `{{EFFECTIVE_DATE}}`     | The date the privacy policy takes effect                                                                                                                                                                                                          |
+| Placeholder              | Means                                                                                                                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{{OPERATOR_NAME}}`      | The operator's name, which is also the developer name on Google Play                                                                                                                                                                                                  |
+| `{{OPERATOR_ADDRESS}}`   | The operator's postal address: hosted privacy policy (section 1) only; the support page points there                                                                                                                                                                  |
+| `{{CONTACT_EMAIL}}`      | The contact address: on the support page, which the app's Contact button opens, and in the privacy policy                                                                                                                                                             |
+| `{{PRIVACY_POLICY_URL}}` | The hosted privacy policy, also behind the app's Privacy policy button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (German, the binding version), with the English version alongside at `privacy-policy.en.html` |
+| `{{SUPPORT_URL}}`        | The support page (`support-page.md`): a public https page with the contact route and the deletion steps; no postal address. Also behind the app's Contact button. Live since 10 November 2026: `https://vnznznznz.github.io/night-courier/`                           |
+| `{{EFFECTIVE_DATE}}`     | The date of this version of the privacy policy: the day it was last changed and rebuilt, never one still to come                                                                                                                                                      |
 
-The planned addresses are named here and in the checklist for reference only. Where a text below
+The addresses are named here and in the checklist for reference only. Where a text below
 is pasted into Play Console or onto a page, it keeps the placeholder, and the address replaces it
 as it is typed in.
 
 **Where the web pages live.** The privacy policy and the support page are published with GitHub
-Pages, in the operator's user site: a public repository named `vnznznznz.github.io`, still to be
-created, with Night Courier's pages in its folder `night-courier/` (`index.html` from
+Pages, in the operator's user site: a public repository named `vnznznznz.github.io`, live since
+10 November 2026, with Night Courier's pages in its folder `night-courier/` (`index.html` from
 `support-page.md`, `privacy-policy.de.html` and `privacy-policy.en.html`). The filled-in pages,
 with the operator's name and postal address, exist only in that repository, never in this one.
 GitHub, Inc. (USA) hosts them and logs visitors' IP addresses; the pages set no cookies and load
@@ -329,15 +329,24 @@ on the first build, in Play Console's App bundle explorer: that the merged manif
 The app itself needs only `INTERNET`. The Android template that `expo prebuild` uses
 (`node_modules/expo/template.tgz`, SDK 57) also lists `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
 `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (the last two only up to Android 12L), and
-`expo-file-system`, which `expo` depends on, adds the two storage permissions again. **Done:**
-`app.json` now lists those four under `android.blockedPermissions` (commit 191bc50), and
-`src/tests/app-config.test.ts` fails if that list changes or `android.permissions` appears. Expo
-writes each of them into the app's manifest with `tools:node="remove"`, which takes it out of the
-merged manifest too, whichever library asked for it (`npx expo config --type introspect` shows
-`INTERNET` and the four removals). So the merged manifest should keep `INTERNET` alone. **To
-check** on the first build, in App bundle explorer: that it does, that no other library has added
-a permission of its own, and that the build still runs. The app never asks for any permission at
-run time.
+`expo-file-system`, which `expo` depends on, adds the two storage permissions again. Two more come
+in where the generated manifest cannot show them: `expo-secure-store` pulls in
+`androidx.biometric:biometric:1.1.0`, whose own manifest declares `USE_BIOMETRIC` and
+`USE_FINGERPRINT`, and Gradle merges a library's manifest into the app's only when the app is
+built. The app never uses biometrics (`requireAuthentication` appears nowhere in `src/`). **Done:**
+`app.json` lists all six under `android.blockedPermissions` (the first four since commit
+191bc50), and `src/tests/app-config.test.ts` fails if that list changes or `android.permissions`
+appears. Expo writes each of them into the app's manifest with `tools:node="remove"`, which takes
+it out of the merged manifest too, whichever library asked for it
+(`npx expo config --type introspect` shows `INTERNET` and the six removals). One other permission
+is expected to stay: `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which
+`androidx.core` declares under every app's own name. It is private to the app (protection level
+`signature`), opens nothing to anyone, and must not be blocked. So the merged manifest should keep
+`INTERNET` and that one. **To check** on the first build, in App bundle explorer: that it does,
+that no other library has added a permission of its own, and that the build still runs. (The two
+biometric permissions and the app's own one were traced through the libraries' sources, not seen
+in a build: no Android build has been made yet.) The app never asks for any permission at run
+time.
 
 ### The other declarations
 
@@ -593,8 +602,9 @@ ever applied after all), or a mail provider that keeps more.
 The Delete account URL points here. Google's requirements for the page, as far as they are known
 here: it names the app and the developer as the store listing does, shows the steps prominently,
 and says what is deleted, what is kept and for how long (**to check** the current list). The page
-at `{{SUPPORT_URL}}` (planned: `https://vnznznznz.github.io/night-courier/`, the site repository's
-`night-courier/index.html`) is drafted in `support-page.md`, whose "Deleting your account" section
+at `{{SUPPORT_URL}}` (`https://vnznznznz.github.io/night-courier/`, the site repository's
+`night-courier/index.html`, live since 10 November 2026) is built from `support-page.md`, whose
+"Deleting your account" section
 must say the same as the text below, with the placeholders filled in only in the site repository;
 keep both in step with the privacy policy's section 9.
 
@@ -619,8 +629,8 @@ Your account and sign-in, your profile (username, display name and city), your b
 
 What is kept, and for how long
 • Reports. A report about you keeps your names as they were and any letter of yours it is about; a report you made keeps what you wrote in it. Each report is deleted 180 days after it was made. If I passed a report to the police, they keep their copy under their own rules.
-• The sign-in log at Supabase, the app's hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, yours go at once.
-• Server logs and any backups at Supabase, until they are deleted or overwritten automatically. The privacy policy says how long.
+• The sign-in log at Supabase, the app's hosting provider (sign-up and sign-in events, with your email address). A daily job deletes every entry once it is 30 days old; when you delete your account in the app, or I delete it at your request, yours go at once.
+• Server logs and any backups at Supabase, until Supabase deletes or overwrites them automatically. I cannot name the periods yet: they depend on Supabase's plan, and the privacy policy will state them once they are known.
 • Emails between you and me, as long as I need them for what you asked.
 • If I removed an account for breaking the house rules, its sign-in, email address included, stays banned for two years from the removal so that it cannot simply sign up again, and is then deleted automatically.
 • If you test the Android version: your Google account's email address on my tester list in Google Play Console, until you tell me you have stopped testing. Asking me to delete your account counts. What Google itself keeps follows Google's own terms.
@@ -652,8 +662,8 @@ Dein Konto und deine Anmeldung, dein Profil (Benutzername, Anzeigename und Stadt
 
 Was bleibt, und wie lange
 • Meldungen. Eine Meldung über dich behält deine Namen, so wie sie damals waren, und einen Brief von dir, um den es geht; eine Meldung von dir behält, was du hineingeschrieben hast. Jede Meldung wird 180 Tage, nachdem sie gemacht wurde, gelöscht. Habe ich eine Meldung an die Polizei gegeben, bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
-• Das Anmeldeprotokoll bei Supabase, dem Hosting-Anbieter der App (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
-• Server-Protokolle und etwaige Sicherungskopien bei Supabase, bis sie automatisch gelöscht oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
+• Das Anmeldeprotokoll bei Supabase, dem Hosting-Anbieter der App (Registrierung und Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er 30 Tage alt ist; löschst du dein Konto in der App oder lösche ich es auf deine Bitte, sind deine sofort weg.
+• Server-Protokolle und etwaige Sicherungskopien bei Supabase, bis Supabase sie automatisch löscht oder überschreibt. Die Fristen kann ich noch nicht nennen: Sie hängen von Supabases Tarif ab und stehen in der Datenschutzerklärung, sobald sie feststehen.
 • E-Mails zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 • Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und wird dann automatisch gelöscht.
 • Wenn du die Android-Version testest: die E-Mail-Adresse deines Google-Kontos auf meiner Testerliste in der Google Play Console, bis du mir schreibst, dass du nicht mehr testest. Die Bitte, dein Konto zu löschen, zählt dazu. Was Google selbst speichert, regeln Googles eigene Bestimmungen.
@@ -666,11 +676,18 @@ Datenschutzerklärung: {{PRIVACY_POLICY_URL}}
 
 The "kept" list follows the code as of the housekeeping migration
 (`20261104120000_privacy_housekeeping.sql`, up to commit acd4efe): sign-in records 30 days and
-deleted with the account, removed accounts banned for `private.ban_period()`, two years from the
+deleted with the account (by the app's own deletion, and by `private.delete_account` when the
+operator deletes it on request), removed accounts banned for `private.ban_period()`, two years from the
 removal, and then deleted by the tidy-up. Sessions are not on the list because they go with the
-account, both in the app and when the operator deletes it in the dashboard; a removed account's
+account, both in the app and when the operator deletes it at someone's request
+(`private.delete_account`, `gdpr-records.md` 5.4); a removed account's
 sessions are deleted by the tidy-up once unused for 90 days, like any others (privacy policy 3.8). The single-letter
 sentence follows privacy policy 3.4: there is no per-letter deletion, by the user or on request.
+The line on server logs and backups names no period, because none is known before the hosted
+project exists: the privacy policy says only "a short time" and "until the backup is overwritten"
+(its sections 3.9 and 9, and their TO CHECK notes). It used to say "The privacy policy says how
+long", which the policy did not. Once the plan's periods are written into the policy, put that
+sentence back, here and on the help page.
 When any of that changes, change this list, `support-page.md`, the privacy policy (sections 3.4,
 3.7, 3.8, 3.9, 9 and 11) and `gdpr-records.md` together.
 
@@ -702,7 +719,8 @@ A short note, not legal advice.
 - **What to do.** Invite no one under 13, in the US or anywhere: the house rules admit no one
   younger. Do not post the TestFlight link where it could reach children. If the operator learns
   that an account belongs to someone under 13, wherever they live, delete it without a ban
-  (Authentication → Users → Delete user, not `private.remove_account`): the two-year ban is only
+  (`select private.delete_account('<id>');` as in `gdpr-records.md` 5.4 - not
+  `private.remove_account`, and not the dashboard's Delete user): the two-year ban is only
   for accounts removed for breaking the rules (privacy policy 3.8). For a child in the US, COPPA
   would also require a parent's verifiable consent, which the app has no way to collect. Build
   nothing for COPPA unless the app is ever offered in the US.
@@ -712,23 +730,27 @@ A short note, not legal advice.
 ## 8. Checklist before the first internal test
 
 - [ ] Play Console developer account (personal, 25 USD once) created and identity-verified.
-      Verify its contact email and phone, and sign in at least every 180 days (GO-LIVE, "Two
-      multi-year traps").
+      Verify its contact email and phone, and sign in at least every 180 days (GO-LIVE, "Traps to
+      diarise").
 - [ ] Hosted Supabase project set up and checked (GO-LIVE, "Setting up the hosted project").
 - [ ] Custom SMTP and email confirmation on before the second person signs up (GO-LIVE, "Before a
       second person can sign up"). Then change section 3.10 of both privacy policies as their TO
       CHECK and PRÜFEN comments say.
-- [ ] Supabase DPA signed before the privacy policy is published (`gdpr-records.md` 5.1), with
-      the safeguard for the USA that the privacy policy's section 8 names: until then, its sections
-      7 and 8 are untrue.
-- [ ] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}` (planned:
-      `https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
-      alongside), with the placeholders filled in only in the site repository `vnznznznz.github.io`,
-      never in this one, and the database's location named as Switzerland. It is the only page with
-      the postal address.
-- [ ] Support page live at `{{SUPPORT_URL}}` (planned: `https://vnznznznz.github.io/night-courier/`,
-      from `support-page.md`), with the account deletion text (section 6), and without the postal
-      address: it points to the privacy policy for that.
+- [ ] Supabase DPA signed before the web pages are rebuilt with `LAUNCH_STATE=live`
+      (`gdpr-records.md` 5.1; GO-LIVE, "Where the web pages live"), with the safeguard for the USA
+      that the privacy policy's section 8 names: until then, its sections 7 and 8 are untrue, and
+      every page carries the notice that Night Courier has not started.
+- [x] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}`
+      (`https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
+      alongside) since 10 November 2026, with the placeholders filled in only in the site
+      repository `vnznznznz.github.io`, never in this one, and the database's location named as
+      Switzerland. It is the only page with the postal address. Until the item before this one is
+      done, and the policy's TO CHECK and PRÜFEN notes are worked through (`app-store.md`,
+      section 7, has the item), every rebuild uses `LAUNCH_STATE=before-launch`.
+- [x] Support page live at `{{SUPPORT_URL}}` (`https://vnznznznz.github.io/night-courier/`, from
+      `support-page.md`) since 10 November 2026, with the account deletion text (section 6), and
+      without the postal address: it points to the privacy policy for that. Rebuild it whenever
+      that text changes (a test holds its list of what is kept to the same words here and there).
 - [ ] The EU trader declaration, if Play Console asks for one (section 1): non-trader expected,
       **to check**.
 - [ ] App created (section 1), store listing in English and German, icon, feature graphic and
@@ -746,13 +768,15 @@ A short note, not legal advice.
       access unticked (section 3).
 - [ ] First Android App Bundle built with EAS. `eas.json` does not exist yet (GO-LIVE, D). The EAS
       environment has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` for the hosted
-      project, `EXPO_PUBLIC_CONTACT_URL` (a `mailto:` link or the support page) and
-      `EXPO_PUBLIC_PRIVACY_POLICY_URL` (the planned address at the top): settings of the EAS
+      project, `EXPO_PUBLIC_CONTACT_URL` (the support page, `{{SUPPORT_URL}}`) and
+      `EXPO_PUBLIC_PRIVACY_POLICY_URL` (`{{PRIVACY_POLICY_URL}}`): settings of the EAS
       environment, never committed.
 - [x] `android.blockedPermissions` in `app.json` for `SYSTEM_ALERT_WINDOW`, `VIBRATE`,
-      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID). Done in
-      commit 191bc50, guarded by `src/tests/app-config.test.ts`.
-- [ ] On the first build, the merged manifest checked in App bundle explorer: `INTERNET` only, no
+      `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (section 3, Advertising ID; commit
+      191bc50), and for `USE_BIOMETRIC` and `USE_FINGERPRINT`, which `expo-secure-store` brings in
+      through `androidx.biometric`. Guarded by `src/tests/app-config.test.ts`.
+- [ ] On the first build, the merged manifest checked in App bundle explorer: `INTERNET` and the
+      app's own `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, nothing else, no
       `AD_ID`.
 - [ ] Internal testing: a tester list (at most 100 Google account email addresses), kept only in
       Play Console, and the opt-in link sent to those people. No one under 13, and anyone under 16
@@ -776,9 +800,10 @@ Collected from above, so none is lost:
 6. Graphic sizes, the category (Communication or Social) and tags.
 7. Google's current privacy policy requirements, and the account deletion page requirements.
 8. Whether pre-launch reports run on internal testing, and turning them off.
-9. The built app's permissions: that the merged manifest keeps only `INTERNET` now that `app.json`
-   blocks the template's other four (commit 191bc50), that no library adds one of its own, and that
-   there is no `AD_ID` permission; that blocking them breaks nothing.
+9. The built app's permissions: that the merged manifest keeps only `INTERNET` and the app's own
+   `com.nightcourier.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` now that `app.json` blocks the
+   other six, that no library adds one of its own, and that there is no `AD_ID` permission; that
+   blocking them breaks nothing.
 10. The IARC category names, the exact questions, and whether a self-chosen city counts as "shares
     location". The ratings the certificate gives, especially the USK's. That a rating cannot be
     overridden upwards.

@@ -39,7 +39,7 @@ runs in Expo Go.
 
 | Item                                    | Cost                                              | Status                          | Blocks                                                               |
 | --------------------------------------- | ------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
-| Supabase project in Zurich              | free tier                                         | **not created**                 | everything — see "Setting up the hosted project"                     |
+| Supabase project in Zurich              | free tier (pauses when idle: "Traps to diarise")  | **not created**                 | everything — see "Setting up the hosted project"                     |
 | Custom SMTP (Resend/Postmark/SES)       | free tier                                         | not started                     | any second user; password reset                                      |
 | Apple Developer Program                 | 99 USD/year (CHF 99 in Switzerland, **to check**) | not started                     | Phases 15–17: any install beyond Expo Go                             |
 | Expo account for EAS builds             | free tier                                         | not started                     | Phases 15–16                                                         |
@@ -50,17 +50,17 @@ runs in Expo Go.
 it gates every build that is not Expo Go — TestFlight included. It is also the only unavoidable
 cost on the iOS side; nothing in the app itself costs money.
 
-### C. Compliance artifacts — drafted in `docs/store/`; personal details still open, hosting planned
+### C. Compliance artifacts — the web pages are live; the store answers are drafted in `docs/store/`
 
-| Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages` (see "Where the web pages live")                                                                                           |
-| Support URL                       | Apple 1.2                                  | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/`, built from `docs/store/support-page.md`. It names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the privacy policy URL, if Apple wants the address on the Support URL itself |
-| Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                |
-| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                |
-| App Privacy "nutrition label"     | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                                                                       |
-| Age rating questionnaire          | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                                                                   |
-| Trader status declaration         | EU DSA                                     | **Not applicable** on a TestFlight-only path. Any App Store distribution in the EU needs it, wherever the operator lives. A private, non-commercial operator would normally declare non-trader (**to check**); as a trader, Apple would show the postal address, phone number and email on the store page. See `docs/store/app-store.md`, section 7             |
+| Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages`, as `LAUNCH_STATE=before-launch` until the project is in Zurich and the DPA is signed. The pages of 10 November went up without that notice; whether the site carries it by now is the check under "Where the web pages live" |
+| Support URL                       | Apple 1.2                                  | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/`, built from `docs/store/support-page.md`. It names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the privacy policy URL, if Apple wants the address on the Support URL itself                                                                                                    |
+| Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                                                                                                                   |
+| EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                                                                                                                   |
+| App Privacy "nutrition label"     | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md` (Google's Data safety form: `docs/store/google-play.md`)                                                                                                                                                                                                                                                                                                                                                          |
+| Age rating questionnaire          | App Store Connect                          | **Answers drafted** in `docs/store/app-store.md`; mandatory since 31 Jan 2026                                                                                                                                                                                                                                                                                                                                                                                      |
+| Trader status declaration         | EU DSA                                     | **Not applicable** on a TestFlight-only path. Any App Store distribution in the EU needs it, wherever the operator lives. A private, non-commercial operator would normally declare non-trader (**to check**); as a trader, Apple would show the postal address, phone number and email on the store page. See `docs/store/app-store.md`, section 7                                                                                                                |
 
 Account deletion is already built and tested, which is the one item on Apple's list that is code
 rather than paperwork.
@@ -75,28 +75,47 @@ rather than paperwork.
 
 ### Known gaps already logged
 
-Both recorded where the work is, not only here:
+Recorded where the work is, not only here:
 
 - **Password reset cannot be completed in-app.** The email sends; there is no deep-link handler to
   catch the return and present a new-password screen. Parked until custom SMTP exists, because
   until then the mail cannot reach anyone anyway.
+- **The link in an auth email hands a whole sign-in to the URL scheme.** The app asks Supabase
+  Auth for its default way of answering such a link (`src/lib/supabase.ts` sets no `flowType`, and
+  the library's default is `implicit`). Review followed a reset link on the local stack: it ends
+  in a redirect to `nightcourier://#access_token=…&refresh_token=…`, a complete session.
+  Night Courier ignores it - that is the gap above - so it is of use only to whichever other app
+  on the phone answers to `nightcourier://`, and in Expo Go or a browser the link ends on an
+  error although it worked. Once confirmation is on, every sign-up email carries the same. Not
+  fixed here, because the fix is in the app: either ask for the code flow (`flowType: 'pkce'`),
+  where the link carries a one-time code only the device that asked can use, or have people type
+  a code from the email instead of following a link. **Do it before custom SMTP is switched on,**
+  which is the moment these emails start reaching people.
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
-- **The migrations must be pushed to the hosted project.** `npx supabase db push` after linking —
-  see the README. Until then the app signs in and then fails on every screen that reads a bat.
+- **The migrations must be pushed to the hosted project.** With `db push --remote`, after
+  linking, as "Setting up the hosted project", step 3, has it: each command there is handed the
+  database password. Without one `db push` does not stop but connects through a temporary login
+  role, which is not yet tried on a real project. Until then the app signs in and then fails on
+  every screen that reads a bat.
 
 ### The shortest path to friends using it
 
 1. Create the Supabase project in Zurich, link it, push config and migrations. _(unblocks everything)_
 2. Start Apple enrolment. _(long lead time, gates TestFlight)_
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
-   Phase 11. Push the migrations to the hosted project (`npx supabase db push`).
-4. Custom SMTP, then email confirmation on, then finish password reset.
+   Phase 11. Push the migrations to the hosted project ("Setting up the hosted project", step 3).
+4. Custom SMTP, then email confirmation on, then finish password reset - and before the first of
+   these, change what an email's link hands over ("Known gaps", above).
 5. ~~Phase 10 push.~~ Dropped.
 6. ~~Phase 13a, which App Review will check.~~ Done. Phases 12–14 remain.
-7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026. The
-   rest of group C (the store answers in `docs/store/`) goes in when the accounts exist.
+7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026, to
+   be built with `LAUNCH_STATE=before-launch` for now. Once the project exists in Zurich (step 1)
+   and the DPA is signed and dated in `docs/store/gdpr-records.md`, 5.1 - and before anyone but
+   the operator has an account - rebuild them with `LAUNCH_STATE=live`, that date as `DPA_SIGNED`,
+   and a new `EFFECTIVE_DATE` (see "Where the web pages live"). The rest of group C (the store
+   answers in `docs/store/`) goes in when the accounts exist.
 8. `eas.json`, first build, TestFlight, invite the circle.
 
 ---
@@ -171,11 +190,16 @@ content-free - "a new report is waiting", nothing more: the webhook hands the fu
 row, letter text and note included, and an email with those would put them in a mailbox that keeps
 them as long as you do, beyond the 180 days the privacy policy promises.
 
+The SQL in this section is run as it stands here, in this order, on the test database by
+`scripts/runbooks.test.mjs` with every `npm run verify` - all but the export of sign-in records,
+which needs Supabase's real tables. Whoever changes a statement here changes what that test runs.
+
 **Where:** Supabase dashboard → Table Editor → schema `public` → `reports`. The open ones, oldest
 first, in the SQL editor:
 
 ```sql
-select created_at, reason, reported_username, reported_display_name, letter_body, note, id
+select created_at, reason, reported_username, reported_display_name, letter_body, note,
+       id, reported_id, reporter_id
 from public.reports
 where resolved_at is null
 order by created_at;
@@ -186,9 +210,23 @@ why, the reporter's note, and for a reported letter its full text (`letter_body`
 `reporter_id`; the person reported is not told who that was, unless the law requires it, so do not
 tell them — and remember
 that a letter has one reader, so acting on a letter can tell its sender who reported it anyway.
+`id` is the report's own, for the last step below.
 
 Identify people by `reported_id`, not by the username. When `reported_id` is null the account has
 been deleted, and its username is free: it may belong to someone else by now.
+
+The steps below write to one or the other of the two people. Their addresses are on their
+accounts, and nowhere in the report:
+
+```sql
+select id, email, banned_until from auth.users
+where id in ('<reported_id>', '<reporter_id>');
+```
+
+Keep the two apart: a warning goes to the address beside `reported_id`, the email after a threat
+to the one beside `reporter_id`. An email that reaches the wrong one of them tells the person
+reported who reported them. `banned_until` shows whether an account is already suspended or
+removed.
 
 **What to do**, by how serious it is:
 
@@ -206,8 +244,16 @@ been deleted, and its username is free: it may belong to someone else by now.
   sent or received, on both sides; the reports about them stay, without their id. Their sign-in
   stays behind, banned for two years from the removal (`private.ban_period()`), so that the same
   email cannot simply sign up again, and the daily tidy-up deletes it when the ban runs out. The
-  privacy policy says exactly this, so do not ban for longer by hand. (Authentication → Users →
-  Delete user also works, but frees the email at once.)
+  privacy policy says exactly this, so do not ban for longer by hand.
+
+  To delete an account without a ban instead - at its owner's request, a child's account, an
+  address that was not the person's to sign up with - there is
+  `select private.delete_account('<id>');`, with the steps around it in
+  `docs/store/gdpr-records.md`, 5.4. It frees the email address at once. Use the dashboard's
+  button (Authentication → Users → Delete user) for neither: it deletes with one statement that
+  reaches the account's rows in a different order from everything else here, so that a letter
+  landing at that moment makes one of the two fail, and it writes an entry of its own into the
+  sign-in log, with the person's id and email address.
 
 - **A threat** — stop the account at once, but delete nothing yet: removing it takes every letter
   between the two of them with it, and the report keeps only the one reported.
@@ -218,11 +264,23 @@ been deleted, and its username is free: it may belong to someone else by now.
 
   They can no longer sign in, and their app stops working within the hour, when its sign-in would
   be renewed. This is a suspension: the account still exists, with its profile and letters, and the
-  two years the privacy policy names count from the removal, which sets the ban afresh. Then write
-  to the reporter, at the address on their account, from the contact mailbox, that the account will
-  be removed in a week and why they may want copies (screenshots) of their letters first. If the
-  police are to have the report, export it now, together with the account's sign-in records - the
-  privacy policy says these may go with it:
+  two years the privacy policy names count from the removal, which sets the ban afresh.
+
+  Then write to the reporter, at the address on their account, from the contact mailbox. The email
+  has to say two things:
+  - that the account is suspended and will be removed in a week, and that every letter between the
+    two of them goes with it, so they may want copies (screenshots) of their letters first;
+  - **how to get at the letters.** Reporting blocks by default, and a block hides every letter from
+    that courier, the reported one too: a reporter who opens the app to take screenshots finds
+    nothing there. So tell them to unblock first - Your profile → Blocked couriers → Unblock, and
+    the letters are back under Letters - and that they can block again afterwards, from one of
+    the letters (open it → Block). Unblocking does not make the two friends again, so no new
+    letter can reach them. Without this step the week is of no use to them. (Tried on the test
+    database: after the default report and the suspension the reporter's inbox is empty and both
+    letters are refused; after Unblock both are back.)
+
+  If the police are to have the report, export it now, together with the account's sign-in
+  records - the privacy policy says these may go with it:
 
   ```sql
   select created_at, payload ->> 'action' as action, ip_address
@@ -232,6 +290,19 @@ been deleted, and its username is free: it may belong to someone else by now.
 
   When the week is up, `select private.remove_account('<reported_id>');` as above. Delete your own
   exported copy once the police have theirs.
+
+  If the threat proves unfounded within the week - a joke between friends, the wrong account -
+  lift the suspension instead, and tell the reporter, who has been told the account would go:
+
+  ```sql
+  update auth.users set banned_until = null where id = '<reported_id>';
+  ```
+
+  The account can sign in again at once, with everything it had: nothing was deleted. Only do
+  this to an account that still has its profile. One that `private.remove_account` has removed
+  has nothing left to come back to, and its ban is what the privacy policy promises (the query
+  under "Sperren nach spätestens zwei Jahren beenden" in `docs/store/gdpr-records.md`, 5.6, lists
+  the suspended accounts that still have a profile).
 
 Then record the outcome, so the report leaves the queue:
 
@@ -249,47 +320,294 @@ privacy policy has to name the police as a possible recipient.
 
 ## Setting up the hosted project
 
-What a session with access does, so the steps do not depend on anyone remembering them. It needs a
-Supabase personal access token (dashboard → Account → Access Tokens) stored in the cloud
-environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat — and network access to
-`api.supabase.com` and `*.supabase.co`. Revoke the token afterwards.
+What a session with access does, so the steps do not depend on anyone remembering them. It needs:
 
-1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan,
-   in the operator's organisation (`npx supabase orgs list`), with a generated database password
-   that goes to the operator, not into the repository:
-   `npx supabase projects create night-courier --org-id <org> --region eu-central-2 --db-password <password>`.
-2. **Link and push the auth settings:** `npx supabase link --project-ref <ref>`, then
-   `npx supabase config push`. This applies `supabase/config.toml`, including **email confirmation
-   off** — until custom SMTP exists, Supabase's own mailer reaches nobody but the operator, so with
-   confirmation on a friend's sign-up would never complete (see "Before a second person can sign up"
-   above).
-3. **Apply the migrations:** `npx supabase db push`. It needs a direct Postgres connection; where
-   the network allows only HTTPS, run each file in `supabase/migrations` in order through the
-   Management API instead (`POST /v1/projects/<ref>/database/query`) and record each version in
-   `supabase_migrations.schema_migrations`, so that a later `db push` skips them. The seed file is
-   for the local stack only — never run it here.
-4. **Check it:** `select jobname, schedule from cron.job` shows `deliver-due-messages`,
-   `forget-old-reports` and `tidy-up`; `select count(*) from public.cities` is 4,310; and
-   `select time_multiplier from private.flight_settings` is 1. Then check that the tidy-up can do
-   everything the privacy policy says it does. Whatever it is not allowed to touch, it skips without
-   an error, and it returns what it skipped - so run it once by hand:
+- a Supabase personal access token (dashboard → Account → Access Tokens) stored in the cloud
+  environment as `SUPABASE_ACCESS_TOKEN` — never pasted into a chat. Revoke the token afterwards.
+- network access to `api.supabase.com`, which every command talks to, and to `<ref>.supabase.co`,
+  the project itself, for the check in step 2 and for the app.
+- for `db push` in step 3, a connection to the project's Postgres: port 5432, which is not HTTPS
+  and which many cloud environments do not let out. Step 3 says what to do then. It also needs
+  the database password, which step 1 makes and keeps in a file on the machine it runs on until
+  step 3 is done.
 
-   ```sql
-   select private.tidy_up();
+Every command below names version 3.2.0 of the Supabase CLI. `npx supabase` alone runs whatever is
+newest that day, and versions differ in what the same words do (`scripts/supabase-cli.mjs` has the
+short story). Three things about this version that the steps rely on:
+
+- A command changes the hosted project only when it is given `--yes`. Without it the command asks;
+  where nobody can answer it stops with `Confirmation required` and changes nothing. The steps
+  carry `--yes` where a change is the point of the step, and only there.
+- `db push`, `db query` and `migration list` go to the **local** stack unless they are given
+  `--remote`, even in a linked directory. Each command prints where it is going before it does
+  anything: `Target: project night-courier (<ref>)` is right, `Target: local stack` is not.
+- Run by a session, the CLI answers in JSON; the checks below quote the fields to look for.
+  `--output-format json` asks for that form whoever runs it.
+
+And one thing about the session that runs them: it gives each command a shell of its own, so
+nothing that one command sets - a variable, an `export` - is there for the next. No step below
+relies on it. What a later step needs from an earlier one is written down where it arises: the
+project's `<ref>` in the output of step 1's check, the database password in a file.
+
+The commands were tried on 17 November 2026, those that keep the database password in a file on
+21 November, with exactly this version: against a stand-in for Supabase's API, against scratch
+Postgres databases, and, read-only, against the local stack. No hosted project existed then. What that could not show is marked **not yet tried on a real
+project**; go slowly there, and correct this page when you know more.
+
+1. **Create the project:** name `night-courier`, region **`eu-central-2` (Zurich)**, free plan, in
+   the operator's organisation, with a generated database password that is written neither into
+   the repository nor into a chat. It goes into a file in the home directory that only this user
+   can read:
+
+   ```bash
+   npx supabase@3.2.0 orgs list
+   [ -s ~/.night-courier-db-password ] ||
+     (umask 077 && node -p "require('crypto').randomBytes(24).toString('hex')" > ~/.night-courier-db-password)
+   [ -s ~/.night-courier-db-password ] &&
+     npx supabase@3.2.0 projects create night-courier --org-id <org> --region eu-central-2 \
+       --db-password "$(cat ~/.night-courier-db-password)" --yes
    ```
 
-   It must return `{}`, an empty list. Anything else names the step and the reason, such as
+   A file, because a variable does not last from one command to the next: this step used to
+   `export` the password for step 3, and in a session step 3 would never have seen it. The second
+   command makes a password only where the file has none. Once the project exists the file is the
+   only copy of its password, and a second one made over it would leave step 3 with the wrong one.
+   The third does nothing while the file is empty. (The CLI would not go on without a password
+   either: given an empty one where nobody can be asked, it stops with
+   `non-interactive mode requires the following to be set: --db-password` and creates nothing.)
+
+   Nobody has seen this password and nobody needs to: do not print the file. Nothing uses it but
+   `db push` in step 3 - the app never does - and step 3 deletes the file when the migrations are
+   in. A database password that is wanted later - by the operator, for the password manager
+   (`docs/store/gdpr-records.md`, 5.2), or by a later session with a new migration to push (step
+   3, "Later, or on another machine") - is a new one, set in the dashboard (Project Settings →
+   Database; **to check** where exactly).
+
+   **Check:** `npx supabase@3.2.0 projects list --output-format json` shows a project named
+   `night-courier` with `"region":"eu-central-2"` and, a minute or two after it was created,
+   `"status":"ACTIVE_HEALTHY"`. Its `"ref"` is the `<ref>` of every later step. The region cannot be
+   changed afterwards: if it is not `eu-central-2`, stop here and say so. And
+   `wc -c < ~/.night-courier-db-password` says 49: the password's 48 characters and a line end.
+
+   **The same day,** read what the free plan says about pausing a project nobody uses, and decide
+   what to do about it: "Traps to diarise" has what is known, what a pause would do to this app,
+   and the three options. This is for the operator to read and decide, not for a session to
+   settle.
+
+2. **Link and push the auth settings:**
+
+   ```bash
+   npx supabase@3.2.0 link --project-ref <ref>
+   npx supabase@3.2.0 config diff
+   npx supabase@3.2.0 config push --yes
+   ```
+
+   `link` must answer with `"project_ref":"<ref>"`; from then on every command names this project
+   as its target. `config diff` changes nothing; read it. Against a new project it lists a handful
+   of settings as `update` - the site URL and the redirect addresses, the minimum password length,
+   and **email confirmation off**: until custom SMTP exists, Supabase's own mailer reaches nobody
+   but the operator, so with confirmation on a friend's sign-up would never complete (see "Before a
+   second person can sign up" below). Those are what `config push` then sends, from
+   `supabase/config.toml`. Settings it lists as `remote_only` are ones the file does not declare;
+   the push leaves them alone.
+
+   **Check,** twice: these settings decide whether a friend can sign up at all, and nothing in
+   step 4 looks at them.
+
+   - `npx supabase@3.2.0 config diff --output-format json` now ends in a line whose `"counts"` has
+     `"update":0` and `"local_only":0`. (Not `--exit-code`: that also counts the `remote_only`
+     settings, which are meant to stay.)
+   - The project itself says so, whatever the CLI believes:
+
+     ```bash
+     curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <publishable key>"
+     ```
+
+     must contain `"mailer_autoconfirm":true` and `"disable_signup":false`. On a project the push
+     did not reach, `mailer_autoconfirm` is `false`. The key is in
+     `npx supabase@3.2.0 projects api-keys --output-format json`: the entry whose `"type"` is
+     `"publishable"` (it starts `sb_publishable_`), or else the legacy one named `anon`. Never use
+     `--reveal`, and never the `secret` or `service_role` entries.
+
+   **Not yet tried on a real project:** what a real project's settings look like to `config diff`
+   (the list above comes from a stand-in holding Supabase's defaults as far as they are known), and
+   the settings endpoint on a hosted project (it was read on the local stack).
+
+3. **Apply the migrations:**
+
+   ```bash
+   [ -s ~/.night-courier-db-password ] &&
+     SUPABASE_DB_PASSWORD="$(cat ~/.night-courier-db-password)" \
+       npx supabase@3.2.0 db push --remote --dry-run --debug
+   [ -s ~/.night-courier-db-password ] &&
+     SUPABASE_DB_PASSWORD="$(cat ~/.night-courier-db-password)" \
+       npx supabase@3.2.0 db push --remote --yes
+   ```
+
+   `db push` opens a connection to the project's Postgres and needs the database password for
+   it. Each command is handed the one from step 1, for itself alone. A command here that ends at
+   once and prints nothing found no file: this is not the machine that created the project, or
+   the file has been deleted. Do not take its first two lines off to get past that; see "Later,
+   or on another machine" below.
+
+   The dry run changes nothing. It must print `Target: project night-courier (<ref>)`, then
+   `Using database password from SUPABASE_DB_PASSWORD (environment)...` - that line is what
+   `--debug` is there for - and then every file in `supabase/migrations` under "Would push these
+   migrations". The second command applies them in order and records each one in
+   `supabase_migrations.schema_migrations`, so that a later push sends only what is new. It never
+   runs `supabase/seed.sql`, which is for the local stack only: do not add `--include-seed`, and
+   never aim a `db reset` at this project.
+
+   **Without a password `db push` does not stop.** It asks Supabase's API for a database role of
+   its own, good for a short time, and connects as that - the dry run too, and just the same
+   when `SUPABASE_DB_PASSWORD` is set but empty. Under `--debug` the line then reads
+   `No database password found; using a temporary login role...`. That is what these two
+   commands would have done in a session while step 1 kept the password in a variable. It may
+   well work, but it is **not yet tried on a real project**, and against the stand-in the dry run
+   asked for the role and then tried to connect eight times, for two and a half minutes, before it
+   gave up. It is not a way to arrive on by accident: if the dry run prints that line, stop it and
+   find out why the password was not read.
+
+   **Check:** the dry run once more, now answering in JSON:
+
+   ```bash
+   [ -s ~/.night-courier-db-password ] &&
+     SUPABASE_DB_PASSWORD="$(cat ~/.night-courier-db-password)" \
+       npx supabase@3.2.0 db push --remote --dry-run --output-format json
+   ```
+
+   It ends in `"upToDate":true` with `"target":{"kind":"linked","project_ref":"<ref>"` in the same
+   line. `"kind":"local"` means the check looked at the wrong database.
+
+   **Later, or on another machine** - a later session, with a new migration to push - the file is
+   not there, and the password that was in it cannot be had back. There are three ways, and the
+   first is the one to prefer:
+   - The operator sets a new database password in the dashboard (Project Settings → Database;
+     **to check** where exactly) and stores it for the session as the environment variable
+     `SUPABASE_DB_PASSWORD` of the cloud environment, the way the access token is stored and never
+     in a chat. (Not as a network secret: those are added to HTTPS requests, and this is a
+     Postgres connection.) Everyone who uses that environment can read the variable, so the
+     operator takes it out again after the push. The CLI reads it itself, so the commands are then
+
+     ```bash
+     [ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --dry-run --debug
+     [ -n "$SUPABASE_DB_PASSWORD" ] && npx supabase@3.2.0 db push --remote --yes
+     ```
+
+     with the same line to look for in the dry run.
+
+   - The way round through HTTPS, below. It needs neither the password nor the connection.
+   - The CLI's temporary role, knowingly: the two commands with nothing in front of them. The dry
+     run is where it shows whether that works. **Not yet tried on a real project.**
+
+   **Where no Postgres connection gets out.** `db push` connects to `db.<ref>.supabase.co` (IPv6
+   only) or to the project's pooler (IPv4; `link` has saved its address in
+   `supabase/.temp/pooler-url`), port 5432. If it fails with
+   `IPv6 is not supported on your current network`, run `link` again; if it still cannot connect,
+   the network lets only HTTPS out. `db query --remote` does not need the connection: it sends the
+   SQL through Supabase's API. Send each file that way, in order, and record it as `db push` would
+   have, so that a later `db push` skips it:
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --yes "create schema if not exists supabase_migrations" &&
+     npx supabase@3.2.0 db query --remote --yes "create table if not exists supabase_migrations.schema_migrations (version text not null primary key, statements text[], name text)" &&
+     for f in supabase/migrations/*.sql; do
+       v="$(basename "$f" .sql)"
+       npx supabase@3.2.0 db query --remote --yes --file "$f" &&
+         npx supabase@3.2.0 db query --remote --yes "insert into supabase_migrations.schema_migrations (version, name) values ('${v%%_*}', '${v#*_}')" ||
+         break
+     done
+   ```
+
+   The loop stops at the first command that fails, and its own exit status does not say whether
+   it did. Afterwards
+   `npx supabase@3.2.0 db query --remote --read-only "select version from supabase_migrations.schema_migrations order by 1"`
+   must list one version for every file in `supabase/migrations`. If some are missing, find out why
+   the first missing file failed and carry on from that file. Do not start again from the top: the
+   files are not written to run twice.
+
+   **Not yet tried on a real project:** this whole way round. What was tried: the table is the one
+   `db push` makes, and after files applied as plain SQL and recorded by this loop, `db push` finds
+   nothing left to do. What is not known: whether the API takes the city file (772 KB) in one
+   request, and whether a file that fails half-way leaves nothing behind. If the city file is
+   refused for its size, send its nine `insert` statements one at a time - blank lines separate
+   them, and each can be sent again safely.
+
+   **Last,** whichever way the migrations went in, once the check above or the version list has
+   shown them all: delete the password file. Nothing after this step needs it, and a database
+   password belongs in the operator's password manager or nowhere (`docs/store/gdpr-records.md`,
+   5.2) - not on whatever machine ran the session.
+
+   ```bash
+   rm -f ~/.night-courier-db-password
+   ```
+
+4. **Check it,** through the same API (`--read-only` cannot change anything):
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --read-only \
+     "select jobname, schedule, command, active from cron.job order by jobname"
+   npx supabase@3.2.0 db query --remote --read-only "select count(*) from public.cities"
+   npx supabase@3.2.0 db query --remote --read-only \
+     "select time_multiplier from private.flight_settings"
+   ```
+
+   The first must show three rows, all with `"active": true`: `deliver-due-messages` every minute
+   (`* * * * *`, `select private.deliver_due_messages()`), `forget-old-reports` hourly
+   (`17 * * * *`, `select private.forget_old_reports()`) and `tidy-up` daily (`43 4 * * *`,
+   `select private.tidy_up()`). The second is 4,310 and the third is 1.
+
+   Then check that the tidy-up can do everything the privacy policy says it does. Whatever it is
+   not allowed to touch, it skips without an error, and it returns what it skipped - so run it once
+   by hand. It deletes what is due, so it needs `--yes`:
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --yes "select private.tidy_up()"
+   ```
+
+   It must return an empty list, which this command prints as `"tidy_up": []` (psql prints the same
+   empty list as `{}`). Anything else names the step and the reason, such as
    `sign-in log: permission denied for table audit_log_entries`; until that is fixed, the policy's
    sections on sessions, the sign-in log and banned accounts are wrong: ask Supabase support, or
    change the policy. (Running it deletes nothing that the daily job would not.)
 
-5. **Configure the app:** the project URL and its publishable (anon) key go into `.env` as
-   `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret
-   key, which `src/lib/env.ts` refuses to start with. `.env` stays out of git. Add
+   A day later, look at whether the jobs really ran:
+
+   ```bash
+   npx supabase@3.2.0 db query --remote --read-only "
+     select j.jobname, d.status, d.return_message, d.start_time
+     from cron.job j
+     left join lateral (
+       select * from cron.job_run_details d
+       where d.jobid = j.jobid order by d.start_time desc limit 1
+     ) d on true
+     order by j.jobname"
+   ```
+
+   Each of the three must have a `status` of `succeeded` and a `start_time` within its schedule.
+
+5. **Configure the app:** the project URL, `https://<ref>.supabase.co`, and its publishable (anon)
+   key - the one from the check in step 2 - go into `.env` as `EXPO_PUBLIC_SUPABASE_URL` and
+   `EXPO_PUBLIC_SUPABASE_ANON_KEY` — never the service-role or secret key, which `src/lib/env.ts`
+   refuses to start with. `.env` stays out of git. Add
    `EXPO_PUBLIC_CONTACT_URL=https://vnznznznz.github.io/night-courier/` and
    `EXPO_PUBLIC_PRIVACY_POLICY_URL=https://vnznznznz.github.io/night-courier/privacy-policy.de.html`,
    the pages on the GitHub Pages site (see "Where the web pages live", under "Before first
    submission"). The help page carries the contact address, so the app bundle needs none.
+
+   **An EAS build needs all four values in its own environment** - the Supabase URL and key as
+   much as the two links. `.env` is not in git, so EAS never receives it; the values go into the
+   EAS project's environment variables (or `env` in the build profile, once `eas.json` exists). All
+   four are public by design; none of them is a secret.
+
+   **Check:** `node scripts/check-build-env.js --for-others` reads the files a build reads and must
+   end with "These values are complete for a build that other people will use." The build checks
+   again by itself: a production bundle (`npx expo export`, or the bundling step of an EAS build)
+   without the Supabase URL and key, or with the placeholders of `.env.example`, stops with "Night
+   Courier cannot be bundled with these values" (`metro.config.js`) instead of producing an app
+   that fails on its first screen. **Not yet tried on EAS**, where it should show in the build log;
+   tried with `npx expo export` for iOS, Android and the web.
+
 6. **Try it:** sign up two accounts, choose cities, become friends, send a letter, watch it land;
    report it and check the row in `public.reports`; then delete both test accounts.
 
@@ -351,13 +669,58 @@ Mitigations, both worth doing on day one:
   in Brazil, Indonesia, Singapore and Thailand, with a global rollout planned from 2027. This path
   has a shelf life.
 
-### Two multi-year traps to diarise
+### Traps to diarise
+
+Two of them take years to spring, the third a quiet week.
 
 - **Google inactive-account closure.** Google marks accounts for closure that were created over
   a year ago and never submitted an app for review. Verify your contact email and phone in Play
   Console and sign in at least every 180 days. This is the only way the Android side breaks
   silently years from now.
 - **Apple membership lapse.** If the yearly renewal fails, TestFlight builds stop working.
+- **Supabase pauses a free project nobody uses.** This plan puts the project on Supabase's free
+  plan. As far as is known here, a free project with no activity for about a week is paused,
+  after a warning by email, and one left paused for long (90 days was the figure) can no longer
+  be restored in place, only downloaded as a backup. **None of that could be checked when this
+  was written** (17 November 2026): supabase.com cannot be reached from the session's network,
+  and such terms change. So **on the day the project is created, read what the free plan says
+  about pausing** - the plan's description in the dashboard, and Supabase's documentation on
+  paused projects - and write the answers here: after how long, what counts as activity (the
+  app's requests, certainly; whether the delivery job, which runs inside the database every
+  minute, counts is not known), how the warning arrives, and for how long a paused project can
+  be restored.
+
+  What a pause would mean for this app. Every request fails, so nobody can sign in, read or
+  write. Nothing is lost, but nothing moves: the three scheduled jobs stop with the database. A
+  letter that falls due in that time lands only once the project is restored - at the next run
+  of the delivery job, or the first time its recipient opens the app. And everything the privacy
+  policy says is deleted on time - sign-in records after 30 days, unused sessions after 90,
+  reports after 180 - waits for as long as the pause lasts, and is caught up at the first run
+  afterwards. A quiet week is not unlikely for slow letters among a handful of friends: one
+  holiday is enough.
+
+  The honest options:
+  1. **Accept it.** See that Supabase's emails reach a mailbox that is read, restore the project
+     from the dashboard when the warning comes, and tell the friends that the app can be away for
+     a day. Costs nothing; the app is down until someone notices.
+  2. **Keep it awake from outside**, with a small request on a schedule - a GitHub Actions
+     workflow, say, that calls the project's API once a day with the publishable key (the URL and
+     that key are public by design). Cheap, but a workaround. The database lets nothing be read
+     without a sign-in, so such a request is answered with a refusal: whether Supabase counts
+     it, and puts up with it, is part of the check above. And GitHub is said to switch off the
+     scheduled workflows of a public repository that has seen no activity for 60 days (**to
+     check**), which would only move the trap.
+  3. **Pay.** A paid plan is not paused (Pro, 25 USD a month - **to check**). It would also change
+     what the paperwork assumes about backups, how long logs are kept and how long a session may
+     last (`docs/store/gdpr-records.md`, V8, V9 and L1), so the privacy policy would need another
+     pass.
+
+  How to see it, whichever it is: `npx supabase@3.2.0 projects list --output-format json` gives
+  the project's `"status"`. `ACTIVE_HEALTHY` is right; `INACTIVE` is what this CLI calls a paused
+  project, and its `link` then stops with "project is paused" and sends you to the dashboard
+  (read in the CLI's own messages; no project existed to try it on). After a restore, run the
+  checks of "Setting up the hosted project", step 4, again: the three jobs must still be there
+  and active.
 
 ---
 
@@ -421,8 +784,9 @@ USD a year) is the cleaner foundation.
    Swiss-US Data Privacy Framework if Supabase is certified (**to check**), otherwise on the SCCs in
    their DPA, and for people in the EU on those SCCs. That is appropriate for a hobby project but
    worth knowing. The DPA has to be requested and signed
-   (`docs/store/gdpr-records.md`, 5.1) before the privacy policy is published, since its sections 7
-   and 8 say it exists.
+   (`docs/store/gdpr-records.md`, 5.1) before the web pages are rebuilt with `LAUNCH_STATE=live`,
+   since sections 7 and 8 of the privacy policy say it exists; until then the pages carry the
+   notice that Night Courier has not started (see "Where the web pages live").
 
 ### Before a second person can sign up: custom SMTP
 
@@ -438,8 +802,13 @@ Configure a provider under Authentication → Emails → SMTP Settings (Resend, 
 have free tiers large enough for this app), which also lifts the cap to 30 messages per hour, and
 then turn email confirmation on. Set `enable_confirmations = true` under `[auth.email]` in
 `supabase/config.toml` in the same change, as its comment says: otherwise the next
-`npx supabase config push` switches confirmation off again, and section 3.10 of the privacy policy
-stops being true.
+`npx supabase@3.2.0 config push --yes` switches confirmation off again, and section 3.10 of the
+privacy policy stops being true. The SMTP settings themselves can stay in the dashboard: the file
+does not declare them, so a push leaves them alone.
+
+One thing in the app comes first: what the link in such an email hands over ("Known gaps already
+logged", near the top). From the day a provider is configured, these emails reach everyone who
+signs up or asks for a reset.
 
 ### Push notifications: none
 
@@ -457,10 +826,12 @@ transits it, so a content-free push keeps message text out of a US processor.
 - ~~**Report, block, and a contact route**~~ — built in Phase 13a. The contact route is a
   **Contact** button in the profile and in the house rules, and a **Privacy policy** button there
   and on the sign-up form. Both read their address from the build's environment —
-  `EXPO_PUBLIC_CONTACT_URL` (a `mailto:` or an https page) and `EXPO_PUBLIC_PRIVACY_POLICY_URL` —
-  and are hidden while unset. **Set both for every build anyone else will use**, in `.env` and in
-  the EAS environment: an App Reviewer looks for exactly these. They end up in the app bundle, so
-  use an address made for the purpose, never a home address.
+  `EXPO_PUBLIC_CONTACT_URL` and `EXPO_PUBLIC_PRIVACY_POLICY_URL` — and are hidden while unset.
+  **Set both for every build anyone else will use**, in `.env` and in the EAS environment: an App
+  Reviewer looks for exactly these. Night Courier's builds use the help page and the privacy
+  policy on GitHub Pages; the two values are in "Setting up the hosted project", step 5. (The
+  contact setting would also take a `mailto:` link. It is not used here: whatever is set ends up
+  in the app bundle, and the help page can change its address without a new build.)
 - **Beta App Review needs a way in.** A fresh account has no friends and no letters, so a reviewer
   who signs up finds no Report or Block button anywhere. Before submitting, create a reviewer
   account and a "Demo Friend" on the hosted project, make them friends, and a day before, send two
@@ -520,9 +891,11 @@ transits it, so a content-free push keeps message text out of a US processor.
   1.2 requires published contact information, and Art. 19 FADP and GDPR Art. 13 require the
   controller's identity.
 
-  The contact email is decided. Like the postal address it stays out of this repository: it goes
-  into `EXPO_PUBLIC_CONTACT_URL` as a `mailto:` link, in `.env` and in the EAS environment, and into
-  the hosted privacy policy.
+  The contact email is decided. Like the postal address it stays out of this repository: it is
+  on the help page and in the hosted privacy policy, both built with it from the environment
+  (`CONTACT_EMAIL`, in "Where the web pages live" below). The app itself does not carry it: its
+  Contact button opens the help page, whose address is what goes into `EXPO_PUBLIC_CONTACT_URL`
+  ("Setting up the hosted project", step 5).
 
   The operator has decided to use a personal postal address. **It is deliberately not stored in
   this repository, and must not be.** This repository is public; anything committed here is
@@ -551,16 +924,85 @@ transits it, so a content-free push keeps message text out of a US processor.
 
   ```bash
   OPERATOR_NAME=… OPERATOR_ADDRESS_DE=… OPERATOR_ADDRESS_EN=… CONTACT_EMAIL=… \
-  EFFECTIVE_DATE=YYYY-MM-DD SITE_URL=https://vnznznznz.github.io/night-courier/ \
+  EFFECTIVE_DATE=YYYY-MM-DD LAUNCH_STATE=before-launch \
+  SITE_URL=https://vnznznznz.github.io/night-courier/ \
   npm run build:pages -- --out ../vnznznznz.github.io
   ```
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
-  README has the command with the values filled in. `EFFECTIVE_DATE` is the policy's "Stand": move
-  it on whenever the policy's content changes, and tell users of an important change (policy
-  section 15). `scripts/build-store-pages.mjs` refuses to build while a value is missing, a
-  placeholder is left over, or a page would load anything from another site, and its test builds
-  the pages with made-up details on every `npm run verify`.
+  README has the command with the values filled in. It was written before `LAUNCH_STATE` existed,
+  and as it stands there the build refuses it ("set LAUNCH_STATE"): with the first rebuild, add
+  `LAUNCH_STATE=before-launch` to the command there, and a line saying that a live build also
+  needs `DPA_SIGNED` (below).
+
+  **Check that it arrived,** a few minutes after the push. The pages are what people read, not
+  the repository:
+
+  ```bash
+  for page in index.html privacy-policy.de.html privacy-policy.en.html; do
+    curl -fsS "https://vnznznznz.github.io/night-courier/$page" -o "/tmp/night-courier-$page" &&
+      grep -c 'class="notice"' "/tmp/night-courier-$page"
+  done
+  grep -o 'Stand: [^<]*' /tmp/night-courier-privacy-policy.de.html | head -1
+  ```
+
+  Built as `before-launch` this prints 2, 1 and 1 - the help page carries the notice once in each
+  language - and then the date that was given as `EFFECTIVE_DATE`. Built as `live` it prints 0
+  three times. A page that could not be fetched gives an error and no number: that is not a 0.
+  The pages that went up on 10 November 2026 print 0, 0, 0 and "Stand: 10. November 2026";
+  whether the site has moved on from them is this check, and the item for it is in
+  `docs/store/gdpr-records.md`, 5.2. (Tried on 17 November 2026 against a local stand-in serving
+  a rebuilt copy of the site. GitHub Pages itself cannot be reached from the session's network,
+  so against the real site it is **not yet tried**.)
+
+  `EFFECTIVE_DATE` is the policy's "Stand", the day this version of it is from: move it
+  on to the day of the rebuild whenever the policy's content changes, and tell users of an
+  important change (policy section 15). The build refuses a date that is still to come, so a
+  change announced in advance goes up on the day it takes effect, not before with that day's
+  date. The next rebuild is such a change: sections 3.7, 3.9 and 9 of the policy were corrected
+  on 17 November 2026 (and a sentence of section 11 in the English version), and the help page
+  with them.
+
+  **`LAUNCH_STATE` says whether Night Courier has started,** and nothing is built without it. The
+  policy speaks in the present tense - a database in Zurich, a processing agreement with Supabase,
+  standard contractual clauses a reader can ask for a copy of - and the pages have been public
+  since 10 November 2026, before any of that existed. So:
+  - `LAUNCH_STATE=before-launch` puts a short notice on every page: directly under the navigation
+    of each policy, and at the top of each half of the help page, in the page's language. It says
+    that Night Courier has not started yet, that the page describes how the app will handle data
+    from its start, and that until then there are no accounts and the app processes no personal
+    data. Every rebuild uses this, whatever its reason, until the conditions below are met. (The
+    pages that went up on 10 November had no such notice; the first rebuild adds it.)
+  - `LAUNCH_STATE=live` builds the pages without the notice. Use it, together with a new
+    `EFFECTIVE_DATE`, only once both of these are true: the hosted project exists in
+    `eu-central-2` (Zurich), the region the policy names ("Setting up the hosted project", step 1
+    and its check); and the processing agreement with Supabase, the DPA with the standard
+    contractual clauses, is signed and its date is written into `docs/store/gdpr-records.md`,
+    section 5.1, first item ("hier das Datum eintragen"). The policy's PRÜFEN notes (TO CHECK in
+    the English version) list what else it says that has to be checked against the real project
+    by then. And do it before anyone but the operator gets an account: from that day "there are no
+    accounts" is the sentence that is not true.
+
+    A live build asks for that date: add `DPA_SIGNED=YYYY-MM-DD` to the command, copied from
+    `gdpr-records.md`, 5.1. Without it the build stops, and so it does when the date is later
+    than `EFFECTIVE_DATE` or still to come. The pages do not show it; the build's last line does
+    ("live: no notice (processing agreement signed …)"). It is there so that "live" cannot be
+    typed by someone who has no date to give - the pages have once gone up before the agreement
+    existed. If the blank in 5.1 is still empty, the answer is `LAUNCH_STATE=before-launch`,
+    never a date made up for the purpose.
+
+  `scripts/build-store-pages.mjs` refuses to build while a value is missing, a date is not one
+  that exists (30 February) or is still to come, a live build has no date for the agreement, a
+  placeholder is left over, a link within a page leads nowhere, or a page would load anything
+  from another site, and its test builds the pages with made-up details on every
+  `npm run verify`.
+
+  It also refuses to build from a checkout whose migrations lack a function that a promise on
+  the pages rests on, and names it: that an account deleted on request loses its sign-in records
+  at once, for one, is `private.delete_account`. Documents and migrations are written on
+  different branches; the pages are built from a tree that has both, or not at all. Build them
+  from the tree whose migrations are on the hosted project - before the launch, the one whose
+  migrations will be.
 
   The Markdown sources here keep their placeholders; the filled-in pages, with the operator's name
   and postal address, live only in the site repository, never in this one. That repository is

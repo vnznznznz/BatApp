@@ -8,9 +8,23 @@
  * file here:
  *
  *   OPERATOR_NAME='…' OPERATOR_ADDRESS_DE='…' OPERATOR_ADDRESS_EN='…' \
- *   CONTACT_EMAIL='…' EFFECTIVE_DATE=2026-11-10 \
+ *   CONTACT_EMAIL='…' EFFECTIVE_DATE=2026-11-10 LAUNCH_STATE=before-launch \
  *   SITE_URL=https://vnznznznz.github.io/night-courier/ \
  *   npm run build:pages -- --out ../vnznznznz.github.io
+ *
+ * LAUNCH_STATE says whether Night Courier has started. The policy speaks in
+ * the present tense - a database in Zurich, a signed processing agreement -
+ * and the pages are public before any of that exists. With before-launch,
+ * every page says at its top that the app has not started and that nothing is
+ * processed yet; with live, the pages stand as written. There is no default:
+ * docs/GO-LIVE.md, "Where the web pages live", says when live becomes true.
+ *
+ * A live build also needs DPA_SIGNED=YYYY-MM-DD, the date the processing
+ * agreement with Supabase was signed, as it is written into
+ * docs/store/gdpr-records.md, 5.1. The pages do not show it. It is asked for
+ * because the policy says the agreement exists, and the pages have once been
+ * published before it did: whoever cannot give the date is not ready to build
+ * as live.
  *
  * --out is the site repository's checkout. The pages go into its folder
  * night-courier/ (index.html is the help page), with a redirect at its root and
@@ -18,9 +32,16 @@
  * loaded from anywhere else. Then commit and push there. docs/GO-LIVE.md,
  * "The web pages", has the whole procedure.
  *
- * Refuses to build when a value is missing, a placeholder is left over, or a
- * page would load anything from another site - the privacy policy promises it
- * does not.
+ * Refuses to build when a value is missing, a date does not exist or is still
+ * to come, a live build has no date for the agreement, a placeholder is left
+ * over, a link within a page leads nowhere, a page would load anything from
+ * another site - the privacy policy promises it does not - or this tree's
+ * migrations lack a function that a promise on the pages rests on.
+ *
+ * --sources <folder> builds from another folder than docs/store/, and
+ * --migrations <folder> looks for the functions in another folder than
+ * supabase/migrations/. The tests use them to show what a careless edit to a
+ * document, or a tree without a migration, would do.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -29,8 +50,9 @@ import { fileURLToPath } from 'node:url';
 
 import { marked } from 'marked';
 
+import { definesFunction, MIGRATIONS as OWN_MIGRATIONS } from './migrations.mjs';
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCES = join(ROOT, 'docs', 'store');
 
 const REQUIRED = [
   'OPERATOR_NAME',
@@ -39,6 +61,7 @@ const REQUIRED = [
   'CONTACT_EMAIL',
   'EFFECTIVE_DATE',
   'SITE_URL',
+  'LAUNCH_STATE',
 ];
 
 function fail(message) {
@@ -46,26 +69,121 @@ function fail(message) {
   process.exit(1);
 }
 
-const outIndex = process.argv.indexOf('--out');
-const outArg = outIndex === -1 ? undefined : process.argv[outIndex + 1];
+const option = (name) => {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
+};
+
+const outArg = option('--out');
 if (!outArg) fail('pass --out <the site repository checkout>');
 const OUT = resolve(outArg);
+const SOURCES = resolve(option('--sources') ?? join(ROOT, 'docs', 'store'));
+const MIGRATIONS = resolve(option('--migrations') ?? OWN_MIGRATIONS);
 
 const missing = REQUIRED.filter((name) => !process.env[name]?.trim());
-if (missing.length) fail(`set ${missing.join(', ')} (see the comment at the top of this file)`);
+if (missing.length)
+  fail(
+    `set ${missing.join(', ')} (see the comment at the top of this file)` +
+      // The one value that is a decision, and that older copies of the build
+      // command do not have: say which answer is the safe one.
+      (missing.includes('LAUNCH_STATE')
+        ? '. LAUNCH_STATE=before-launch until Night Courier has started; docs/GO-LIVE.md, ' +
+          '"Where the web pages live", says when it is live'
+        : ''),
+  );
 
 const env = Object.fromEntries(REQUIRED.map((name) => [name, process.env[name].trim()]));
 if (!/^https:\/\/.+\/$/.test(env.SITE_URL)) fail('SITE_URL must be an https URL ending in /');
 if (!/^\d{4}-\d{2}-\d{2}$/.test(env.EFFECTIVE_DATE)) fail('EFFECTIVE_DATE must be YYYY-MM-DD');
+if (!['before-launch', 'live'].includes(env.LAUNCH_STATE))
+  fail('LAUNCH_STATE must be before-launch or live');
 
-const date = new Date(`${env.EFFECTIVE_DATE}T12:00:00Z`);
-const longDate = (locale) =>
+/**
+ * The day a YYYY-MM-DD names, at noon UTC, or null when there is no such day.
+ *
+ * JavaScript rolls a day the month does not have into the next month: 30
+ * February becomes 2 March, and the binding policy would carry a date nobody
+ * typed. So the date has to come back out as it went in. (An impossible month
+ * gives no date at all, and toISOString would throw on it: hence the first test.)
+ */
+function dayOf(text) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const day = new Date(`${text}T12:00:00Z`);
+  return Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== text ? null : day;
+}
+
+const date = dayOf(env.EFFECTIVE_DATE);
+if (!date) fail('EFFECTIVE_DATE is not a date that exists');
+
+/**
+ * Whether a YYYY-MM-DD names a day that has not begun anywhere yet.
+ *
+ * Clocks run up to fourteen hours ahead of UTC, so the latest day there is, at
+ * any moment, is the date fourteen hours from now. Whoever builds in the
+ * evening in Zurich is a day ahead of a machine that keeps UTC, and right.
+ */
+const stillToCome = (text) =>
+  text > new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+// The date is the policy's "Stand": the day this version of it is from. The
+// page is always the current version (its section 15), so a date ahead of
+// today is a slip of the hand - 2027 for 2026 - and would be published as
+// typed. A change announced in advance goes up on the day it takes effect.
+if (stillToCome(env.EFFECTIVE_DATE))
+  fail(
+    `EFFECTIVE_DATE (${env.EFFECTIVE_DATE}) is in the future. It is the day this version of ` +
+      'the policy is from: today, if the policy has just changed',
+  );
+const longDate = (locale, day = date) =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
-  }).format(date);
+  }).format(day);
+
+// Live means the policy stands as written, and it says that Supabase works
+// under a signed processing agreement. So a live build has to be told when it
+// was signed: not on a day still to come, and not later than the date the
+// policy itself carries.
+let agreementSigned = null;
+if (env.LAUNCH_STATE === 'live') {
+  const given = process.env.DPA_SIGNED?.trim();
+  if (!given)
+    fail(
+      'LAUNCH_STATE=live needs DPA_SIGNED, the date the processing agreement with Supabase was ' +
+        'signed (docs/store/gdpr-records.md, 5.1). Without one, build with LAUNCH_STATE=before-launch',
+    );
+  agreementSigned = dayOf(given);
+  if (!agreementSigned) fail('DPA_SIGNED must be a date that exists, as YYYY-MM-DD');
+  if (stillToCome(given)) fail(`DPA_SIGNED (${given}) is in the future`);
+  if (agreementSigned > date)
+    fail(`DPA_SIGNED (${given}) is later than EFFECTIVE_DATE (${env.EFFECTIVE_DATE})`);
+}
+
+/**
+ * What the pages promise of the database, each with the function that keeps
+ * the promise. Documents and migrations are written on different branches, and
+ * the pages are built by hand, whenever someone decides to: without this, a
+ * tree that has the sentence and not yet the function publishes the sentence.
+ * (The tests of the functions themselves are the database tests; this only
+ * asks that they are there.)
+ */
+const RESTS_ON = [
+  ['deleting your account in the app deletes it for good', 'public.delete_own_account'],
+  ['an account deleted on request loses its sign-in records at once', 'private.delete_account'],
+  ['an account removed for breaking the rules is banned for two years', 'private.remove_account'],
+  ['a daily job deletes what has reached the end of its period', 'private.tidy_up'],
+  ['a report is deleted 180 days after it was made', 'private.forget_old_reports'],
+];
+
+for (const [promise, name] of RESTS_ON) {
+  if (!definesFunction(name, MIGRATIONS))
+    fail(
+      `the pages say that ${promise}. That is ${name}, and no migration in ${MIGRATIONS} ` +
+        'creates it: the branch that adds it has to be in this tree before the pages are built',
+    );
+}
 
 const link = (url) => `[${url}](${url})`;
 const email = `[${env.CONTACT_EMAIL}](mailto:${env.CONTACT_EMAIL})`;
@@ -106,6 +224,28 @@ th { background: color-mix(in srgb, var(--line) 40%, transparent); }
 code { font-size: .9em; }
 nav { font-size: .95rem; margin-bottom: 1.5rem; color: var(--muted); }`;
 
+const NOTICE_STYLE = `.notice { margin: 0 0 1.5rem; padding: .7rem .9rem; border: 1px solid var(--line); border-left: .3rem solid var(--accent); }`;
+
+/**
+ * What every page says at its top until Night Courier has started. Each is
+ * true on its own: no hosted project, so no accounts and nothing the app could
+ * process. Opening the page itself is another matter (GitHub logs the visit),
+ * and the policy's section on the web pages covers that already.
+ */
+const NOTICES = {
+  policy: {
+    de: '<strong>Night Courier ist noch nicht gestartet.</strong> Diese Erklärung beschreibt, wie die App ab ihrem Start mit deinen Daten umgeht. Bis dahin gibt es keine Konten, und die App verarbeitet keine personenbezogenen Daten.',
+    en: '<strong>Night Courier has not started yet.</strong> This policy describes how the app will handle your data from the day it starts. Until then there are no accounts, and the app processes no personal data.',
+  },
+  help: {
+    de: '<strong>Night Courier ist noch nicht gestartet.</strong> Was diese Seite über die App und deine Daten sagt, gilt ab ihrem Start. Bis dahin gibt es keine Konten, und die App verarbeitet keine personenbezogenen Daten.',
+    en: '<strong>Night Courier has not started yet.</strong> What this page says about the app and your data holds from the day it starts. Until then there are no accounts, and the app processes no personal data.',
+  },
+};
+
+const notice = (kind, lang) =>
+  env.LAUNCH_STATE === 'live' ? '' : `<p class="notice" role="note">${NOTICES[kind][lang]}</p>\n`;
+
 const page = ({ lang, title, nav, body }) => `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -113,7 +253,7 @@ const page = ({ lang, title, nav, body }) => `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <style>
-${STYLE}
+${body.includes('class="notice"') ? `${STYLE}\n${NOTICE_STYLE}` : STYLE}
 </style>
 </head>
 <body>
@@ -159,7 +299,8 @@ for (const [lang, policy] of Object.entries(POLICIES)) {
     lang,
     title: policy.title,
     nav: policy.nav,
-    body: render(markdown),
+    // Directly under the navigation, above the heading: nobody reads past it.
+    body: notice('policy', lang) + render(markdown),
   });
 }
 
@@ -175,12 +316,41 @@ for (const [lang, policy] of Object.entries(POLICIES)) {
     },
     'support-page.md',
   );
-  // The German half's heading is the target of "Deutsch weiter unten".
-  const body = render(markdown).replace(
-    '<h1>Night Courier – Hilfe und Kontakt</h1>',
-    '<h1 id="night-courier--hilfe-und-kontakt" lang="de">Night Courier – Hilfe und Kontakt</h1>',
-  );
+  // The page is English first, then a line, then the same in German. The
+  // German half is wrapped so that a screen reader changes its voice for all of
+  // it, not for the heading alone.
+  const halves = markdown.split(/^---$/m);
+  if (halves.length !== 2)
+    fail('support-page.md: expected one line of --- between the English and the German half');
+  const [english, german] = halves.map(render);
+
+  // "Deutsch weiter unten" links to the German heading the way GitHub names a
+  // heading, so that it also works where the Markdown itself is shown. The same
+  // name goes on the German half here; the check below then catches a heading
+  // reworded without its link.
+  const heading = german.match(/<h1>(.*?)<\/h1>/)?.[1];
+  if (!heading) fail('support-page.md: the German half has no heading');
+  // The notice is the first thing in each half, so that whoever follows the
+  // link to the German half lands on it.
+  const body =
+    `${notice('help', 'en')}${english}<hr>\n` +
+    `<div lang="de" id="${anchor(heading)}">\n${notice('help', 'de')}${german}</div>`;
   pages['index.html'] = page({ lang: 'en', title: 'Night Courier – help and contact', body });
+}
+
+/** A heading's name in a link, as GitHub derives it: "A – b" becomes "a--b". */
+function anchor(heading) {
+  return heading
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-');
+}
+
+for (const [name, html] of Object.entries(pages)) {
+  for (const [, target] of html.matchAll(/href="#([^"]*)"/g)) {
+    if (!html.includes(` id="${target}"`))
+      fail(`${name} links to #${target}, which is nowhere on the page`);
+  }
 }
 
 for (const [name, html] of Object.entries(pages)) {
@@ -205,4 +375,9 @@ for (const [name, html] of Object.entries(pages))
 writeFileSync(join(OUT, 'index.html'), ROOT_PAGE);
 writeFileSync(join(OUT, '.nojekyll'), '');
 
-console.log(`Built ${Object.keys(pages).length + 1} pages into ${OUT}, dated ${POLICIES.en.date}.`);
+const state = agreementSigned
+  ? `live: no notice (processing agreement signed ${longDate('en-GB', agreementSigned)})`
+  : 'not started yet: every page carries the notice';
+console.log(
+  `Built ${Object.keys(pages).length + 1} pages into ${OUT}, dated ${POLICIES.en.date}, ${state}.`,
+);

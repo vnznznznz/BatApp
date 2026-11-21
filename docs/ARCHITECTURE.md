@@ -56,6 +56,14 @@ File-based routing keeps navigation structure visible in the directory tree, and
 makes a link to a route that does not exist a type error. `reactCompiler` is left on — it ships
 with the SDK 57 template and `babel-plugin-react-compiler` is already installed.
 
+_Corrected in November 2026:_ that was the intention, and until then it did not hold. The route
+types are generated into `.expo/types`, never committed, and `tsconfig.json` excluded `.expo` -
+which wins over the include beside it - so `npm run typecheck` and CI passed whatever a link
+said. `npm run typecheck` now generates the types first (`npm run generate:routes`, which is
+`expo customize tsconfig.json`) and the exclude is gone. `src/tests/app-config.test.ts` holds a link to a screen that does not exist, marked as an
+expected error: if the route types ever go missing from the typecheck again, that mark fails it.
+No link in the app was broken when this was switched on.
+
 ### A design system, not per-screen styling
 
 `src/components/` holds five primitives — `Screen`, `Text`, `Button`, `Card`, `BatMark` — and
@@ -581,7 +589,7 @@ literally; at run time `process.env` itself is empty. `src/lib/supabase.ts` had 
 since Phase 2, so every real build threw at launch while every test passed. `supabase.test.ts`
 now runs the file through `babel-preset-expo` and asserts both values are inlined and no read of
 `process.env` remains. The URL check also accepts plain http for loopback and private-network
-addresses, so the app can run against `npx supabase start` - from a phone too.
+addresses, so the app can run against a local Supabase stack - from a phone too.
 
 ## Phase 12 - the flight, drawn
 
@@ -808,6 +816,13 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
   from the removal, the operator's decision - so that the same email cannot simply sign up again.
   The ban used to be a hundred years, set by hand, and kept for ever. When it runs out, the sign-in
   is deleted.
+- **Accounts deleted for someone.** An account its owner asks to have deleted, a child's, an
+  address that was not the person's to use: the operator deletes these with
+  `private.delete_account`, which bans nothing and takes the account's rows in the order the
+  courier's own deletion takes them. The dashboard's "Delete user" is not used for it: review
+  showed it deadlocking against a letter that lands at that moment, and leaving an entry in the
+  sign-in log that names the person (17 November 2026; the steps are in
+  `docs/store/gdpr-records.md`, 5.4).
 - **Sessions.** A session, with the IP address and device it was opened from, lasted until its
   owner signed out - on a phone lost years ago, for ever. Supabase limits that only on its paid
   plans, so the tidy-up ends a session nobody has used for 90 days
@@ -828,9 +843,9 @@ Supabase owns stands alone: where the platform withholds the privilege, that ste
 the others still run, so one missing grant cannot stop the rest, and deleting an account cannot
 fail for it either. Skipping silently would leave the privacy policy wrong without anyone knowing,
 so the job returns what it skipped, with the reason; the hosted setup runs it once by hand and
-expects `{}`. (A first version left the steps on `auth.users` unshielded, so one missing grant
-there rolled the whole run back - found in review, and tested now with a role that lacks it.) Any
-other error is a fault and fails the run. Verified against the local
+expects an empty list. (A first version left the steps on `auth.users` unshielded, so one missing
+grant there rolled the whole run back - found in review, and tested now with a role that lacks
+it.) Any other error is a fault and fails the run. Verified against the local
 stack's real GoTrue: the records it writes, the copy in the identity, a banned account refused at
 sign-in, at token refresh and at sign-up, its sign-in deleted with its identities once the ban has
 run out, and a session left unused for 91 days ended while one in use renews as before.
@@ -851,9 +866,10 @@ What it cannot do from SQL, and the privacy policy therefore says plainly:
 
 Recorded here so the reasoning is not lost between phases.
 
-- **Environment configuration and secrets** (Phase 2). No `.env.example` yet because there is
-  nothing to configure. The Supabase anon key is publishable by design; the service-role key
-  must never reach the app bundle, and enforcing that is a Phase 2 decision.
+- ~~**Environment configuration and secrets** (Phase 2).~~ Built: `.env.example` names the four
+  values a build takes, all public by design, and the service-role key is kept out of the bundle
+  by refusing to start with one - see "Refusing to start on a service-role key" above. A
+  production bundle is not even built without the Supabase URL and key (`metro.config.js`).
 - ~~**Delivery time algorithm** (Phase 8).~~ Built: see "Delivery time lives in SQL" above.
 - ~~**Scheduled delivery** (Phase 9).~~ Built: pg_cron calling a SQL function directly; see
   "Delivery: a worker, and every read" above.

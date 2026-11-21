@@ -16,28 +16,58 @@
  * population cut-off cannot be chosen, and the user picks the nearest town
  * instead. At city-level granularity that changes nothing meaningful.
  *
- * Run manually - this downloads about 3 MB - and commit the result:
+ * Run by hand - it downloads about 3 MB - and commit what it writes:
  *   node scripts/build-cities.mjs
+ *
+ * Every run writes a NEW migration, supabase/migrations/<now>_cities_data.sql,
+ * and leaves the earlier ones exactly as they are. A database runs a migration
+ * once and never again: had this script rewritten the file it wrote last time,
+ * the tests and the local stack - which replay everything - would have had the
+ * new cities, the hosted project would have kept the old ones, and
+ * `db push` would have said "up to date".
+ *
+ * The new file holds every city, and where a row is there already it is
+ * brought up to date instead of refused. Applied after the earlier files it
+ * therefore changes what has changed and adds what is new. It takes nothing
+ * away: a town that has dropped out of the list stays in the table, because a
+ * courier may live there.
+ *
+ * After a run: commit the new migration and the fold-parity fixture, bring it
+ * to the hosted project (`npx supabase@3.2.0 db push --remote --yes`, handed the
+ * database password as docs/GO-LIVE.md, "Setting up the hosted project", step 3,
+ * has it), and look for the old number of cities in the tests and the documents.
+ *
+ * --dump <file> reads a cities15000.txt that is already on disk instead of
+ * downloading one. --migrations <folder> and --fixture <file> write somewhere
+ * else than into this repository; the tests use all three.
  *
  * Source: GeoNames cities15000 (every city above 15,000 inhabitants),
  * licensed CC BY 4.0. https://download.geonames.org/export/dump/
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/**
- * A fixed filename, so re-running replaces the data rather than stacking up a
- * second copy. The schema it fills lives in the hand-written migration that
- * sorts immediately before it.
- */
-const OUT = join(ROOT, 'supabase', 'migrations', '20260825120100_cities_data.sql');
+function fail(message) {
+  console.error(`build-cities: ${message}`);
+  process.exit(1);
+}
 
-const TMP = join(ROOT, '.cities-tmp');
+const option = (name) => {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
+};
+
+const MIGRATIONS = resolve(option('--migrations') ?? join(ROOT, 'supabase', 'migrations'));
+const FIXTURE = resolve(
+  option('--fixture') ?? join(ROOT, 'src', 'features', 'cities', 'fold-parity.fixture.json'),
+);
+
 const DUMP = 'cities15000';
 const SOURCE_URL = `https://download.geonames.org/export/dump/${DUMP}.zip`;
 
@@ -67,14 +97,55 @@ const COL = { id: 0, name: 1, alternates: 3, lat: 4, lon: 5, country: 8, populat
  */
 const LATIN_NAME = /^[\p{Script=Latin}\p{M}][\p{Script=Latin}\p{M}0-9 .'-]{1,39}$/u;
 
-mkdirSync(TMP, { recursive: true });
-mkdirSync(dirname(OUT), { recursive: true });
-console.log(`Downloading ${SOURCE_URL}`);
-execFileSync('curl', ['-sSL', '--max-time', '300', '-o', join(TMP, 'dump.zip'), SOURCE_URL]);
-execFileSync('unzip', ['-o', '-q', join(TMP, 'dump.zip'), '-d', TMP]);
-
-const rows = readFileSync(join(TMP, `${DUMP}.txt`), 'utf8').split('\n');
+let dump;
+try {
+  dump = readDump();
+} catch (error) {
+  fail(error.message);
+}
+const rows = dump.split('\n');
 console.log(`Read ${rows.length} rows.`);
+
+/** The dump as text: the file named with --dump, or a fresh download. */
+function readDump() {
+  const given = option('--dump');
+  if (given) return readFileSync(resolve(given), 'utf8');
+
+  // Unpacked outside the repository, and removed again whatever happens - which
+  // is why a failure in here is thrown, not answered with an exit on the spot.
+  const work = mkdtempSync(join(tmpdir(), 'build-cities-'));
+  const step = (what, command, args) => {
+    try {
+      execFileSync(command, args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    } catch (error) {
+      throw new Error(`${what} (${command} ended with ${error.status ?? error.code})`);
+    }
+  };
+  try {
+    console.log(`Downloading ${SOURCE_URL}`);
+    // --fail: without it curl saves the server's error page as if it were the
+    // archive, and the failure only shows later, as a broken zip.
+    step(`could not download ${SOURCE_URL}`, 'curl', [
+      '--fail',
+      '-sSL',
+      '--max-time',
+      '300',
+      '-o',
+      join(work, 'dump.zip'),
+      SOURCE_URL,
+    ]);
+    step('could not unpack what was downloaded', 'unzip', [
+      '-o',
+      '-q',
+      join(work, 'dump.zip'),
+      '-d',
+      work,
+    ]);
+    return readFileSync(join(work, `${DUMP}.txt`), 'utf8');
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
 
 /** Keyed by GeoNames id, which is stable across dumps. */
 const kept = new Map();
@@ -108,10 +179,34 @@ for (const row of rows) {
 
 const cities = [...kept.values()].sort((a, b) => b.population - a.population);
 
-const header = `-- Night Courier city reference data.
+const OUT = join(MIGRATIONS, `${nextVersion()}_cities_data.sql`);
+
+/**
+ * The name of the new migration: now, to the second, in UTC - or one second
+ * after the newest migration there is, should that one carry a later date.
+ * Migrations run in the order of their names, and this one has to come last.
+ */
+function nextVersion() {
+  const stamp = (date) => date.toISOString().replace(/\D/g, '').slice(0, 14);
+  const newest = readdirSync(MIGRATIONS)
+    .map((name) => name.match(/^(\d{14})_.*\.sql$/)?.[1])
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  const now = stamp(new Date());
+  if (!newest || now > newest) return now;
+
+  const [, y, mo, d, h, mi, sec] = newest.match(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)$/);
+  return stamp(new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +sec + 1)));
+}
+
+const header = `-- Night Courier city reference data, as of ${new Date().toISOString().slice(0, 10)}.
 --
--- GENERATED FILE - do not edit. Regenerate with:
---   node scripts/build-cities.mjs
+-- GENERATED by scripts/build-cities.mjs - do not edit, and do not generate it
+-- again: a database that has applied this file never runs it a second time.
+-- For newer data run the script once more. It writes a new file beside this
+-- one, which brings these rows up to date and adds what is new.
 --
 -- Source: GeoNames ${DUMP}, licensed CC BY 4.0.
 -- Contains data from GeoNames (https://www.geonames.org), used under CC BY 4.0.
@@ -120,8 +215,8 @@ const header = `-- Night Courier city reference data.
 -- ${cities.length} cities: every city above 15,000 inhabitants in ${[...FULL_COVERAGE].join(', ')},
 -- plus every city worldwide above ${WORLD_MIN_POPULATION.toLocaleString('en-US')} inhabitants.
 --
--- Ids are GeoNames ids, which are stable across dumps, so re-running this
--- script updates rows in place rather than renumbering them.
+-- Ids are GeoNames ids, which are the same from one dump to the next, so a row
+-- that is there already is updated in place rather than added a second time.
 
 `;
 
@@ -146,10 +241,22 @@ for (let i = 0; i < cities.length; i += BATCH) {
   );
 }
 
-writeFileSync(OUT, header + statements.join('\n\n') + '\n');
+if (cities.length === 0) fail('the dump holds no city that would be kept; nothing written');
+
+mkdirSync(MIGRATIONS, { recursive: true });
+// 'wx': never over a file that is there. The name is new by construction; if
+// it is not, something is wrong, and an applied migration must not pay for it.
+writeFileSync(OUT, header + statements.join('\n\n') + '\n', { flag: 'wx' });
 writeFixture(cities);
-rmSync(TMP, { recursive: true, force: true });
-console.log(`Wrote ${cities.length} cities to ${OUT.replace(ROOT + '/', '')}`);
+console.log(`Wrote ${cities.length} cities to ${relative(ROOT, OUT)}`);
+// The bare command would be followed as it stands: without the database
+// password db push does not stop, it takes a temporary login role instead.
+console.log(
+  'The earlier migrations are untouched. Commit the new one, then bring it to the hosted ' +
+    'project: npx supabase@3.2.0 db push --remote --yes, with the database password in ' +
+    'SUPABASE_DB_PASSWORD for that command, as docs/GO-LIVE.md, "Setting up the hosted ' +
+    'project", step 3, has it ("Later, or on another machine")',
+);
 
 /**
  * The client folds the user's query and the generator folded the search index.
@@ -168,10 +275,9 @@ function writeFixture(all) {
     .map((c) => [c.name, fold(c.name)])
     .sort((a, b) => (a[0] < b[0] ? -1 : 1));
 
-  const file = join(ROOT, 'src', 'features', 'cities', 'fold-parity.fixture.json');
-  mkdirSync(dirname(file), { recursive: true });
+  mkdirSync(dirname(FIXTURE), { recursive: true });
   writeFileSync(
-    file,
+    FIXTURE,
     JSON.stringify(
       {
         note: 'GENERATED by scripts/build-cities.mjs. Pins the folding used to build search_index.',
@@ -181,7 +287,7 @@ function writeFixture(all) {
       2,
     ) + '\n',
   );
-  console.log(`Wrote ${sample.length} folding pairs to ${file.replace(ROOT + '/', '')}`);
+  console.log(`Wrote ${sample.length} folding pairs to ${relative(ROOT, FIXTURE)}`);
 }
 
 /**

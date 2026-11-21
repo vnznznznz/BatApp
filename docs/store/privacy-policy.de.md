@@ -12,8 +12,9 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    "tidy-up", Sitzungen nach 90 Tagen ohne Benutzung, Anmeldeprotokoll 30 Tage und Löschen mit dem
    Konto, Namen von der Registrierung, alte Stadt, private.remove_account mit einer Sperre von zwei
    Jahren ab dem Entfernen. Ändert sich daran etwas, die Abschnitte 3.1, 3.2, 3.8, 3.9, 5, 6, 9 und
-   11 und "Kurz gesagt" anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" {}
-   ergeben (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt die Liste
+   11 und "Kurz gesagt" anpassen. Auf dem gehosteten Projekt muss "select private.tidy_up();" eine
+   leere Liste ergeben (docs/GO-LIVE.md, "Setting up the hosted project", Schritt 4). Sonst nennt
+   die Liste
    jeden Schritt, den der Auftrag mangels Recht überspringt, und was diese Erklärung dazu sagt,
    stimmt nicht.
 5. Abschnitt 5 (iPhone) beschreibt den Schlüsselbund mit WHEN_UNLOCKED_THIS_DEVICE_ONLY
@@ -35,8 +36,8 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    der Registrierung heißt "I am 13 or older", die Hausregeln (src/app/rules.tsx) lesen die
    Konstanten. Ändert sich eine der Zahlen, "Kurz gesagt" und die Abschnitte 3.13 und 10 anpassen.
 8. Die Webseiten liegen bei GitHub Pages, als Nutzer-Site: ein öffentliches Repository
-   vnznznznz.github.io (vom Betreiber noch anzulegen), erreichbar unter
-   https://vnznznznz.github.io/. Night Courier liegt im Ordner night-courier/: index.html (aus
+   vnznznznz.github.io, erreichbar unter https://vnznznznz.github.io/ und online seit dem
+   10. November 2026. Night Courier liegt im Ordner night-courier/: index.html (aus
    support-page.md), privacy-policy.de.html (diese Fassung, verbindlich) und
    privacy-policy.en.html. Also
    {{SUPPORT_URL}} = https://vnznznznz.github.io/night-courier/ und {{PRIVACY_POLICY_URL}} =
@@ -280,10 +281,13 @@ ich nichts, schreibe der Person eine Verwarnung an die E-Mail-Adresse ihres Kont
 Konto (Abschnitt 3.8). Geht es um eine Drohung, sperre ich das gemeldete Konto sofort vorläufig,
 entferne es aber erst eine Woche später. Vorher schreibe ich der Person, die gemeldet hat, an die
 E-Mail-Adresse ihres Kontos: Mit dem anderen Konto verschwinden alle Briefe zwischen euch, und sie
-soll vorher Kopien machen können. Bei Drohungen oder möglichen Straftaten kann ich eine Meldung an
-die Polizei weitergeben, zusammen mit den Anmeldedaten des gemeldeten Kontos, soweit sie dann noch
-gespeichert sind: seinen Sitzungen und seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse
-(Abschnitt 3.9).
+soll vorher Kopien machen können. Hast du die Person beim Melden blockiert – das passiert, wenn du
+es nicht ausschaltest –, sind ihre Briefe für dich ausgeblendet (Abschnitt 3.6). Um Kopien zu
+machen, hebst du die Blockierung zuerst auf: „Your profile“ → „Blocked couriers“ → „Unblock“.
+Danach kannst du die Person wieder blockieren, über einen ihrer Briefe. Bei Drohungen oder
+möglichen Straftaten kann ich eine Meldung an die Polizei weitergeben, zusammen mit den
+Anmeldedaten des gemeldeten Kontos, soweit sie dann noch gespeichert sind: seinen Sitzungen und
+seinen Einträgen im Anmeldeprotokoll, jeweils mit IP-Adresse (Abschnitt 3.9).
 
 **Wie lange:** Eine Meldung wird 180 Tage, nachdem sie gemacht wurde, automatisch gelöscht – egal,
 ob sie erledigt ist oder nicht. Löscht eine der beiden Personen vorher ihr Konto, bleibt die Meldung
@@ -342,7 +346,9 @@ ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 9
 Benutzung wie alle anderen (tidy_up); dass eine abgelehnte Erneuerung nicht als Benutzung zählt
 (updated_at), ist noch zu prüfen (gdpr-records.md V7). Was die Polizei davon bekommen soll,
 exportiert das Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
-(durch die Person selbst oder Authentication → Users → Delete user) sperren nichts. -->
+sperren nichts: die durch die Person selbst und die durch den Betreiber auf jemandes Bitte, also
+"select private.delete_account('<id>');" (gdpr-records.md 5.4) und nie der Knopf Authentication →
+Users → Delete user im Dashboard. -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO – das berechtigte Interesse, alle anderen vor
 jemandem zu schützen, der wegen Regelverstößen entfernt wurde.
@@ -354,13 +360,16 @@ Anfrage der App an den Server enthält deine IP-Adresse und eine technische Kenn
 oder Betriebssystems (den sogenannten User-Agent).
 
 - **Sitzungen.** Für jede Anmeldung entsteht eine Sitzung mit IP-Adresse, User-Agent und
-  Zeitpunkten. Wenn du dich abmeldest („Sign out“), werden deine Sitzungen gelöscht, und zwar auf
-  allen deinen Geräten gleichzeitig. Mit deinem Konto werden sie ebenfalls gelöscht. Eine Sitzung,
-  die **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem du die App so lange nicht geöffnet
+  Zeitpunkten. Wenn du dich abmeldest („Sign out“), werden deine Sitzungen sofort gelöscht, und
+  zwar für alle deine Geräte. Ein anderes Gerät, das noch angemeldet ist, funktioniert weiter, bis
+  seine Anmeldung das nächste Mal erneuert werden müsste – höchstens eine Stunde –, und muss sich
+  dann neu anmelden. Mit deinem Konto werden die Sitzungen ebenfalls gelöscht. Eine Sitzung, die
+  **90 Tage** nicht benutzt wurde – auf einem Gerät, auf dem du die App so lange nicht geöffnet
   hast –, löscht ein täglicher Auftrag; dort meldest du dich dann neu an. Erreicht die Abmeldung den
   Server nicht, etwa ohne Netz, meldet die App dich auf deinem Gerät trotzdem ab, aber die Sitzungen
   beim Server bleiben bis dahin; melde dich dann einmal an und wieder ab. Wenn du ein Handy
-  verlierst, melde dich auf einem anderen Gerät an und ab oder schreib mir.
+  verlierst, melde dich auf einem anderen Gerät an und ab – die Anmeldung auf dem verlorenen Handy
+  funktioniert dann spätestens nach einer Stunde nicht mehr – oder schreib mir.
 - **Anmelde-Token.** Während die App geöffnet ist, wird deine Anmeldung etwa einmal pro Stunde
   erneuert. Dabei entsteht jedes Mal ein neues Token, und das alte wird ungültig. Gespeichert bleiben
   die Token höchstens so lange wie die Sitzung, zu der sie gehören.
@@ -368,7 +377,9 @@ oder Betriebssystems (den sogenannten User-Agent).
   jedes Erneuern der Anmeldung, Anforderung eines neuen Passworts und Passwortänderung, jeweils mit
   Nutzer-ID, E-Mail-Adresse, Zeitpunkt und gegebenenfalls IP-Adresse. Daraus lässt sich ablesen,
   wann du die App benutzt hast. Ein täglicher Auftrag löscht jeden Eintrag nach 30 Tagen. Wenn du
-  dein Konto löschst, werden deine Einträge sofort mitgelöscht.
+  dein Konto löschst oder ich es lösche – auf deine Bitte oder in den Fällen aus den Abschnitten
+  3.10 und 10 –, werden deine Einträge sofort mitgelöscht. Nur ein Konto, das ich wegen
+  Regelverstößen entferne, behält seine Einträge, bis sie 30 Tage alt sind (Abschnitt 3.8).
 - **Server-Protokolle.** Supabase protokolliert Anfragen an den Server: IP-Adresse, Zeitpunkt, die
   aufgerufene Adresse (sie kann deine Nutzer-ID enthalten), User-Agent und Ergebnis, bei Anmeldungen
   auch deine E-Mail-Adresse, außerdem Fehlermeldungen der Datenbank. Briefe, Notizen und Namen
@@ -381,7 +392,11 @@ oder Betriebssystems (den sogenannten User-Agent).
 - Sitzungen: am 4. November 2026 auf dem lokalen Supabase-Stack geprüft. Jede Anmeldung legt eine
   Zeile in auth.sessions (mit IP-Adresse und User-Agent) und in auth.refresh_tokens an; das Abmelden
   der App (scope "global") löscht beide für alle Geräte. Das gehostete Projekt läuft mit demselben
-  GoTrue; nichts mehr zu tun.
+  GoTrue; nichts mehr zu tun. "Höchstens eine Stunde": Ein Zugangs-Token, den ein anderes Gerät
+  schon hält, gilt an der Datenbank-API weiter, bis er abläuft (jwt_expiry = 3600 in
+  supabase/config.toml), weil dort nichts nach der Sitzung sieht; am 17. November 2026 am lokalen
+  Stack gezeigt, mit einem signierten Token ganz ohne Sitzung. Supabase Auth selbst lehnt einen
+  solchen Token ab, und erneuern lässt er sich nicht.
 - Anmelde-Token: GoTrues automatisches Aufräumen (ersetzte Token nach 24 Stunden) ist nur aktiv,
   wenn GOTRUE_DB_CLEANUP_ENABLED gesetzt ist; der Standard ist "false", lokal ist es aus. Ist es auf
   dem gehosteten Projekt an, kann der Satz lauten: "Ersetzte Token löscht Supabase nach 24 Stunden."
@@ -389,14 +404,21 @@ oder Betriebssystems (den sogenannten User-Agent).
   20261104120000_privacy_housekeeping.sql (tidy_up, delete_own_account), am 4. November 2026 gegen
   das echte GoTrue des lokalen Stacks geprüft. Fehlt der Rolle postgres auf dem gehosteten Projekt
   das Recht, überspringen beide den Schritt ohne Fehler; tidy_up nennt ihn dann in seiner Rückgabe.
-  Die Prüfung: "select private.tidy_up();" muss {} ergeben (docs/GO-LIVE.md, "Setting up the hosted
-  project", Schritt 4; lokal: {}).
-  delete_own_account erkennt die Einträge an payload->>'actor_id'; Einträge ohne actor_id, die
-  trotzdem die E-Mail-Adresse enthalten, gehen erst nach 30 Tagen. ip_address ist lokal leer, darum
+  Die Prüfung: "select private.tidy_up();" muss eine leere Liste ergeben (docs/GO-LIVE.md, "Setting
+  up the hosted project", Schritt 4; lokal ist sie leer).
+  delete_own_account erkennt die Einträge an payload->>'actor_id', und ebenso
+  private.delete_account, das Löschen durch den Betreiber auf jemandes Bitte. Einträge, die eine
+  Person ohne diese ID nennen, gab es am lokalen Stack nur dort, wo der Betreiber über das
+  Dashboard oder die Admin-API etwas an dem Konto getan hatte (user_signedup, user_modified,
+  user_deleted): Sie nennen die Person in payload->'traits' und gehen mit der Anweisung in
+  gdpr-records.md 5.4, Schritt 3, sonst erst nach 30 Tagen. ip_address ist lokal leer, darum
   "gegebenenfalls IP-Adresse".
 - Server-Protokolle: Aufbewahrungsdauer des gewählten Supabase-Tarifs nachsehen und eintragen
   (z. B. "nach einem Tag"); "nach kurzer Zeit" nur stehen lassen, wenn es wirklich wenige Tage sind.
-  Ebenso, wo diese Protokolle gespeichert werden (Abschnitt 8). -->
+  Ebenso, wo diese Protokolle gespeichert werden (Abschnitt 8). Solange hier und in Abschnitt 9
+  keine Frist steht, sagen die Hilfeseite und der Löschtext in google-play.md, dass die Fristen
+  noch nicht feststehen; sind sie eingetragen, können beide wieder hierher verweisen ("Wie lange,
+  steht in der Datenschutzerklärung."; ihre Hinweise sagen, wo). -->
 
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO, soweit es um deine Anmeldung geht. Im Übrigen Art.
 6 Abs. 1 lit. f DSGVO: Mein berechtigtes Interesse ist, die App sicher und stabil zu betreiben,
@@ -605,9 +627,10 @@ Liste der Städte stammt – sie liegt in der Datenbank von Night Courier, und G
 gefragt.
 
 <!-- PRÜFEN:
-- Supabase-DPA: erst veröffentlichen, wenn der DPA von Supabase (mit den
-  Standardvertragsklauseln) unterzeichnet ist, gdpr-records.md 5.1; bis dahin stimmt "auf Grundlage
-  eines Vertrags zur Auftragsverarbeitung" oben nicht.
+- Supabase-DPA: erst mit LAUNCH_STATE=live bauen (docs/GO-LIVE.md, "Where the web pages live"),
+  wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet ist, gdpr-records.md
+  5.1; bis dahin stimmt "auf Grundlage eines Vertrags zur Auftragsverarbeitung" oben nicht, und die
+  Seite trägt den Hinweis, dass Night Courier noch nicht gestartet ist.
 - Supabase: Liste der Unterauftragsverarbeiter aufrufen (vermutlich https://supabase.com/legal/subprocessors)
   und hier verlinken; prüfen, ob dort ein Dienst vor der API (z. B. Cloudflare) oder ein
   Protokolldienst außerhalb der Schweiz steht.
@@ -651,9 +674,10 @@ gefragt.
   verarbeiten. Wie sie das absichern, steht in ihren eigenen Datenschutzbestimmungen.
 
 <!-- PRÜFEN:
-- Erst veröffentlichen, wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet
-  ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot einer Kopie der
-  Klauseln nicht. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
+- Erst mit LAUNCH_STATE=live bauen, wenn der DPA von Supabase (mit den Standardvertragsklauseln)
+  unterzeichnet ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot
+  einer Kopie der Klauseln nicht, und die Seite trägt den Hinweis, dass Night Courier noch nicht
+  gestartet ist. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
   Standardvertragsklauseln der EU anerkannt hat (Art. 16 Abs. 2 lit. d DSG).
 - Für Supabase Inc., Microsoft, GitHub, Inc., Apple und Google auf dataprivacyframework.gov
   nachsehen, ob sie für den Swiss-US Data Privacy Framework (und für die EU den EU-US Data Privacy
@@ -683,7 +707,7 @@ gefragt.
 | Kontodatensatz eines gesperrten, entfernten Kontos      | zwei Jahre ab dem Entfernen, dann automatisch gelöscht (Abschnitt 3.8)                                                  |
 | Sitzungen                                               | bis zum Abmelden oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
 | Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                      |
-| Anmeldeprotokoll                                        | 30 Tage; deine Einträge werden mit deinem Konto gelöscht                                                                |
+| Anmeldeprotokoll                                        | 30 Tage; deine Einträge gehen sofort, wenn du dein Konto löschst oder ich es auf deine Bitte lösche (Abschnitt 3.9)     |
 | Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                       |
 | Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                         |
 | Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                           |
@@ -726,9 +750,10 @@ festlegt, sondern die höchste Grenze nach Art. 8 DSGVO (unter anderem in Deutsc
 kein Alter, es kommt auf die Urteilsfähigkeit an (Art. 16 ZGB). Die Zusage, ein Konto auf Bitte der
 Eltern zu löschen, ist eine Entscheidung des Betreibers: bestätigen. Niemand unter 13 wird
 zugelassen, in den USA wie anderswo (COPPA betrifft Kinder unter 13; ob die Regel samt Löschen
-genügt, rechtlich prüfen). Das Konto von jemandem unter 13 wird ohne Sperre gelöscht
-(Authentication → Users → Delete user oder das Löschen durch die Person selbst), nicht mit
-private.remove_account; die Schritte stehen in gdpr-records.md 5.4. -->
+genügt, rechtlich prüfen). Das Konto von jemandem unter 13 wird ohne Sperre gelöscht ("select
+private.delete_account('<id>');" oder das Löschen durch die Person selbst), nicht mit
+private.remove_account und nicht mit dem Knopf Delete user im Dashboard; die Schritte stehen in
+gdpr-records.md 5.4. -->
 
 ## 11. Deine Rechte
 

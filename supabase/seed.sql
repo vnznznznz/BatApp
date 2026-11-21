@@ -1,8 +1,15 @@
 -- Night Courier - demo data for a local stack.
 --
--- LOCAL DEVELOPMENT ONLY. `npx supabase db reset` runs this after the
--- migrations; `npx supabase db push` never does, so none of it reaches a hosted
--- project.
+-- LOCAL DEVELOPMENT ONLY. The local stack runs this after the migrations:
+-- when `npx supabase@3.2.0 start` builds a new local database, and at every
+-- `npx supabase@3.2.0 db reset`.
+--
+-- None of it may reach the hosted project: these are two confirmed accounts
+-- whose password is printed below and in the public README. The command the
+-- runbook uses, `npx supabase@3.2.0 db push --remote --yes`, does not run this
+-- file. Two things would - adding `--include-seed` to that push, and a
+-- `db reset` aimed at the hosted project with `--remote`, which empties it
+-- first. Neither is ever part of a runbook here.
 --
 -- Two couriers who are already friends, so the app can be tried at once:
 --

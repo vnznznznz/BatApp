@@ -5,7 +5,7 @@ Notes for the operator - remove before publishing, like every comment in this fi
    Play as the Website and the Delete account URL (google-play.md, "The account deletion page").
    One page does all three, in English and German.
 2. Where it lives: GitHub Pages, in the operator's user site, the public repository
-   vnznznznz.github.io (still to be created), as night-courier/index.html. So {{SUPPORT_URL}} is
+   vnznznznz.github.io (live since 10 November 2026), as night-courier/index.html. So {{SUPPORT_URL}} is
    https://vnznznznz.github.io/night-courier/, and {{PRIVACY_POLICY_URL}} is
    https://vnznznznz.github.io/night-courier/privacy-policy.de.html, with privacy-policy.en.html
    beside it. Replace the placeholders only in that repository: {{OPERATOR_NAME}},
@@ -22,7 +22,13 @@ Notes for the operator - remove before publishing, like every comment in this fi
 4. "Deleting your account" must say the same as the deletion text in google-play.md, "The account
    deletion page" (Google checks this page against it). "What is kept, and for how long" follows
    the privacy policy, sections 3.4, 3.7 to 3.9, 9 and 11, and the migration
-   supabase/migrations/20261104120000_privacy_housekeeping.sql. Change them together.
+   supabase/migrations/20261104120000_privacy_housekeeping.sql. Change them together. The line on
+   server logs and backups names no period, because the policy has none yet (its TO CHECK notes
+   in sections 3.9 and 9): once the hosted plan's periods are written into the policy, replace
+   the line's second sentence with "The privacy policy says how long." ("Wie lange, steht in der
+   Datenschutzerklärung."), here and in google-play.md. For the same reason "Privacy" says that
+   the policy gives the periods "as far as it is known today" ("soweit es heute feststeht"): take
+   those words out, dashes included, in the same change.
 5. Forgotten password: the app sends the reset email, but cannot yet finish the reset (GO-LIVE,
    "Password reset cannot be completed in-app"), and no email leaves the hosted project before a
    custom SMTP provider is set up. Until both are done, this page sends people to the contact
@@ -49,7 +55,8 @@ I read every email and answer as soon as I can.
   or open the courier's page from Friends and tap _Report_. A report reaches me directly; the person
   you report is not told who reported them, unless the law requires it – but a letter has only one
   reader, so if I act on one, its sender may guess. Reporting also blocks them, unless you switch
-  that off.
+  that off. A block hides their letters from you: to see them again, to keep a copy for example,
+  unblock them under _Your profile_ → _Blocked couriers_. You can block them again afterwards.
 - **Someone threatens you or anyone else**, or you think a crime is involved: report it in the app,
   and contact the police. In an emergency, call the police on 117 in Switzerland or 110 in Germany,
   or 112 anywhere in Europe, Switzerland included.
@@ -80,9 +87,10 @@ bats, your friendships and friend requests, your blocks, and every letter you ha
   made. If I passed a report to the police, they keep their copy under their own rules.
 - **The sign-in log** at Supabase, the app's hosting provider (sign-up and sign-in events, with
   your email address). A daily job deletes every entry once it is 30 days old; when you delete your
-  account in the app, yours go at once.
-- **Server logs and any backups** at Supabase, until they are deleted or overwritten
-  automatically. The privacy policy says how long.
+  account in the app, or I delete it at your request, yours go at once.
+- **Server logs and any backups** at Supabase, until Supabase deletes or overwrites them
+  automatically. I cannot name the periods yet: they depend on Supabase's plan, and the privacy
+  policy will state them once they are known.
 - **Emails** between you and me, as long as I need them for what you asked.
 - If I removed an account for breaking the house rules, its sign-in, email address included, stays
   banned for two years from the removal so that it cannot simply sign up again, and is then deleted
@@ -105,10 +113,10 @@ Once I am sure the request comes from you, I delete the account.
 
 ## Privacy
 
-The privacy policy says what Night Courier stores, why, and for how long: {{PRIVACY_POLICY_URL}}.
-There are no ads, no tracking and nothing to buy. This page is published with GitHub Pages: GitHub,
-Inc. (USA) receives your IP address when you open it and logs it for security and operation. The
-page itself sets no cookies and loads nothing from other sites.
+The privacy policy says what Night Courier stores, why, and – as far as it is known today – for
+how long: {{PRIVACY_POLICY_URL}}. There are no ads, no tracking and nothing to buy. This page is
+published with GitHub Pages: GitHub, Inc. (USA) receives your IP address when you open it and logs
+it for security and operation. The page itself sets no cookies and loads nothing from other sites.
 
 ---
 
@@ -121,7 +129,7 @@ Abschnitt 1 der Datenschutzerklärung: {{PRIVACY_POLICY_URL}}.
 ## Kontakt
 
 Schreib an {{CONTACT_EMAIL}}, und wenn es um dein Konto geht, von der E-Mail-Adresse deines Kontos.
-Ich lese jede E-Mail und antworte, so bald ich kann.
+Ich lese jede E-Mail und antworte, sobald ich kann.
 
 ## Etwas stimmt nicht
 
@@ -130,7 +138,9 @@ Ich lese jede E-Mail und antworte, so bald ich kann.
   kommt direkt bei mir an; die gemeldete Person erfährt nicht, wer sie gemeldet hat, es sei denn,
   ein Gesetz verpflichtet mich dazu – ein Brief hat aber nur einen Empfänger, und wenn ich etwas
   unternehme, kann sich der Absender das denken. Beim Melden wird die Person auch blockiert, außer
-  du schaltest das aus.
+  du schaltest das aus. Eine Blockierung blendet ihre Briefe für dich aus: Willst du sie wieder
+  sehen, etwa um eine Kopie zu machen, hebst du die Blockierung unter „Your profile“ → „Blocked
+  couriers“ auf. Danach kannst du die Person wieder blockieren.
 - **Jemand bedroht dich oder andere**, oder du glaubst, dass es um eine Straftat geht: Melde es in
   der App und wende dich an die Polizei. Im Notfall: Polizei 117 in der Schweiz, 110 in
   Deutschland, oder 112 überall in Europa, auch in der Schweiz.
@@ -164,9 +174,11 @@ bei dir.
   bewahrt die Polizei ihre Kopie nach ihren eigenen Regeln auf.
 - **Das Anmeldeprotokoll** bei Supabase, dem Hosting-Anbieter der App (Registrierung und
   Anmeldungen, mit deiner E-Mail-Adresse). Ein täglicher Auftrag löscht jeden Eintrag, sobald er
-  30 Tage alt ist; löschst du dein Konto in der App, sind deine sofort weg.
-- **Server-Protokolle und etwaige Sicherungskopien** bei Supabase, bis sie automatisch gelöscht
-  oder überschrieben werden. Wie lange, steht in der Datenschutzerklärung.
+  30 Tage alt ist; löschst du dein Konto in der App oder lösche ich es auf deine Bitte, sind deine
+  sofort weg.
+- **Server-Protokolle und etwaige Sicherungskopien** bei Supabase, bis Supabase sie automatisch
+  löscht oder überschreibt. Die Fristen kann ich noch nicht nennen: Sie hängen von Supabases Tarif
+  ab und stehen in der Datenschutzerklärung, sobald sie feststehen.
 - **E-Mails** zwischen dir und mir, solange ich sie für dein Anliegen brauche.
 - Habe ich ein Konto wegen Verstößen gegen die Hausregeln entfernt, bleibt seine Anmeldung samt
   E-Mail-Adresse zwei Jahre ab dem Entfernen gesperrt, damit es sich nicht einfach neu anmeldet, und
@@ -191,8 +203,8 @@ das Konto.
 
 ## Datenschutz
 
-Was Night Courier speichert, wozu und wie lange, steht in der Datenschutzerklärung:
-{{PRIVACY_POLICY_URL}}. Es gibt keine Werbung, kein Tracking und nichts zu kaufen. Diese Seite
-liegt bei GitHub Pages: GitHub, Inc. (USA) erhält beim Aufruf deine IP-Adresse und protokolliert
-sie für Sicherheit und Betrieb. Die Seite selbst setzt keine Cookies und lädt nichts von anderen
-Websites.
+Was Night Courier speichert, wozu und – soweit es heute feststeht – wie lange, steht in der
+Datenschutzerklärung: {{PRIVACY_POLICY_URL}}. Es gibt keine Werbung, kein Tracking und nichts zu
+kaufen. Diese Seite liegt bei GitHub Pages: GitHub, Inc. (USA) erhält beim Aufruf deine IP-Adresse
+und protokolliert sie für Sicherheit und Betrieb. Die Seite selbst setzt keine Cookies und lädt
+nichts von anderen Websites.
