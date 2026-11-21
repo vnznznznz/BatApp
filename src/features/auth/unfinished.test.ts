@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 
-import { confirmedByResetCode, watchUnfinishedElsewhere } from '@/features/auth/unfinished';
+import {
+  confirmedByResetCode,
+  confirmedJustBefore,
+  watchUnfinishedElsewhere,
+} from '@/features/auth/unfinished';
 
 /**
  * The times are GoTrue v2.197's own, from the confirmation-on server on 21
@@ -116,6 +120,83 @@ describe('whether a reset’s code is what confirmed the account', () => {
     ['times that are not times', { email_confirmed_at: 'soon', last_sign_in_at: 'soon' }],
   ])('says no when the answer has %s', (_, user) => {
     expect(confirmedByResetCode(user)).toBe(false);
+  });
+});
+
+/**
+ * After a sign-up's code whose answer was lost, the code screen leads to "I
+ * forgot my password", and the reset's code signs in to the account the
+ * sign-up's code confirmed a moment before: perhaps one someone else had set
+ * up, with their username and name. The times as above.
+ */
+describe('whether another code confirmed the account a moment before the reset’s', () => {
+  it('says yes for an account a sign-up’s code confirmed minutes before', () => {
+    expect(
+      confirmedJustBefore({
+        email_confirmed_at: '2026-11-21T11:09:19.020301Z',
+        last_sign_in_at: '2026-11-21T11:14:02.615083165Z',
+      }),
+    ).toBe(true);
+  });
+
+  it('says yes for one confirmed a few seconds before', () => {
+    expect(
+      confirmedJustBefore({
+        email_confirmed_at: '2026-11-21T11:57:48.005965Z',
+        last_sign_in_at: '2026-11-21T11:57:53.539411165Z',
+      }),
+    ).toBe(true);
+  });
+
+  /** As long as the reset's code lives, asked for at once: a day (supabase/config.toml). */
+  it('says yes for one confirmed a day before, and no for one confirmed longer ago', () => {
+    const signedIn = '2026-11-21T11:14:02.615Z';
+
+    expect(
+      confirmedJustBefore({
+        email_confirmed_at: '2026-11-20T11:14:02.615Z',
+        last_sign_in_at: signedIn,
+      }),
+    ).toBe(true);
+    expect(
+      confirmedJustBefore({
+        email_confirmed_at: '2026-11-20T11:14:02.614Z',
+        last_sign_in_at: signedIn,
+      }),
+    ).toBe(false);
+  });
+
+  /** That one the reset removes, and nobody is left signed in to it. */
+  it('says no for an account the reset’s own code confirmed', () => {
+    expect(
+      confirmedJustBefore({
+        email_confirmed_at: '2026-11-21T11:57:56.799333Z',
+        last_sign_in_at: '2026-11-21T11:57:56.801425832Z',
+      }),
+    ).toBe(false);
+  });
+
+  it('says no for an account confirmed long before', () => {
+    expect(
+      confirmedJustBefore({
+        email_confirmed_at: '2026-11-01T10:00:00Z',
+        last_sign_in_at: '2026-11-21T11:58:01.665137643Z',
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    [
+      'a confirmation after the sign-in',
+      {
+        email_confirmed_at: '2026-11-21T11:20:00.000000Z',
+        last_sign_in_at: '2026-11-21T11:09:19Z',
+      },
+    ],
+    ['no time of confirming', { last_sign_in_at: '2026-11-21T11:57:56.801425832Z' }],
+    ['no time of signing in', { email_confirmed_at: '2026-11-21T11:57:56.799333Z' }],
+  ])('says no when the answer has %s', (_, user) => {
+    expect(confirmedJustBefore(user)).toBe(false);
   });
 });
 

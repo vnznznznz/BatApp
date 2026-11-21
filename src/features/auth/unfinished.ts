@@ -122,6 +122,24 @@ export function confirmedByResetCode(
 }
 
 /**
+ * Whether another code confirmed the account's address a moment before the
+ * sign-in a reset's code brought: a sign-up's whose answer was lost, which the
+ * code screen follows with "I forgot my password". The account is then as an
+ * earlier sign-up for the address set it up - perhaps someone else's, with the
+ * username and name they chose - and the reset makes it the courier's as it
+ * is. A moment is a day at most: as long as the reset's code lives
+ * (supabase/config.toml), asked for at once.
+ */
+export function confirmedJustBefore(
+  user: Partial<Pick<User, 'email_confirmed_at' | 'last_sign_in_at'>>,
+) {
+  const before = instant(user.last_sign_in_at) - instant(user.email_confirmed_at);
+  return before > SAME_REQUEST_MS && before <= A_DAY_MS;
+}
+
+const A_DAY_MS = 24 * 60 * 60_000;
+
+/**
  * How far apart the two may be and still have come from one request: hundreds
  * of times what the server takes between them, and less than anyone takes to
  * use a second code after a first. The app itself, driven by a script, signed

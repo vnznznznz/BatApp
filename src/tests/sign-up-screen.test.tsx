@@ -684,10 +684,18 @@ describe('SignUpScreen', () => {
      */
     describe('when the code is refused after a check that got no answer', () => {
       const NO_CONNECTION = 'No connection. Check your network and try again.';
+      /**
+       * The address may have had an account before - someone else's, set up
+       * with the username and name they chose - which the lost check then
+       * confirmed as it was, and the reset makes the courier's as it is. The
+       * owner's decision: it stays so, and the words say what to do then.
+       * (Found in review.)
+       */
       const MAY_BE_CONFIRMED =
         'That code did not work. If the try before it reached us, it confirmed your address, ' +
         'and no new code will come: set a password with "I forgot my password", and sign in ' +
-        'with it.';
+        'with it. If the account shows a username or name you did not choose, you can delete ' +
+        'it in your profile and sign up again.';
 
       async function refusedAfterNoAnswer() {
         mockConfirmSignUp

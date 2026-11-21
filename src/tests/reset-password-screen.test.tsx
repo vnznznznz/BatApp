@@ -497,6 +497,60 @@ describe('ResetPasswordScreen', () => {
     });
 
     /**
+     * After a sign-up's code whose answer was lost, the code screen leads
+     * here, and the reset's code signs in to the account the sign-up's code
+     * confirmed a moment before: as an earlier sign-up for the address set it
+     * up, perhaps someone else's, with the username and name they chose. The
+     * owner's decision: it stays so, and the words say what to do then. (Found
+     * in review.) The times are the auth server's, from such a reset.
+     */
+    describe('for an account another code confirmed a moment before', () => {
+      const SAVED = 'Your new password is saved';
+      const NOT_CHOSEN =
+        'Your bats are waiting. If the account shows a username or name you did not choose, ' +
+        'you can delete it in your profile and sign up again.';
+
+      /** The reset's code signs in to an account confirmed at `confirmedAt`. */
+      const signsInConfirmedAt = (confirmedAt: string) =>
+        mockVerifyResetCode.mockImplementation(async () => {
+          mockAuthState.set({
+            session: {
+              user: {
+                id: 'user-anna',
+                email_confirmed_at: confirmedAt,
+                last_sign_in_at: '2026-11-21T11:14:02.615083165Z',
+              },
+            },
+            isSettingPassword: true,
+          });
+        });
+
+      it('says, once the password is saved, what to do with names the courier did not choose', async () => {
+        signsInConfirmedAt('2026-11-21T11:09:19.020301Z');
+        await askedForACode();
+
+        await typedCodeAndPassword();
+
+        expect(screen.getByText(SAVED)).toBeOnTheScreen();
+        expect(screen.getByText(NOT_CHOSEN)).toBeOnTheScreen();
+        expect(screen.getByRole('header')).toHaveProp(
+          'accessibilityLabel',
+          `${SAVED}. ${NOT_CHOSEN}`,
+        );
+      });
+
+      it('says nothing of names for an account confirmed long before', async () => {
+        signsInConfirmedAt('2026-11-01T10:00:00Z');
+        await askedForACode();
+
+        await typedCodeAndPassword();
+
+        expect(screen.getByText('Your bats are waiting.')).toBeOnTheScreen();
+        expect(screen.queryByText(/username or name/)).toBeNull();
+      });
+    });
+
+    /**
      * The keyboard stays up while the code is being checked, and its "go" key
      * is not held back by the button's spinner. Sent twice, the second check
      * of the code was refused - the first had used it up - and let go of the

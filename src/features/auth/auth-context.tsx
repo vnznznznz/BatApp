@@ -982,6 +982,18 @@ export const FINISHING_SIGN_OUT =
   'Finishing the last sign-out first. Without a connection, that can take a minute.';
 
 /**
+ * Said where a reset may give the courier an account as an earlier sign-up for
+ * the address set it up - someone else's, perhaps, with the username and name
+ * they chose: after a sign-up's code whose answer was lost, which confirmed it
+ * as it was. A reset keeps both, and the username cannot be changed. The
+ * owner's decision: the account stays so, and the courier is told what to do.
+ * (Found in review.)
+ */
+export const NAMES_NOT_CHOSEN =
+  'If the account shows a username or name you did not choose, you can delete it in your ' +
+  'profile and sign up again.';
+
+/**
  * The one failure of signing up that belongs to a field. The form looks for
  * these words, to show them where the username is typed.
  */

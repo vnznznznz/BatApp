@@ -8,10 +8,16 @@ import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
-import { CODE_DID_NOT_WORK, FINISHING_SIGN_OUT, useAuth } from '@/features/auth/auth-context';
+import {
+  CODE_DID_NOT_WORK,
+  FINISHING_SIGN_OUT,
+  NAMES_NOT_CHOSEN,
+  useAuth,
+} from '@/features/auth/auth-context';
 import { HoldBack } from '@/features/auth/hold-back';
 import { settled, wordsOf } from '@/features/auth/settled';
 import { StageHeading, stageWords } from '@/features/auth/stage-heading';
+import { confirmedJustBefore } from '@/features/auth/unfinished';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import {
   EMAIL_CODE_LENGTH,
@@ -140,6 +146,7 @@ function NewPasswordForm({
 }) {
   const router = useRouter();
   const {
+    session,
     isSettingPassword,
     isSigningOut,
     unfinished,
@@ -329,7 +336,13 @@ function NewPasswordForm({
           key="saved"
           center
           title="Your new password is saved"
-          intro="Your bats are waiting."
+          intro={
+            // The account another code had just confirmed, as an earlier
+            // sign-up for the address set it up: perhaps not the courier's.
+            session && confirmedJustBefore(session.user)
+              ? `Your bats are waiting. ${NAMES_NOT_CHOSEN}`
+              : 'Your bats are waiting.'
+          }
         />
       </Screen>
     );

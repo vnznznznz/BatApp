@@ -390,7 +390,9 @@ describe('SignInScreen', () => {
     /**
      * The check whose answer was lost may have confirmed the address, and
      * taken the password signed in with away: signing in finds none, and no
-     * new code comes. (Found in review.)
+     * new code comes. (Found in review.) The account is the one whose
+     * password the courier signed in with, names and all: nothing is said of
+     * names they did not choose, as it is after signing up.
      */
     it('says where a lost answer may have left the address, once the code is refused', async () => {
       mockConfirmEmail
@@ -414,6 +416,7 @@ describe('SignInScreen', () => {
             'with it.',
         ),
       ).toBeOnTheScreen();
+      expect(screen.queryByText(/username or name you did not choose/)).toBeNull();
       await user.press(button('I forgot my password'));
       expect(mockPush).toHaveBeenCalledWith('/reset-password');
     });

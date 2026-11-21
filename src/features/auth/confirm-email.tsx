@@ -13,6 +13,7 @@ import {
   CODE_DID_NOT_WORK,
   CodeUnanswered,
   FINISHING_SIGN_OUT,
+  NAMES_NOT_CHOSEN,
   SignedOutUnfinished,
   useAuth,
   type SignUpDetails,
@@ -239,7 +240,12 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
         // comes: what may have happened is said instead, and the way on.
         if (unanswered.includes(code) && wordsOf(checked.error) === CODE_DID_NOT_WORK) {
           setMayBeConfirmed(true);
-          failed(new Error(MAY_BE_CONFIRMED));
+          // After signing up, the account may be as someone else's sign-up
+          // set it up, and the reset keeps that. From signing in, it is the
+          // one whose password the courier knew.
+          failed(
+            new Error(signedUp ? `${MAY_BE_CONFIRMED} ${NAMES_NOT_CHOSEN}` : MAY_BE_CONFIRMED),
+          );
           return;
         }
         failed(checked.error, { atTheCode: true });
