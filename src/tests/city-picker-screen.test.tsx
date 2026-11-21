@@ -5,7 +5,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import CityPickerScreen from '@/app/(app)/city-picker';
 import { CITY_DATA_CREDIT, searchCities, type City } from '@/features/cities/search';
-import type { Profile } from '@/features/profile/use-profile';
+import type { CityCondition, CitySave, Profile } from '@/features/profile/use-profile';
 
 // React Native loads its components on first use, and with a cold transform
 // cache the first render compiles them: seconds of work that would otherwise
@@ -29,10 +29,7 @@ jest.mock('@/features/cities/search', () => ({
 }));
 
 const mockProfileState: { profile: Profile | null } = { profile: null };
-const mockUpdateCity = jest.fn<
-  Promise<boolean>,
-  [cityId: number, options?: { beforeFirstLetter?: boolean }]
->();
+const mockUpdateCity = jest.fn<Promise<CitySave>, [cityId: number, condition?: CityCondition]>();
 
 jest.mock('@/features/profile/use-profile', () => ({
   useProfile: () => ({
@@ -157,7 +154,7 @@ beforeEach(() => {
   mockBack.mockClear();
   mockFocus.focused = true;
   mockProfileState.profile = courier;
-  mockUpdateCity.mockReset().mockResolvedValue(true);
+  mockUpdateCity.mockReset().mockResolvedValue({ saved: true });
   mockedSearchCities.mockReset().mockResolvedValue([hamburg, hameln]);
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
@@ -590,7 +587,7 @@ describe('CityPickerScreen', () => {
           buttons: ['Cancel', 'Move'],
         });
         await chooseInAlert('Move');
-        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id]]);
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { departing: 2950159 }]]);
       });
 
       it('says the city the bats are in counts at once', async () => {
@@ -711,7 +708,9 @@ describe('CityPickerScreen', () => {
      */
     it('asks again when a letter came or went before a move said to count at once was saved', async () => {
       mockProfileState.profile = newcomer;
-      mockUpdateCity.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      mockUpdateCity
+        .mockResolvedValueOnce({ saved: false, profile: courier })
+        .mockResolvedValueOnce({ saved: true });
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
 
@@ -728,9 +727,133 @@ describe('CityPickerScreen', () => {
       await chooseInAlert('Move');
       expect(mockUpdateCity.mock.calls).toEqual([
         [hamburg.id, { beforeFirstLetter: true }],
-        [hamburg.id],
+        [hamburg.id, { departing: 2950159 }],
       ]);
       expect(mockBack).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A profile read a moment before the letter came still says there has
+     * been none. The save that failed says otherwise, and the question asked
+     * again goes by that.
+     */
+    it('asks again as after a letter even when the profile read since does not show it yet', async () => {
+      mockProfileState.profile = newcomer;
+      mockUpdateCity.mockResolvedValueOnce({ saved: false, profile: newcomer });
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+
+      await chooseInAlert('Move');
+
+      expect(lastAlert().message).toBe(
+        'A letter has gone to or from you since, so a move now takes a day to count. Until ' +
+          "18 Nov 21:00, your letters leave from Berlin, DE, and your friends' letters land there.",
+      );
+    });
+
+    /**
+     * The question is worked out when it is asked, from where the bats are
+     * then. A move can settle before the answer comes: "Move back to Hamburg
+     * ... counts at once" was then saved as a move of a day, and a day's move
+     * said to leave from Berlin left from Munich. (Found in review.) Each is
+     * saved only while the bats leave from where the question said, and asked
+     * again, from the profile as it is, when they no longer do.
+     */
+    describe('when the move the question named settles before the answer', () => {
+      const munich = { id: 2867714, name: 'Munich', countryCode: 'DE' };
+      /** Twenty seconds before the move from `from` to Munich settles. */
+      const settling = (from: Profile['city']): Profile => ({
+        ...courier,
+        city: munich,
+        move: { from: from!, settlesAt: new Date(NOW + 20_000) },
+      });
+
+      it('asks a move back again as a move of a day, from where the bats are now', async () => {
+        const profile = settling({ ...hamburg });
+        mockProfileState.profile = profile;
+        mockUpdateCity
+          .mockResolvedValueOnce({ saved: false, profile })
+          .mockResolvedValueOnce({ saved: true });
+        await renderScreen(<CityPickerScreen />);
+        await choose('Ham', hamburg);
+        expect(lastAlert().title).toBe('Move back to Hamburg, DE?');
+
+        // Half a minute to answer.
+        jest.setSystemTime(NOW + 30_000);
+        await chooseInAlert('Move');
+
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { departing: hamburg.id }]]);
+        expect(mockBack).not.toHaveBeenCalled();
+        expect(lastAlert()).toEqual({
+          title: 'Move to Hamburg, DE?',
+          message:
+            'Your bats have finished settling in since. A move takes a day to count. Until 18 ' +
+            "Nov 21:00, your letters leave from Munich, DE, and your friends' letters land there.",
+          buttons: ['Cancel', 'Move'],
+        });
+        await chooseInAlert('Move');
+        expect(mockUpdateCity.mock.lastCall).toEqual([hamburg.id, { departing: munich.id }]);
+        expect(mockBack).toHaveBeenCalledTimes(1);
+      });
+
+      it('asks a move of a day again, naming the city the letters leave from now', async () => {
+        const profile = settling({ id: 2950159, name: 'Berlin', countryCode: 'DE' });
+        mockProfileState.profile = profile;
+        mockUpdateCity.mockResolvedValueOnce({ saved: false, profile });
+        await renderScreen(<CityPickerScreen />);
+        await choose('Ham', hamburg);
+        expect(lastAlert().message).toMatch(/your letters leave from Berlin, DE/);
+
+        jest.setSystemTime(NOW + 30_000);
+        await chooseInAlert('Move');
+
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, { departing: 2950159 }]]);
+        expect(lastAlert().message).toBe(
+          'Your bats have finished settling in since. A move takes a day to count. Until 18 ' +
+            "Nov 21:00, your letters leave from Munich, DE, and your friends' letters land there.",
+        );
+      });
+
+      /** With the city cleared, a settled move leaves the bats nowhere: a first city again. */
+      it('asks a move from a cleared city again as a first city', async () => {
+        const profile = {
+          ...settling({ id: 2950159, name: 'Berlin', countryCode: 'DE' }),
+          city: null,
+        };
+        mockProfileState.profile = profile;
+        mockUpdateCity.mockResolvedValueOnce({ saved: false, profile });
+        await renderScreen(<CityPickerScreen />);
+        await choose('Ham', hamburg);
+
+        jest.setSystemTime(NOW + 30_000);
+        await chooseInAlert('Move');
+
+        expect(lastAlert()).toEqual({
+          title: 'Make Hamburg, DE your city?',
+          message:
+            'It counts at once: your bats fly from Hamburg, DE from now on. If you change it ' +
+            'later, the new city takes a day to count.',
+          buttons: ['Cancel', 'Choose'],
+        });
+        await chooseInAlert('Choose');
+        expect(mockUpdateCity.mock.lastCall).toEqual([hamburg.id, { departing: null }]);
+      });
+    });
+
+    /** What each question is saved on: what its words rest on. */
+    it.each<[string, Profile | null, CityCondition | undefined]>([
+      ['a first city', { ...courier, city: null }, { departing: null }],
+      ['a move', courier, { departing: 2950159 }],
+      ['a move before the first letter', newcomer, { beforeFirstLetter: true }],
+      ['the words for an unloaded profile', null, undefined],
+    ])('saves %s on what its question rests on', async (_, profile, condition) => {
+      mockProfileState.profile = profile;
+      await renderScreen(<CityPickerScreen />);
+      await choose('Ham', hamburg);
+
+      await chooseInAlert(lastAlert().buttons[1]!);
+
+      expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id, condition]]);
     });
 
     it('saves nothing, and stays, if the courier thinks better of it', async () => {
@@ -762,7 +885,7 @@ describe('CityPickerScreen', () => {
       await chooseInAlert('Move');
 
       expect(mockUpdateCity).toHaveBeenCalledTimes(1);
-      expect(mockUpdateCity).toHaveBeenCalledWith(hamburg.id);
+      expect(mockUpdateCity).toHaveBeenCalledWith(hamburg.id, { departing: 2950159 });
       expect(mockBack).toHaveBeenCalledTimes(1);
     });
 
@@ -772,14 +895,14 @@ describe('CityPickerScreen', () => {
      * would close that letter instead. (Found in review.)
      */
     it('stays where the courier has gone if they left before the save answered', async () => {
-      const saving = deferred<boolean>();
+      const saving = deferred<CitySave>();
       mockUpdateCity.mockReturnValue(saving.promise);
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
       await chooseInAlert('Move');
 
       mockFocus.focused = false;
-      await act(async () => saving.resolve(true));
+      await act(async () => saving.resolve({ saved: true }));
 
       expect(mockUpdateCity).toHaveBeenCalledTimes(1);
       expect(mockBack).not.toHaveBeenCalled();
@@ -791,7 +914,7 @@ describe('CityPickerScreen', () => {
 
     /** One save at a time, shown on the row it is for. */
     it('shows the save on the row chosen, and takes no other choice meanwhile', async () => {
-      const saving = deferred<boolean>();
+      const saving = deferred<CitySave>();
       mockUpdateCity.mockReturnValue(saving.promise);
       await renderScreen(<CityPickerScreen />);
       await choose('Ham', hamburg);
@@ -805,7 +928,7 @@ describe('CityPickerScreen', () => {
       await fireEvent.press(screen.getByRole('button', { name: /^Hameln/ }));
       expect(alertSpy).toHaveBeenCalledTimes(1);
 
-      await act(async () => saving.resolve(true));
+      await act(async () => saving.resolve({ saved: true }));
     });
 
     it('says why a save failed, and stays so the courier can try again', async () => {
@@ -821,7 +944,7 @@ describe('CityPickerScreen', () => {
     });
 
     it('lets go of a failed save once the courier tries again', async () => {
-      const again = deferred<boolean>();
+      const again = deferred<CitySave>();
       mockUpdateCity
         .mockRejectedValueOnce(new Error('That city could not be saved.'))
         .mockReturnValueOnce(again.promise);
@@ -834,7 +957,7 @@ describe('CityPickerScreen', () => {
       await chooseInAlert('Move');
 
       expect(screen.queryByText('That city could not be saved.')).toBeNull();
-      await act(async () => again.resolve(true));
+      await act(async () => again.resolve({ saved: true }));
       expect(mockBack).toHaveBeenCalledTimes(1);
     });
   });

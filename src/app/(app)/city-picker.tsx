@@ -14,7 +14,12 @@ import {
   MIN_QUERY_LENGTH,
   searchCities,
 } from '@/features/cities/search';
-import { useProfile, type Profile, type ProfileCity } from '@/features/profile/use-profile';
+import {
+  useProfile,
+  type CityCondition,
+  type Profile,
+  type ProfileCity,
+} from '@/features/profile/use-profile';
 import { confirmAction, type Confirmation } from '@/lib/confirm';
 import { formatTimestamp } from '@/lib/format';
 
@@ -91,41 +96,44 @@ export default function CityPickerScreen() {
     // Once a letter has gone to or from the courier a change takes a day, so a
     // slip of the finger would cost a day to put right. Asked first, in the
     // words that fit.
-    const { beforeFirstLetter, ...question } = describeChoice(city, profile, new Date());
+    ask(city, profile, describeChoice(city, profile, new Date()));
+  }
+
+  /** Asks the question, and saves the city on its condition if the answer is yes. */
+  function ask(city: City, asked: Profile | null, { condition, ...question }: Choice) {
     confirmAction({
       ...question,
       cancelLabel: 'Cancel',
-      onConfirm: () => void save(city, beforeFirstLetter),
+      onConfirm: () => void save(city, asked, condition),
     });
   }
 
   /**
-   * `beforeFirstLetter`: the question said the move counts at once because no
-   * letter has gone to or from the courier, so it is saved only while that is
-   * still so. A letter that came or went in between leaves it unsaved, and the
-   * question is asked again in the words that hold now.
+   * Saves the city on the condition the question rested on (see
+   * `describeChoice`), so that the move is what the question said it would
+   * be. A letter that came or went, or a move that settled, between the
+   * question and the answer leaves it unsaved, and the question is asked
+   * again in the words that hold now.
    */
-  async function save(city: City, beforeFirstLetter: boolean) {
+  async function save(city: City, asked: Profile | null, condition: CityCondition | undefined) {
     setSaving(city.id);
     setSaveError(null);
     try {
-      const saved = beforeFirstLetter
-        ? await updateCity(city.id, { beforeFirstLetter })
-        : await updateCity(city.id);
+      const outcome = await updateCity(city.id, condition);
       // Only if the picker is still in front: on a slow connection the courier
       // may have gone on - to a letter they are now writing - and going back
       // would close that instead.
       if (!navigation.isFocused()) {
         setSaving(null);
-      } else if (saved) {
+      } else if (outcome.saved) {
         router.back();
       } else {
         setSaving(null);
-        confirmAction({
-          ...describeLateMove(city, profile, new Date()),
-          cancelLabel: 'Cancel',
-          onConfirm: () => void save(city, false),
-        });
+        ask(
+          city,
+          outcome.profile,
+          describeAgain(city, asked, condition, outcome.profile, new Date()),
+        );
       }
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : 'That city could not be saved.');
@@ -235,19 +243,27 @@ export default function CityPickerScreen() {
 
 type Question = Pick<Confirmation, 'title' | 'message' | 'confirmLabel'>;
 
+/** A question, and the condition a yes to it is saved on. */
+type Choice = Question & { condition?: CityCondition };
+
 /**
  * The question before a city is saved, as the database will treat it (see
  * `private.settle_city`): a first city, a move back to where the bats still
  * are, and any move before the courier's first letter count at once; any other
  * move takes RELOCATION_HOURS, from now, during which letters still leave from
- * - and land at - where the bats are. `beforeFirstLetter` is set when the move
- * counts at once only because no letter has gone to or from the courier yet.
+ * - and land at - where the bats are; `lead` says so first.
+ *
+ * Its condition is what the words rest on: that no letter has gone to or from
+ * the courier yet, or that the bats leave from where the question says - the
+ * city it names, the one they would move back to, or nowhere. Without the
+ * profile there is nothing to rest on, and the words hold either way.
  */
 function describeChoice(
   city: City,
   profile: Profile | null,
   now: Date,
-): Question & { beforeFirstLetter: boolean } {
+  lead = 'A move takes a day to count.',
+): Choice {
   const name = describeCity(city);
 
   if (!profile) {
@@ -258,7 +274,6 @@ function describeChoice(
         'you. After that, a move takes a day to count, and letters leave from your old city ' +
         'until then.',
       confirmLabel: 'Choose',
-      beforeFirstLetter: false,
     };
   }
 
@@ -274,7 +289,7 @@ function describeChoice(
           ? `It counts at once: your bats fly from ${name} from now on. Until a letter has gone to or from you, a change counts at once too; after that, a new city takes a day to count.`
           : `It counts at once: your bats fly from ${name} from now on. If you change it later, the new city takes a day to count.`,
       confirmLabel: 'Choose',
-      beforeFirstLetter: false,
+      condition: { departing: null },
     };
   }
 
@@ -283,7 +298,7 @@ function describeChoice(
       title: `Move back to ${name}?`,
       message: 'Your bats are still there, so it counts at once.',
       confirmLabel: 'Move',
-      beforeFirstLetter: false,
+      condition: { departing: departing.id },
     };
   }
 
@@ -292,27 +307,45 @@ function describeChoice(
       title: `Move to ${name}?`,
       message: `It counts at once, since no letter has gone to or from you yet: your bats fly from ${name} from now on. From your first letter on, a move takes a day to count.`,
       confirmLabel: 'Move',
-      beforeFirstLetter: true,
+      condition: { beforeFirstLetter: true },
     };
   }
 
   return {
-    ...describeDaysMove(city, departing, now, 'A move takes a day to count.'),
-    beforeFirstLetter: false,
+    ...describeDaysMove(city, departing, now, lead),
+    condition: { departing: departing.id },
   };
 }
 
 /**
- * Asked again when a move said to count at once could not be saved as one: a
- * letter came or went between the question and the answer, and from it on a
- * move takes a day.
+ * The question again, for a move that was not saved because what its
+ * question rested on no longer held: in the words that hold for the profile
+ * as it is now, saying first what changed when the move now takes a day.
  */
-function describeLateMove(city: City, profile: Profile | null, now: Date): Question {
-  return describeDaysMove(
+function describeAgain(
+  city: City,
+  asked: Profile | null,
+  condition: CityCondition | undefined,
+  profile: Profile,
+  now: Date,
+): Choice {
+  // Nothing but a letter stops a move before the first one: the courier has
+  // had one now, whatever a profile read a moment too early says.
+  if (condition && 'beforeFirstLetter' in condition) {
+    return describeChoice(
+      city,
+      { ...profile, hasCorresponded: true },
+      now,
+      'A letter has gone to or from you since, so a move now takes a day to count.',
+    );
+  }
+  // The bats left a city they were settling away from: the move has settled.
+  const settled = asked?.move != null && condition?.departing === asked.move.from.id;
+  return describeChoice(
     city,
-    profile ? departingCity(profile, now) : null,
+    profile,
     now,
-    'A letter has gone to or from you since, so a move now takes a day to count.',
+    settled ? 'Your bats have finished settling in since. A move takes a day to count.' : undefined,
   );
 }
 

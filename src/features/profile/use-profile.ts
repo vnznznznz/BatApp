@@ -42,6 +42,25 @@ export type Profile = {
   hasCorresponded?: boolean;
 };
 
+/**
+ * What a city is saved on condition of. The picker asks before every save,
+ * and its question says what the move will be: one that counts at once, or
+ * one that takes a day while letters leave from a city it names. A letter, or
+ * a move settling, can change that while the question is open, so the answer
+ * is saved only while what the question rested on still holds:
+ *
+ * - `beforeFirstLetter`: no letter has gone to or from the courier yet;
+ * - `departing`: the bats leave from this city - its id, or null for nowhere -
+ *   when the save arrives.
+ */
+export type CityCondition = { beforeFirstLetter: true } | { departing: number | null };
+
+/**
+ * What saving a city came to: saved, or not - its condition no longer held -
+ * with the profile as it is now, to ask again from.
+ */
+export type CitySave = { saved: true } | { saved: false; profile: Profile };
+
 type CityRow = { id: number; name: string; country_code: string; qualifier: string | null };
 
 type Row = {
@@ -91,6 +110,24 @@ export function toProfile(row: Row, now: number = Date.now()): Profile {
         : null,
     hasCorresponded: row.has_corresponded,
   };
+}
+
+/**
+ * That the bats leave from `departing` - a city's id, or null for nowhere -
+ * when a change arrives at `now`, in PostgREST's words for `or`. The row is
+ * read as `private.settle_city` reads it: from the city a move is settling
+ * away from, while the move is younger than RELOCATION_HOURS, and from the
+ * courier's city otherwise. `now` is this device's clock, by which the app
+ * says everything it says about a move.
+ */
+function departingFrom(departing: number | null, now: number): string {
+  const dayBefore = new Date(now - RELOCATION_HOURS * 3_600_000).toISOString();
+  // No move settling: none made, or the last one a day ago or more.
+  const noMove = `settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.${dayBefore}`;
+  return departing === null
+    ? `and(city_id.is.null,or(${noMove}))`
+    : `and(settled_city_id.eq.${departing},city_changed_at.gt.${dayBefore}),` +
+        `and(city_id.eq.${departing},or(${noMove}))`;
 }
 
 /**
@@ -187,38 +224,43 @@ export function useProfile() {
   );
 
   /**
-   * Saves a city, and resolves with whether it was saved. `beforeFirstLetter`
-   * saves it only while no letter has gone to or from the courier: the picker
-   * says such a move counts at once, which is so only until then, and a letter
-   * can come or go between its question and the answer. If one did, nothing
-   * is saved and this resolves with false.
+   * Saves a city - on `condition`, when one is given - and resolves with
+   * whether it was saved. The condition is checked by the database in the
+   * same statement that saves, so nothing can come between the two. If it no
+   * longer held - a letter came or went, or a move settled, between the
+   * picker's question and the answer - nothing is saved, and this resolves
+   * with the profile as it is now, for the question to be asked again.
    *
    * With nobody signed in, or with the account gone - deleted on another
    * device while the picker asked - there is no row to save to, and that is
-   * an error, not a false: the picker takes false for a letter that came in
-   * between. (Found in review.)
+   * an error: the picker would ask again about a city it cannot save.
+   * (Found in review.)
    */
   const updateCity = useCallback(
-    async (cityId: number, { beforeFirstLetter = false }: { beforeFirstLetter?: boolean } = {}) => {
+    async (cityId: number, condition?: CityCondition): Promise<CitySave> => {
       if (!userId) throw new Error('Your session has ended. Sign in again.');
       // Only the id crosses the wire. The coordinates behind it are the
       // server's, so a client cannot shorten its own flights.
       const change = supabase.from('profiles').update({ city_id: cityId }).eq('id', userId);
 
-      // Answered with the row it changed: a change that reaches no row - an
-      // account deleted since, a letter in between - is no error to the
-      // database.
+      // Answered with the row it changed: a change that reaches no row - a
+      // condition that no longer held, an account deleted since - is no
+      // error to the database.
       const { data, error: failure } = await (
-        beforeFirstLetter ? change.eq('has_corresponded', false) : change
+        !condition
+          ? change
+          : 'beforeFirstLetter' in condition
+            ? change.eq('has_corresponded', false)
+            : change.or(departingFrom(condition.departing, Date.now()))
       ).select('id');
       if (failure) throw new Error('That city could not be saved.');
       await load();
-      if ((data ?? []).length > 0) return true;
+      if ((data ?? []).length > 0) return { saved: true };
 
       // Loaded again, the row tells which it was.
       if (shown.current === null) throw new Error(GONE);
-      if (!beforeFirstLetter) throw new Error('That city could not be saved.');
-      return false;
+      if (!condition || !shown.current) throw new Error('That city could not be saved.');
+      return { saved: false, profile: shown.current };
     },
     [userId, load],
   );

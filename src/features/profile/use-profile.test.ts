@@ -2,7 +2,12 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { RELOCATION_HOURS } from '@/constants/config';
-import { toProfile, useProfile } from '@/features/profile/use-profile';
+import {
+  toProfile,
+  useProfile,
+  type CityCondition,
+  type CitySave,
+} from '@/features/profile/use-profile';
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 9, 31, 12, 0);
@@ -430,23 +435,29 @@ describe('useProfile', () => {
      * The picker says a move counts at once while no letter has gone to or
      * from the courier. Saved that way, it is saved only while that is so;
      * when a letter came or went in between, nothing is saved, and the hook
-     * says so instead of saving a move that would take a day.
+     * says so - with the profile as it is now, to ask again from - instead of
+     * saving a move that would take a day.
      */
     it.each([
       ['saves it', [{ id: 'user-anna' }], true],
       ['saves nothing, and says so, once a letter has come or gone', [], false],
     ])('asked to save a city before the first letter, %s', async (_, changed, saved) => {
-      mockDatabase.read.mockResolvedValue(found({ has_corresponded: false }));
+      mockDatabase.read
+        .mockResolvedValueOnce(found({ has_corresponded: false }))
+        .mockResolvedValue(found({ has_corresponded: !saved }));
       mockDatabase.changeRows.mockResolvedValue({ data: changed, error: null });
       const { result } = await renderHook(() => useProfile());
       await waitFor(() => expect(result.current.profile?.hasCorresponded).toBe(false));
 
-      let answer: boolean | undefined;
+      let answer: CitySave | undefined;
       await act(async () => {
         answer = await result.current.updateCity(2911298, { beforeFirstLetter: true });
       });
 
-      expect(answer).toBe(saved);
+      expect(result.current.profile?.hasCorresponded).toBe(!saved);
+      expect(answer).toEqual(
+        saved ? { saved: true } : { saved: false, profile: result.current.profile },
+      );
       expect(mockDatabase.change).not.toHaveBeenCalled();
       expect(mockDatabase.changeRows.mock.calls).toEqual([
         [
@@ -466,13 +477,89 @@ describe('useProfile', () => {
       const { result } = await renderHook(() => useProfile());
       await waitFor(() => expect(result.current.profile).not.toBeNull());
 
-      let answer: boolean | undefined;
+      let answer: CitySave | undefined;
       await act(async () => {
         answer = await result.current.updateCity(2911298);
       });
 
-      expect(answer).toBe(true);
+      expect(answer).toEqual({ saved: true });
       expect(mockDatabase.changeRows.mock.calls[0]?.[0].conditions).toEqual([]);
+    });
+
+    /**
+     * The picker's question says where the bats leave from: the city a move
+     * is settling away from until it has settled, and the courier's city
+     * otherwise - "Move back to Friedberg? Your bats are still there, so it
+     * counts at once", or "Until 22 Nov 08:41, your letters leave from La
+     * Ceiba". A move that settled between the question and the answer made
+     * the one take a day and the other leave from another city. (Found in
+     * review.) Saved on condition that the bats leave from where the
+     * question said, as the server reads it when the save arrives.
+     */
+    describe('while the bats leave from where the question said', () => {
+      /** A day before the save, which comes half a minute after the profile was read. */
+      const DAY_BEFORE = '2026-10-30T12:00:30.000Z';
+      const NO_MOVE = `settled_city_id.is.null,city_changed_at.is.null,city_changed_at.lte.${DAY_BEFORE}`;
+
+      beforeEach(() => {
+        jest.useFakeTimers({ now: NOW });
+      });
+
+      it.each([
+        [
+          'a city',
+          2950159,
+          `and(settled_city_id.eq.2950159,city_changed_at.gt.${DAY_BEFORE}),` +
+            `and(city_id.eq.2950159,or(${NO_MOVE}))`,
+        ],
+        ['nowhere', null, `and(city_id.is.null,or(${NO_MOVE}))`],
+      ])(
+        'saves a move only while they leave from %s, at the moment it is saved',
+        async (_, departing, filter) => {
+          mockDatabase.read.mockResolvedValue(found());
+          const { result } = await renderHook(() => useProfile());
+          await passes(0);
+          jest.setSystemTime(NOW + 30 * SECOND);
+
+          let answer: CitySave | undefined;
+          await act(async () => {
+            answer = await result.current.updateCity(2911298, { departing });
+          });
+
+          expect(answer).toEqual({ saved: true });
+          expect(mockDatabase.changeRows.mock.calls).toEqual([
+            [
+              {
+                ...ownRow(),
+                values: { city_id: 2911298 },
+                conditions: [['or', filter]],
+                columns: 'id',
+              },
+            ],
+          ]);
+        },
+      );
+
+      it('saves nothing once they leave from elsewhere, and answers with the profile as it is', async () => {
+        const berlin = { id: 2950159, name: 'Berlin', country_code: 'DE', qualifier: null };
+        // Read an hour before the move settles; saved an hour after.
+        mockDatabase.read.mockResolvedValue(
+          found({ settled: berlin, city_changed_at: new Date(NOW - 23 * HOUR).toISOString() }),
+        );
+        mockDatabase.changeRows.mockResolvedValue({ data: [], error: null });
+        const { result } = await renderHook(() => useProfile());
+        await passes(0);
+        expect(result.current.profile?.move?.from.name).toBe('Berlin');
+        jest.setSystemTime(NOW + 2 * HOUR);
+
+        let answer: CitySave | undefined;
+        await act(async () => {
+          answer = await result.current.updateCity(2950159, { departing: 2950159 });
+        });
+
+        expect(answer).toEqual({ saved: false, profile: result.current.profile });
+        expect(result.current.profile?.move).toBeNull();
+      });
     });
 
     /**
@@ -482,9 +569,10 @@ describe('useProfile', () => {
      * courier who never had one that a letter had gone to or from them, and
      * a save without a condition said it had saved. (Found in review.)
      */
-    it.each([
+    it.each<[string, CityCondition | undefined]>([
       ['a city', undefined],
       ['a city before the first letter', { beforeFirstLetter: true }],
+      ['a city while the bats leave from Munich', { departing: 2867714 }],
     ])('says the account is gone when %s is saved to an account deleted since', async (_, how) => {
       mockDatabase.read
         .mockResolvedValueOnce(found({ has_corresponded: false }))
@@ -529,7 +617,7 @@ describe('useProfile', () => {
      * the picker takes "not saved" for a letter that came in between, and
      * told the courier so. (Found in review.)
      */
-    it.each([
+    it.each<[string, CityCondition | undefined]>([
       ['a city', undefined],
       ['a city before the first letter', { beforeFirstLetter: true }],
     ])('says the session has ended when asked to save %s with nobody signed in', async (_, how) => {
