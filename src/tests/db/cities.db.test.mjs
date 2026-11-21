@@ -213,6 +213,45 @@ describe('search_cities', () => {
       /permission denied for function search_cities/,
     );
   });
+
+  /**
+   * search_cities runs with its owner's rights, to fold a saint's name with
+   * private.search_form, and reads the cities, whose row level security is
+   * forced on their owner too. These tests run as a superuser, which passes
+   * every policy by, so none of them could show that it still answers when
+   * its owner is no superuser. (Found in review.) On the platform the owner,
+   * postgres, is none: it passes row level security by, and it is also a
+   * member of authenticated, whom cities_select_all lets read every row.
+   * Either is enough. Here the owner is a member and passes nothing by; an
+   * owner that is neither finds nothing at all.
+   */
+  it('answers when its owner is no superuser and passes no policy by, as a member of authenticated', async () => {
+    await db.exec(`
+      begin;
+      create role search_owner nologin nosuperuser nobypassrls;
+      grant authenticated to search_owner;
+      grant usage on schema public, private to search_owner;
+      grant select on public.cities to search_owner;
+      alter function private.search_form(text) owner to search_owner;
+      alter function public.search_cities(text, integer) owner to search_owner;
+    `);
+    try {
+      const { rows } = await db.query(
+        `select r.rolsuper as superuser, r.rolbypassrls as passes_policies_by
+         from pg_proc p
+         join pg_roles r on r.oid = p.proowner
+         where p.oid = 'public.search_cities(text, integer)'::regprocedure`,
+      );
+      assert.deepEqual(rows, [{ superuser: false, passes_policies_by: false }]);
+
+      // A saint's name, so that the owner folds it with private.search_form.
+      const found = await search(anna, sent('St. Ingbert'));
+      assert.equal(found[0]?.name, 'Sankt Ingbert');
+    } finally {
+      // A function's plans are kept, and were made for this owner.
+      await db.exec(`rollback; discard plans;`);
+    }
+  });
 });
 
 /**
