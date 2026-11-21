@@ -9,6 +9,7 @@ import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
 import { Spacing } from '@/constants/theme';
 import { CODE_DID_NOT_WORK, useAuth } from '@/features/auth/auth-context';
+import { HoldBack } from '@/features/auth/hold-back';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import {
   EMAIL_CODE_LENGTH,
@@ -221,6 +222,8 @@ function NewPasswordForm({ email, onBack }: { email: string; onBack: () => void 
 
   return (
     <Screen scroll avoidKeyboard style={styles.screen}>
+      {/* The code goes, or has signed the courier in: on until the password is saved. */}
+      <HoldBack holding={isSettingPassword} />
       <Text variant="title">{signedInByCode ? 'Your new password' : 'Check your email'}</Text>
       <Text variant="body" tone="secondary" style={styles.intro}>
         {signedInByCode

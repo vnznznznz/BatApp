@@ -1,7 +1,7 @@
 import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
+import { BackHandler, DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
@@ -19,9 +19,27 @@ const mockSignOut = jest.fn();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), replace: mockReplace }),
-}));
+/**
+ * Every set of options the screen has given itself through <Stack.Screen>, in
+ * order. Recorded rather than applied: there is no navigator here.
+ */
+const mockScreenOptions = jest.fn<void, [{ gestureEnabled?: boolean }]>();
+
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useRouter: () => ({ push: mockPush, back: jest.fn(), replace: mockReplace }),
+    // There is no navigator here, so being mounted stands in for being focused.
+    useFocusEffect: (effect: () => void | (() => void)) =>
+      React.useEffect(() => effect(), [effect]),
+    Stack: {
+      Screen: ({ options }: { options: { gestureEnabled?: boolean } }) => {
+        mockScreenOptions(options);
+        return null;
+      },
+    },
+  };
+});
 
 /**
  * Whether the form is given the app's own auth context, over an auth server
@@ -184,6 +202,7 @@ function placeOf(element: Element): number {
 }
 
 beforeEach(() => {
+  mockScreenOptions.mockClear();
   mockAuth.real = false;
   mockAuth.serverSignUp.mockReset();
   mockAuth.serverSettings.mockReset().mockImplementation(async () => settings(true));
@@ -577,6 +596,57 @@ describe('SignUpScreen', () => {
 
         expect(screen.getByText(STUCK)).toBeOnTheScreen();
         expect(mockReplace).not.toHaveBeenCalled();
+      });
+
+      /**
+       * The root layout holds the way into the app only while this screen is
+       * in front: gone back, the courier would be in the roost with the
+       * password an earlier sign-up gave the account. (Found in review.)
+       */
+      it('takes the swipe and Android’s back button away until the account is finished', async () => {
+        let backListeners: Parameters<typeof BackHandler.addEventListener>[1][] = [];
+        jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
+          backListeners.push(listener);
+          return {
+            remove: () => {
+              backListeners = backListeners.filter((other) => other !== listener);
+            },
+          };
+        });
+        const handled = () =>
+          [...backListeners]
+            .reverse()
+            .some((listener) => listener({ type: 'hardwareBackPress', timeStamp: 0 }) === true);
+        const swipeBack = () => mockScreenOptions.mock.calls.at(-1)?.[0].gestureEnabled ?? true;
+        await signedUp();
+        expect(swipeBack()).toBe(true);
+        expect(handled()).toBe(false);
+
+        await user.type(codeField(), '12345678');
+        await user.press(button('Confirm'));
+
+        expect(screen.getByText('Almost there')).toBeOnTheScreen();
+        expect(swipeBack()).toBe(false);
+        expect(handled()).toBe(true);
+
+        await user.press(button('Sign out'));
+        expect(swipeBack()).toBe(true);
+        expect(handled()).toBe(false);
+        jest.restoreAllMocks();
+      });
+
+      it('takes the swipe away while the code is checked too', async () => {
+        mockConfirmSignUp.mockImplementation(async () => {
+          mockHold.set(true);
+          await new Promise(() => {});
+        });
+        await signedUp();
+
+        await user.type(codeField(), '12345678');
+        await user.press(button('Confirm'));
+
+        expect(screen.getByText('Check your email')).toBeOnTheScreen();
+        expect(mockScreenOptions.mock.calls.at(-1)?.[0].gestureEnabled).toBe(false);
       });
 
       /** Signed out some other way - the session over - the code is all there is to go on. */

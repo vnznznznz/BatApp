@@ -1,6 +1,6 @@
 import { act, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
+import { BackHandler, DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ResetPasswordScreen from '@/app/reset-password';
@@ -14,9 +14,27 @@ const mockSignOut = jest.fn();
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
 
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: mockBack, replace: mockReplace }),
-}));
+/**
+ * Every set of options the screen has given itself through <Stack.Screen>, in
+ * order. Recorded rather than applied: there is no navigator here.
+ */
+const mockScreenOptions = jest.fn<void, [{ gestureEnabled?: boolean }]>();
+
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useRouter: () => ({ push: jest.fn(), back: mockBack, replace: mockReplace }),
+    // There is no navigator here, so being mounted stands in for being focused.
+    useFocusEffect: (effect: () => void | (() => void)) =>
+      React.useEffect(() => effect(), [effect]),
+    Stack: {
+      Screen: ({ options }: { options: { gestureEnabled?: boolean } }) => {
+        mockScreenOptions(options);
+        return null;
+      },
+    },
+  };
+});
 
 /**
  * What the auth context says of the session, as the app's does: a change is
@@ -129,7 +147,37 @@ const keyboard = (event: 'keyboardDidShow' | 'keyboardDidHide', height: number) 
 
 const SESSION = { user: { id: 'user-anna' } };
 
+type BackListener = Parameters<typeof BackHandler.addEventListener>[1];
+
+/** The screen's listeners for Android's back button, added and not yet removed, oldest first. */
+let backListeners: BackListener[] = [];
+
+/**
+ * Presses Android's back button. As on a phone, the listeners in place are
+ * asked newest first until one answers true, having handled the press; if
+ * none does, the navigator goes back a screen. Resolves to whether one did.
+ */
+const pressBackOnAndroid = () =>
+  act(() =>
+    [...backListeners]
+      .reverse()
+      .some((listener) => listener({ type: 'hardwareBackPress', timeStamp: 0 }) === true),
+  );
+
+/** Whether the swipe back is allowed, as the screen last set it; allowed until it says. */
+const swipeBack = () => mockScreenOptions.mock.calls.at(-1)?.[0].gestureEnabled ?? true;
+
 beforeEach(() => {
+  mockScreenOptions.mockClear();
+  backListeners = [];
+  jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
+    backListeners.push(listener);
+    return {
+      remove: () => {
+        backListeners = backListeners.filter((other) => other !== listener);
+      },
+    };
+  });
   mockAuthState.current = { session: null, isSettingPassword: false };
   mockSendPasswordReset.mockReset().mockResolvedValue(undefined);
   mockVerifyResetCode.mockReset().mockImplementation(async () => {
@@ -152,6 +200,7 @@ beforeEach(() => {
 afterEach(async () => {
   await keyboard('keyboardDidHide', 0);
   Platform.OS = DEFAULT_OS;
+  jest.restoreAllMocks();
 });
 
 describe('ResetPasswordScreen', () => {
@@ -545,6 +594,66 @@ describe('ResetPasswordScreen', () => {
 
       expect(screen.getByLabelText('Email').props.value).toBe(' anna@example.com ');
       expect(screen.queryByText('Check your email')).toBeNull();
+    });
+  });
+
+  /**
+   * The root layout holds the way into the app only while this screen is in
+   * front. Gone back while the code was checked, or with the password not
+   * saved after it, the courier was in the roost, signed in with a password
+   * they did not know, and why it was not saved was told to a screen that
+   * was gone. The screen says what to do instead: save it, or sign out.
+   * (Found in review.)
+   */
+  describe('going back', () => {
+    it('takes the swipe and Android’s back button away while the code is checked', async () => {
+      mockVerifyResetCode.mockImplementation(async () => {
+        mockAuthState.set({ isSettingPassword: true });
+        await new Promise(() => {});
+      });
+      await askedForACode();
+      expect(swipeBack()).toBe(true);
+
+      await typedCodeAndPassword();
+
+      expect(swipeBack()).toBe(false);
+      expect(await pressBackOnAndroid()).toBe(true);
+      expect(mockBack).not.toHaveBeenCalled();
+    });
+
+    it('keeps them away while the password is not saved after the code', async () => {
+      mockSetNewPassword.mockRejectedValueOnce(
+        new Error('The new password has to differ from the old one.'),
+      );
+      await askedForACode();
+      await typedCodeAndPassword();
+      expect(screen.getByText('Your new password')).toBeOnTheScreen();
+
+      expect(swipeBack()).toBe(false);
+      expect(await pressBackOnAndroid()).toBe(true);
+    });
+
+    it('gives them back once the courier has signed out', async () => {
+      mockSetNewPassword.mockRejectedValueOnce(
+        new Error('The new password has to differ from the old one.'),
+      );
+      await askedForACode();
+      await typedCodeAndPassword();
+
+      await user.press(button('Sign out'));
+
+      expect(swipeBack()).toBe(true);
+      expect(await pressBackOnAndroid()).toBe(false);
+    });
+
+    it('leaves going back as it is while nothing is being finished', async () => {
+      mockVerifyResetCode.mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+      await askedForACode();
+
+      await typedCodeAndPassword();
+
+      expect(swipeBack()).toBe(true);
+      expect(await pressBackOnAndroid()).toBe(false);
     });
   });
 

@@ -3,7 +3,7 @@ import { act, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
-import { Text } from 'react-native';
+import { BackHandler, Text } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import RootLayout from '@/app/_layout';
@@ -197,7 +197,48 @@ describe('a password reset by code', () => {
     expect(mockServer.verify).toHaveBeenCalledTimes(1);
   });
 
-  /** Gone back without a new password, the courier is signed in all the same, and in the app. */
+  /**
+   * Android's back button, through the navigator's own listener and the
+   * screen's. Gone back from the screen that says the password is not saved,
+   * the courier was in the roost, signed in with a password they did not
+   * know. (Found in review.)
+   */
+  it('keeps the courier on the reset screen when Android’s back button is pressed before the password is saved', async () => {
+    let backListeners: Parameters<typeof BackHandler.addEventListener>[1][] = [];
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_, listener) => {
+      backListeners.push(listener);
+      return {
+        remove: () => {
+          backListeners = backListeners.filter((other) => other !== listener);
+        },
+      };
+    });
+    // Newest first, until one has handled the press, as on a phone.
+    const pressBack = () =>
+      act(() =>
+        [...backListeners]
+          .reverse()
+          .some((listener) => listener({ type: 'hardwareBackPress', timeStamp: 0 }) === true),
+      );
+    mockServer.passwordChange.mockResolvedValue({ data: { user: null }, error: SAME });
+    const app = renderRouter(routes, { initialUrl: '/sign-in', wrapper: withInsets });
+    await app;
+    await act(() => router.push('/reset-password'));
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.press(screen.getByRole('button', { name: 'Send the code' }));
+    await user.type(screen.getByLabelText('Code'), '87654321');
+    await user.type(screen.getByLabelText('New password'), 'the old password');
+    await user.press(screen.getByRole('button', { name: 'Set the new password' }));
+
+    await pressBack();
+
+    expect(app.getPathname()).toBe('/reset-password');
+    expect(screen.getByText('The new password has to differ from the old one.')).toBeOnTheScreen();
+    jest.restoreAllMocks();
+  });
+
+  /** Left some other way without a new password, the courier is signed in all the same, and in the app. */
   it('takes a courier who goes back from the reset screen signed in to the roost', async () => {
     mockServer.passwordChange.mockResolvedValue({ data: { user: null }, error: SAME });
     const app = renderRouter(routes, { initialUrl: '/sign-in', wrapper: withInsets });

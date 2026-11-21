@@ -9,6 +9,7 @@ import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
 import { CODE_DID_NOT_WORK, useAuth, type SignUpDetails } from '@/features/auth/auth-context';
+import { HoldBack } from '@/features/auth/hold-back';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import { EMAIL_CODE_LENGTH, validateEmailCode } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
@@ -175,6 +176,7 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   if (unfinished) {
     return (
       <Screen scroll avoidKeyboard style={styles.screen}>
+        <HoldBack holding={isSettingPassword} />
         <Text variant="title">Almost there</Text>
         <Text variant="body" tone="secondary" style={styles.intro}>
           {UNFINISHED}
@@ -194,6 +196,9 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
 
   return (
     <Screen scroll avoidKeyboard style={styles.screen}>
+      {/* After signing up the code goes, or has signed the courier in: on until the
+          account is theirs. From signing in, nothing is held. */}
+      <HoldBack holding={isSettingPassword} />
       <Text variant="title">
         {setUpAgain ? 'One more code' : signedUp ? 'Check your email' : 'Confirm your address'}
       </Text>

@@ -13,9 +13,16 @@ const mockConfirmEmail = jest.fn();
 const mockResendConfirmationCode = jest.fn();
 const mockReplace = jest.fn();
 
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: mockReplace }),
-}));
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: mockReplace }),
+    // There is no navigator here, so being mounted stands in for being focused.
+    useFocusEffect: (effect: () => void | (() => void)) =>
+      React.useEffect(() => effect(), [effect]),
+    Stack: { Screen: () => null },
+  };
+});
 
 jest.mock('@/features/auth/auth-context', () => ({
   ...jest.requireActual<object>('@/features/auth/auth-context'),
