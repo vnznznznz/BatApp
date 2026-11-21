@@ -13,6 +13,12 @@ export type Paged<T> = {
   isLoadingMore: boolean;
   /** False once a page comes back short: there is nothing older. */
   hasMore: boolean;
+  /**
+   * Loads the first page again without showing a spinner, for what the screen
+   * asks for by itself: the list stays as it is until the answer is in.
+   */
+  reload: () => Promise<void>;
+  /** Loads the first page again, showing that it is doing so - for pull-to-refresh. */
   refresh: () => Promise<void>;
   loadMore: () => Promise<void>;
 };
@@ -139,17 +145,28 @@ export function usePaged<T extends { id: string }>(
     }
   }, [keep, loadFirst, loadPage, pageSize]);
 
+  const reload = useCallback(() => run(false), [run]);
   const refresh = useCallback(() => run(true), [run]);
 
   useFocusEffect(
     useCallback(() => {
-      void run(false);
+      void reload();
       const subscription = AppState.addEventListener('change', (state) => {
-        if (state === 'active') void run(false);
+        if (state === 'active') void reload();
       });
       return () => subscription.remove();
-    }, [run]),
+    }, [reload]),
   );
 
-  return { items, error, isLoading, isRefreshing, isLoadingMore, hasMore, refresh, loadMore };
+  return {
+    items,
+    error,
+    isLoading,
+    isRefreshing,
+    isLoadingMore,
+    hasMore,
+    reload,
+    refresh,
+    loadMore,
+  };
 }

@@ -520,6 +520,98 @@ describe('usePaged', () => {
     });
   });
 
+  /**
+   * What a screen asks for by itself - the Sent list, when a letter in the air
+   * reaches its time - is no pull to refresh, and a spinner over the list once
+   * a minute would say that someone pulled.
+   */
+  describe('loading the first page again by itself', () => {
+    it('keeps the list on screen and shows no spinner meanwhile', async () => {
+      const fresh = later();
+      const loadPage = pages(page('a', 'b', 'c'), fresh.promise);
+      const { result } = await renderList(loadPage);
+
+      await act(async () => {
+        void result.current.reload();
+      });
+
+      expect(loadPage).toHaveBeenCalledTimes(2);
+      expect(loadPage).toHaveBeenLastCalledWith(undefined, PAGE);
+      expect(result.current.isRefreshing).toBe(false);
+      expect(result.current.isLoading).toBe(false);
+      expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c']);
+
+      await fresh.arrive(page('new', 'a', 'b'));
+
+      await waitFor(() => expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c']));
+      expect(result.current.isRefreshing).toBe(false);
+    });
+
+    it('splices the fresh first page onto the older pages, as on coming back', async () => {
+      const loadPage = pages(page('a', 'b', 'c'), page('d', 'e', 'f'), page('new', 'a', 'b'));
+      const { result } = await renderList(loadPage);
+      await act(() => result.current.loadMore());
+
+      await act(() => result.current.reload());
+
+      expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c', 'd', 'e', 'f']);
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    it('does not let a slow answer overwrite a newer one', async () => {
+      const slow = later();
+      const loadPage = pages(page('a', 'b', 'c'), slow.promise, page('new', 'a', 'b'));
+      const { result } = await renderList(loadPage);
+
+      await act(async () => {
+        void result.current.reload();
+      });
+      await act(() => result.current.reload());
+      expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c']);
+
+      await slow.arrive(page('a', 'b', 'c'));
+      await settle();
+
+      expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c']);
+    });
+
+    it('keeps the list when it gets no answer, says so, and asks again by itself', async () => {
+      jest.useFakeTimers();
+      const noAnswer = new RpcError('No connection. Check your network and try again.', null);
+      const loadPage = pages(page('a', 'b', 'c'), noAnswer, page('new', 'a', 'b'));
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      await act(() => result.current.reload());
+      expect(result.current.error).toBe('No connection. Check your network and try again.');
+      expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c']);
+
+      await act(() => jest.advanceTimersByTimeAsync(2000));
+
+      expect(loadPage).toHaveBeenCalledTimes(3);
+      expect(idsOf(result.current.items)).toEqual(['new', 'a', 'b', 'c']);
+      expect(result.current.error).toBeNull();
+      expect(result.current.isRefreshing).toBe(false);
+    });
+
+    it('does not ask again when the server refused', async () => {
+      jest.useFakeTimers();
+      const loadPage = pages(
+        page('a', 'b', 'c'),
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      const { result } = await renderHook(() => usePaged(loadPage, PAGE));
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      await act(() => result.current.reload());
+      await act(() => jest.advanceTimersByTimeAsync(10 * 60_000));
+
+      expect(loadPage).toHaveBeenCalledTimes(2);
+      expect(result.current.error).toBe(REFUSALS.account_suspended);
+      expect(idsOf(result.current.items)).toEqual(['a', 'b', 'c']);
+    });
+  });
+
   describe('pull to refresh', () => {
     it('shows that it is refreshing until the fresh page arrives', async () => {
       const fresh = later();
