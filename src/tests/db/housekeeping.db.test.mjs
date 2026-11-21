@@ -120,6 +120,8 @@ describe('the daily tidy-up', () => {
         [anna, createdDaysAgo, usedDaysAgo],
       );
     const forgotten = (await session(400, 91)).rows[0].id;
+    // Unused for a day short of the 90: a shorter period would end it too.
+    const nearlyForgotten = (await session(400, 89)).rows[0].id;
     const oldButInUse = (await session(400, 1)).rows[0].id;
     const recent = (await session(2, 2)).rows[0].id;
 
@@ -127,7 +129,7 @@ describe('the daily tidy-up', () => {
 
     const { rows } = await db.query(`select id from auth.sessions where user_id = $1`, [anna]);
     const left = rows.map((row) => row.id).sort();
-    assert.deepEqual(left, [oldButInUse, recent].sort());
+    assert.deepEqual(left, [nearlyForgotten, oldButInUse, recent].sort());
     assert.ok(!left.includes(forgotten));
   });
 
@@ -208,7 +210,12 @@ describe('the daily tidy-up', () => {
        where id = $1`,
       [forgotten],
     );
-    await db.query(`update auth.users set email_confirmed_at = null where id = $1`, [waiting]);
+    // A day short of its week: a shorter period would delete it too.
+    await db.query(
+      `update auth.users set email_confirmed_at = null, created_at = now() - interval '6 days'
+       where id = $1`,
+      [waiting],
+    );
     await db.query(`update auth.users set created_at = now() - interval '400 days' where id = $1`, [
       confirmedLongAgo,
     ]);
