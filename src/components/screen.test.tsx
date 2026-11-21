@@ -220,6 +220,30 @@ describe('Screen and the keyboard', () => {
       },
     );
 
+    /**
+     * A keyboard whose top stays within the navigation bar - a strip of
+     * suggestions beside a hardware keyboard, say - is reported as less than
+     * nothing too, by less than the bar. It reaches nothing above the bar, and
+     * the screen makes no room for it, whether or not it pads that edge.
+     */
+    it.each<[string, Edge[]]>([
+      ['pads the bottom edge', ['bottom']],
+      ['leaves the bottom edge out', ['top']],
+    ])(
+      'makes no room for a keyboard that stays within the navigation bar, on a screen that %s',
+      async (_, edges) => {
+        await renderScreen(
+          <Screen scroll edges={edges}>
+            <TextInput accessibilityLabel="Email" />
+          </Screen>,
+        );
+
+        await keyboardShows(-10);
+
+        expect(paddingBelow()).toBe(0);
+      },
+    );
+
     it('stops listening once the screen has gone', async () => {
       const before = DeviceEventEmitter.listenerCount('keyboardDidShow');
       await renderScreen(

@@ -1,6 +1,6 @@
 import { act, render, screen, userEvent } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
-import { DeviceEventEmitter, Platform, StyleSheet } from 'react-native';
+import { DeviceEventEmitter, Platform, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import ResetPasswordScreen from '@/app/reset-password';
@@ -545,6 +545,76 @@ describe('ResetPasswordScreen', () => {
 
       expect(screen.getByLabelText('Email').props.value).toBe(' anna@example.com ');
       expect(screen.queryByText('Check your email')).toBeNull();
+    });
+  });
+
+  /** The keyboard's own keys, as on the sign-in and sign-up forms. */
+  describe('moving through the form', () => {
+    let focus: jest.SpiedFunction<TextInput['focus']>;
+
+    /** The fields the form has moved the focus to, by label, in order. */
+    const focused = () =>
+      focus.mock.contexts.map((field) => (field as TextInput).props.accessibilityLabel);
+
+    beforeEach(() => {
+      focus = jest.spyOn(TextInput.prototype, 'focus');
+    });
+
+    afterEach(() => {
+      focus.mockRestore();
+    });
+
+    it('asks for a code from the address’s own key', async () => {
+      await renderScreen(<ResetPasswordScreen />);
+      expect(screen.getByLabelText('Email')).toHaveProp('returnKeyType', 'go');
+
+      await user.type(screen.getByLabelText('Email'), 'anna@example.com', { submitEditing: true });
+
+      expect(mockSendPasswordReset).toHaveBeenCalledWith('anna@example.com');
+      expect(screen.getByText('Check your email')).toBeOnTheScreen();
+    });
+
+    it('goes on from the code to the new password with the keyboard’s key, keeping the keyboard up', async () => {
+      await askedForACode();
+      const code = screen.getByLabelText('Code');
+      expect(code).toHaveProp('returnKeyType', 'next');
+      // Letting go of the focus first would close the number pad, and the
+      // password would open the keyboard again.
+      expect(code).toHaveProp('submitBehavior', 'submit');
+
+      await user.type(code, '87654321', { submitEditing: true });
+
+      expect(focused()).toEqual(['New password']);
+      expect(mockVerifyResetCode).not.toHaveBeenCalled();
+    });
+
+    it('sets the new password from its own key', async () => {
+      await askedForACode();
+      await user.type(screen.getByLabelText('Code'), '87654321');
+      expect(screen.getByLabelText('New password')).toHaveProp('returnKeyType', 'go');
+
+      await user.type(screen.getByLabelText('New password'), 'a new password', {
+        submitEditing: true,
+      });
+
+      expect(mockVerifyResetCode).toHaveBeenCalledWith('anna@example.com', '87654321');
+      expect(mockSetNewPassword).toHaveBeenCalledWith('a new password');
+    });
+
+    it('saves the password alone from its key once the code has signed the courier in', async () => {
+      mockSetNewPassword.mockRejectedValueOnce(
+        new Error('The new password has to differ from the old one.'),
+      );
+      await askedForACode();
+      await typedCodeAndPassword();
+      await user.clear(screen.getByLabelText('New password'));
+
+      await user.type(screen.getByLabelText('New password'), 'another password', {
+        submitEditing: true,
+      });
+
+      expect(mockSetNewPassword).toHaveBeenLastCalledWith('another password');
+      expect(mockVerifyResetCode).toHaveBeenCalledTimes(1);
     });
   });
 });
