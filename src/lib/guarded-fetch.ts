@@ -207,9 +207,11 @@ export function createGuardedFetch({
   fetch: send = (input, init) => fetch(input, init),
 }: GuardedFetchOptions): typeof fetch {
   let renewal: Promise<string | null> | null = null;
-  // The latest answer to a renewal that left the session as it was, and until
-  // when no other renewal is sent because of it.
-  let unrenewed = { status: 0, until: 0 };
+  // The latest answer to a renewal that left the session as it was: when it
+  // came, and for how long no other renewal is sent because of it. Counted
+  // from when it came, so that a clock put back ends the wait rather than
+  // making it longer by as much.
+  let unrenewed = { status: 0, at: 0, pause: 0 };
 
   /** One renewal for all the requests that were refused together. */
   function renewOnce(staleToken: string): Promise<string | null> {
@@ -223,7 +225,8 @@ export function createGuardedFetch({
     const address = addressOf(input);
 
     if (isRenewal(address)) {
-      if (Date.now() < unrenewed.until) {
+      const waited = Date.now() - unrenewed.at;
+      if (waited >= 0 && waited < unrenewed.pause) {
         throw networkError(`not sent: the auth server answered ${unrenewed.status} a moment ago`);
       }
       const answer = await exchange(send, input, init);
@@ -232,7 +235,7 @@ export function createGuardedFetch({
       // asking again at once would not make happen.
       if (!answer.response.ok && !endsTheSession(answer.body)) {
         const { status } = answer.response;
-        unrenewed = { status, until: Date.now() + pauseAfter(answer.response) };
+        unrenewed = { status, at: Date.now(), pause: pauseAfter(answer.response) };
         throw networkError(`failed: the auth server answered ${status}`);
       }
       return answer.response;

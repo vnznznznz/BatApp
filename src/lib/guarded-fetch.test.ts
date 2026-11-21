@@ -706,6 +706,27 @@ describe('after an answer to a renewal that neither renews the session nor ends 
     expect([signIn.status, roost.status]).toEqual([200, 200]);
     expect(network).toHaveBeenCalledTimes(3);
   });
+
+  /**
+   * The wait is told by the phone's clock, which can be put back - by the
+   * network's time, or by hand - while it runs. Held as a time to wait until,
+   * it then went on for as long as the clock had gone back as well: an hour
+   * back, and for an hour no session was renewed and nothing could be loaded.
+   */
+  it('takes no notice of a clock put back meanwhile', async () => {
+    const { guarded, network } = setUp();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+    network
+      .mockResolvedValueOnce(limited())
+      .mockResolvedValueOnce(json(200, { access_token: 'a', refresh_token: 'r2' }));
+    await guarded(RENEWAL, renewal).catch(() => {});
+
+    jest.setSystemTime(new Date('2026-11-17T11:00:00Z'));
+    const answer = await guarded(RENEWAL, renewal);
+
+    expect(answer.status).toBe(200);
+    expect(network).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('a request to the database', () => {
