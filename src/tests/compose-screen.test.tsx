@@ -376,7 +376,7 @@ describe('ComposeScreen', () => {
       expect(screen.getByRole('button', { name: /^Anna Weber/ })).toBeEnabled();
       // The town on a line of its own, and the way there on the next.
       expect(
-        screen.getByText('Munich, DE\n505 km · about 6h 18m', {
+        screen.getByText('Munich, DE\n505\u00a0km · about 6h 18m', {
           exact: true,
           normalizer: (text: string) => text,
         }),
@@ -408,7 +408,7 @@ describe('ComposeScreen', () => {
       await renderScreen(<ComposeScreen />);
 
       const route = await screen.findByText(
-        'La Ceiba (131 km from San Pedro Sula), HN\n9,296 km · about 4d 20h',
+        'La Ceiba (131 km from San Pedro Sula), HN\n9,296\u00a0km · about 4d 20h',
         { exact: true, normalizer: (text: string) => text },
       );
       expect(route).toHaveProp('numberOfLines', 0);
@@ -426,7 +426,7 @@ describe('ComposeScreen', () => {
 
       const annaRow = await screen.findByRole('button', { name: /^Anna Weber/ });
       expect(
-        within(annaRow).getByText('Munich, DE\n505 km · about 6h 18m', {
+        within(annaRow).getByText('Munich, DE\n505\u00a0km · about 6h 18m', {
           exact: true,
           normalizer: (text: string) => text,
         }),

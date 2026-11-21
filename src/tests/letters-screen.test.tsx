@@ -301,6 +301,28 @@ describe('LettersScreen', () => {
     });
 
     /**
+     * Wrapped, the line could end with the distance's number and start the
+     * next with its unit: "From Friedberg (near Frankfurt am Main) · 404" and
+     * then "km · 10:00" at 360 px. (Found in the browser.) The two are joined
+     * by a space that does not break.
+     */
+    it('keeps the distance and its unit together on a line that wraps', async () => {
+      const letter = received({
+        origin: { name: 'Friedberg', countryCode: 'DE', qualifier: 'near Frankfurt am Main' },
+        distanceKm: 404.2,
+      });
+      mockedFetchInbox.mockResolvedValue([letter]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          `From Friedberg (near Frankfurt am Main) · 404 km · ${formatTimestamp(letter.arrivedAt)}`,
+          { normalizer: asRendered },
+        ),
+      ).toHaveProp('numberOfLines', 0);
+    });
+
+    /**
      * Letters start with a greeting and a blank line. Kept as written, a
      * two-line preview would show "Dear Mara," and then nothing.
      */
