@@ -15,7 +15,11 @@ import {
  * Postgres constraint name in a toast.
  */
 
-/** Supabase's own minimum. Raising it here would only lock users out of signup. */
+/**
+ * Supabase's own minimum. Raising it here would only lock users out of signup.
+ * Counted in bytes as UTF-8 writes them, as the auth server counts it, so four
+ * umlauts are long enough.
+ */
 export const PASSWORD_MIN_LENGTH = 8;
 
 /**
@@ -62,10 +66,14 @@ export function validateEmail(value: string): string | null {
 
 export function validatePassword(value: string): string | null {
   if (!value) return 'Choose a password.';
-  if (value.length < PASSWORD_MIN_LENGTH) {
+  // Both ends in bytes, as the auth server counts them. In characters the form
+  // refused four umlauts, which the server takes. Whoever is told this has
+  // typed fewer than eight characters, whatever they were.
+  const bytes = utf8Length(value);
+  if (bytes < PASSWORD_MIN_LENGTH) {
     return `Passwords need at least ${PASSWORD_MIN_LENGTH} characters.`;
   }
-  if (utf8Length(value) > PASSWORD_MAX_BYTES) return PASSWORD_TOO_LONG;
+  if (bytes > PASSWORD_MAX_BYTES) return PASSWORD_TOO_LONG;
   return null;
 }
 

@@ -62,6 +62,28 @@ describe('validatePassword', () => {
   });
 
   /**
+   * The auth server counts the shortest in bytes too, as UTF-8 writes them:
+   * four umlauts, or two emoji, are a password it takes (GoTrue v2.197 at
+   * minimum_password_length 8, tried on the local stack). The form refused
+   * them, counting characters - and twice as many for an emoji.
+   */
+  it.each([
+    ['four umlauts, which take two bytes each', 'ä'.repeat(4)],
+    ['three euro signs, which take three', '€'.repeat(3)],
+    ['two emoji, which take four', '😀'.repeat(2)],
+  ])('accepts a password as short as the auth server takes it, in %s', (_, password) => {
+    expect(validatePassword(password)).toBeNull();
+  });
+
+  it.each([
+    ['three umlauts', 'ä'.repeat(3)],
+    ['two euro signs', '€'.repeat(2)],
+    ['one emoji and three letters', '😀abc'],
+  ])('refuses one the auth server finds too short, in %s', (_, password) => {
+    expect(validatePassword(password)).toBe('Passwords need at least 8 characters.');
+  });
+
+  /**
    * The auth server takes at most 72 bytes of a password, and an umlaut takes
    * two: 40 of them were refused as "longer than 72 characters".
    */
@@ -69,6 +91,7 @@ describe('validatePassword', () => {
     expect(PASSWORD_MAX_BYTES).toBe(72);
     expect(validatePassword('a'.repeat(72))).toBeNull();
     expect(validatePassword('ä'.repeat(36))).toBeNull();
+    expect(validatePassword('€'.repeat(24))).toBeNull();
     expect(validatePassword('🦇'.repeat(18))).toBeNull();
   });
 
@@ -76,11 +99,23 @@ describe('validatePassword', () => {
     ['letters', 'a'.repeat(73)],
     ['umlauts, which take two bytes each', 'ä'.repeat(37)],
     ['the 40 umlauts the server refused', 'ä'.repeat(40)],
+    ['euro signs, which take three', '€'.repeat(25)],
     ['emoji, which take four', '🦇'.repeat(19)],
   ])('refuses one longer than that, in %s, and says why', (_, password) => {
     const said = validatePassword(password);
     expect(said).toMatch(/at most 72/);
     expect(said).toMatch(/ä or é count as two/);
+  });
+
+  /**
+   * Half an emoji on its own - pasted from somewhere that cut one in two -
+   * travels in the request as an escape, and the auth server reads it as the
+   * replacement character, which takes three bytes.
+   */
+  it('counts half an emoji on its own as the three bytes the server makes of it', () => {
+    expect(validatePassword(`${'a'.repeat(69)}\uD83E`)).toBeNull();
+    expect(validatePassword(`${'a'.repeat(70)}\uD83E`)).toMatch(/at most 72/);
+    expect(validatePassword(`${'a'.repeat(70)}\uDD87`)).toMatch(/at most 72/);
   });
 });
 

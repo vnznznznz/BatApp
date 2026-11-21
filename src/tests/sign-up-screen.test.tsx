@@ -613,6 +613,16 @@ describe('SignUpScreen', () => {
       expect(mockSignUp).toHaveBeenCalledWith(expect.objectContaining({ username: '@anna' }));
     });
 
+    /** The auth server counts bytes at the short end too: four umlauts are eight. */
+    it('takes a password of four umlauts, as the auth server does', async () => {
+      mockSignUp.mockResolvedValue({ needsEmailConfirmation: false });
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ password: 'ääää' });
+
+      expect(mockSignUp).toHaveBeenCalledWith(expect.objectContaining({ password: 'ääää' }));
+    });
+
     it('refuses a password longer than the auth server takes, and says why', async () => {
       await renderScreen(<SignUpScreen />);
 
