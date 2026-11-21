@@ -1750,12 +1750,6 @@ describe('what the courier is told when the auth server says no', () => {
   describe('on asking for a new password', () => {
     it.each<[string, () => Response | Promise<Response>, string]>([
       [
-        // Counted for the whole project, whoever the address belongs to.
-        'the server has sent all the emails it may',
-        () => authRefusal(429, 'over_email_send_rate_limit', 'email rate limit exceeded'),
-        TOO_MANY_EMAILS,
-      ],
-      [
         'there were too many attempts',
         () => authRefusal(429, 'over_request_rate_limit', 'Request rate limit reached'),
         TOO_MANY_ATTEMPTS,
@@ -1771,11 +1765,16 @@ describe('what the courier is told when the auth server says no', () => {
 
     /**
      * For an address with no account the auth server answers every request
-     * alike, and sends nothing (GoTrue v2.197). Two answers come only for an
-     * address that has one: a code went to it less than a minute ago, or the
-     * email to it could not be sent. "Check your email" for the first, and
-     * "Error sending recovery email" for the second, told anyone who asked
-     * which addresses have an account. Both are taken for sent.
+     * alike, and sends nothing: it answers before it comes to sending
+     * (GoTrue v2.197). Three answers come only for an address that has one: a
+     * code went to it less than a minute ago, the email to it could not be
+     * sent, or the project has sent all the emails it may this hour - a limit
+     * on sending, so never met for an address nothing is sent to. "Check your
+     * email" for the first, "Error sending recovery email" for the second
+     * and "Too many emails" for the third told anyone who asked which
+     * addresses have an account. All three are taken for sent; the screen
+     * that follows says what to do when no code arrives. (The third found in
+     * review.)
      */
     it.each<[string, () => Response]>([
       ['the address has no account', () => json(200, {})],
@@ -1791,6 +1790,10 @@ describe('what the courier is told when the auth server says no', () => {
       [
         'the email to it could not be sent',
         () => authRefusal(500, 'unexpected_failure', 'Error sending recovery email'),
+      ],
+      [
+        'the project has sent all the emails it may for now',
+        () => authRefusal(429, 'over_email_send_rate_limit', 'email rate limit exceeded'),
       ],
     ])('answers alike when %s', async (_, answer) => {
       await opened(answer);

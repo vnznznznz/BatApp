@@ -315,7 +315,7 @@ describe('ResetPasswordScreen', () => {
     });
 
     it('says why no code could be asked for, and stays on the address', async () => {
-      const TOO_MANY = 'Too many emails have been sent for now. Try again in an hour.';
+      const TOO_MANY = 'Too many attempts. Wait a minute and try again.';
       mockSendPasswordReset.mockRejectedValue(new Error(TOO_MANY));
       await renderScreen(<ResetPasswordScreen />);
 
@@ -615,7 +615,7 @@ describe('ResetPasswordScreen', () => {
     });
 
     it('says why a new code was not asked for', async () => {
-      const TOO_MANY = 'Too many emails have been sent for now. Try again in an hour.';
+      const TOO_MANY = 'Too many attempts. Wait a minute and try again.';
       await askedForACode();
       await passes(60_000);
       mockSendPasswordReset.mockRejectedValue(new Error(TOO_MANY));

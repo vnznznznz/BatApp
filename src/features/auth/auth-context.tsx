@@ -413,12 +413,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // link that could bring a session back through the app's URL scheme.
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
         // For an address without an account the auth server answers alike
-        // every time, and sends nothing. Two answers come only for an address
-        // that has one: a code went to it less than a minute ago, or the email
-        // to it could not be sent. Both are taken for sent, or they would tell
-        // anyone who asked which addresses have an account; the screen that
-        // follows says what to do when no code arrives.
-        if (error && !isCodeJustSent(error) && !isSendingFailure(error)) throw explained(error);
+        // every time, and sends nothing: it answers before it comes to
+        // sending. Three answers come only for an address that has one: a code
+        // went to it less than a minute ago, the email to it could not be
+        // sent, or the project has sent all the emails it may for the hour -
+        // a limit on sending, never met where nothing is sent. All three are
+        // taken for sent, or they would tell anyone who asked which addresses
+        // have an account; the screen that follows says what to do when no
+        // code arrives.
+        if (error && !isCodeJustSent(error) && !isSendingFailure(error) && !isEmailLimit(error)) {
+          throw explained(error);
+        }
       },
 
       verifyResetCode: (email, code) => checkCode('recovery', email, code),
@@ -527,6 +532,9 @@ const isCodeJustSent = (error: AuthError | null) =>
 
 const isSendingFailure = (error: AuthError) =>
   error.message.toLowerCase().includes('error sending');
+
+/** The answer once the project has sent all the emails it may for the hour. */
+const isEmailLimit = (error: AuthError) => error.message.toLowerCase().includes('email rate limit');
 
 /** The auth server's answer to a password that does not match the address. */
 const NO_MATCH = new AuthApiError('Invalid login credentials', 400, 'invalid_credentials');
