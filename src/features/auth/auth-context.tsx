@@ -25,6 +25,7 @@ import {
   keepUnfinished,
   readUnfinished,
   sameAddress,
+  watchUnfinishedElsewhere,
   type Unfinished,
 } from '@/features/auth/unfinished';
 import {
@@ -258,12 +259,35 @@ const isSignOutUnderWay = () => signOutsUnderWay.size > 0;
  * attempt at a renewal after half a minute.
  *
  * A sign-out the server could not be told of at all is told now, as someone
- * signs in, and the network is likely to be back (tellServerOwed).
+ * signs in, and the network is likely to be back (tellServerOwed). And
+ * whatever a code left to do on the device is forgotten: it is not for the
+ * session that comes now - a code's check keeps its own again - and on the
+ * web, another tab would hold the way in for it (lookForUnfinished).
  */
 async function beforeSigningIn(): Promise<void> {
   while (signOutsUnderWay.size > 0) await Promise.all(signOutsUnderWay);
   signedOutUnheard = false;
   tellServerOwed();
+  await forgetUnfinished();
+}
+
+/**
+ * How many of this device's own ways of signing in are waiting for the
+ * client: a session announced meanwhile is theirs. Any other new one came by
+ * itself - on the web, from another tab of the browser.
+ */
+let signInsHere = 0;
+
+const isSigningInHere = () => signInsHere > 0;
+
+/** Asks the client to sign in, counted among this device's own sign-ins until it answers. */
+async function signingInHere<T>(signIn: () => Promise<T>): Promise<T> {
+  signInsHere += 1;
+  try {
+    return await signIn();
+  } finally {
+    signInsHere -= 1;
+  }
 }
 
 /**
@@ -325,6 +349,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let announced = false;
     // Who the client said it was, then.
     let announcedSession: Session | null = null;
+    // Who is signed in as far as this provider knows, and how many times the
+    // client has announced anything.
+    let current: Session | null = null;
+    let announcements = 0;
+
+    /**
+     * Holds the way in while what a code left to do is read for `next`, and
+     * on, as at a launch, if there is something left for its address. Only
+     * for the session announced last, while it is.
+     */
+    const lookForUnfinished = (next: Session) => {
+      const asOf = announcements;
+      setCodesOut((count) => count + 1);
+      void readUnfinished().then((left) => {
+        if (!active) return;
+        if (asOf === announcements && left && sameAddress(next.user.email, left.email)) {
+          setUnfinished(withRemoval(left, next.user));
+          setSignedInByCode(true);
+        }
+        setCodesOut((count) => count - 1);
+      });
+    };
 
     // Signed in or not is a question about this device, so the keychain
     // answers it. The client's own answer waits for the server: after an hour
@@ -333,6 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     Promise.all([readStoredSession(), readUnfinished()])
       .then(([stored, left]) => {
         if (!active) return;
+        if (!announced) current = stored;
         const signedIn = announced ? announcedSession : stored;
         // Signed in by a code whose work the app was closed before it had
         // done: held again, from before anything is drawn.
@@ -358,6 +405,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (event === 'SIGNED_OUT') signOutsAnnounced += 1;
       if (!active) return;
+      announcements += 1;
       // Nothing is finished without the session a code brought. Every sign-out
       // is announced, the app's own included (see signOutsAnnounced).
       if (event === 'SIGNED_OUT') {
@@ -375,15 +423,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void underWay(supabase.auth.signOut()).catch(() => {});
         return;
       }
+      // A session new here that this device did not sign in with: on the web,
+      // another tab's, which a code may have brought there, its work not done.
+      // A tab already open took it as it came, and showed the roost of the
+      // account the code had just confirmed - a stranger's sign-up, with
+      // nobody's password. (Found in review.) Not one the client announces
+      // again, as it does on the web whenever the tab comes to the front.
+      const fromElsewhere =
+        next !== null && !isSigningInHere() && (current === null || !sameSession(current, next));
       announced = true;
       announcedSession = next;
+      current = next;
       setSession(next);
       setIsRestoring(false);
+      if (fromElsewhere) lookForUnfinished(next);
+    });
+
+    // On the web, what a code was for, finished in another tab of the browser,
+    // given up or signed out of there, is no longer held here either: from
+    // here, Start over would remove the account the other tab has finished.
+    const stopWatching = watchUnfinishedElsewhere(() => {
+      setSignedInByCode(false);
+      setUnfinished(null);
     });
 
     return () => {
       active = false;
       data.subscription.unsubscribe();
+      stopWatching();
     };
   }, []);
 
@@ -392,17 +459,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function signUp({ email, password, username, displayName }: SignUpDetails) {
       await beforeSigningIn();
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          // Read by the handle_new_user() trigger to build the profile row.
-          data: {
-            username: normaliseUsername(username),
-            display_name: displayName.trim(),
+      const { data, error } = await signingInHere(() =>
+        supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            // Read by the handle_new_user() trigger to build the profile row.
+            data: {
+              username: normaliseUsername(username),
+              display_name: displayName.trim(),
+            },
           },
-        },
-      });
+        }),
+      );
       // An address that has an account already is answered as a new one is,
       // and the form says what is true of both: a code is on its way if the
       // address is new, and if it has an account, signing in is the way in.
@@ -488,7 +557,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Not kept, the code is checked all the same, as it was before this.
       await keepUnfinished(left).catch(() => {});
       const checked = await settled(
-        supabase.auth.verifyOtp({ type, email: left.email, token: code }),
+        signingInHere(() => supabase.auth.verifyOtp({ type, email: left.email, token: code })),
       );
       if (checked.ok && !checked.value.error) setSignedInByCode(true);
       setCodesOut((count) => count - 1);
@@ -591,10 +660,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       async signIn(email, password) {
         await beforeSigningIn();
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+        const { error } = await signingInHere(() =>
+          supabase.auth.signInWithPassword({ email: email.trim(), password }),
+        );
         // Said only once the password has been found right: the address is
         // still waiting for its code, and the form asks for it.
         if (isAnswer(error, 'email_not_confirmed', 'email not confirmed')) {

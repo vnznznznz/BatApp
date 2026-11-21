@@ -1,4 +1,6 @@
-import { confirmedByResetCode } from '@/features/auth/unfinished';
+import { Platform } from 'react-native';
+
+import { confirmedByResetCode, watchUnfinishedElsewhere } from '@/features/auth/unfinished';
 
 /**
  * The times are GoTrue v2.197's own, from the confirmation-on server on 21
@@ -114,5 +116,81 @@ describe('whether a reset’s code is what confirmed the account', () => {
     ['times that are not times', { email_confirmed_at: 'soon', last_sign_in_at: 'soon' }],
   ])('says no when the answer has %s', (_, user) => {
     expect(confirmedByResetCode(user)).toBe(false);
+  });
+});
+
+/**
+ * On the web, the storage is one for every tab of the browser, and the browser
+ * tells each of the others of a change to it with a 'storage' event. The test
+ * environment is no browser: the page's window is stood in for by an event
+ * target, and the events by what the browser would fill in.
+ */
+describe('watching for what a code left to do, in another tab', () => {
+  const page = globalThis as unknown as {
+    addEventListener?: EventTarget['addEventListener'];
+    removeEventListener?: EventTarget['removeEventListener'];
+  };
+  const DEFAULT_OS = Platform.OS;
+  let target: EventTarget;
+
+  beforeEach(() => {
+    target = new EventTarget();
+    page.addEventListener = target.addEventListener.bind(target);
+    page.removeEventListener = target.removeEventListener.bind(target);
+    Platform.OS = 'web';
+  });
+
+  afterEach(() => {
+    delete page.addEventListener;
+    delete page.removeEventListener;
+    Platform.OS = DEFAULT_OS;
+  });
+
+  /** What the browser dispatches in this tab when another one changes the storage. */
+  const changedElsewhere = (key: string | null, newValue: string | null) =>
+    target.dispatchEvent(Object.assign(new Event('storage'), { key, newValue }));
+
+  it.each([
+    ['removes it', 'night-courier.unfinished', null],
+    ['clears the whole storage', null, null],
+  ])('says so when another tab %s', (_, key, newValue) => {
+    const gone = jest.fn();
+    watchUnfinishedElsewhere(gone);
+
+    changedElsewhere(key, newValue);
+
+    expect(gone).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['writes it', 'night-courier.unfinished', '{"flow":"reset","email":"mara@example.test"}'],
+    ['removes the session alone', 'night-courier.session', null],
+  ])('says nothing when another tab %s', (_, key, newValue) => {
+    const gone = jest.fn();
+    watchUnfinishedElsewhere(gone);
+
+    changedElsewhere(key, newValue);
+
+    expect(gone).not.toHaveBeenCalled();
+  });
+
+  it('stops when asked to', () => {
+    const gone = jest.fn();
+    const stop = watchUnfinishedElsewhere(gone);
+
+    stop();
+    changedElsewhere('night-courier.unfinished', null);
+
+    expect(gone).not.toHaveBeenCalled();
+  });
+
+  it('watches nothing on a phone, where there is one app', () => {
+    Platform.OS = 'ios';
+    const gone = jest.fn();
+    watchUnfinishedElsewhere(gone);
+
+    changedElsewhere('night-courier.unfinished', null);
+
+    expect(gone).not.toHaveBeenCalled();
   });
 });

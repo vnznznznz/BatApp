@@ -3631,6 +3631,185 @@ describe('what a code leaves to do, kept on the device', () => {
     expect(marker()).toBeNull();
   });
 
+  /**
+   * On the web, a sign-in in another tab of the browser is announced in this
+   * one too, and the marker is in the storage both share. A tab already open
+   * took the session a code had brought in the other without a look at it,
+   * and showed the roost of the account the code had just confirmed - a
+   * stranger's sign-up, with nobody's password. (Found in review, in
+   * Chromium.) It is held as at a launch.
+   */
+  describe('when another tab of the browser is signed in by a code', () => {
+    /**
+     * The keychain answers reads of the marker only after `ms`, as a device's
+     * takes its time: what is drawn meanwhile is drawn. Answered at once, the
+     * hold on and off again would be one change to React.
+     */
+    function markerReadsTake(ms: number) {
+      const keychain = jest.mocked(
+        jest.requireMock<typeof import('expo-secure-store')>('expo-secure-store').getItemAsync,
+      );
+      const answer = keychain.getMockImplementation()!;
+      keychain.mockImplementation((key, options) =>
+        key === MARKER
+          ? new Promise((resolve) => setTimeout(() => resolve(answer(key, options)), ms))
+          : answer(key, options),
+      );
+    }
+
+    const neverHeldWhileSignedIn = () =>
+      expect(
+        rendered.filter((given) => given.session !== null && !given.isSettingPassword),
+      ).toEqual([]);
+
+    it('holds the way in, the account a sign-up’s code confirmed not set up', async () => {
+      server();
+      await openedSignedOut();
+      markerReadsTake(500);
+
+      mockKeychain.set(MARKER, JSON.stringify(LEFT));
+      await anotherTabSignsIn(supabase!, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      await passes(1000);
+
+      expect(state()).toBe('signed in');
+      expect(auth.isSettingPassword).toBe(true);
+      expect(auth.unfinished).toEqual(LEFT);
+      neverHeldWhileSignedIn();
+    });
+
+    it('holds the way in, the new password of a reset not saved', async () => {
+      server();
+      await openedSignedOut();
+
+      mockKeychain.set(MARKER, JSON.stringify({ flow: 'reset', email: 'mara@example.test' }));
+      await anotherTabSignsIn(
+        supabase!,
+        sessionOf(NEW_TOKEN, 'refresh-new', 3600),
+        'PASSWORD_RECOVERY',
+      );
+
+      expect(auth.isSettingPassword).toBe(true);
+      expect(auth.unfinished).toEqual({ flow: 'reset', email: 'mara@example.test', remove: false });
+      neverHeldWhileSignedIn();
+    });
+
+    it('lets the courier in, once it has looked, when nothing is left to do', async () => {
+      server();
+      await openedSignedOut();
+      markerReadsTake(500);
+
+      await anotherTabSignsIn(supabase!, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      // Held while it looks: nothing of the app is drawn for the session yet.
+      expect(auth.isSettingPassword).toBe(true);
+      await passes(1000);
+
+      expect(state()).toBe('signed in');
+      expect(auth.isSettingPassword).toBe(false);
+      expect(auth.unfinished).toBeNull();
+    });
+
+    it('holds nothing for what was left to do for another address', async () => {
+      server();
+      await openedSignedOut();
+
+      mockKeychain.set(MARKER, JSON.stringify({ ...LEFT, email: 'anna@example.test' }));
+      await anotherTabSignsIn(supabase!, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+
+      expect(auth.isSettingPassword).toBe(false);
+    });
+
+    /**
+     * On the web the client announces the session it has again whenever the
+     * tab comes to the front, and so does every other tab, to this one. Held
+     * for a moment each time, the app's screens would be taken down and drawn
+     * again, a letter half written with them.
+     */
+    it('holds nothing when the session it has is announced again', async () => {
+      const session = sessionOf(tokenOf('session-mara', 'a'), 'refresh-old', 3000);
+      server();
+      await keep(session);
+      await launch();
+      await passes(A_MOMENT);
+      expect(state()).toBe('signed in');
+      markerReadsTake(500);
+      const before = rendered.length;
+
+      await anotherTabSignsIn(supabase!, session);
+      await passes(1000);
+
+      expect(rendered.slice(before).filter((given) => given.isSettingPassword)).toEqual([]);
+    });
+
+    /** A look that is overtaken - by a sign-out, say - leaves nothing held. */
+    it('holds nothing for a session that is gone by the time it has looked', async () => {
+      server();
+      await openedSignedOut();
+      mockKeychain.set(MARKER, JSON.stringify(LEFT));
+      const client = supabase!.auth as unknown as ClientInside;
+
+      await asked(async () => {
+        void client._notifyAllSubscribers(
+          'SIGNED_IN',
+          sessionOf(NEW_TOKEN, 'refresh-new', 3600),
+          false,
+        );
+        void client._notifyAllSubscribers('SIGNED_OUT', null, false);
+      });
+
+      expect(state()).toBe('signed out');
+      expect(auth.isSettingPassword).toBe(false);
+    });
+
+    /** What a sign-in with a password brings is never held, whatever was left behind. */
+    it('leaves nothing behind for another tab when the courier signs in with a password', async () => {
+      server();
+      await openedSignedOut();
+      mockKeychain.set(MARKER, JSON.stringify(LEFT));
+      let keptWhenSignedIn: string | null = 'not asked';
+      network = (request) => {
+        keptWhenSignedIn = marker();
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+      };
+
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+      expect(keptWhenSignedIn).toBeNull();
+      expect(auth.isSettingPassword).toBe(false);
+    });
+
+    /**
+     * Finished there - or given up, or signed out of - it is no longer held
+     * here either: from here, Start over would remove the account the other
+     * tab has just finished.
+     */
+    it('lets go of the way in once the other tab has finished', async () => {
+      let elsewhere: (() => void) | null = null;
+      jest.doMock('@/features/auth/unfinished', () => ({
+        ...jest.requireActual<object>('@/features/auth/unfinished'),
+        watchUnfinishedElsewhere: (onGone: () => void) => {
+          elsewhere = onGone;
+          return () => {};
+        },
+      }));
+      try {
+        server();
+        await openedSignedOut();
+        mockKeychain.set(MARKER, JSON.stringify(LEFT));
+        await anotherTabSignsIn(supabase!, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        expect(auth.isSettingPassword).toBe(true);
+
+        mockKeychain.delete(MARKER);
+        await act(async () => elsewhere?.());
+
+        expect(state()).toBe('signed in');
+        expect(auth.isSettingPassword).toBe(false);
+        expect(auth.unfinished).toBeNull();
+      } finally {
+        jest.dontMock('@/features/auth/unfinished');
+      }
+    });
+  });
+
   it('forgets it when the courier signs in with a password', async () => {
     mockKeychain.set(MARKER, JSON.stringify(LEFT));
     server();

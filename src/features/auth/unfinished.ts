@@ -1,4 +1,5 @@
 import type { User } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 import { authStorage } from '@/lib/session-store';
 
@@ -72,6 +73,23 @@ function toUnfinished(value: unknown): Unfinished | null {
   if (flow === 'sign-in') return { flow, email };
   if (flow === 'reset') return { flow, email, remove: remove === true };
   return null;
+}
+
+/**
+ * On the web, calls `onGone` whenever another tab of the browser removes what
+ * is left to do - done there, given up, or signed out of: the storage is one
+ * for every tab, and the browser tells each of the others of a change to it.
+ * Elsewhere there is one app, and nothing to watch. Returns how to stop.
+ */
+export function watchUnfinishedElsewhere(onGone: () => void): () => void {
+  const browser = Platform.OS === 'web' ? (globalThis.window as Window | undefined) : undefined;
+  if (typeof browser?.addEventListener !== 'function') return () => {};
+  const changed = (event: StorageEvent) => {
+    // No key: the other tab cleared the storage, this with everything else.
+    if (event.key === null || (event.key === UNFINISHED_KEY && event.newValue === null)) onGone();
+  };
+  browser.addEventListener('storage', changed);
+  return () => browser.removeEventListener('storage', changed);
 }
 
 /** Whether two addresses are the same, as the auth server compares them. */
