@@ -728,6 +728,94 @@ describe('signing out', () => {
       expect(state()).toBe('signed out');
       expect(mockKeychain.size).toBe(0);
     });
+
+    /**
+     * The device lets go after five seconds, but the client's sign-out goes on,
+     * and when its request ends - answered, or given up on after twenty seconds
+     * - it removes whatever session is stored by then. Whoever had signed in
+     * meanwhile was signed out again, and once the client was renewing at the
+     * start, it even told the server to end every session of theirs. (Found in
+     * review.) Signing in waits until the sign-out is over.
+     */
+    describe('and someone signs in again meanwhile', () => {
+      const THEIR_TOKEN = `header.${'c'.repeat(1000)}.signature`;
+      const theirs = () => sessionOf(THEIR_TOKEN, 'refresh-theirs', 3600);
+      const isSignUp = (request: Sent) => request.url.includes('/auth/v1/signup');
+      const answeredLate = () =>
+        new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 12_000));
+
+      it.each<[string, () => Promise<Response>]>([
+        ['is answered after twelve seconds', answeredLate],
+        ['is never answered', () => new Promise<Response>(() => {})],
+      ])('stays signed in when the logout request %s', async (_, logout) => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+        network = (request) => {
+          if (isLogout(request)) return logout();
+          return isSignIn(request) ? json(200, theirs()) : json(200, []);
+        };
+        await launch();
+        await passes(A_MOMENT);
+        const { took } = await pressSignOut();
+        expect(took).toBeLessThanOrEqual(5_500);
+
+        await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out', 'signed in']);
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      });
+
+      it('stays signed in after signing up', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+        network = (request) => {
+          if (isLogout(request)) return answeredLate();
+          return isSignUp(request) ? json(200, theirs()) : json(200, []);
+        };
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        await asked(() =>
+          auth.signUp({
+            email: 'ben@example.test',
+            password: 'night-courier',
+            username: 'ben',
+            displayName: 'Ben',
+          }),
+        );
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+      });
+
+      /**
+       * The client takes no sign-out further while it renews the session at
+       * the start. Once that was over it found the newcomer's session stored,
+       * told the server to end every session of theirs, and removed it.
+       */
+      it('stays signed in, everywhere, when the client was renewing at the start', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        network = (request) => {
+          if (isSignIn(request)) return json(200, theirs());
+          if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+          return isLogout(request) ? loggedOut() : json(200, []);
+        };
+        await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).not.toContain(THEIR_TOKEN);
+      });
+    });
   });
 
   describe('when the server did not hear of it', () => {
@@ -801,6 +889,30 @@ describe('signing out', () => {
 
       expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
       expect(mockKeychain.size).toBe(0);
+    });
+
+    /**
+     * Ending that session ends with the client removing whatever is stored by
+     * then. Someone who signs in while the server is being told stays signed in.
+     */
+    it('lets someone who signs in while that session is being ended stay signed in', async () => {
+      const { client } = await signOutUnheard();
+      online();
+      const answer = network;
+      network = (request) =>
+        isLogout(request)
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 10_000))
+          : answer(request);
+      await passes(61_000);
+      await asked(async () => client.auth.refreshSession({ refresh_token: 'refresh-old' }));
+
+      const theirs = sessionOf(`header.${'c'.repeat(1000)}.signature`, 'refresh-theirs', 3600);
+      network = (request) => (isSignIn(request) ? json(200, theirs) : answer(request));
+      await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+      await passes(20_000);
+
+      expect(state()).toBe('signed in');
+      expect((await kept())?.refresh_token).toBe('refresh-theirs');
     });
 
     it('lets the courier sign in again', async () => {
@@ -1282,6 +1394,39 @@ describe('what the rest of the app hears when the session ends', () => {
 
     expect(state()).toBe('signed out');
     expect(ending()).toEqual(ONCE);
+  });
+
+  /**
+   * Whoever signs in while a sign-out is still under way comes after it: the
+   * sign-out is heard of first, and what was kept for the account before goes.
+   */
+  it('hears of a sign-out before whoever signs in while it is still under way', async () => {
+    network = offline;
+    const { client } = await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    await passes(30_000);
+    jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+    void client.rpc('get_roost').then(() => {});
+    await passes(1000);
+    await act(async () => {
+      void outcomeOf(auth.signOut());
+      await jest.advanceTimersByTimeAsync(0);
+    });
+    await passes(5500);
+    expect(state()).toBe('signed out');
+
+    network = (request) => {
+      if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+      if (request.url.includes('/auth/v1/token?grant_type=password')) {
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-theirs', 3600));
+      }
+      return isLogout(request) ? loggedOut() : json(200, []);
+    };
+    await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+    await passes(30_000);
+
+    const events = heard.map(([event]) => event);
+    expect(events.slice(events.lastIndexOf('SIGNED_OUT'))).toEqual(['SIGNED_OUT', 'SIGNED_IN']);
+    expect(state()).toBe('signed in');
   });
 
   it('hears nothing of a sign-out that did not happen', async () => {

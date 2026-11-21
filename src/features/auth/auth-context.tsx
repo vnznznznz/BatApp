@@ -46,10 +46,47 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * what it brings and announces it, and the device would be signed in again
  * with nobody having signed in. A session announced while this is set is
  * therefore not taken, but ended - with the server, now that it answers.
- * Signing in or up, which the person does, clears it; so must any other way
- * of signing in that is added here.
+ * Signing in or up, which the person does, clears it, in beforeSigningIn; so
+ * must any other way of signing in that is added here.
  */
 let signedOutUnheard = false;
+
+/**
+ * Sign-outs that are not over yet: the app's own, with what it still does once
+ * the device has let go, and the client's, where the provider has it end a
+ * session that came back. Each ends by removing whatever session is stored by
+ * then, or by telling the server to end every session of the account. See
+ * beforeSigningIn.
+ */
+const signOutsUnderWay = new Set<Promise<void>>();
+
+/** Counts `work` among the sign-outs under way until it is over, however it ends. */
+function underWay<T>(work: Promise<T>): Promise<T> {
+  const over = work.then(
+    () => undefined,
+    () => undefined,
+  );
+  signOutsUnderWay.add(over);
+  void over.then(() => signOutsUnderWay.delete(over));
+  return work;
+}
+
+/**
+ * Waits until no sign-out is under way, and then lets the next session be
+ * taken. Signing in and signing up start with it; so must any other way of
+ * signing in that is added here - with a code from an email, say.
+ *
+ * A sign-out goes on after the device has let go of it (signOutHere), and it
+ * ends by removing whatever session is stored by then. Someone who signed in
+ * meanwhile was signed out again within seconds, and when the client had been
+ * renewing at the start, the server was told to end every session of theirs.
+ * (Found in review.) The wait is bounded: no request waits longer than twenty
+ * seconds for its answer (guarded-fetch.ts), and a renewal half a minute.
+ */
+async function beforeSigningIn(): Promise<void> {
+  while (signOutsUnderWay.size > 0) await Promise.all(signOutsUnderWay);
+  signedOutUnheard = false;
+}
 
 /**
  * How many sign-outs the client has announced. Whatever else the app keeps for
@@ -98,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (next && signedOutUnheard) {
         // Nobody signed in. Signing out is finished instead: the server is
         // told, and what the client has just saved goes with it.
-        void supabase.auth.signOut().catch(() => {});
+        void underWay(supabase.auth.signOut()).catch(() => {});
         return;
       }
       announced = true;
@@ -120,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
 
       async signIn(email, password) {
-        signedOutUnheard = false;
+        await beforeSigningIn();
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -129,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signUp({ email, password, username, displayName }) {
-        signedOutUnheard = false;
+        await beforeSigningIn();
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -205,7 +242,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * twice. (Found in the merged tree, in the bundle and in Jest run compiled.)
  * The compiler leaves functions outside components and hooks as they are.
  */
-async function signOutHere(forget: () => void, tellServer = true): Promise<void> {
+function signOutHere(forget: () => void, tellServer = true): Promise<void> {
+  return underWay(signOutOfDevice(forget, tellServer));
+}
+
+async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise<void> {
   const announcedBefore = signOutsAnnounced;
   // The server is asked first: only that ends the session on the courier's
   // other devices as well. But not for long. To be told, it may first need the
