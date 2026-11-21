@@ -44,6 +44,17 @@ jest.mock('expo-secure-store', () => {
   };
 });
 
+/** The contact address the build was given; null for a build without one, as these tests run. */
+const mockContact: { url: string | null } = { url: null };
+
+// Read when the words are, not when the module is loaded (see rpc-error.test.ts).
+jest.mock('@/lib/links', () =>
+  Object.defineProperty({ ...jest.requireActual('@/lib/links') }, 'CONTACT_URL', {
+    get: () => mockContact.url,
+    enumerable: true,
+  }),
+);
+
 const OLD_TOKEN = `header.${'a'.repeat(1000)}.signature`;
 const NEW_TOKEN = `header.${'b'.repeat(1000)}.signature`;
 
@@ -252,6 +263,7 @@ beforeEach(() => {
   mockRefusal.reads = false;
   mockRefusal.writes = false;
   mockRefusal.deletes = false;
+  mockContact.url = null;
   sent = [];
   network = () => json(200, []);
   jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -3410,7 +3422,8 @@ describe('setting up the account a sign-up’s code has confirmed', () => {
    * the local confirmation-on server, 21 November 2026). "Try again" could
    * never work. (Found in review.)
    */
-  it('says so, signed out, when the session the code brought has been ended elsewhere', async () => {
+  it('says so, signed out, and whom to write to, when the session the code brought has been ended elsewhere', async () => {
+    mockContact.url = 'mailto:someone@night-courier.example';
     server({ password: () => authRefusal(403, 'session_not_found', 'Session not found') });
     await confirmed();
 
@@ -3422,6 +3435,22 @@ describe('setting up the account a sign-up’s code has confirmed', () => {
     );
     expect(state()).toBe('signed out');
     expect(auth.isSettingPassword).toBe(false);
+  });
+
+  /**
+   * Without a contact address there is no way to write to that person - the
+   * code screen offers Contact only with one - and the words said to write
+   * all the same. (Found in review, as for a suspended account.)
+   */
+  it('says only what has happened when it has been ended elsewhere, in a build without a contact address', async () => {
+    server({ password: () => authRefusal(403, 'session_not_found', 'Session not found') });
+    await confirmed();
+
+    expect(await outcomeOf(asked(() => auth.finishSignUp(details)))).toBe(
+      'Your sign-in ended before your account was finished: someone who knew a password set ' +
+        'for this address before yours may have changed it.',
+    );
+    expect(state()).toBe('signed out');
   });
 });
 

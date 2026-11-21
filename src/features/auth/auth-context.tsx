@@ -35,6 +35,7 @@ import {
   PASSWORD_TOO_LONG,
 } from '@/features/auth/validation';
 import { noteAccountDeleted } from '@/lib/farewell';
+import { CONTACT_URL } from '@/lib/links';
 import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
@@ -611,7 +612,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // the app can do no more than say so, signed out. (Found in review.)
       if (isAuthSessionMissingError(error)) {
         await signOut().catch(() => {});
-        throw new SignedOutUnfinished(SIGN_IN_ENDED, { cause: error });
+        throw new SignedOutUnfinished(signInEndedWords(), { cause: error });
       }
       if (error && !isAnswer(error, 'same_password', 'different from the old password')) {
         throw explained(error);
@@ -1022,12 +1023,24 @@ const isUnanswered = (error: AuthError) =>
  */
 export class SignedOutUnfinished extends Error {}
 
-// Whom to write to, as REFUSALS.account_suspended says it: the app names no
-// help page, and a build without a contact address has no Contact button.
-const SIGN_IN_ENDED =
-  'Your sign-in ended before your account was finished: someone who knew a password set ' +
-  'for this address before yours may have changed it. Write to the person who runs Night ' +
-  'Courier, and the account can be removed so that you can sign up again.';
+/**
+ * Said when the session a sign-up's code brought has been ended elsewhere
+ * before the account was finished. Whom to write to, as
+ * REFUSALS.account_suspended says it - the app names no help page - and only
+ * in a build with a contact address, which the code screen then offers beside
+ * the words. A build without one shows no Contact, nor any address, and the
+ * words sent the courier to someone it gave no way to reach. (Found in review.)
+ * Read when the words are needed, as the screens read the address.
+ */
+export function signInEndedWords(): string {
+  const ended =
+    'Your sign-in ended before your account was finished: someone who knew a password set ' +
+    'for this address before yours may have changed it.';
+  return CONTACT_URL
+    ? `${ended} Write to the person who runs Night Courier, and the account can be removed ` +
+        'so that you can sign up again.'
+    : ended;
+}
 
 const SIGN_IN_ENDED_BEFORE_SAVED =
   'Your sign-in ended before your password was saved again. Your address is confirmed: ' +

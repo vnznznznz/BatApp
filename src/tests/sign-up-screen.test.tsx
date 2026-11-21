@@ -14,7 +14,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import SignUpScreen from '@/app/sign-up';
 import { MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
-import { AuthProvider, CodeUnanswered } from '@/features/auth/auth-context';
+import { AuthProvider, CodeUnanswered, SignedOutUnfinished } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
 import { openLink } from '@/lib/links';
 
@@ -137,16 +137,21 @@ jest.mock('@/lib/session-store', () => ({
   isSessionStored: () => false,
 }));
 
-/** The privacy policy's address, as this build is configured. Unset in the environment, it is null. */
-const mockLinks: { privacyPolicy: string | null } = { privacyPolicy: null };
+/** The addresses this build is configured with. Unset in the environment, each is null. */
+const mockLinks: { contact: string | null; privacyPolicy: string | null } = {
+  contact: null,
+  privacyPolicy: null,
+};
 
-// The address is configuration, read from the build's environment, and the
-// form leaves the link out while it is unset. A getter, so the form reads it as
-// it renders and each test can configure it as a build would; opening it is the
-// device's business. No spread of the real module: Babel turns a spread beside
-// a getter into a copy, and the copy would read the getter once, too early.
+// The addresses are configuration, read from the build's environment, and the
+// screens leave a link out while it is unset. Getters, so the screens read them
+// as they render and each test can configure them as a build would; opening one
+// is the device's business. No spread of the real module: Babel turns a spread
+// beside a getter into a copy, and the copy would read the getter once, too early.
 jest.mock('@/lib/links', () => ({
-  CONTACT_URL: null,
+  get CONTACT_URL() {
+    return mockLinks.contact;
+  },
   get PRIVACY_POLICY_URL() {
     return mockLinks.privacyPolicy;
   },
@@ -245,6 +250,7 @@ beforeEach(() => {
   mockResendConfirmationCode.mockReset();
   mockPush.mockReset();
   mockReplace.mockReset();
+  mockLinks.contact = null;
   mockLinks.privacyPolicy = null;
   mockedOpenLink.mockReset().mockResolvedValue(undefined);
   mockedAnnounce.mockReset();
@@ -995,6 +1001,65 @@ describe('SignUpScreen', () => {
 
         expect(screen.queryByText(UNFINISHED)).toBeNull();
         expect(codeField()).toBeOnTheScreen();
+      });
+    });
+
+    /**
+     * Whoever knew a password set for the address before the courier's
+     * sign-up could change it once the code had confirmed the account, which
+     * ends the session the code brought: the account is no longer the
+     * courier's to finish. The words say whom to write to, and the screen
+     * offers the way to them - in a build that has one. Without a contact
+     * address they sent the courier to someone it gave no way to reach.
+     * (Found in review.)
+     */
+    describe('when the code’s sign-in has been ended elsewhere', () => {
+      const ENDED =
+        'Your sign-in ended before your account was finished: someone who knew a password set ' +
+        'for this address before yours may have changed it.';
+      const WRITE =
+        'Write to the person who runs Night Courier, and the account can be removed so that ' +
+        'you can sign up again.';
+      const CONTACT = 'mailto:someone@night-courier.example';
+
+      /** The code signs the courier in, and finishing finds that session ended: signed out, with `words`. */
+      async function endedElsewhere(words: string) {
+        mockFinishSignUp.mockImplementationOnce(async () => {
+          mockHold.set(false);
+          throw new SignedOutUnfinished(words);
+        });
+        await signedUp();
+        await user.type(codeField(), '12345678');
+        await user.press(button('Confirm'));
+      }
+
+      it('says whom to write to, and offers the way to them, in a build with a contact address', async () => {
+        mockLinks.contact = CONTACT;
+        await endedElsewhere(`${ENDED} ${WRITE}`);
+
+        expect(screen.getByText(`${ENDED} ${WRITE}`)).toBeOnTheScreen();
+        await user.press(button('Contact'));
+        expect(mockedOpenLink).toHaveBeenCalledWith(CONTACT);
+      });
+
+      it('says only what has happened, and offers no way to write, in a build without one', async () => {
+        await endedElsewhere(ENDED);
+
+        expect(screen.getByText(ENDED)).toBeOnTheScreen();
+        expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+      });
+
+      it('offers no way to write when the courier was signed out for another reason', async () => {
+        const NOT_SET_UP =
+          'This address had an account waiting for its code already, set up with another ' +
+          'username, and it has been removed to make way for yours. Yours could not be set up ' +
+          'just now: No connection. Check your network and try again. Go back to the form to ' +
+          'set it up again.';
+        mockLinks.contact = CONTACT;
+        await endedElsewhere(NOT_SET_UP);
+
+        expect(screen.getByText(NOT_SET_UP)).toBeOnTheScreen();
+        expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
       });
     });
 

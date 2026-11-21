@@ -15,6 +15,7 @@ import {
   FINISHING_SIGN_OUT,
   NAMES_NOT_CHOSEN,
   SignedOutUnfinished,
+  signInEndedWords,
   useAuth,
   type SignUpDetails,
 } from '@/features/auth/auth-context';
@@ -24,6 +25,7 @@ import { StageHeading, stageWords } from '@/features/auth/stage-heading';
 import { useResendWait } from '@/features/auth/use-resend-wait';
 import { EMAIL_CODE_LENGTH, validateEmailCode, validatePassword } from '@/features/auth/validation';
 import { announce } from '@/lib/announce';
+import { CONTACT_URL, openLink } from '@/lib/links';
 import { useLingering } from '@/lib/use-lingering';
 
 type ConfirmEmailProps = {
@@ -447,6 +449,12 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
             disabled={held}
             onPress={() => router.push('/reset-password')}
           />
+        ) : null}
+
+        {/* The way to whom the words say to write: they name someone only in a
+            build that has a contact address. */}
+        {CONTACT_URL && formError === signInEndedWords() ? (
+          <Button label="Contact" variant="ghost" onPress={() => void openLink(CONTACT_URL)} />
         ) : null}
 
         <Button label="Confirm" loading={busy} onPress={confirm} />
