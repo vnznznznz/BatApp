@@ -341,26 +341,42 @@ describe('ResetPasswordScreen', () => {
     });
 
     /**
-     * The way in is held from before the code goes to be checked, but nobody
-     * is signed in until it has been found right: until then the screen is
-     * still the one with the code.
+     * The way in is held from before the code goes to be checked, but nothing
+     * has gone wrong until the password is refused: while the code is checked,
+     * and while the password is saved with the session it brought, the screen
+     * is still the one with the code, its button busy. It said "the new
+     * password was not saved", with a live Sign out, for that moment of every
+     * reset that worked. (Found in review.)
      */
-    it('goes on asking for the code while it is being checked', async () => {
+    it('says nothing has gone wrong while the code is checked and the password saved', async () => {
       let answer: () => void = () => {};
+      let refuse: (error: Error) => void = () => {};
       mockVerifyResetCode.mockImplementation(async () => {
         mockAuthState.set({ isFinishingReset: true });
         await new Promise<void>((resolve) => (answer = resolve));
         mockAuthState.set({ session: SESSION });
       });
-      mockSetNewPassword.mockReturnValue(new Promise(() => {}));
+      mockSetNewPassword.mockImplementation(
+        () => new Promise((_, reject: (error: Error) => void) => (refuse = reject)),
+      );
       await askedForACode();
 
       await typedCodeAndPassword();
-
       expect(screen.getByText('Check your email')).toBeOnTheScreen();
       expect(screen.getByLabelText('Code')).toBeOnTheScreen();
+
+      // The code was right: signed in, and the password on its way.
       await act(async () => answer());
+      expect(mockSetNewPassword).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Check your email')).toBeOnTheScreen();
+      expect(screen.queryByText(/not saved/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+      expect(button('Set the new password')).toBeDisabled();
+
+      await act(async () => refuse(new Error('The new password has to differ from the old one.')));
       expect(screen.getByText('Your new password')).toBeOnTheScreen();
+      expect(screen.getByText(/the new password was not saved/)).toBeOnTheScreen();
+      expect(button('Sign out')).toBeEnabled();
     });
 
     /** Only a code makes these words true; signed in some other way, nobody is told them. */
@@ -412,6 +428,19 @@ describe('ResetPasswordScreen', () => {
         });
 
         expect(mockSetNewPassword).toHaveBeenCalledTimes(2);
+      });
+
+      /** Signed out some other way - the session over - the code is all there is to go on. */
+      it('asks for a code again once the code’s sign-in has ended', async () => {
+        await askedForACode();
+        await typedCodeAndPassword();
+        expect(screen.getByText(NOT_SAVED)).toBeOnTheScreen();
+
+        await act(async () => mockAuthState.set({ session: null, isFinishingReset: false }));
+
+        expect(screen.queryByText(NOT_SAVED)).toBeNull();
+        expect(screen.getByLabelText('Code')).toBeOnTheScreen();
+        expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
       });
 
       it('saves another password, with no code asked for again', async () => {
