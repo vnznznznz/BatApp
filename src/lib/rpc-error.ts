@@ -32,6 +32,10 @@ export const REFUSALS = {
   unknown_reason: 'Choose what is wrong first.',
   note_too_long: `A note can be at most ${REPORT_NOTE_MAX_LENGTH} characters.`,
   try_again: 'That did not go through. Try again.',
+  // The answer of every function to a suspended account, so it has to read
+  // right for a roost that will not load as well as for a refused deletion.
+  account_suspended:
+    'This account has been suspended. Write to the contact address on the help page.',
 } as const;
 
 export type RefusalReason = keyof typeof REFUSALS;
@@ -72,7 +76,9 @@ export function toRpcError(error: ApiError, fallback: string): RpcError {
     return new RpcError(REFUSALS[error.hint], error.hint, { cause: error });
   }
 
-  const message = error.message.toLowerCase();
+  // Not every answer is PostgREST's: a gateway in front of it has a shape of
+  // its own, and may bring no message at all.
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
   if (message.includes('network') || message.includes('fetch')) {
     return new RpcError('No connection. Check your network and try again.', null, {
       cause: error,

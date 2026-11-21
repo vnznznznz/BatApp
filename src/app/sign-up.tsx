@@ -9,7 +9,7 @@ import { TextField } from '@/components/text-field';
 import { ToggleRow } from '@/components/toggle-row';
 import { BATS_PER_USER, MINIMUM_AGE, PARENTAL_PERMISSION_UNDER } from '@/constants/config';
 import { Spacing } from '@/constants/theme';
-import { useAuth } from '@/features/auth/auth-context';
+import { USERNAME_MAY_BE_TAKEN, useAuth } from '@/features/auth/auth-context';
 import {
   validateDisplayName,
   validateEmail,
@@ -63,7 +63,10 @@ export default function SignUpScreen() {
       // showing "check your email" would be a lie they would wait on.
       if (needsEmailConfirmation) setSentTo(email.trim());
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Something went wrong.');
+      const message = error instanceof Error ? error.message : 'Something went wrong.';
+      // The one failure that belongs to a field is said at that field.
+      if (message === USERNAME_MAY_BE_TAKEN) setErrors({ ...next, username: message });
+      else setFormError(message);
     } finally {
       setBusy(false);
     }

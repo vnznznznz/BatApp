@@ -16,15 +16,9 @@ jest.setTimeout(20_000);
 
 const mockPush = jest.fn();
 
-jest.mock('expo-router', () => {
-  const React = jest.requireActual<typeof import('react')>('react');
-  return {
-    useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
-    // There is no navigator here, so being mounted stands in for being focused.
-    useFocusEffect: (effect: () => void | (() => void)) =>
-      React.useEffect(() => effect(), [effect]),
-  };
-});
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
+}));
 
 const mockSignOut = jest.fn<Promise<void>, []>();
 const mockDeleteAccount = jest.fn<Promise<void>, []>();
@@ -35,22 +29,23 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => ({ signOut: mockSignOut, deleteAccount: mockDeleteAccount }),
 }));
 
-const mockProfileState: { profile: Profile | null; isLoading: boolean; error: string | null } = {
+const mockProfileState: {
+  profile: Profile | null;
+  isLoading: boolean;
+  isGone: boolean;
+  error: string | null;
+} = {
   profile: null,
   isLoading: false,
+  isGone: false,
   error: null,
 };
-// Stable, as the real hook's are: the screen reloads the profile on focus, and a
-// new function on every render would read as a new focus on every render.
-const mockReloadProfile = jest.fn(() => Promise.resolve());
 const mockUpdateDisplayName = jest.fn<Promise<void>, [displayName: string]>();
 
+// The hook keeps the profile fresh by itself - on coming into view, on the
+// app's return, after a load that failed - and has its own test for that.
 jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({
-    ...mockProfileState,
-    reload: mockReloadProfile,
-    updateDisplayName: mockUpdateDisplayName,
-  }),
+  useProfile: () => ({ ...mockProfileState, updateDisplayName: mockUpdateDisplayName }),
 }));
 
 /** The two links, as this build is configured. Unset in the environment, each is null. */
@@ -130,9 +125,9 @@ async function answerAlert(choice: string) {
 beforeEach(() => {
   mockPush.mockClear();
   mockedAlert.mockClear();
-  mockReloadProfile.mockClear();
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
+  mockProfileState.isGone = false;
   mockProfileState.error = null;
   mockSignOut.mockReset();
   mockSignOut.mockResolvedValue(undefined);
@@ -158,13 +153,6 @@ describe('ProfileScreen', () => {
       expect(screen.queryByLabelText('Username')).toBeNull();
     });
 
-    // The city picker writes the change itself and pops back to this screen.
-    it('reloads the profile when the screen comes into view', async () => {
-      await renderScreen(<ProfileScreen />);
-
-      expect(mockReloadProfile).toHaveBeenCalled();
-    });
-
     it('shows a spinner rather than an empty profile while it first loads', async () => {
       mockProfileState.profile = null;
       mockProfileState.isLoading = true;
@@ -188,22 +176,75 @@ describe('ProfileScreen', () => {
     });
 
     // Not loading is not the same as loaded. When the profile cannot be loaded
-    // at all - offline on opening the screen, or the row missing - there is no
-    // username to show, and a courier who chose a city long ago must not be
-    // told they have none. Signing out has to stay: the missing-profile error
-    // tells the courier to do exactly that.
+    // at all - offline on opening the screen - there is no username to show,
+    // and a courier who chose a city long ago must not be told they have none.
+    // The account is still theirs to sign out of, or to delete.
     it('does not show an empty username, or say no city is chosen, when the profile could not be loaded', async () => {
       mockProfileState.profile = null;
       mockProfileState.isLoading = false;
-      mockProfileState.error = 'Your profile is missing. Signing out and in again may recover it.';
+      mockProfileState.error = 'Your profile could not be loaded. Check your connection.';
       await renderScreen(<ProfileScreen />);
 
       expect(
-        screen.getByText('Your profile is missing. Signing out and in again may recover it.'),
+        screen.getByText('Your profile could not be loaded. Check your connection.'),
       ).toBeOnTheScreen();
       expect(screen.queryByText('@')).toBeNull();
       expect(screen.queryByText('Not chosen yet')).toBeNull();
       expect(button('Sign out')).toBeEnabled();
+      expect(button('Delete my account')).toBeEnabled();
+    });
+  });
+
+  /**
+   * Deleted on another device, or removed: this device stays signed in for up
+   * to an hour, to an account that is not there. The screen used to advise
+   * signing out and in again - which cannot bring it back - above a button to
+   * delete what is already gone, which for a removed account undid the removal.
+   */
+  describe('an account that no longer exists', () => {
+    const GONE =
+      'This account no longer exists: it has been deleted or removed. ' +
+      'All that is left to do is to sign out.';
+
+    beforeEach(() => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = GONE;
+    });
+
+    it('says so, and shows nothing of a profile', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.getByText(GONE)).toBeOnTheScreen();
+      expect(screen.queryByText(/recover/i)).toBeNull();
+      expect(screen.queryByLabelText('Your name')).toBeNull();
+      expect(screen.queryByText('Not chosen yet')).toBeNull();
+    });
+
+    it('offers to sign out, and nothing else to do with an account', async () => {
+      await renderScreen(<ProfileScreen />);
+
+      expect(screen.queryByRole('button', { name: 'Delete my account' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Blocked couriers' })).toBeNull();
+
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+      expect(mockDeleteAccount).not.toHaveBeenCalled();
+    });
+
+    /** Whoever had their account removed may want to read why, or to ask. */
+    it('still shows the house rules and the way to get in touch', async () => {
+      mockLinks.contact = CONTACT;
+      mockLinks.privacyPolicy = PRIVACY_POLICY;
+      await renderScreen(<ProfileScreen />);
+
+      expect(button('House rules')).toBeEnabled();
+      expect(button('Privacy policy')).toBeEnabled();
+
+      await fireEvent.press(button('Contact'));
+
+      expect(mockedOpenLink).toHaveBeenCalledWith(CONTACT);
     });
   });
 
@@ -381,12 +422,11 @@ describe('ProfileScreen', () => {
 
     /**
      * Nothing here depends on the profile. A courier whose profile will not
-     * load can still unblock someone, read the rules, and get in touch - which,
-     * with their profile gone missing, they may well need to.
+     * load can still unblock someone, read the rules, and get in touch.
      */
     it('is all still there when the profile could not be loaded', async () => {
       mockProfileState.profile = null;
-      mockProfileState.error = 'Your profile is missing. Signing out and in again may recover it.';
+      mockProfileState.error = 'Your profile could not be loaded. Check your connection.';
       mockLinks.contact = CONTACT;
       await renderScreen(<ProfileScreen />);
 
@@ -444,6 +484,47 @@ describe('ProfileScreen', () => {
       expect(mockSignOut).toHaveBeenCalledTimes(1);
       expect(mockDeleteAccount).not.toHaveBeenCalled();
       expect(mockedAlert).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Signing out asks the server first, and without a network that can take
+     * the better part of a minute. A button that looked as if nothing had
+     * happened was pressed again, or given up on.
+     */
+    it('shows that signing out is under way, and cannot start it again', async () => {
+      let finishSigningOut: () => void = () => {};
+      mockSignOut.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishSigningOut = resolve;
+        }),
+      );
+      await renderScreen(<ProfileScreen />);
+
+      // Not awaited yet: a press is only over once the sign-out it started is.
+      const firstPress = fireEvent.press(button('Sign out'));
+      await waitFor(() => expect(button('Sign out')).toBeBusy());
+      expect(button('Sign out')).toBeDisabled();
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+
+      await act(async () => finishSigningOut());
+      await firstPress;
+    });
+
+    /** The one way it can fail: the keychain would not let go of the session. */
+    it('says so when the device could not be signed out, and lets the courier try again', async () => {
+      mockSignOut.mockRejectedValue(new Error('This device could not be signed out. Try again.'));
+      await renderScreen(<ProfileScreen />);
+
+      await fireEvent.press(button('Sign out'));
+
+      expect(mockedAlert).toHaveBeenCalledTimes(1);
+      expect(mockedAlert).toHaveBeenLastCalledWith(
+        'Could not sign out',
+        'This device could not be signed out. Try again.',
+      );
+      expect(button('Sign out')).toBeEnabled();
     });
 
     /**
@@ -560,10 +641,30 @@ describe('ProfileScreen', () => {
 
       expect(mockedAlert).toHaveBeenCalledTimes(2);
       expect(mockedAlert).toHaveBeenLastCalledWith(
-        'Could not delete',
+        'Deleting your account',
         'Your account could not be deleted. Please try again.',
       );
       expect(button('Delete my account')).toBeEnabled();
+    });
+
+    /**
+     * When no answer comes back, nobody knows whether the account is gone. The
+     * alert used to be headed "Could not delete" whatever had happened, over a
+     * sentence that may now say the opposite.
+     */
+    it('does not claim the account was kept when that is not known', async () => {
+      const unknown =
+        'Your account may or may not have been deleted - no answer came back. ' +
+        'Check again once you are online.';
+      mockDeleteAccount.mockRejectedValue(new Error(unknown));
+      await renderScreen(<ProfileScreen />);
+      await fireEvent.press(button('Delete my account'));
+
+      await answerAlert('Delete');
+
+      const [title, message] = mockedAlert.mock.calls.at(-1) ?? [];
+      expect(title).not.toMatch(/not|fail/i);
+      expect(message).toBe(unknown);
     });
 
     it('offers nothing for sale', async () => {

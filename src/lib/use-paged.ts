@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { messageOf, RpcError } from '@/lib/rpc-error';
+import { useRetry } from '@/lib/use-retry';
 
 export type Paged<T> = {
   items: T[];
@@ -12,6 +13,12 @@ export type Paged<T> = {
   isLoadingMore: boolean;
   /** False once a page comes back short: there is nothing older. */
   hasMore: boolean;
+  /**
+   * Loads the first page again without showing a spinner, for what the screen
+   * asks for by itself: the list stays as it is until the answer is in.
+   */
+  reload: () => Promise<void>;
+  /** Loads the first page again, showing that it is doing so - for pull-to-refresh. */
   refresh: () => Promise<void>;
   loadMore: () => Promise<void>;
 };
@@ -27,6 +34,10 @@ export type Paged<T> = {
  * therefore neither jumps the list back to the top nor leaves it stale. Beyond
  * `maxPageSize`, the fresh entries are spliced onto the older ones already held,
  * which relies on the server sorting the same way every time, which it does.
+ *
+ * A first page that got no answer is asked for again by itself, as `useRemote`
+ * asks (see `useRetry`). A page further down is not: the list has a button for
+ * that, and reaching its end asks again as well.
  *
  * `loadPage` must be stable, as with `useRemote`.
  */
@@ -52,16 +63,19 @@ export function usePaged<T extends { id: string }>(
     setItems(next);
   }, []);
 
+  // Resolves with whether the load is worth making again unasked: it failed,
+  // it was not the server that refused it, and it is still the newest.
   const loadFirst = useCallback(
     async (visible: boolean, restart = false) => {
       const request = ++latest.current;
       if (visible) setIsRefreshing(true);
+      let unanswered = false;
       // Everything on screen and a page more, so that letters arriving since
       // push nothing that was showing out of view.
       const want = restart ? pageSize : Math.min(held.current.length + pageSize, maxPageSize);
       try {
         const page = await loadPage(undefined, want);
-        if (request !== latest.current) return;
+        if (request !== latest.current) return false;
 
         if (restart || want > held.current.length || page.length < want) {
           // What came back covers everything that was on screen: show it as it
@@ -81,17 +95,20 @@ export function usePaged<T extends { id: string }>(
         }
         setError(null);
       } catch (caught) {
-        if (request !== latest.current) return;
+        if (request !== latest.current) return false;
         setError(messageOf(caught));
+        unanswered = !(caught instanceof RpcError && caught.reason !== null);
       } finally {
         if (request === latest.current) {
           setIsLoading(false);
           setIsRefreshing(false);
         }
       }
+      return unanswered;
     },
     [keep, loadPage, maxPageSize, pageSize],
   );
+  const run = useRetry(loadFirst);
 
   const loadMore = useCallback(async () => {
     const last = held.current.at(-1);
@@ -128,17 +145,28 @@ export function usePaged<T extends { id: string }>(
     }
   }, [keep, loadFirst, loadPage, pageSize]);
 
-  const refresh = useCallback(() => loadFirst(true), [loadFirst]);
+  const reload = useCallback(() => run(false), [run]);
+  const refresh = useCallback(() => run(true), [run]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadFirst(false);
+      void reload();
       const subscription = AppState.addEventListener('change', (state) => {
-        if (state === 'active') void loadFirst(false);
+        if (state === 'active') void reload();
       });
       return () => subscription.remove();
-    }, [loadFirst]),
+    }, [reload]),
   );
 
-  return { items, error, isLoading, isRefreshing, isLoadingMore, hasMore, refresh, loadMore };
+  return {
+    items,
+    error,
+    isLoading,
+    isRefreshing,
+    isLoadingMore,
+    hasMore,
+    reload,
+    refresh,
+    loadMore,
+  };
 }

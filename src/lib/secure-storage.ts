@@ -27,70 +27,148 @@ export const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
 const CHUNK_SIZE = 1600;
 const MANIFEST_PREFIX = 'ncchunks:';
 
-const chunkKey = (key: string, index: number) => `${key}.${index}`;
+/**
+ * A chunked value is written to one of two sets of entries in turn, never over
+ * the set the manifest names. The manifest - one entry, so one write - is what
+ * switches from the old set to the new, which is how a write that stops half
+ * way leaves the previous value whole.
+ */
+const GENERATIONS = ['a', 'b'] as const;
+type Generation = (typeof GENERATIONS)[number];
 
-async function clearChunks(key: string, from: number, to: number): Promise<void> {
-  for (let i = from; i < to; i++) {
-    await SecureStore.deleteItemAsync(chunkKey(key, i), KEYCHAIN_OPTIONS);
+/**
+ * `generation` is null for a value written before there were generations; its
+ * chunks sit directly under the key.
+ */
+type Manifest = { count: number; generation: Generation | null };
+
+/**
+ * How many chunks of a set to clear when no manifest says how many it holds.
+ * Several times what a session needs.
+ */
+const MAX_UNKNOWN_CHUNKS = 8;
+
+const chunkKey = (key: string, generation: Generation | null, index: number) =>
+  generation === null ? `${key}.${index}` : `${key}.${generation}.${index}`;
+
+function parseManifest(head: string): Manifest | null {
+  // Three digits at most: far more chunks than any value has, and few enough
+  // that an entry gone wrong cannot send a write or a removal after millions.
+  const match = /^ncchunks:(\d{1,3})(?::([ab]))?$/.exec(head);
+  if (!match) return null;
+  return { count: Number(match[1]), generation: (match[2] as Generation | undefined) ?? null };
+}
+
+/**
+ * The manifest now under `key`, or null: the entry is empty, it holds a small
+ * value, or the keychain would not say.
+ */
+async function readManifest(key: string): Promise<Manifest | null> {
+  try {
+    const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
+    return head == null ? null : parseManifest(head);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every entry that may hold a chunk of a value under `key`, which is more than
+ * `manifest` names. Clearing away the set a write has replaced is the last
+ * thing the write does, so where one was cut short that set is still there,
+ * named by nothing - an older session, in a keychain that signing out is said
+ * to empty. Every set is therefore cleared each time: as far as the manifest
+ * says its own goes, and no less far than a session reaches.
+ */
+function chunkKeys(key: string, manifest: Manifest | null): string[] {
+  const reach = Math.max(manifest?.count ?? 0, MAX_UNKNOWN_CHUNKS);
+  return [null, ...GENERATIONS].flatMap((generation) =>
+    Array.from({ length: reach }, (_, index) => chunkKey(key, generation, index)),
+  );
+}
+
+async function clear(keys: string[]): Promise<void> {
+  for (const key of keys) {
+    // Best effort: a chunk no manifest names is never read again, so one that
+    // will not delete must not fail the write or the removal it follows.
+    await SecureStore.deleteItemAsync(key, KEYCHAIN_OPTIONS).catch(() => {});
   }
 }
 
 export const secureStorage = {
   async getItem(key: string): Promise<string | null> {
-    const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
-    // Loose equality on purpose: the declared type is `string | null`, but the
-    // native module resolves `undefined` for a missing key on some platforms,
-    // and a strict null check would then call `startsWith` on it.
-    if (head == null) return null;
-    if (!head.startsWith(MANIFEST_PREFIX)) return head;
+    try {
+      const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
+      // Loose equality on purpose: the declared type is `string | null`, but the
+      // native module resolves `undefined` for a missing key on some platforms,
+      // and a strict null check would then call `startsWith` on it.
+      if (head == null) return null;
+      if (!head.startsWith(MANIFEST_PREFIX)) return head;
 
-    const total = Number.parseInt(head.slice(MANIFEST_PREFIX.length), 10);
-    if (!Number.isInteger(total) || total < 0) return null;
+      const manifest = parseManifest(head);
+      if (!manifest) return null;
 
-    const parts: string[] = [];
-    for (let i = 0; i < total; i++) {
-      const part = await SecureStore.getItemAsync(chunkKey(key, i), KEYCHAIN_OPTIONS);
-      // A partially written value is unusable; treat it as absent so the user
-      // is asked to sign in again rather than handed a corrupt token.
-      if (part == null) return null;
-      parts.push(part);
+      const parts: string[] = [];
+      for (let i = 0; i < manifest.count; i++) {
+        const part = await SecureStore.getItemAsync(
+          chunkKey(key, manifest.generation, i),
+          KEYCHAIN_OPTIONS,
+        );
+        if (part == null) {
+          // The chunk may be gone because a write has just switched to the
+          // other set and cleared this one away: the manifest has then changed
+          // too, and says where the value is now.
+          const now = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
+          if (now !== head) return await secureStorage.getItem(key);
+          // A partially written value is unusable; treat it as absent so the
+          // user is asked to sign in again rather than handed a corrupt token.
+          return null;
+        }
+        parts.push(part);
+      }
+      return parts.join('');
+    } catch {
+      // The keychain refused the read: a value that no longer decrypts, or a
+      // keychain not available at this moment. Nothing usable is there now, and
+      // saying so lets the app start; the entry is left alone, because the next
+      // read may succeed.
+      return null;
     }
-    return parts.join('');
   },
 
   async setItem(key: string, value: string): Promise<void> {
-    const previous = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
-    const previousCount = previous?.startsWith(MANIFEST_PREFIX)
-      ? Number.parseInt(previous.slice(MANIFEST_PREFIX.length), 10) || 0
-      : 0;
+    // Null when the read is refused, too. The write goes ahead all the same, so
+    // that signing in again can replace an entry that can no longer be read.
+    const previous = await readManifest(key);
 
     if (value.length <= CHUNK_SIZE) {
       await SecureStore.setItemAsync(key, value, KEYCHAIN_OPTIONS);
-      await clearChunks(key, 0, previousCount);
+      await clear(chunkKeys(key, previous));
       return;
     }
 
-    const chunks: string[] = [];
+    const generation: Generation = previous?.generation === 'a' ? 'b' : 'a';
+    const written: string[] = [];
     for (let i = 0; i < value.length; i += CHUNK_SIZE) {
-      chunks.push(value.slice(i, i + CHUNK_SIZE));
+      const chunk = chunkKey(key, generation, written.length);
+      await SecureStore.setItemAsync(chunk, value.slice(i, i + CHUNK_SIZE), KEYCHAIN_OPTIONS);
+      written.push(chunk);
     }
 
-    // Chunks first, manifest last: if this is interrupted, the old manifest
-    // still points at a complete set rather than at a half-written one.
-    for (const [index, chunk] of chunks.entries()) {
-      await SecureStore.setItemAsync(chunkKey(key, index), chunk, KEYCHAIN_OPTIONS);
-    }
-    await SecureStore.setItemAsync(key, `${MANIFEST_PREFIX}${chunks.length}`, KEYCHAIN_OPTIONS);
-    await clearChunks(key, chunks.length, previousCount);
+    // Chunks first, manifest last: until this one write, the old manifest still
+    // points at the previous value, none of whose chunks have been touched.
+    await SecureStore.setItemAsync(
+      key,
+      `${MANIFEST_PREFIX}${written.length}:${generation}`,
+      KEYCHAIN_OPTIONS,
+    );
+    await clear(chunkKeys(key, previous).filter((chunk) => !written.includes(chunk)));
   },
 
   async removeItem(key: string): Promise<void> {
-    const head = await SecureStore.getItemAsync(key, KEYCHAIN_OPTIONS);
-    const total = head?.startsWith(MANIFEST_PREFIX)
-      ? Number.parseInt(head.slice(MANIFEST_PREFIX.length), 10) || 0
-      : 0;
+    const previous = await readManifest(key);
 
     await SecureStore.deleteItemAsync(key, KEYCHAIN_OPTIONS);
-    await clearChunks(key, 0, total);
+    await clear(chunkKeys(key, previous));
   },
 };

@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { messageOf, RpcError, type RefusalReason } from '@/lib/rpc-error';
+import { useRetry } from '@/lib/use-retry';
 
 export type Remote<T> = {
   /** The last successful result. Kept through a failed reload, so a screen does not blank. */
@@ -36,8 +37,11 @@ export type Remote<T> = {
  *
  * Loads when the screen gains focus - including the first time - and again
  * whenever the app returns from the background, because that is exactly when
- * a bat may have landed. `load` must be stable (a module-level function, or
- * one wrapped in `useCallback`), or this reloads on every render.
+ * a bat may have landed. A load that got no answer is made again by itself,
+ * after a pause that grows, until one does (see `useRetry`); one the server
+ * refused is not, since asking again would only be refused again. `load` must
+ * be stable (a module-level function, or one wrapped in `useCallback`), or
+ * this reloads on every render.
  *
  * Deliberately small. If screens ever need shared caching, deduplication or
  * optimistic updates, replace this with a query library rather than growing it.
@@ -53,20 +57,25 @@ export function useRemote<T>(load: () => Promise<T>): Remote<T> {
   // Identifies the newest request, so a slow response cannot overwrite a newer one.
   const latest = useRef(0);
 
-  const run = useCallback(
+  // Resolves with whether the load is worth making again unasked: it failed,
+  // it was not the server that refused it, and it is still the newest.
+  const attempt = useCallback(
     async (visible: boolean) => {
       const request = ++latest.current;
       if (visible) setIsRefreshing(true);
+      let unanswered = false;
       try {
         const next = await load();
-        if (request !== latest.current) return;
+        if (request !== latest.current) return false;
         setData(next);
         setError(null);
         setReason(null);
       } catch (caught) {
-        if (request !== latest.current) return;
+        if (request !== latest.current) return false;
+        const refusal = caught instanceof RpcError ? caught.reason : null;
         setError(messageOf(caught));
-        setReason(caught instanceof RpcError ? caught.reason : null);
+        setReason(refusal);
+        unanswered = refusal === null;
       } finally {
         if (request === latest.current) {
           setIsLoading(false);
@@ -74,9 +83,11 @@ export function useRemote<T>(load: () => Promise<T>): Remote<T> {
           setSettledAt(Date.now());
         }
       }
+      return unanswered;
     },
     [load],
   );
+  const run = useRetry(attempt);
 
   const reload = useCallback(() => run(false), [run]);
   const refresh = useCallback(() => run(true), [run]);
