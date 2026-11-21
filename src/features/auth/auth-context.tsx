@@ -136,10 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(null);
 
-      // Nor has the client announced anything, then, and whatever listens to
-      // it would go on holding the account. With nothing stored any more,
-      // signing out on this device alone sends nothing and is announced. When
-      // the client had removed the session after all, it has said so.
+      // The client has then announced no sign-out either, and whatever listens
+      // to it would go on holding the account. With nothing stored any more,
+      // signing out on this device alone sends nothing, and is announced.
+      // Where the client did remove the session - as it does when its token is
+      // still fresh - it has announced that already, and once is enough.
       if (signOutsAnnounced === announcedBefore) {
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       }
