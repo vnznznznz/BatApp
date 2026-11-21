@@ -54,9 +54,15 @@ jest.mock('@/features/messages/messages', () => ({
   fetchBadges: jest.fn(),
 }));
 
-const mockProfileState: { profile: Profile | null; isLoading: boolean; error: string | null } = {
+const mockProfileState: {
+  profile: Profile | null;
+  isLoading: boolean;
+  isGone: boolean;
+  error: string | null;
+} = {
   profile: null,
   isLoading: false,
+  isGone: false,
   error: null,
 };
 // Stable, as the real hook's is: a new function on every render would read as
@@ -75,6 +81,14 @@ jest.mock('@/features/profile/use-profile', () => {
     },
   };
 });
+
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+// Signing out is the one thing the roost asks of the session: for an account
+// that is gone, it is all there is left to do.
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
+}));
 
 const mockedFetchRoost = jest.mocked(fetchRoost);
 const mockedFetchBadges = jest.mocked(fetchBadges);
@@ -142,6 +156,9 @@ const NO_CONNECTION = 'No connection. Check your network and try again.';
 const noConnection = () => new RpcError(NO_CONNECTION, null);
 
 const PROFILE_NOT_LOADED = 'Your profile could not be loaded. Check your connection.';
+const ACCOUNT_GONE =
+  'This account no longer exists: it has been deleted or removed. ' +
+  'All that is left to do is to sign out.';
 
 /** A promise the test settles by hand, to look at the screen while a call is in flight. */
 function deferred<T>() {
@@ -186,7 +203,9 @@ beforeEach(() => {
   mockReloadProfile.mockImplementation(() => Promise.resolve());
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
+  mockProfileState.isGone = false;
   mockProfileState.error = null;
+  mockSignOut.mockClear();
   mockedFetchRoost.mockReset();
   serve(everyBatHome);
   mockedFetchBadges.mockReset();
@@ -620,6 +639,40 @@ describe('HomeScreen', () => {
       expect(mockReloadProfile).toHaveBeenCalledTimes(1);
       expect(screen.queryByText(PROFILE_NOT_LOADED)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    /**
+     * An account that is gone has nothing to try again and nothing to write
+     * with. The roost offered both, under "All that is left to do is to sign
+     * out". (Found in the merged tree.)
+     */
+    it('offers only the way out when the account is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      expect(screen.getByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(writeButton()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Bat 1, at home' })).toBeDisabled();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no try again for the bats either when the account is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      mockedFetchRoost.mockRejectedValue(noConnection());
+      await renderScreen(<HomeScreen />);
+
+      expect(await screen.findByText(NO_CONNECTION)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
     });
 
     // Without a connection all of it fails at once. One way out is enough.

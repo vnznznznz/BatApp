@@ -13,6 +13,7 @@ import { BATS_PER_USER } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { describeCity } from '@/features/cities/search';
 import { fetchBadges } from '@/features/messages/messages';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { useProfile } from '@/features/profile/use-profile';
 import { BatTile } from '@/features/roost/bat-tile';
 import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
@@ -31,7 +32,11 @@ import { useScreenFocused } from '@/lib/use-screen-focused';
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const { profile, error: profileError, reload: reloadProfile } = useProfile();
+  // The profile screen and the city picker change what this one shows: the
+  // hook reads the profile again by itself each time the roost comes back into
+  // view. This screen asking as well made two requests for the same row at
+  // every return. (Found in the merged tree.)
+  const { profile, error: profileError, isGone, reload: reloadProfile } = useProfile();
   const roost = useRemote(fetchRoost);
   const badges = useRemote(fetchBadges);
   const now = useNow(1000);
@@ -40,11 +45,6 @@ export default function HomeScreen() {
 
   const { reload: reloadRoost, refresh: refreshRoost } = roost;
   const { reload: reloadBadges } = badges;
-
-  // The profile screen and the city picker change what this one shows. The
-  // hook reads the profile again by itself each time the roost comes back
-  // into view; this screen asking as well made two requests for the same row
-  // at every return. (Found in the merged tree.)
 
   const bats = roost.data ?? [];
   const atHome = countAtHome(bats);
@@ -68,7 +68,10 @@ export default function HomeScreen() {
   // refuses a sender without a city itself. (Found in review: a profile that
   // failed once left "Write a letter" disabled under bats that were all home.)
   const needsCity = profile !== null && !profile.city;
-  const canWrite = atHome > 0 && !needsCity && Boolean(profile || profileError);
+  // An account that is gone can send nothing, whatever the bats last looked
+  // like, and asking again changes nothing: what is left is the way out.
+  // (Found in the merged tree.)
+  const canWrite = atHome > 0 && !needsCity && !isGone && Boolean(profile || profileError);
 
   // A new city takes a day to count, and until then the bats still leave from
   // the old one. Read against this screen's own clock: the roost stays open
@@ -151,7 +154,7 @@ export default function HomeScreen() {
             <Text variant="caption" tone="danger" center>
               {profileError}
             </Text>
-            {roostMissing ? null : tryAgain}
+            {isGone ? <AccountClosedActions /> : roostMissing ? null : tryAgain}
           </>
         ) : (
           <ActivityIndicator color={Colors.textMuted} />
@@ -209,7 +212,7 @@ export default function HomeScreen() {
             {roost.error}
           </Text>
         ) : null}
-        {roostMissing ? tryAgain : null}
+        {roostMissing && !isGone ? tryAgain : null}
       </Card>
 
       <View style={styles.write}>

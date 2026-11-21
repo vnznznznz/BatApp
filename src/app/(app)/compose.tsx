@@ -34,6 +34,7 @@ import {
   sendLetter,
   type Outcome,
 } from '@/features/messages/sending';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { useProfile } from '@/features/profile/use-profile';
 import { countAtHome, fetchRoost, nextHomecoming, onRoostChanged } from '@/features/roost/roost';
 import { announce } from '@/lib/announce';
@@ -86,7 +87,7 @@ export default function ComposeScreen() {
   const { to } = useLocalSearchParams<{ to?: string }>();
   const { session } = useAuth();
   const courierId = session?.user.id;
-  const { profile, error: profileError, reload: reloadProfile } = useProfile();
+  const { profile, error: profileError, isGone, reload: reloadProfile } = useProfile();
   const friendships = useRemote(fetchFriendships);
   const roost = useRemote(fetchRoost);
   const now = useNow(1000);
@@ -320,7 +321,10 @@ export default function ComposeScreen() {
   // request as the screen opened left "Send by bat" disabled until the screen
   // was left, and the letter with it.)
   const needsCity = profile !== null && !profile.city;
-  const canSend = Boolean(route) && atHome > 0 && !needsCity && Boolean(profile || profileError);
+  // Nor can an account that is gone send anything, and asking again changes
+  // nothing for it. (Found in the merged tree.)
+  const canSend =
+    Boolean(route) && atHome > 0 && !needsCity && !isGone && Boolean(profile || profileError);
 
   // One way out is enough when both the bats and the profile are missing. It
   // stands by the bats then, next to the button it is in the way of.
@@ -377,7 +381,7 @@ export default function ComposeScreen() {
           <Text variant="caption" tone="danger">
             {profileError}
           </Text>
-          {roostMissing ? null : tryAgain}
+          {isGone ? <AccountClosedActions /> : roostMissing ? null : tryAgain}
         </View>
       ) : null}
 
@@ -414,7 +418,7 @@ export default function ComposeScreen() {
         >
           {batLine}
         </Text>
-        {roostMissing ? tryAgain : null}
+        {roostMissing && !isGone ? tryAgain : null}
 
         <Button label="Send by bat" loading={sending} disabled={!canSend} onPress={send} />
       </View>

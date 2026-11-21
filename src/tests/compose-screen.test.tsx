@@ -66,9 +66,15 @@ jest.mock('@/features/roost/roost', () => ({
   fetchRoost: jest.fn(),
 }));
 
-const mockProfileState: { profile: Profile | null; isLoading: boolean; error: string | null } = {
+const mockProfileState: {
+  profile: Profile | null;
+  isLoading: boolean;
+  isGone: boolean;
+  error: string | null;
+} = {
   profile: null,
   isLoading: false,
+  isGone: false,
   error: null,
 };
 
@@ -339,6 +345,7 @@ beforeEach(() => {
   forgetAllDrafts();
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
+  mockProfileState.isGone = false;
   mockProfileState.error = null;
   mockReloadProfile.mockReset();
   mockReloadProfile.mockImplementation(() => Promise.resolve());
@@ -2060,6 +2067,25 @@ describe('ComposeScreen', () => {
         expect.any(String),
       );
       expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+    });
+
+    /**
+     * An account that is gone cannot send, and asking again changes nothing.
+     * The screen offered "Try again" under "All that is left to do is to sign
+     * out", and kept "Send by bat" on. (Found in the merged tree.)
+     */
+    it('holds the letter back, with only the way out, when the account is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error =
+        'This account no longer exists: it has been deleted or removed. ' +
+        'All that is left to do is to sign out.';
+      await openLetterTo('user-anna');
+
+      expect(screen.getByText(mockProfileState.error)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
     });
 
     it('says that the profile could not be loaded, and loads it again when asked', async () => {
