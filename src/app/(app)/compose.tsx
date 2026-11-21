@@ -439,8 +439,8 @@ export default function ComposeScreen() {
         </Text>
         {suspension !== null && !isGone ? (
           <View style={styles.failed}>
-            {/* The line above says it already when there are no bats to count. */}
-            {roostMissing ? null : (
+            {/* The line above says it already when the bats could not be counted. */}
+            {batLine === suspension ? null : (
               <Text variant="caption" tone="danger">
                 {suspension}
               </Text>
