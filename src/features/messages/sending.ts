@@ -132,6 +132,10 @@ export async function sendLetter(courierId: string, to: Addressee): Promise<void
   if (before.busy) return;
 
   const words = prepareBody(readDraft(courierId, to.id));
+  // Busy until the send has ended. Nothing here calls it off: the client gives
+  // up on any request after twenty seconds (src/lib/guarded-fetch.ts), and that
+  // is what ends a send nobody answers. Without that limit the letter stayed on
+  // its way out, on every screen, until the app was closed. (Found in review.)
   noteSend(courierId, to.id, { busy: true });
   let outcome: Outcome | null = null;
   let unanswered = before.unanswered;
