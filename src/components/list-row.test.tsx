@@ -86,6 +86,28 @@ describe('ListRow', () => {
     expect(screen.getByRole('button', { name: 'Accept' })).toBeOnTheScreen();
   });
 
+  /** The subtitle on one line and the detail on two, unless the row asks for more. */
+  it('cuts the subtitle after a line and the detail after two, unless the row says otherwise', async () => {
+    withTextScale(1);
+    const { rerender } = await render(
+      <ListRow title="Carla Brandt" subtitle="@carla" detail="A letter you started" />,
+    );
+    expect(screen.getByText('@carla')).toHaveProp('numberOfLines', 1);
+    expect(screen.getByText('A letter you started')).toHaveProp('numberOfLines', 2);
+
+    await rerender(
+      <ListRow
+        title="Carla Brandt"
+        subtitle="@carla"
+        subtitleLines={0}
+        detail="A letter you started"
+        detailLines={0}
+      />,
+    );
+    expect(screen.getByText('@carla')).toHaveProp('numberOfLines', 0);
+    expect(screen.getByText('A letter you started')).toHaveProp('numberOfLines', 0);
+  });
+
   it('is not a button at all when it has actions and nothing to open', async () => {
     withTextScale(1);
     await render(<ListRow title="Carla Brandt" subtitle="@carla" actions={actions} />);

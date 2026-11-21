@@ -295,6 +295,13 @@ describe('describeRoute', () => {
 
     expect(describeRoute(friendship)).toBe('Has not chosen a city yet');
   });
+
+  /** For a list, where a town told apart by where it is leaves no room for the flight. */
+  it('puts what it is given between the town and the flight', () => {
+    expect(describeRoute(toFriendship(acceptedRow()), '\n')).toMatch(
+      /^[^\n]+, [A-Z]{2}\nabout .+ by bat$/,
+    );
+  });
 });
 
 describe('describeRequestOutcome', () => {

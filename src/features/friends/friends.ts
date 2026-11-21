@@ -136,13 +136,17 @@ export function friendName(friend: Pick<Friend, 'displayName' | 'username'>): st
 
 /**
  * "Munich, DE · about 6h 18m by bat" - where a friend is and how long a bat
- * takes to get there, or why that cannot be said yet.
+ * takes to get there, or why that cannot be said yet; with `afterTown`
+ * between the two. In a list, a line break: a town that shares its name with
+ * another is told apart by where it is - "La Ceiba (131 km from San Pedro
+ * Sula), HN" - and on a 360dp phone that leaves no room on its line for the
+ * flight.
  */
-export function describeRoute(friendship: Friendship): string {
+export function describeRoute(friendship: Friendship, afterTown = ' · '): string {
   const { city } = friendship.friend;
   if (!city) return 'Has not chosen a city yet';
   return friendship.route
-    ? `${describeCity(city)} · ${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
+    ? `${describeCity(city)}${afterTown}${formatFlightEstimate(friendship.route.flightSeconds)} by bat`
     : describeCity(city);
 }
 

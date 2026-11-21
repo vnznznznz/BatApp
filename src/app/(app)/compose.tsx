@@ -525,7 +525,12 @@ function FriendRow({
   return (
     <ListRow
       title={friendName(friendship.friend)}
-      subtitle={describeRoute(friendship)}
+      // The town on a line of its own, and the way there on the next, read
+      // whole: a town told apart by where it is - "La Ceiba (131 km from San
+      // Pedro Sula), HN" - left no room for the distance and the flight at
+      // 360dp, and they were cut off.
+      subtitle={describeRoute(friendship, '\n')}
+      subtitleLines={0}
       detail={
         inDoubt
           ? `A letter that may or may not have gone: ${asOneLine(inDoubt)}`
@@ -539,16 +544,19 @@ function FriendRow({
   );
 }
 
-/** "Munich, DE · 505 km · about 6h 18m", or why no bat can go there. */
-function describeRoute(friendship: Friendship): string {
+/**
+ * "Munich, DE · 505 km · about 6h 18m", or why no bat can go there; with
+ * `afterTown` between the town and the way there.
+ */
+function describeRoute(friendship: Friendship, afterTown = ' · '): string {
   const { city } = friendship.friend;
   if (!city) return `@${friendship.friend.username} has not chosen a city yet`;
   if (!friendship.route) return describeCity(city);
-  return [
-    describeCity(city),
+  const way = [
     formatDistance(friendship.route.distanceKm),
     formatFlightEstimate(friendship.route.flightSeconds),
   ].join(' · ');
+  return `${describeCity(city)}${afterTown}${way}`;
 }
 
 const styles = StyleSheet.create({

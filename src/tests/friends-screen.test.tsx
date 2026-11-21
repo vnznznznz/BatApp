@@ -188,6 +188,9 @@ async function ask(username: string) {
   await fireEvent.press(sendRequestButton());
 }
 
+/** Text as the screen writes it, line breaks and all: the default takes them for spaces. */
+const asWritten = (text: string) => text;
+
 /**
  * The views that lay `element` out in a row with whatever stands beside it:
  * every ancestor whose children run side by side.
@@ -331,7 +334,9 @@ describe('FriendsScreen', () => {
 
       expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.getByText('@anna')).toBeOnTheScreen();
-      expect(screen.getByText('Munich, DE · about 6h 18m by bat')).toBeOnTheScreen();
+      expect(
+        screen.getByText('Munich, DE\nabout 6h 18m by bat', { exact: true, normalizer: asWritten }),
+      ).toBeOnTheScreen();
       expect(screen.queryByText('No friends yet. Ask someone by their username above.')).toBeNull();
     });
 
@@ -401,6 +406,42 @@ describe('FriendsScreen', () => {
         screen.getByRole('button', { name: 'Remove Wilhelmina Oyelaran-Smith' }),
       ).toBeEnabled();
     });
+  });
+
+  /**
+   * A town that shares its name with another is told apart by where it is,
+   * and at 360dp "La Ceiba (131 km from San Pedro Sula), HN · about 4d 20h by
+   * bat" lost the flight off the end of its two lines. (Found in review, in
+   * the browser.) The town has a line of its own, the flight the next, and
+   * neither is cut.
+   */
+  describe('a friend in a town told apart by where it is', () => {
+    it.each([
+      ['La Ceiba', '131 km from San Pedro Sula', 'HN', 418_000, 'about 4d 20h by bat'],
+      ['Sankt Peter', 'near Klagenfurt am Wörthersee', 'AT', 29_640, 'about 8h 14m by bat'],
+    ])(
+      'shows %s on a line of its own, and the flight on the next, whole',
+      async (name, qualifier, countryCode, flightSeconds, flight) => {
+        jest
+          .spyOn(Dimensions, 'get')
+          .mockReturnValue({ width: 360, height: 740, scale: 3, fontScale: 1 });
+        serve(() => [
+          {
+            ...anna,
+            friend: { ...anna.friend, city: { name, qualifier, countryCode } },
+            route: { distanceKm: 9_296, flightSeconds },
+          },
+        ]);
+        await renderScreen(<FriendsScreen />);
+        await listLoaded();
+
+        const route = screen.getByText(`${name} (${qualifier}), ${countryCode}\n${flight}`, {
+          exact: true,
+          normalizer: asWritten,
+        });
+        expect(route).toHaveProp('numberOfLines', 0);
+      },
+    );
   });
 
   describe('requests waiting for the courier', () => {
@@ -603,7 +644,9 @@ describe('FriendsScreen', () => {
       expect(screen.getByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.getByText('@anna')).toBeOnTheScreen();
       // On a line of its own, so a narrow screen cannot cut it off.
-      expect(screen.getByText('Munich, DE · about 6h 18m by bat')).toBeOnTheScreen();
+      expect(
+        screen.getByText('Munich, DE\nabout 6h 18m by bat', { exact: true, normalizer: asWritten }),
+      ).toBeOnTheScreen();
       expect(screen.getByText('Ben Okafor')).toBeOnTheScreen();
       expect(screen.getByText('Has not chosen a city yet')).toBeOnTheScreen();
     });

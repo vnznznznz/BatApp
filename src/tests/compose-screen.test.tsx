@@ -373,7 +373,13 @@ describe('ComposeScreen', () => {
 
       expect(await screen.findByText('Who is it for?')).toBeOnTheScreen();
       expect(screen.getByRole('button', { name: /^Anna Weber/ })).toBeEnabled();
-      expect(screen.getByText('Munich, DE · 505 km · about 6h 18m')).toBeOnTheScreen();
+      // The town on a line of its own, and the way there on the next.
+      expect(
+        screen.getByText('Munich, DE\n505 km · about 6h 18m', {
+          exact: true,
+          normalizer: (text: string) => text,
+        }),
+      ).toHaveProp('numberOfLines', 0);
       expect(screen.getByText('@ben has not chosen a city yet')).toBeOnTheScreen();
       expect(screen.queryByLabelText('Your letter')).toBeNull();
     });

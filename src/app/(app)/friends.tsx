@@ -285,7 +285,11 @@ export default function FriendsScreen() {
                 key={friendship.id}
                 title={friendName(friendship.friend)}
                 subtitle={describeFriend(friendship)}
-                detail={describeRoute(friendship)}
+                // Read whole, the town and the flight each on a line of
+                // their own: a town told apart by where it is took the
+                // flight off the end at 360dp.
+                detail={describeRoute(friendship, '\n')}
+                detailLines={0}
                 onPress={() => open(friendship)}
                 accessibilityHint={OPEN_HINT}
                 // Under the text, which needs the whole width: beside Write
