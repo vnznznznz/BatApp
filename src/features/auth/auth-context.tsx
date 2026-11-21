@@ -63,6 +63,15 @@ let signedOutUnheard = false;
  */
 let signOutsAnnounced = 0;
 
+/**
+ * The count as it is at the moment of asking. Read through this, never
+ * straight from the variable inside the provider: the React Compiler takes a
+ * module-level value for one that does not change, and turned "the count
+ * before signing out" into a second read of the count after it - so in a
+ * real build a sign-out without a network was announced twice.
+ */
+const signOutsSoFar = () => signOutsAnnounced;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
@@ -117,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     async function signOut() {
-      const announcedBefore = signOutsAnnounced;
+      const announcedBefore = signOutsSoFar();
       // The server is asked first: only that ends the session on the
       // courier's other devices as well.
       const heard = await supabase.auth.signOut().then(
@@ -145,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // signing out on this device alone sends nothing, and is announced.
       // Where the client did remove the session - as it does when its token is
       // still fresh - it has announced that already, and once is enough.
-      if (signOutsAnnounced === announcedBefore) {
+      if (signOutsSoFar() === announcedBefore) {
         await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       }
     }
