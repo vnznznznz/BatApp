@@ -11,7 +11,9 @@ import { BATS_PER_USER } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
-import { ACCOUNT_DELETED, forgetFarewell, isFarewellDue } from '@/lib/farewell';
+import { ACCOUNT_DELETED, farewellDue, forgetFarewell } from '@/lib/farewell';
+import { CONTACT_URL, openLink } from '@/lib/links';
+import { REFUSALS } from '@/lib/rpc-error';
 
 /** The promises the app makes, stated on the way in. */
 const PROMISES = [
@@ -33,13 +35,20 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const { session } = useAuth();
   // After a deletion the app lands here, as after any sign-out: this says
-  // that it went through, once. (Found in the browser.)
-  const [deleted] = useState(isFarewellDue);
+  // that it went through, once. So it does when the session ended because the
+  // account is suspended. (Found in the browser.)
+  const [farewell] = useState(farewellDue);
+  const words =
+    farewell === 'deleted'
+      ? ACCOUNT_DELETED
+      : farewell === 'suspended'
+        ? REFUSALS.account_suspended
+        : null;
   useEffect(() => {
-    if (!deleted) return;
+    if (!words) return;
     forgetFarewell();
-    announce(ACCOUNT_DELETED);
-  }, [deleted]);
+    announce(words);
+  }, [words]);
 
   // A signed-in user is on their way to the roost - the root layout sends them -
   // so the pitch is not shown to someone who already has an account.
@@ -49,11 +58,14 @@ export default function WelcomeScreen() {
     // Scrolls rather than clips: this content does not fit a smaller iPhone
     // once the reader has turned Dynamic Type up.
     <Screen center scroll style={styles.screen}>
-      {deleted ? (
-        <Card style={styles.card}>
+      {words ? (
+        <Card style={[styles.card, styles.farewell]}>
           <Text variant="body" center>
-            {ACCOUNT_DELETED}
+            {words}
           </Text>
+          {farewell === 'suspended' && CONTACT_URL ? (
+            <Button label="Contact" variant="ghost" onPress={() => void openLink(CONTACT_URL)} />
+          ) : null}
         </Card>
       ) : null}
 
@@ -106,6 +118,9 @@ const styles = StyleSheet.create({
   },
   card: {
     alignSelf: 'stretch',
+  },
+  farewell: {
+    gap: Spacing.sm,
   },
   promise: {
     gap: Spacing.xs,

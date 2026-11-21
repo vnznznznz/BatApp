@@ -4,7 +4,9 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import WelcomeScreen from '@/app/index';
 import { BATS_PER_USER } from '@/constants/config';
-import { forgetFarewell, noteAccountDeleted } from '@/lib/farewell';
+import { forgetFarewell, noteAccountDeleted, noteAccountSuspended } from '@/lib/farewell';
+import { openLink } from '@/lib/links';
+import { REFUSALS } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
@@ -18,6 +20,12 @@ jest.mock('expo-router', () => ({
 const mockAuth = { session: null as unknown };
 jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => mockAuth,
+}));
+
+jest.mock('@/lib/links', () => ({
+  ...jest.requireActual('@/lib/links'),
+  CONTACT_URL: 'https://night-courier.example/help',
+  openLink: jest.fn(),
 }));
 
 /** Fixed insets so the screen renders deterministically outside a device. */
@@ -61,6 +69,27 @@ describe('WelcomeScreen', () => {
     expect(
       screen.getByText(/No purchases, no credits, no subscriptions, no advertising/),
     ).toBeOnTheScreen();
+  });
+
+  /**
+   * A suspended account whose session is over an hour old is signed out at
+   * the app's start, and landed here with nothing to say why. (Found in the
+   * browser.) Said once, with the way to write to Night Courier.
+   */
+  it('says once that the account has been suspended, with the way to write', async () => {
+    noteAccountSuspended();
+
+    const first = await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Contact' }));
+    expect(jest.mocked(openLink)).toHaveBeenCalledWith('https://night-courier.example/help');
+
+    await first.unmount();
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText(REFUSALS.account_suspended)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
   });
 
   /**

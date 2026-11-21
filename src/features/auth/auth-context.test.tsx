@@ -351,6 +351,26 @@ describe('opening the app', () => {
   });
 
   /**
+   * A suspended account an hour after the app was last used was signed out at
+   * its start, and landed on the welcome screen with nothing to say why.
+   * (Found in the browser.)
+   */
+  it('leaves word for the welcome screen when the session ends for a suspension', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    network = (request) =>
+      isRenewal(request)
+        ? authRefusal(400, 'user_banned', 'Invalid Refresh Token: User Banned')
+        : json(200, []);
+
+    await launch();
+    await passes(1000);
+
+    expect(state()).toBe('signed out');
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.farewellDue()).toBe('suspended');
+  });
+
+  /**
    * The keychain is read while the client starts. If the client has spoken by
    * the time the read comes back, the read is the older news.
    */
