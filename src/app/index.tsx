@@ -36,7 +36,10 @@ export default function WelcomeScreen() {
   const { session } = useAuth();
   // After a deletion the app lands here, as after any sign-out: this says
   // that it went through, once. So it does when the session ended because the
-  // account is suspended. (Found in the browser.)
+  // account is suspended. (Found in the browser.) Said only to someone signed
+  // out: at the app's start this screen is opened while the stored session is
+  // still held, shows nothing, and is gone again - and the word with it, had
+  // it been said there. (Found in the browser.)
   const [farewell] = useState(farewellDue);
   const words =
     farewell === 'deleted'
@@ -44,11 +47,12 @@ export default function WelcomeScreen() {
       : farewell === 'suspended'
         ? REFUSALS.account_suspended
         : null;
+  const shown = !session;
   useEffect(() => {
-    if (!words) return;
+    if (!words || !shown) return;
     forgetFarewell();
     announce(words);
-  }, [words]);
+  }, [words, shown]);
 
   // A signed-in user is on their way to the roost - the root layout sends them -
   // so the pitch is not shown to someone who already has an account.

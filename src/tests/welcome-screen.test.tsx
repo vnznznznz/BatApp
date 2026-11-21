@@ -93,6 +93,25 @@ describe('WelcomeScreen', () => {
   });
 
   /**
+   * At the app's start this screen is opened while the stored session is
+   * still held, and shows nothing; the auth server's refusal can come before
+   * that. Said and forgotten there, the word was gone by the time the screen
+   * was shown signed out - only a screen reader heard it. (Found in the
+   * browser.)
+   */
+  it('keeps the word until it is shown to someone signed out', async () => {
+    noteAccountSuspended();
+    mockAuth.session = { user: { id: 'user-sam' } };
+    const first = await renderScreen(<WelcomeScreen />);
+    await first.unmount();
+
+    mockAuth.session = null;
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+  });
+
+  /**
    * Deleting the account lands here, as any sign-out does, and nothing said
    * that the deletion had gone through. (Found in the browser.) It is said
    * once: whoever opens the app next is not told it again.
