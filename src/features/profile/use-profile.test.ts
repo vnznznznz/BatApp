@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { RELOCATION_HOURS } from '@/constants/config';
 import { toProfile, useProfile } from '@/features/profile/use-profile';
+import { REFUSALS, RpcError, type ApiError } from '@/lib/rpc-error';
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 9, 31, 12, 0);
@@ -33,10 +34,7 @@ type Asked = { table: string; where: [column: string, value: unknown] };
  */
 const mockDatabase = {
   read: jest.fn<Promise<Answer>, [asked: Asked & { columns: string }]>(),
-  change: jest.fn<
-    Promise<{ error: { message: string } | null }>,
-    [asked: Asked & { values: object }]
-  >(),
+  change: jest.fn<Promise<{ error: ApiError | null }>, [asked: Asked & { values: object }]>(),
 };
 
 jest.mock('@/lib/supabase', () => ({
@@ -383,7 +381,7 @@ describe('useProfile', () => {
     ])('says so when %s could not be saved, and keeps what it had', async (_, save, words) => {
       mockDatabase.read.mockResolvedValue(found());
       mockDatabase.change.mockResolvedValue({
-        error: { message: 'TypeError: Network request failed' },
+        error: { message: 'internal error', code: 'XX000', hint: null },
       });
       const { result } = await renderHook(() => useProfile());
       await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
@@ -396,6 +394,53 @@ describe('useProfile', () => {
       expect(failure).toEqual(new Error(words));
       expect(mockDatabase.read).toHaveBeenCalledTimes(1);
       expect(result.current.profile?.displayName).toBe('Anna');
+    });
+
+    /**
+     * A refusal has words of its own, as it has from every other function of
+     * the database. The profile's were dropped: a suspended courier saving a
+     * name or a city read "could not be saved". (Found in the merged tree:
+     * PATCH /rest/v1/profiles answers 400, P0001, hint account_suspended.)
+     */
+    it.each([
+      ['a name', (hook: ReturnType<typeof useProfile>) => hook.updateDisplayName('Anna B.')],
+      ['a city', (hook: ReturnType<typeof useProfile>) => hook.updateCity(2911298)],
+    ])('says why when saving %s was refused', async (_, save) => {
+      mockDatabase.read.mockResolvedValue(found());
+      mockDatabase.change.mockResolvedValue({
+        error: { message: 'this account is suspended', code: 'P0001', hint: 'account_suspended' },
+      });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      let failure: unknown;
+      await act(async () => {
+        failure = await save(result.current).catch((error: unknown) => error);
+      });
+
+      expect(failure).toBeInstanceOf(RpcError);
+      expect(failure).toMatchObject({
+        message: REFUSALS.account_suspended,
+        reason: 'account_suspended',
+      });
+    });
+
+    it('says that there is no connection when the save got no answer', async () => {
+      mockDatabase.read.mockResolvedValue(found());
+      mockDatabase.change.mockResolvedValue({
+        error: { message: 'TypeError: Network request failed' },
+      });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      let failure: unknown;
+      await act(async () => {
+        failure = await result.current
+          .updateDisplayName('Anna B.')
+          .catch((error: unknown) => error);
+      });
+
+      expect(failure).toEqual(new Error('No connection. Check your network and try again.'));
     });
 
     /**
