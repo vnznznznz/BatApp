@@ -28,13 +28,27 @@ import { AUTH_STUB, migrationFiles } from './harness.mjs';
  *
  *   DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres npm run test:db
  *
- * Without it they are skipped, loudly, rather than passing by default.
+ * Without it, on CI they fail: a workflow that lost its database would
+ * otherwise stay green with not one race run. Anywhere else they are skipped,
+ * and the summary counts the skip.
  */
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const SKIP = DATABASE_URL
   ? false
   : 'DATABASE_URL is not set: the concurrency tests need a real Postgres (see this file).';
+/** Set by GitHub Actions, as by most CI services. */
+const ON_CI = Boolean(process.env.CI) && process.env.CI !== 'false';
+
+// A skipped suite counts as no test at all - "# skipped 0" - so what is skipped
+// is said by a test of its own.
+if (SKIP && ON_CI) {
+  it('has a real Postgres to race on', () => {
+    assert.fail(`${SKIP} CI must run them: give the job a database and DATABASE_URL.`);
+  });
+} else if (SKIP) {
+  it('has a real Postgres to race on', { skip: SKIP });
+}
 
 const MIGRATIONS_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
