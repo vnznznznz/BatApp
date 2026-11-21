@@ -574,6 +574,9 @@ tried on a real project**; go slowly there, and correct this page when you know 
    - The CLI's temporary role, knowingly: the two commands with nothing in front of them. The dry
      run is where it shows whether that works. **Not yet tried on a real project.**
 
+   Whichever way it goes: a new migration is on the project before any build that relies on it
+   reaches anyone.
+
    **Where no Postgres connection gets out.** `db push` connects to `db.<ref>.supabase.co` (IPv6
    only) or to the project's pooler (IPv4; `link` has saved its address in
    `supabase/.temp/pooler-url`), port 5432. If it fails with
@@ -629,7 +632,7 @@ tried on a real project**; go slowly there, and correct this page when you know 
    The first must show three rows, all with `"active": true`: `deliver-due-messages` every minute
    (`* * * * *`, `select private.deliver_due_messages()`), `forget-old-reports` hourly
    (`17 * * * *`, `select private.forget_old_reports()`) and `tidy-up` daily (`43 4 * * *`,
-   `select private.tidy_up()`). The second is 4,310 and the third is 1.
+   `select private.tidy_up()`). The second is 4,308 and the third is 1.
 
    Then check that the tidy-up can do everything the privacy policy says it does. Whatever it is
    not allowed to touch, it skips without an error, and it returns what it skipped - so run it once
@@ -643,7 +646,9 @@ tried on a real project**; go slowly there, and correct this page when you know 
    empty list as `{}`). Anything else names the step and the reason, such as
    `sign-in log: permission denied for table audit_log_entries`; until that is fixed, the policy's
    sections on sessions, the sign-in log and banned accounts are wrong: ask Supabase support, or
-   change the policy. (Running it deletes nothing that the daily job would not.)
+   change the policy. (Running it deletes nothing that the daily job would not.) A reason of
+   `deadlock detected` is no missing right: that step met a request at that very moment, was
+   undone on its own, and is done by the next run - run the command again.
 
    A day later, look at whether the jobs really ran:
 
@@ -659,6 +664,10 @@ tried on a real project**; go slowly there, and correct this page when you know 
    ```
 
    Each of the three must have a `status` of `succeeded` and a `start_time` within its schedule.
+   For the tidy-up that says only that it ran: a step it left out is in what it returns, which the
+   job shows to nobody, and in the Postgres log, as a warning that begins `the tidy-up left out:`.
+   So run `select private.tidy_up()` by hand once more, with the command above: it must return the
+   empty list again.
 
 5. **Configure the app:** the project URL, `https://<ref>.supabase.co`, and its publishable (anon)
    key - the one from the check in step 2 - go into `.env` as `EXPO_PUBLIC_SUPABASE_URL` and
@@ -778,13 +787,15 @@ Two of them take years to spring, the third a quiet week.
   be restored.
 
   What a pause would mean for this app. Every request fails, so nobody can sign in, read or
-  write. Nothing is lost, but nothing moves: the three scheduled jobs stop with the database. A
-  letter that falls due in that time lands only once the project is restored - at the next run
-  of the delivery job, or the first time its recipient opens the app. And everything the privacy
-  policy says is deleted on time - sign-in records after 30 days, unused sessions after 90,
-  reports after 180 - waits for as long as the pause lasts, and is caught up at the first run
-  afterwards. A quiet week is not unlikely for slow letters among a handful of friends: one
-  holiday is enough.
+  write. It should sign nobody out who is signed in: the app keeps its sign-in through any answer
+  to a renewal that is neither a new session nor the auth server's word that the session is over
+  (`src/lib/guarded-fetch.ts`). Nothing is lost, but nothing moves: the three scheduled jobs stop
+  with the database. A letter that falls due in that time lands only once the project is
+  restored - at the next run of the delivery job, or the first time its recipient opens the app.
+  And everything the privacy policy says is deleted on time - sign-in records after 30 days,
+  unused sessions after 90, reports after 180 - waits for as long as the pause lasts, and is
+  caught up at the first run afterwards. A quiet week is not unlikely for slow letters among a
+  handful of friends: one holiday is enough.
 
   The honest options:
   1. **Accept it.** See that Supabase's emails reach a mailbox that is read, restore the project
@@ -1075,9 +1086,10 @@ transits it, so a content-free push keeps message text out of a US processor.
   on to the day of the rebuild whenever the policy's content changes, and tell users of an
   important change (policy section 15). The build refuses a date that is still to come, so a
   change announced in advance goes up on the day it takes effect, not before with that day's
-  date. The next rebuild is such a change: sections 3.7, 3.9 and 9 of the policy were corrected
-  on 17 November 2026 (and a sentence of section 11 in the English version), and the help page
-  with them.
+  date. The next rebuild is such a change: the policy and the help page have both changed since
+  the pages of 10 November 2026 went up, and
+  `git log --since=2026-11-10 -- docs/store/privacy-policy.*.md docs/store/support-page.md` lists
+  each change.
 
   **`LAUNCH_STATE` says whether Night Courier has started,** and nothing is built without it. The
   policy speaks in the present tense - a database in Zurich, a processing agreement with Supabase,
