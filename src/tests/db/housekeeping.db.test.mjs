@@ -201,6 +201,11 @@ describe('the daily tidy-up', () => {
     assert.equal(await signInExists(ordinary), true);
   });
 
+  /**
+   * No code was ever sent to these, as to an account the operator makes by
+   * hand without confirming it, even while confirmation is off: their week
+   * counts from when they were made.
+   */
   it('deletes a sign-up never confirmed within 7 days, profile and all, and nothing else', async () => {
     const forgotten = await createCourier(db);
     const waiting = await createCourier(db);
@@ -226,6 +231,35 @@ describe('the daily tidy-up', () => {
     assert.equal(await profileExists(forgotten), false);
     assert.equal(await signInExists(waiting), true, 'a sign-up still within its week stays');
     assert.equal(await signInExists(confirmedLongAgo), true);
+  });
+
+  /**
+   * Once confirmation is on, someone can ask for a new code a week after
+   * signing up, and a code is good for a day. Counted from the sign-up, the
+   * account went that same night, and the new code was refused. (Found in
+   * review.) GoTrue writes when it sent the newest code.
+   */
+  it('counts a sign-up’s week from the last code sent to it', async () => {
+    const lastCodeLongAgo = await createCourier(db);
+    const lastCodeRecent = await createCourier(db);
+    const signedUpTenDaysAgo = (id, lastCodeDaysAgo) =>
+      db.query(
+        `update auth.users
+         set email_confirmed_at = null, created_at = now() - interval '10 days',
+             confirmation_sent_at = now() - make_interval(days => $2)
+         where id = $1`,
+        [id, lastCodeDaysAgo],
+      );
+    await signedUpTenDaysAgo(lastCodeLongAgo, 8);
+    // A day short of its week from the code, and long past it from the sign-up.
+    await signedUpTenDaysAgo(lastCodeRecent, 6);
+
+    await tidyUp();
+
+    assert.equal(await signInExists(lastCodeLongAgo), false);
+    assert.equal(await profileExists(lastCodeLongAgo), false);
+    assert.equal(await signInExists(lastCodeRecent), true, 'a week has not passed since its code');
+    assert.equal(await profileExists(lastCodeRecent), true);
   });
 
   /**
