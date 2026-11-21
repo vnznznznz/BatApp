@@ -284,5 +284,54 @@ describe('the jobs pg_cron runs', () => {
       );
       assert.deepEqual(signUp[0].meta, {}, 'what the sign-up form sent along goes');
     });
+
+    const runsLeft = async () =>
+      (
+        await db.query(`select runid::int as runid from cron.job_run_details order by runid`)
+      ).rows.map((row) => row.runid);
+
+    /**
+     * pg_cron writes when a run ended once it has ended. A run cut off before
+     * that, by a restart, never gets an end: when pg_cron comes back it marks
+     * the run failed, 'server restarted', and writes nothing more. Such rows
+     * stayed for ever, though the records say the log is kept a week. (Found
+     * in review.)
+     */
+    it('tidy-up forgets a run that was cut off a week after it began, and keeps a newer one', async () => {
+      await db.query(
+        `insert into cron.job_run_details (runid, command, status, return_message, start_time)
+         values (1, $1, 'failed', 'server restarted', now() - interval '8 days'),
+                (2, $1, 'failed', 'server restarted', now() - interval '6 days')`,
+        ['select private.deliver_due_messages()'],
+      );
+
+      const { rows } = await runJob('tidy-up');
+
+      assert.deepEqual(Object.values(rows[0]), [[]]);
+      assert.deepEqual(await runsLeft(), [2]);
+    });
+
+    /**
+     * A run cut off before it began has no time at all: pg_cron writes the
+     * row as it starts a run, and when the run began only once it has. It
+     * numbers its runs as it starts them, so such a run is older than any run
+     * numbered after it - a week old once one of those began a week ago.
+     */
+    it('tidy-up forgets a run cut off before it began, once a later run began a week ago', async () => {
+      await db.query(
+        `insert into cron.job_run_details (runid, command, status, return_message, start_time,
+                                           end_time)
+         values (10, $1, 'failed', 'server restarted', null, null),
+                (11, $1, 'succeeded', '1 row', now() - interval '8 days', now() - interval '8 days'),
+                (20, $1, 'failed', 'server restarted', null, null),
+                (21, $1, 'succeeded', '1 row', now() - interval '6 days', now() - interval '6 days')`,
+        ['select private.deliver_due_messages()'],
+      );
+
+      await runJob('tidy-up');
+
+      // Run 20 may be a week old as well, but nothing yet says so.
+      assert.deepEqual(await runsLeft(), [20, 21]);
+    });
   });
 });
