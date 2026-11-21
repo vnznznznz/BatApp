@@ -492,6 +492,21 @@ describe('a renewal refused because the account is suspended', () => {
     expect(farewellDue()).toBe('suspended');
   });
 
+  /**
+   * The app renews a session it has let go of, to tell the server of a
+   * sign-out it may not have heard. A suspension the server names then is no
+   * news for whoever uses the device next. (Found in review.)
+   */
+  it('leaves no word for a session the device no longer holds', async () => {
+    const { guarded, network } = setUp();
+    network.mockImplementation(async () => banned());
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"let-go"}' });
+    await guarded(RENEWAL, { method: 'POST' });
+
+    expect(farewellDue()).toBeNull();
+  });
+
   it('takes the word back once a renewal goes through: the suspension is over', async () => {
     const { guarded, network } = setUp();
     network

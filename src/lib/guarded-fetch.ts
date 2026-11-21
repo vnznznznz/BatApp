@@ -254,7 +254,12 @@ export function createGuardedFetch({
       }
       const answer = await exchange(send, input, init);
       if (answer.response.ok) forgetSuspension();
-      else if (saysSuspended(answer.body)) noteAccountSuspended();
+      // Only for the session this device holds: the app also renews one it
+      // has let go of, to tell the server of a sign-out, and what the server
+      // says of that is no news for whoever uses the device next.
+      else if (saysSuspended(answer.body) && isStoredRefreshToken(refreshTokenOf(init))) {
+        noteAccountSuspended();
+      }
       // The session this device holds is over for some other reason: ended on
       // another device, tidied away after 90 days unused, or by a new password
       // set elsewhere - the auth server answers each alike. The client signs
