@@ -86,6 +86,30 @@ describe('CodeField', () => {
     expect(field()).not.toHaveProp('maxLength', expect.anything());
   });
 
+  /**
+   * What the field asks of the keyboard and of autofill are its defaults: a
+   * form that asks otherwise is listened to, not overruled without a word.
+   * (Found in review: the order that decides this had no test.)
+   */
+  it('takes what a form asks for over its own defaults', async () => {
+    Platform.OS = 'ios';
+    await render(
+      <CodeField
+        label="Code"
+        value=""
+        length={8}
+        onChangeText={() => {}}
+        keyboardType="numeric"
+        textContentType="none"
+        autoComplete="off"
+      />,
+    );
+
+    expect(field()).toHaveProp('keyboardType', 'numeric');
+    expect(field()).toHaveProp('textContentType', 'none');
+    expect(field()).toHaveProp('autoComplete', 'off');
+  });
+
   it('stops at the length of a code', async () => {
     const user = userEvent.setup();
     await render(<Form />);

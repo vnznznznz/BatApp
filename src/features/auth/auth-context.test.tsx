@@ -69,7 +69,14 @@ function sessionOf(accessToken: string, refreshToken: string, expiresIn: number)
   };
 }
 
-type Sent = { url: string; method: string; bearer: string | null; body: unknown };
+type Sent = {
+  url: string;
+  method: string;
+  bearer: string | null;
+  /** The project's key, which the hosted project's gateway asks of every request. */
+  apikey: string | null;
+  body: unknown;
+};
 
 /** Every request that reached the network, and what the network makes of the next one. */
 let sent: Sent[];
@@ -235,6 +242,7 @@ beforeEach(() => {
       url: String(input),
       method: init?.method ?? 'GET',
       bearer: new Headers(init?.headers).get('Authorization')?.replace(/^Bearer /, '') ?? null,
+      apikey: new Headers(init?.headers).get('apikey'),
       body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
     };
     sent.push(request);
@@ -1574,7 +1582,11 @@ describe('what the courier is told when the auth server says no', () => {
         'There is already an account with that email address. Sign in instead.',
       );
 
-      expect(sent.filter(isSettings).map(({ method }) => method)).toEqual(['GET']);
+      // With the project's key, as every request to the hosted project needs:
+      // its gateway refuses one without, where the local servers answer it.
+      expect(sent.filter(isSettings).map(({ method, apikey }) => [method, apikey])).toEqual([
+        ['GET', 'sb_publishable_test_key'],
+      ]);
       expect(state()).toBe('signed out');
     });
 
