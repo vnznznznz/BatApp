@@ -200,4 +200,22 @@ describe('confirming an address', () => {
 
     assert.equal(await passwordOf(anna), '');
   });
+
+  /**
+   * Whether a code was emailed is what the account held before the statement:
+   * one that clears the time it was sent as it confirms the address - by hand,
+   * say, tidying as it goes - takes the password away all the same. Read from
+   * the row as written, it kept it. (Found in review: the auth server's own
+   * statements could not tell the two apart.)
+   */
+  it('takes it away when the confirmation clears the time the code was sent', async () => {
+    const anna = await waitingForItsCode();
+
+    await db.query(
+      `update auth.users set email_confirmed_at = now(), confirmation_sent_at = null where id = $1`,
+      [anna],
+    );
+
+    assert.equal(await passwordOf(anna), '');
+  });
 });
