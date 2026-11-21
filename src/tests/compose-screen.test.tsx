@@ -1210,6 +1210,42 @@ describe('ComposeScreen', () => {
     });
 
     /**
+     * A request nobody answers is given up by the client's own fetch after
+     * twenty seconds. Until then the letter holds still and the button spins;
+     * once the send and the asking after it have both been given up, the
+     * screen lets go. A send that was never given up kept the letter read-only
+     * here, and on any screen opened onto it since, for as long as the app ran.
+     * (Found in review.)
+     */
+    it('lets go of the letter once a send nobody answered has been given up', async () => {
+      const givenUp = () =>
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new TypeError('Network request timed out')), 20 * SECOND);
+        });
+      mockedSendMessage.mockImplementationOnce(givenUp);
+      mockedFetchSentLetter.mockImplementationOnce(givenUp);
+      await openLetterTo('user-anna');
+      await writeAndSend('See you at the lake.');
+
+      // Twenty seconds for the send, and twenty more for asking what became of it.
+      await letTimePass(39 * SECOND);
+      expect(sendButton()).toBeBusy();
+      await letTimePass(SECOND);
+
+      expect(screen.getByText(NOT_KNOWN)).toBeOnTheScreen();
+      expect(sendButton()).not.toBeBusy();
+      await fireEvent.changeText(letterField(), 'See you at the lake!');
+      expect(letterField()).toHaveDisplayValue('See you at the lake!');
+
+      // And the same words go again as the same letter.
+      await fireEvent.changeText(letterField(), 'See you at the lake.');
+      await fireEvent.press(sendButton());
+      expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+      const [first, second] = refsSent();
+      expect(second).toBe(first);
+    });
+
+    /**
      * The case from the review. The first send went; the app could not find
      * that out at once; the courier corrects a word and sends. The correction
      * must not go out as a second letter behind the first one's back.

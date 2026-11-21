@@ -407,6 +407,24 @@ describe('sendMessage', () => {
       reason: null,
     });
   });
+
+  /**
+   * What the client answers with when its fetch gives up on a request nobody
+   * answered, after twenty seconds: postgrest-js turns the TypeError thrown
+   * into this. It is no refusal - the letter may have gone - so it must not
+   * come back with a reason, or the letter would be taken for one that did not.
+   */
+  it('says there is no connection, and gives no reason, when the request was given up', async () => {
+    fail({ message: 'TypeError: Network request timed out', code: '', hint: '' });
+
+    const sending = sendMessage('anna-id', 'Dear Anna,', REF);
+
+    await expect(sending).rejects.toBeInstanceOf(RpcError);
+    await expect(sending).rejects.toMatchObject({
+      message: 'No connection. Check your network and try again.',
+      reason: null,
+    });
+  });
 });
 
 /**

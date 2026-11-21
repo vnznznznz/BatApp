@@ -230,6 +230,52 @@ describe('sendLetter', () => {
   });
 
   /**
+   * The letter is on its way out until its send ends, and nothing here ends
+   * it: a request nobody answers is given up by the client's own fetch, after
+   * twenty seconds, with what React Native's fetch throws for a request that
+   * never arrived. Never given up, it kept the letter read-only and the button
+   * spinning, on every screen, for as long as the app ran. (Found in review.)
+   * Given up, it is a send without an answer like any other.
+   */
+  it('lets go of a letter whose send was given up, and keeps the reference it may have gone under', async () => {
+    const LIMIT = 20 * SECOND;
+    const givenUp = () =>
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new TypeError('Network request timed out')), LIMIT);
+      });
+    mockedSendMessage.mockImplementationOnce(givenUp);
+    // Nor does asking what became of it get through.
+    mockedFetchSentLetter.mockImplementationOnce(givenUp);
+    keepDraft(MARA, 'user-anna', 'Dear Anna,');
+
+    const sent = sendLetter(MARA, anna);
+    await jest.advanceTimersByTimeAsync(2 * LIMIT - 1);
+    expect(readSend(MARA, 'user-anna').busy).toBe(true);
+    await jest.advanceTimersByTimeAsync(1);
+    await sent;
+
+    const ref = mockedSendMessage.mock.calls[0]?.[2];
+    expect(mockedFetchSentLetter).toHaveBeenCalledWith(ref);
+    expect(told).toEqual([['user-anna', { kind: 'unknown' }]]);
+    expect(readSend(MARA, 'user-anna')).toEqual({
+      busy: false,
+      unanswered: {
+        ref,
+        words: 'Dear Anna,',
+        unknown: true,
+        since: NOW + LIMIT,
+        // Half as long again as the question has been open by then.
+        askAt: NOW + 2 * LIMIT + LIMIT / 2,
+      },
+    });
+
+    // The same words can go again at once, as the same letter.
+    await sendLetter(MARA, anna);
+    expect(mockedSendMessage).toHaveBeenCalledTimes(2);
+    expect(mockedSendMessage).toHaveBeenLastCalledWith('user-anna', 'Dear Anna,', ref);
+  });
+
+  /**
    * A refusal answers what was open, too: the server looks for a letter under
    * the reference before anything else, and would have answered with it.
    */
