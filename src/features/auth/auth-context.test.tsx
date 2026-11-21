@@ -47,6 +47,41 @@ jest.mock('expo-secure-store', () => {
 const OLD_TOKEN = `header.${'a'.repeat(1000)}.signature`;
 const NEW_TOKEN = `header.${'b'.repeat(1000)}.signature`;
 
+/**
+ * An access token as the auth server writes one: its payload names the
+ * session it belongs to (`session_id`), and keeps naming it through every
+ * renewal. As long as the tokens above.
+ */
+const tokenOf = (sessionId: string, filler: string) =>
+  `header.${globalThis
+    .btoa(JSON.stringify({ session_id: sessionId, padding: filler.repeat(700) }))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')}.signature`;
+
+/** What auth-js keeps to itself of the client, and the tests below need. */
+type ClientInside = {
+  _notifyAllSubscribers: (
+    event: string,
+    session: Session | null,
+    broadcast: boolean,
+  ) => Promise<void>;
+};
+
+/**
+ * Another tab of the browser signs in: its client keeps the session where
+ * this one does - the browser's storage is one for both - and tells this tab
+ * over a BroadcastChannel, whose messages auth-js 2.112.3 hands on to the
+ * subscribers as this does (GoTrueClient.js, the channel's 'message'
+ * listener). Not public: should an update rename it, this fails.
+ */
+async function anotherTabSignsIn(client: Client, session: Session, event = 'SIGNED_IN') {
+  await keep(session);
+  await asked(() =>
+    (client.auth as unknown as ClientInside)._notifyAllSubscribers(event, session, false),
+  );
+}
+
 /** A session as the auth server issues one, `expiresIn` seconds before its access token ends. */
 function sessionOf(accessToken: string, refreshToken: string, expiresIn: number): Session {
   return {
@@ -1267,6 +1302,91 @@ describe('signing out', () => {
 
       expect(state()).toBe('signed in');
       expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+    });
+
+    /**
+     * On the web, every tab of the browser hears of a sign-in in any other, and
+     * the session that comes with it is a new one, not the one this tab let
+     * go. Ending it signed the courier out of it in the other tab, and the
+     * server out of every session of theirs, for as long as this tab stayed
+     * open. (Found in review, in Chromium with two tabs.)
+     */
+    describe('and another tab of the browser signs in', () => {
+      const LET_GO = tokenOf('session-let-go', 'a');
+      const THEIRS = tokenOf('session-theirs', 'c');
+
+      /** As above, with an access token that names its session, as the auth server's do. */
+      async function signOutUnheardOf(session: Session) {
+        await keep(session);
+        network = offline;
+        const launched = await launch();
+        await asked(() => auth.signOut());
+        expect(state()).toBe('signed out');
+        return launched;
+      }
+
+      // A token still fresh is the client's to remove, once the server cannot be
+      // reached: the session let go is read before that.
+      it.each<[string, Partial<Session['user']>, number]>([
+        ['the same account', {}, -600],
+        ['another account', { id: '22222222-2222-4222-8222-222222222222' }, -600],
+        ['the same account, after a sign-out with a token still fresh', {}, 3000],
+      ])('takes the session it signs in with, to %s, and ends none of it', async (_, who, age) => {
+        const { client } = await signOutUnheardOf(sessionOf(LET_GO, 'refresh-old', age));
+        online();
+        const theirs = sessionOf(THEIRS, 'refresh-theirs', 3600);
+        theirs.user = { ...theirs.user, ...who };
+
+        await anotherTabSignsIn(client, theirs);
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect(auth.session?.access_token).toBe(THEIRS);
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).not.toContain(THEIRS);
+      });
+
+      /** What the mark is there for, still: nobody signed in. */
+      it('still ends the session it let go, come back by a renewal', async () => {
+        const { client } = await signOutUnheardOf(sessionOf(LET_GO, 'refresh-old', -600));
+        const renewed = tokenOf('session-let-go', 'd');
+        network = (request) => {
+          if (isRenewal(request)) return json(200, sessionOf(renewed, 'refresh-new', 3600));
+          return isLogout(request) ? loggedOut() : json(200, []);
+        };
+
+        await aLateRenewalArrives(client);
+
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toContain(renewed);
+        expect(mockKeychain.size).toBe(0);
+      });
+
+      /**
+       * A deletion lets go of the session without asking the server, which
+       * has nothing left to end, and left the mark set as well.
+       */
+      it('takes the session it signs in with after this tab deleted the account', async () => {
+        await keep(sessionOf(LET_GO, 'refresh-old', 3000));
+        network = (request) =>
+          request.url.includes('/rest/v1/rpc/delete_own_account')
+            ? new Response(null, { status: 204 })
+            : json(200, []);
+        const { client } = await launch();
+        await passes(A_MOMENT);
+        await asked(() => auth.deleteAccount());
+        expect(state()).toBe('signed out');
+        online();
+        const theirs = sessionOf(THEIRS, 'refresh-theirs', 3600);
+        theirs.user = { ...theirs.user, id: '22222222-2222-4222-8222-222222222222' };
+
+        await anotherTabSignsIn(client, theirs);
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect(sent.filter(isLogout)).toEqual([]);
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+      });
     });
   });
 

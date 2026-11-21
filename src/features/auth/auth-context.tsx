@@ -147,13 +147,61 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * The server then still honours the session, and a renewal that was under way
  * as it was taken from the keychain can still come through: the client saves
  * what it brings and announces it, and the device would be signed in again
- * with nobody having signed in. A session announced while this is set is
- * therefore not taken, but ended - with the server, now that it answers.
- * Signing in or up, which the person does - with a password, or with a code
- * from an email - clears it, in beforeSigningIn; so must any other way of
- * signing in that is added here.
+ * with nobody having signed in. The session let go (letGo), announced again
+ * while this is set, is therefore not taken, but ended - with the server, now
+ * that it answers. Signing in or up, which the person does - with a password,
+ * or with a code from an email - clears it, in beforeSigningIn; so must any
+ * other way of signing in that is added here.
+ *
+ * Any other session announced meanwhile is taken, and clears it too: on the
+ * web, a sign-in in another tab of the browser is announced in this one as
+ * well. Ending it signed the courier out of that tab, and the server out of
+ * every session of theirs. (Found in review.)
  */
 let signedOutUnheard = false;
+
+/** The session this device let go of when it last set signedOutUnheard; null if it could not be read. */
+let letGo: Session | null = null;
+
+/**
+ * Whether `next`, just announced, is the session let go without the server
+ * hearing of it, come back - by a renewal - and so to be ended rather than
+ * taken. Any other session clears the mark: someone has signed in.
+ */
+function isSessionLetGo(next: Session): boolean {
+  if (!signedOutUnheard) return false;
+  if (letGo === null || sameSession(letGo, next)) return true;
+  signedOutUnheard = false;
+  return false;
+}
+
+/**
+ * Whether two sessions are one, renewed or not: the auth server writes the
+ * session's id into every access token it issues (`session_id`), and keeps it
+ * through every renewal. Taken for one when either cannot be read, as every
+ * session announced after an unheard sign-out was before there was this.
+ */
+function sameSession(one: Session, other: Session): boolean {
+  const id = sessionIdOf(one);
+  const otherId = sessionIdOf(other);
+  return id === null || otherId === null || id === otherId;
+}
+
+/** The session id an access token carries, unverified - it only tells sessions apart - or null. */
+function sessionIdOf(session: Session): string | null {
+  try {
+    const payload = (session.access_token.split('.')[1] ?? '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const claims: unknown = JSON.parse(
+      globalThis.atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')),
+    );
+    const id = (claims as { session_id?: unknown } | null)?.session_id;
+    return typeof id === 'string' ? id : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Sign-outs that are not over yet: the app's own, with what it still does once
@@ -290,7 +338,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // just now. Whoever is signed in stays so for as long as the session is
       // on this device; the client removes it before it announces a sign-out.
       if (next === null && event !== 'SIGNED_OUT' && isSessionStored()) return;
-      if (next && signedOutUnheard) {
+      if (next && isSessionLetGo(next)) {
         // Nobody signed in. Signing out is finished instead: the server is
         // told, and what the client has just saved goes with it.
         void underWay(supabase.auth.signOut()).catch(() => {});
@@ -651,6 +699,9 @@ function signOutHere(forget: () => void, tellServer = true): Promise<void> {
 
 async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise<void> {
   const announcedBefore = signOutsAnnounced;
+  // The session to be let go, read before anything is asked: the client
+  // removes it itself when the server cannot be reached.
+  const leaving = readStoredSession().catch(() => null);
   // The server is asked first: only that ends the session on the courier's
   // other devices as well. But not for long. To be told, it may first need the
   // session renewed, and without a network the client tries that for half a
@@ -677,9 +728,10 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
   // device out all the same - and the client does not see to that by itself:
   // with a token over an hour old and no network, it gives up before it has
   // removed anything.
+  letGo = await leaving;
   signedOutUnheard = true;
   // What the server has not heard the end of, should it be told after all.
-  const left = tellServer ? await readStoredSession().catch(() => null) : null;
+  const left = tellServer ? letGo : null;
   try {
     await clearStoredSession();
   } catch (cause) {
