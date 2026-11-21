@@ -2,12 +2,18 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
-import { messageOf, RpcError } from '@/lib/rpc-error';
+import { messageOf, RpcError, type RefusalReason } from '@/lib/rpc-error';
 import { useRetry } from '@/lib/use-retry';
 
 export type Paged<T> = {
   items: T[];
   error: string | null;
+  /**
+   * Why the latest load of the first page was refused, when the server said -
+   * `account_suspended`, which asking again would not change. Null after a
+   * success, and for failures that were not refusals.
+   */
+  reason: RefusalReason | null;
   isLoading: boolean;
   isRefreshing: boolean;
   isLoadingMore: boolean;
@@ -48,6 +54,7 @@ export function usePaged<T extends { id: string }>(
 ): Paged<T> {
   const [items, setItems] = useState<T[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState<RefusalReason | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -94,10 +101,13 @@ export function usePaged<T extends { id: string }>(
           if (anchor < 0) setHasMore(page.length >= want);
         }
         setError(null);
+        setReason(null);
       } catch (caught) {
         if (request !== latest.current) return false;
+        const refusal = caught instanceof RpcError ? caught.reason : null;
         setError(messageOf(caught));
-        unanswered = !(caught instanceof RpcError && caught.reason !== null);
+        setReason(refusal);
+        unanswered = refusal === null;
       } finally {
         if (request === latest.current) {
           setIsLoading(false);
@@ -161,6 +171,7 @@ export function usePaged<T extends { id: string }>(
   return {
     items,
     error,
+    reason,
     isLoading,
     isRefreshing,
     isLoadingMore,

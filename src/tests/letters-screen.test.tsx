@@ -13,6 +13,7 @@ import {
   type SentLetter,
 } from '@/features/messages/messages';
 import { formatTimestamp } from '@/lib/format';
+import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 // React Native loads its components on first use, and with a cold transform
 // cache the first render compiles them: seconds of work, measured at over five
@@ -72,6 +73,12 @@ jest.mock('@/features/messages/messages', () => {
     },
   };
 });
+
+// Signing out is all the list asks of the session, and only of a suspended
+// account's: there is nothing else left to do with it.
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: () => Promise.resolve() }),
+}));
 
 const mockedFetchInbox = jest.mocked(fetchInbox);
 const mockedFetchSent = jest.mocked(fetchSent);
@@ -388,6 +395,21 @@ describe('LettersScreen', () => {
 
       expect(tryAgainButton()).not.toBeBusy();
       expect(screen.getByText(NOT_LOADED)).toBeOnTheScreen();
+    });
+
+    /**
+     * A suspended account is refused its letters, and would be refused again.
+     * The list offered "Try again" under the refusal. (Found in the browser.)
+     */
+    it('offers the way out, not a try again, to a suspended account', async () => {
+      mockedFetchInbox.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      await renderScreen(<LettersScreen />);
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
     });
 
     it('offers nothing to try again while the first letters are loading, or when there are none', async () => {

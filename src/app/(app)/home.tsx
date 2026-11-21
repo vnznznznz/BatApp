@@ -71,8 +71,11 @@ export default function HomeScreen() {
   const needsCity = profile !== null && !profile.city;
   // An account that is gone can send nothing, whatever the bats last looked
   // like, and asking again changes nothing: what is left is the way out.
-  // (Found in the merged tree.)
-  const canWrite = atHome > 0 && !needsCity && !isGone && Boolean(profile || profileError);
+  // (Found in the merged tree.) Nor can a suspended one, which the server
+  // refuses everything - its bats and counts included. (Found in the browser.)
+  const suspended = roost.reason === 'account_suspended' || badges.reason === 'account_suspended';
+  const closed = isGone || suspended;
+  const canWrite = atHome > 0 && !needsCity && !closed && Boolean(profile || profileError);
 
   // A new city takes a day to count, and until then the bats still leave from
   // the old one. Read against this screen's own clock: the roost stays open
@@ -222,8 +225,13 @@ export default function HomeScreen() {
           <Text variant="caption" tone="danger">
             {roost.error}
           </Text>
+        ) : suspended ? (
+          <Text variant="caption" tone="danger">
+            {badges.error}
+          </Text>
         ) : null}
-        {roostMissing && !isGone ? tryAgain : null}
+        {suspended && !isGone ? <AccountClosedActions /> : null}
+        {roostMissing && !closed ? tryAgain : null}
       </Card>
 
       <View style={styles.write}>

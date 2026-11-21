@@ -8,7 +8,7 @@ import { fetchBadges } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roost/roost';
 import { formatTimestamp } from '@/lib/format';
-import { RpcError } from '@/lib/rpc-error';
+import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 // React Native loads its components on first use, and with a cold transform
 // cache the first render compiles them: seconds of work, measured at over five
@@ -154,6 +154,8 @@ const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
 /** What every request ends with while there is no connection: no answer, and no refusal. */
 const NO_CONNECTION = 'No connection. Check your network and try again.';
 const noConnection = () => new RpcError(NO_CONNECTION, null);
+/** The database's refusal of everything a suspended account asks. */
+const suspended = () => new RpcError(REFUSALS.account_suspended, 'account_suspended');
 
 const PROFILE_NOT_LOADED = 'Your profile could not be loaded. Check your connection.';
 const ACCOUNT_GONE =
@@ -672,6 +674,37 @@ describe('HomeScreen', () => {
 
       expect(await screen.findByText(NO_CONNECTION)).toBeOnTheScreen();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    /**
+     * A suspended account is refused everything, and asking again is refused
+     * again. The roost offered "Try again", and an enabled "Write a letter"
+     * under the bats it had shown before the suspension. (Found in the
+     * browser.)
+     */
+    it('offers no try again and no letter to write once the account is suspended', async () => {
+      await renderScreen(<HomeScreen />);
+      await screen.findByText('3 of 3 at home');
+      mockedFetchRoost.mockRejectedValue(suspended());
+      mockedFetchBadges.mockRejectedValue(suspended());
+
+      await comeBackToRoost();
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(writeButton()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    it('offers no try again to an account suspended before the roost was first loaded', async () => {
+      mockedFetchRoost.mockRejectedValue(suspended());
+      mockedFetchBadges.mockRejectedValue(suspended());
+      await renderScreen(<HomeScreen />);
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(writeButton()).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
     });
 

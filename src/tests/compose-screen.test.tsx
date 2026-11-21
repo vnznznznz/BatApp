@@ -2070,6 +2070,36 @@ describe('ComposeScreen', () => {
     });
 
     /**
+     * A suspended account is refused everything: the bats could not be counted
+     * again, and "Send by bat" stayed on under the count from before. (Found
+     * in the browser.) What the server said is shown, with the way out.
+     */
+    it('holds the letter back, with only the way out, once the account is suspended', async () => {
+      await openLetterTo('user-anna');
+      mockedFetchRoost.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+
+      await act(async () => roostChanged());
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('offers no try again for the friends of a suspended account', async () => {
+      mockedFetchFriendships.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    /**
      * An account that is gone cannot send, and asking again changes nothing.
      * The screen offered "Try again" under "All that is left to do is to sign
      * out", and kept "Send by bat" on. (Found in the merged tree.)

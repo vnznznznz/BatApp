@@ -274,12 +274,18 @@ export default function ComposeScreen() {
             <Text variant="caption" tone="danger">
               {friendships.error}
             </Text>
-            <Button
-              label="Try again"
-              variant="secondary"
-              loading={friendships.isRefreshing}
-              onPress={() => void friendships.refresh()}
-            />
+            {/* A suspended account would only be refused again. (Found in
+                the browser.) */}
+            {friendships.reason === 'account_suspended' ? (
+              <AccountClosedActions />
+            ) : (
+              <Button
+                label="Try again"
+                variant="secondary"
+                loading={friendships.isRefreshing}
+                onPress={() => void friendships.refresh()}
+              />
+            )}
           </View>
         ) : null}
 
@@ -322,9 +328,18 @@ export default function ComposeScreen() {
   // was left, and the letter with it.)
   const needsCity = profile !== null && !profile.city;
   // Nor can an account that is gone send anything, and asking again changes
-  // nothing for it. (Found in the merged tree.)
+  // nothing for it. (Found in the merged tree.) Nor a suspended one, which the
+  // server refuses everything: a count of bats from before the suspension
+  // left "Send by bat" on. (Found in the browser.)
+  const suspension =
+    roost.reason === 'account_suspended'
+      ? roost.error
+      : friendships.reason === 'account_suspended'
+        ? friendships.error
+        : null;
+  const closed = isGone || suspension !== null;
   const canSend =
-    Boolean(route) && atHome > 0 && !needsCity && !isGone && Boolean(profile || profileError);
+    Boolean(route) && atHome > 0 && !needsCity && !closed && Boolean(profile || profileError);
 
   // One way out is enough when both the bats and the profile are missing. It
   // stands by the bats then, next to the button it is in the way of.
@@ -418,7 +433,19 @@ export default function ComposeScreen() {
         >
           {batLine}
         </Text>
-        {roostMissing && !isGone ? tryAgain : null}
+        {suspension !== null && !isGone ? (
+          <View style={styles.failed}>
+            {/* The line above says it already when there are no bats to count. */}
+            {roostMissing ? null : (
+              <Text variant="caption" tone="danger">
+                {suspension}
+              </Text>
+            )}
+            <AccountClosedActions />
+          </View>
+        ) : roostMissing && !closed ? (
+          tryAgain
+        ) : null}
 
         <Button label="Send by bat" loading={sending} disabled={!canSend} onPress={send} />
       </View>

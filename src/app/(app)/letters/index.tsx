@@ -20,6 +20,7 @@ import {
   type ReceivedLetter,
   type SentLetter,
 } from '@/features/messages/messages';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { formatDistance, formatDuration, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { usePaged, type Paged } from '@/lib/use-paged';
@@ -175,8 +176,12 @@ function LetterList<T extends { id: string }>({
             </Text>
             {/* With letters on screen there is a list to pull down. With none,
                 nothing shows that it can be pulled, and the error would say
-                "try again" with no way to. (Found in review.) */}
-            {paged.items.length === 0 ? (
+                "try again" with no way to. (Found in review.) A suspended
+                account would only be refused again: it is shown the way out
+                instead. (Found in the browser.) */}
+            {paged.reason === 'account_suspended' ? (
+              <AccountClosedActions />
+            ) : paged.items.length === 0 ? (
               <Button
                 label="Try again"
                 variant="secondary"
