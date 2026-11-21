@@ -270,8 +270,9 @@ describe('validateBody', () => {
   /**
    * The database cannot hold a NUL, and PostgREST cannot read half of an
    * emoji on its own: such a letter was refused before send_message saw it,
-   * and the courier was told to check their connection - for a letter that
-   * would never go, however often it was sent. (Tried on the local stack.)
+   * taken for a lost answer, and the courier told only that it did not go -
+   * a letter that would never go, however often it was sent. (Tried on the
+   * local stack.)
    */
   it.each([
     ['a NUL', 'Dear Ben,\u0000 the bats are well.'],

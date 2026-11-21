@@ -319,8 +319,9 @@ export async function sendMessage(
     // Postgres's refusal of a NUL, and PostgREST's of half an emoji alone (tried
     // on the local stack), both before send_message ran: the words themselves
     // were refused, with no hint. Taken for a lost answer, the letter was asked
-    // after and sent again in vain, under "Check your connection". A refusal
-    // with a reason is what it is: the letter did not go.
+    // after, and each try ended in "Your letter did not go. It is still here to
+    // send." with nothing to say why. A refusal with a reason is what it is:
+    // the letter did not go, and the words say what to do.
     throw new RpcError(REFUSALS.unsendable_character, 'unsendable_character', { cause: error });
   }
   if (error) throw toRpcError(error, 'Your letter could not be sent. Check your connection.');

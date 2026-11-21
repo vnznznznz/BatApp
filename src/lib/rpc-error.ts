@@ -19,8 +19,9 @@ export const REFUSALS = {
   friendship_not_found: 'That friendship has already ended.',
   empty_message: 'Write something first.',
   message_too_long: `A letter can be at most ${MESSAGE_MAX_LENGTH} characters.`,
-  // Not a hint of the database's: Postgres and PostgREST refuse such a letter
-  // before send_message reads it, by their own codes (see sendMessage). The
+  // Not a hint of the database's: a letter with a NUL or half an emoji in it
+  // is refused by Postgres or PostgREST before send_message reads it, by codes
+  // of their own (see sendMessage), and validateBody keeps it back first. The
   // courier cannot see which character it is, so the words say what it may
   // be, and how to be rid of it.
   unsendable_character:

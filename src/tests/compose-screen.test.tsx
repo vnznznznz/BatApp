@@ -765,7 +765,7 @@ describe('ComposeScreen', () => {
 
     /**
      * A NUL, or half of an emoji, pasted in: the server refuses such a letter
-     * before it looks at it, and the screen said to check the connection, for
+     * before it looks at it, and the screen said only that it did not go, for
      * a letter that could never go. It is kept back here, with what to do.
      */
     it.each([
