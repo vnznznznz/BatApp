@@ -11,7 +11,7 @@ import { BATS_PER_USER } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
 import { announce } from '@/lib/announce';
-import { ACCOUNT_DELETED, farewellDue, forgetFarewell } from '@/lib/farewell';
+import { ACCOUNT_DELETED, farewellDue, forgetFarewell, SIGNED_OUT_ELSEWHERE } from '@/lib/farewell';
 import { CONTACT_URL, openLink } from '@/lib/links';
 import { REFUSALS } from '@/lib/rpc-error';
 
@@ -36,17 +36,20 @@ export default function WelcomeScreen() {
   const { session } = useAuth();
   // After a deletion the app lands here, as after any sign-out: this says
   // that it went through, once. So it does when the session ended because the
-  // account is suspended. (Found in the browser.) Said only to someone signed
-  // out: at the app's start this screen is opened while the stored session is
-  // still held, shows nothing, and is gone again - and the word with it, had
-  // it been said there. (Found in the browser.)
+  // account is suspended (found in the browser), or because it was ended
+  // elsewhere (found in review). Said only to someone signed out: at the
+  // app's start this screen is opened while the stored session is still held,
+  // shows nothing, and is gone again - and the word with it, had it been said
+  // there. (Found in the browser.)
   const [farewell] = useState(farewellDue);
   const words =
     farewell === 'deleted'
       ? ACCOUNT_DELETED
       : farewell === 'suspended'
         ? REFUSALS.account_suspended
-        : null;
+        : farewell === 'ended'
+          ? SIGNED_OUT_ELSEWHERE
+          : null;
   const shown = !session;
   useEffect(() => {
     if (!words || !shown) return;

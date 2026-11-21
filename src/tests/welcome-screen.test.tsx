@@ -4,9 +4,20 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import WelcomeScreen from '@/app/index';
 import { BATS_PER_USER } from '@/constants/config';
-import { forgetFarewell, noteAccountDeleted, noteAccountSuspended } from '@/lib/farewell';
+import { announce } from '@/lib/announce';
+import {
+  forgetFarewell,
+  noteAccountDeleted,
+  noteAccountSuspended,
+  noteSessionEnded,
+} from '@/lib/farewell';
 import { openLink } from '@/lib/links';
 import { REFUSALS } from '@/lib/rpc-error';
+
+jest.mock('@/lib/announce', () => ({ announce: jest.fn() }));
+
+/** What the welcome screen says to a courier whose session was ended elsewhere. */
+const SIGNED_OUT = 'You were signed out. Sign in again to go on.';
 
 const mockPush = jest.fn();
 
@@ -46,6 +57,7 @@ const renderScreen = (ui: ReactElement) =>
 
 beforeEach(() => {
   mockPush.mockClear();
+  jest.mocked(announce).mockClear();
   mockAuth.session = null;
   mockContact.url = 'https://night-courier.example/help';
   forgetFarewell();
@@ -175,6 +187,27 @@ describe('WelcomeScreen', () => {
     await renderScreen(<WelcomeScreen />);
 
     expect(screen.queryByText('Your account has been deleted.')).toBeNull();
+    expect(screen.queryByText(SIGNED_OUT)).toBeNull();
+  });
+
+  /**
+   * Signed out on another device, by the tidy-up after 90 days unused, or by
+   * a new password set elsewhere: the courier landed here without a word.
+   * (Found in review.) Said once, in words true of each of them.
+   */
+  it('says once that the courier was signed out, when the session was ended elsewhere', async () => {
+    noteSessionEnded();
+
+    const first = await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText(SIGNED_OUT)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+    expect(jest.mocked(announce)).toHaveBeenCalledWith(SIGNED_OUT);
+
+    await first.unmount();
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText(SIGNED_OUT)).toBeNull();
   });
 
   it('offers a way to create an account and a way to sign in', async () => {

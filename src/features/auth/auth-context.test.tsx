@@ -429,6 +429,30 @@ describe('opening the app', () => {
   });
 
   /**
+   * Signed out on another device, by the tidy-up after 90 days unused, or by
+   * a new password set elsewhere: the local stack refuses the renewal with
+   * refresh_token_not_found for each, and the courier landed on the welcome
+   * screen with nothing to say why. (Found in review.)
+   */
+  it.each([
+    ['refresh_token_not_found', 'Invalid Refresh Token: Refresh Token Not Found'],
+    ['session_not_found', 'Session from session_id claim in JWT does not exist'],
+  ])(
+    'leaves word for the welcome screen when the session was ended elsewhere: %s',
+    async (code, message) => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+      network = (request) => (isRenewal(request) ? authRefusal(400, code, message) : json(200, []));
+
+      await launch();
+      await passes(1000);
+
+      expect(state()).toBe('signed out');
+      const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+      expect(farewell.farewellDue()).toBe('ended');
+    },
+  );
+
+  /**
    * The keychain is read while the client starts. If the client has spoken by
    * the time the read comes back, the read is the older news.
    */
@@ -516,6 +540,9 @@ describe('while the app is open', () => {
 
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
+    // And the welcome screen it goes to says so.
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.farewellDue()).toBe('ended');
   });
 
   /**
@@ -611,6 +638,43 @@ describe('signing out', () => {
 
     expect(state()).toBe('signed in');
     expect(sent.filter(isLogout)).toHaveLength(1);
+  });
+
+  /**
+   * The session was ended elsewhere, and its renewal refused while the token
+   * still held, when the courier pressed Sign out here. They signed out
+   * themselves: the welcome screen says nothing of a sign-out elsewhere.
+   */
+  it('leaves no word of a session ended elsewhere when the courier signs out here', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', 60));
+    network = (request) => {
+      if (isRenewal(request)) {
+        return authRefusal(
+          400,
+          'refresh_token_not_found',
+          'Invalid Refresh Token: Refresh Token Not Found',
+        );
+      }
+      // As the local stack answers a sign-out whose session is gone.
+      return isLogout(request)
+        ? authRefusal(
+            403,
+            'session_not_found',
+            'Session from session_id claim in JWT does not exist',
+          )
+        : json(200, []);
+    };
+    await launch();
+    await passes(1000);
+    // The client keeps a session whose token still holds, and the word waits.
+    expect(state()).toBe('signed in');
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.farewellDue()).toBe('ended');
+
+    await asked(() => auth.signOut());
+
+    expect(state()).toBe('signed out');
+    expect(farewell.farewellDue()).toBeNull();
   });
 
   it('signs out of the device when the server cannot be reached, and does not complain', async () => {

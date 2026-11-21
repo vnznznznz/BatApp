@@ -18,13 +18,18 @@
  * tries again later, and `toRpcError` words it as "No connection".
  */
 
-import { forgetSuspension, noteAccountSuspended } from '@/lib/farewell';
+import { forgetSuspension, noteAccountSuspended, noteSessionEnded } from '@/lib/farewell';
 
 export type GuardedFetchOptions = {
   /** The publishable key: what a request carries in a token's place when it has no session. */
   anonKey: string;
   /** Whether this device holds a session, whether or not the client can use it right now. */
   isSessionStored: () => boolean;
+  /**
+   * Whether `refreshToken` is that of the session this device holds, and not
+   * of one it has let go of and renews only to tell the server of a sign-out.
+   */
+  isStoredRefreshToken: (refreshToken: string) => boolean;
   /**
    * Renews the session for a request the database refused because its token,
    * `staleToken`, had run out. Resolves with the token to repeat the request
@@ -179,6 +184,10 @@ function saysSuspended(body: string): boolean {
   return [said.code, said.error_code].map(textOf).includes('user_banned');
 }
 
+/** The refresh token a renewal carries, as auth-js sends it; empty when there is none. */
+const refreshTokenOf = (init: RequestInit | undefined) =>
+  textOf(fieldsOf(typeof init?.body === 'string' ? init.body : '').refresh_token);
+
 /**
  * How long an answer asks to be left alone: its `Retry-After`, which counts in
  * seconds or names a time of day. The usual pause when it does not say, or
@@ -216,6 +225,7 @@ function withToken(init: RequestInit | undefined, token: string): RequestInit {
 export function createGuardedFetch({
   anonKey,
   isSessionStored,
+  isStoredRefreshToken,
   renewSession,
   fetch: send = (input, init) => fetch(input, init),
 }: GuardedFetchOptions): typeof fetch {
@@ -245,6 +255,14 @@ export function createGuardedFetch({
       const answer = await exchange(send, input, init);
       if (answer.response.ok) forgetSuspension();
       else if (saysSuspended(answer.body)) noteAccountSuspended();
+      // The session this device holds is over for some other reason: ended on
+      // another device, tidied away after 90 days unused, or by a new password
+      // set elsewhere - the auth server answers each alike. The client signs
+      // the device out, and the welcome screen it lands on said nothing. A
+      // sign-out made on this device takes the word back (auth-context.tsx).
+      else if (endsTheSession(answer.body) && isStoredRefreshToken(refreshTokenOf(init))) {
+        noteSessionEnded();
+      }
       // Anything but a new session, or the auth server's own word that this
       // one is over, is a renewal that has not happened yet - and one that
       // asking again at once would not make happen.
