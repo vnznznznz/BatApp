@@ -26,6 +26,11 @@ type Answer = { data: Row | null; error: { message: string } | null };
 /** Which rows a request is about: the table, and the column and value they are picked by. */
 type Asked = { table: string; where: [column: string, value: unknown] };
 
+/** A further condition on the row a change is made to: a column's value, or PostgREST's `or`. */
+type Condition = [kind: 'eq', column: string, value: unknown] | [kind: 'or', filters: string];
+
+type Changed = { data: { id: string }[] | null; error: { message: string } | null };
+
 /**
  * The database, as far as this hook asks it: one row read, and one row changed.
  * Each is handed what was asked for, so that a test can say whose row it was -
@@ -34,14 +39,18 @@ type Asked = { table: string; where: [column: string, value: unknown] };
  */
 const mockDatabase = {
   read: jest.fn<Promise<Answer>, [asked: Asked & { columns: string }]>(),
+  /** A change awaited as it is: answered with whether it failed, and nothing else. */
   change: jest.fn<
     Promise<{ error: { message: string } | null }>,
     [asked: Asked & { values: object }]
   >(),
-  /** A change made only on a second condition, answered with the rows it changed. */
-  changeIf: jest.fn<
-    Promise<{ data: { id: string }[] | null; error: { message: string } | null }>,
-    [asked: Asked & { values: object; condition: Asked['where']; columns: string }]
+  /**
+   * A change asked for the rows it changed: made only where its conditions
+   * hold as well, so it can change none at all.
+   */
+  changeRows: jest.fn<
+    Promise<Changed>,
+    [asked: Asked & { values: object; conditions: Condition[]; columns: string }]
   >(),
 };
 
@@ -54,16 +63,25 @@ jest.mock('@/lib/supabase', () => ({
         }),
       }),
       update: (values: object) => ({
-        // Awaited as it is, it is a change to the row picked; given a second
-        // condition, it changes the row only if that holds too.
-        eq: (...where: Asked['where']) => ({
-          then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
-            mockDatabase.change({ table, values, where }).then(resolve, reject),
-          eq: (...condition: Asked['where']) => ({
+        eq: (...where: Asked['where']) => {
+          const conditions: Condition[] = [];
+          const change = {
+            // Awaited as it is, it is a change to the row picked.
+            then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+              mockDatabase.change({ table, values, where }).then(resolve, reject),
+            eq: (column: string, value: unknown) => {
+              conditions.push(['eq', column, value]);
+              return change;
+            },
+            or: (filters: string) => {
+              conditions.push(['or', filters]);
+              return change;
+            },
             select: (columns: string) =>
-              mockDatabase.changeIf({ table, values, where, condition, columns }),
-          }),
-        }),
+              mockDatabase.changeRows({ table, values, where, conditions, columns }),
+          };
+          return change;
+        },
       }),
     }),
   },
@@ -136,11 +154,16 @@ const notThere: Answer = { data: null, error: null };
 const failed: Answer = { data: null, error: { message: 'TypeError: Network request failed' } };
 
 const COULD_NOT_LOAD = 'Your profile could not be loaded. Check your connection.';
+const GONE =
+  'This account no longer exists: it has been deleted or removed. ' +
+  'All that is left to do is to sign out.';
 
 beforeEach(() => {
   mockDatabase.read.mockReset();
   mockDatabase.change.mockReset().mockResolvedValue({ error: null });
-  mockDatabase.changeIf.mockReset().mockResolvedValue({ data: [], error: null });
+  mockDatabase.changeRows
+    .mockReset()
+    .mockResolvedValue({ data: [{ id: 'user-anna' }], error: null });
   mockSignedIn.userId = 'user-anna';
   mockScreen.inFront = true;
   jest.mocked(AppState.addEventListener).mockImplementation((_type, listener) => {
@@ -396,8 +419,8 @@ describe('useProfile', () => {
 
       await act(() => result.current.updateCity(2911298));
 
-      expect(mockDatabase.change.mock.calls).toEqual([
-        [{ ...ownRow(), values: { city_id: 2911298 } }],
+      expect(mockDatabase.changeRows.mock.calls).toEqual([
+        [{ ...ownRow(), values: { city_id: 2911298 }, conditions: [], columns: 'id' }],
       ]);
       expect(mockDatabase.read).toHaveBeenLastCalledWith({ ...ownRow(), columns: COLUMNS });
       expect(result.current.profile?.city?.name).toBe('Hamburg');
@@ -414,7 +437,7 @@ describe('useProfile', () => {
       ['saves nothing, and says so, once a letter has come or gone', [], false],
     ])('asked to save a city before the first letter, %s', async (_, changed, saved) => {
       mockDatabase.read.mockResolvedValue(found({ has_corresponded: false }));
-      mockDatabase.changeIf.mockResolvedValue({ data: changed, error: null });
+      mockDatabase.changeRows.mockResolvedValue({ data: changed, error: null });
       const { result } = await renderHook(() => useProfile());
       await waitFor(() => expect(result.current.profile?.hasCorresponded).toBe(false));
 
@@ -425,12 +448,12 @@ describe('useProfile', () => {
 
       expect(answer).toBe(saved);
       expect(mockDatabase.change).not.toHaveBeenCalled();
-      expect(mockDatabase.changeIf.mock.calls).toEqual([
+      expect(mockDatabase.changeRows.mock.calls).toEqual([
         [
           {
             ...ownRow(),
             values: { city_id: 2911298 },
-            condition: ['has_corresponded', false],
+            conditions: [['eq', 'has_corresponded', false]],
             columns: 'id',
           },
         ],
@@ -449,7 +472,55 @@ describe('useProfile', () => {
       });
 
       expect(answer).toBe(true);
-      expect(mockDatabase.changeIf).not.toHaveBeenCalled();
+      expect(mockDatabase.changeRows.mock.calls[0]?.[0].conditions).toEqual([]);
+    });
+
+    /**
+     * An account deleted on another device goes on signing this one in for up
+     * to an hour, and a save to it changes no row: the database calls that no
+     * error. Taken for a letter that came in between, the picker told a
+     * courier who never had one that a letter had gone to or from them, and
+     * a save without a condition said it had saved. (Found in review.)
+     */
+    it.each([
+      ['a city', undefined],
+      ['a city before the first letter', { beforeFirstLetter: true }],
+    ])('says the account is gone when %s is saved to an account deleted since', async (_, how) => {
+      mockDatabase.read
+        .mockResolvedValueOnce(found({ has_corresponded: false }))
+        .mockResolvedValue(notThere);
+      mockDatabase.changeRows.mockResolvedValue({ data: [], error: null });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile).not.toBeNull());
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.updateCity(2911298, how).then(
+          (saved) => ({ saved }),
+          (error: unknown) => error,
+        );
+      });
+
+      expect(outcome).toEqual(new Error(GONE));
+      expect(result.current.isGone).toBe(true);
+    });
+
+    /** A save that changed nothing has not saved, whatever else is true. */
+    it('does not say a city is saved when the save changed no row of an account still there', async () => {
+      mockDatabase.read.mockResolvedValue(found());
+      mockDatabase.changeRows.mockResolvedValue({ data: [], error: null });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile).not.toBeNull());
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.updateCity(2911298).then(
+          (saved) => ({ saved }),
+          (error: unknown) => error,
+        );
+      });
+
+      expect(outcome).toEqual(new Error('That city could not be saved.'));
     });
 
     /**
@@ -475,7 +546,7 @@ describe('useProfile', () => {
 
       expect(outcome).toEqual(new Error('Your session has ended. Sign in again.'));
       expect(mockDatabase.change).not.toHaveBeenCalled();
-      expect(mockDatabase.changeIf).not.toHaveBeenCalled();
+      expect(mockDatabase.changeRows).not.toHaveBeenCalled();
     });
 
     it('saves to the row of the courier who is signed in, whoever that is', async () => {
@@ -489,7 +560,9 @@ describe('useProfile', () => {
 
       expect(mockDatabase.change.mock.calls).toEqual([
         [{ ...ownRow('user-ben'), values: { display_name: 'Ben' } }],
-        [{ ...ownRow('user-ben'), values: { city_id: 2911298 } }],
+      ]);
+      expect(mockDatabase.changeRows.mock.calls).toEqual([
+        [{ ...ownRow('user-ben'), values: { city_id: 2911298 }, conditions: [], columns: 'id' }],
       ]);
     });
 
@@ -505,10 +578,10 @@ describe('useProfile', () => {
         'That city could not be saved.',
       ],
     ])('says so when %s could not be saved, and keeps what it had', async (_, save, words) => {
+      const refused = { message: 'TypeError: Network request failed' };
       mockDatabase.read.mockResolvedValue(found());
-      mockDatabase.change.mockResolvedValue({
-        error: { message: 'TypeError: Network request failed' },
-      });
+      mockDatabase.change.mockResolvedValue({ error: refused });
+      mockDatabase.changeRows.mockResolvedValue({ data: null, error: refused });
       const { result } = await renderHook(() => useProfile());
       await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
 
@@ -550,10 +623,6 @@ describe('useProfile', () => {
    * to advise signing out and in again, which cannot bring anything back.
    */
   describe('when the account has gone', () => {
-    const GONE =
-      'This account no longer exists: it has been deleted or removed. ' +
-      'All that is left to do is to sign out.';
-
     it('says that the account no longer exists', async () => {
       mockDatabase.read.mockResolvedValue(notThere);
 

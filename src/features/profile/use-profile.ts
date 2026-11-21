@@ -63,6 +63,10 @@ const SELECT =
   'cities!profiles_city_id_fkey(id, name, country_code, qualifier), ' +
   'settled:cities!profiles_settled_city_id_fkey(id, name, country_code, qualifier)';
 
+const GONE =
+  'This account no longer exists: it has been deleted or removed. ' +
+  'All that is left to do is to sign out.';
+
 const toCity = (row: CityRow): ProfileCity => ({
   id: row.id,
   name: row.name,
@@ -114,6 +118,12 @@ export function useProfile() {
   // newer one has replaced - the old name, after the new one was saved.
   const latest = useRef(0);
 
+  // What the newest answer was: the profile, or null for an account that is
+  // gone; undefined until one has come. A save that changed no row reads it
+  // after loading again, to tell an account that has gone from one that is
+  // still there.
+  const shown = useRef<Profile | null | undefined>(undefined);
+
   // Resolves with whether the load is worth making again unasked: it failed,
   // and it is still the newest.
   const attempt = useCallback(async () => {
@@ -132,7 +142,8 @@ export function useProfile() {
     if (failure) {
       setError('Your profile could not be loaded. Check your connection.');
     } else if (data) {
-      setProfile(toProfile(data));
+      shown.current = toProfile(data);
+      setProfile(shown.current);
       setIsGone(false);
       setError(null);
     } else {
@@ -140,12 +151,10 @@ export function useProfile() {
       // the account has gone since: deleted on another device, or removed.
       // This device's sign-in goes on working for up to an hour all the same,
       // and what it showed of the profile is no longer true.
+      shown.current = null;
       setProfile(null);
       setIsGone(true);
-      setError(
-        'This account no longer exists: it has been deleted or removed. ' +
-          'All that is left to do is to sign out.',
-      );
+      setError(GONE);
     }
     setIsLoading(false);
     return failure !== null;
@@ -184,8 +193,10 @@ export function useProfile() {
    * can come or go between its question and the answer. If one did, nothing
    * is saved and this resolves with false.
    *
-   * With nobody signed in there is no row to save to, and that is an error,
-   * not a false: the picker takes false for a letter that came in between.
+   * With nobody signed in, or with the account gone - deleted on another
+   * device while the picker asked - there is no row to save to, and that is
+   * an error, not a false: the picker takes false for a letter that came in
+   * between. (Found in review.)
    */
   const updateCity = useCallback(
     async (cityId: number, { beforeFirstLetter = false }: { beforeFirstLetter?: boolean } = {}) => {
@@ -194,17 +205,20 @@ export function useProfile() {
       // server's, so a client cannot shorten its own flights.
       const change = supabase.from('profiles').update({ city_id: cityId }).eq('id', userId);
 
-      let saved = true;
-      if (beforeFirstLetter) {
-        const { data, error: failure } = await change.eq('has_corresponded', false).select('id');
-        if (failure) throw new Error('That city could not be saved.');
-        saved = (data ?? []).length > 0;
-      } else {
-        const { error: failure } = await change;
-        if (failure) throw new Error('That city could not be saved.');
-      }
+      // Answered with the row it changed: a change that reaches no row - an
+      // account deleted since, a letter in between - is no error to the
+      // database.
+      const { data, error: failure } = await (
+        beforeFirstLetter ? change.eq('has_corresponded', false) : change
+      ).select('id');
+      if (failure) throw new Error('That city could not be saved.');
       await load();
-      return saved;
+      if ((data ?? []).length > 0) return true;
+
+      // Loaded again, the row tells which it was.
+      if (shown.current === null) throw new Error(GONE);
+      if (!beforeFirstLetter) throw new Error('That city could not be saved.');
+      return false;
     },
     [userId, load],
   );
