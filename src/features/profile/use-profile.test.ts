@@ -159,6 +159,13 @@ const found = (overrides: Partial<Row> = {}): Answer => ({ data: row(overrides),
 const notThere: Answer = { data: null, error: null };
 const failed: Answer = { data: null, error: { message: 'TypeError: Network request failed' } };
 
+/** An answer the test hands over by hand, so that the hook waits for it meanwhile. */
+function answerLater() {
+  let arrive: (answer: Answer) => void = () => {};
+  const promise = new Promise<Answer>((resolve) => (arrive = resolve));
+  return { promise, arrive: (answer: Answer) => arrive(answer) };
+}
+
 const COULD_NOT_LOAD = 'Your profile could not be loaded. Check your connection.';
 const GONE =
   'This account no longer exists: it has been deleted or removed. ' +
@@ -592,6 +599,122 @@ describe('useProfile', () => {
 
       expect(outcome).toEqual(new Error(GONE));
       expect(result.current.isGone).toBe(true);
+    });
+
+    /**
+     * Which of the two a save that changed no row was - a condition that no
+     * longer held, or an account gone since - is told by the profile read
+     * again after it. That read can get no answer, or be overtaken by a newer
+     * one that has not answered yet; the profile from before the question was
+     * then taken for it, and an account deleted since was asked again as if a
+     * letter had come in between. (Found in review.)
+     */
+    describe('when nothing read after a save that changed no row tells why', () => {
+      const unchecked = new Error('That city could not be saved.');
+
+      /**
+       * Starts a save before the first letter that will change no row. What
+       * came of it is handed back in a box: an async function would wait for
+       * a promise it returned.
+       */
+      async function saveChangingNothing(hook: ReturnType<typeof useProfile>) {
+        mockDatabase.changeRows.mockResolvedValue({ data: [], error: null });
+        let outcome: Promise<unknown> = Promise.resolve();
+        await act(async () => {
+          outcome = hook.updateCity(2911298, { beforeFirstLetter: true }).then(
+            (saved) => ({ saved }),
+            (error: unknown) => error,
+          );
+        });
+        return { outcome };
+      }
+
+      it('says the city could not be saved when the read got no answer', async () => {
+        mockDatabase.read
+          .mockResolvedValueOnce(found({ has_corresponded: false }))
+          .mockResolvedValue(failed);
+        const { result } = await renderHook(() => useProfile());
+        await waitFor(() => expect(result.current.profile).not.toBeNull());
+
+        const { outcome } = await saveChangingNothing(result.current);
+
+        expect(await outcome).toEqual(unchecked);
+        expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+      });
+
+      it('says the city could not be saved when a newer read took its place and has not answered', async () => {
+        const reread = answerLater();
+        const newer = answerLater();
+        mockDatabase.read
+          .mockResolvedValueOnce(found({ has_corresponded: false }))
+          .mockReturnValueOnce(reread.promise)
+          .mockReturnValueOnce(newer.promise);
+        const { result } = await renderHook(() => useProfile());
+        await waitFor(() => expect(result.current.profile).not.toBeNull());
+
+        const { outcome } = await saveChangingNothing(result.current);
+        expect(mockDatabase.read).toHaveBeenCalledTimes(2);
+        // The app comes back to the front while the read is out, and loads again.
+        await appBecomes('active');
+        expect(mockDatabase.read).toHaveBeenCalledTimes(3);
+        await act(async () => reread.arrive(notThere));
+
+        expect(await outcome).toEqual(unchecked);
+        await act(async () => newer.arrive(notThere));
+        expect(result.current.isGone).toBe(true);
+      });
+
+      /** A read made after the save tells it, whichever of them that is. */
+      it('goes by a newer read that took its place once that one has answered', async () => {
+        const reread = answerLater();
+        const newer = answerLater();
+        mockDatabase.read
+          .mockResolvedValueOnce(found({ has_corresponded: false }))
+          .mockReturnValueOnce(reread.promise)
+          .mockReturnValueOnce(newer.promise);
+        const { result } = await renderHook(() => useProfile());
+        await waitFor(() => expect(result.current.profile).not.toBeNull());
+
+        const { outcome } = await saveChangingNothing(result.current);
+        await appBecomes('active');
+        await act(async () => newer.arrive(notThere));
+        await act(async () => reread.arrive(found({ has_corresponded: false })));
+
+        expect(await outcome).toEqual(new Error(GONE));
+        expect(result.current.isGone).toBe(true);
+      });
+
+      /**
+       * A read made while the save was out may have read the row before the
+       * save reached it - and before the account was deleted - so it tells
+       * nothing about the save, though it answered after the question.
+       */
+      it('does not go by a read made while the save was out', async () => {
+        const meanwhile = answerLater();
+        mockDatabase.read
+          .mockResolvedValueOnce(found({ has_corresponded: false }))
+          .mockReturnValueOnce(meanwhile.promise)
+          .mockResolvedValue(failed);
+        let answerSave: (changed: Changed) => void = () => {};
+        mockDatabase.changeRows.mockReturnValue(
+          new Promise<Changed>((resolve) => (answerSave = resolve)),
+        );
+        const { result } = await renderHook(() => useProfile());
+        await waitFor(() => expect(result.current.profile).not.toBeNull());
+
+        let outcome: Promise<unknown> = Promise.resolve();
+        await act(async () => {
+          outcome = result.current.updateCity(2911298, { beforeFirstLetter: true }).then(
+            (saved) => ({ saved }),
+            (error: unknown) => error,
+          );
+        });
+        await appBecomes('active');
+        await act(async () => meanwhile.arrive(found({ has_corresponded: false })));
+        await act(async () => answerSave({ data: [], error: null }));
+
+        expect(await outcome).toEqual(unchecked);
+      });
     });
 
     /** A save that changed nothing has not saved, whatever else is true. */
