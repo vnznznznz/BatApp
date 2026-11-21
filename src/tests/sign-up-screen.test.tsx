@@ -741,19 +741,40 @@ describe('SignUpScreen', () => {
         expect(screen.queryByText(/I forgot my password/)).toBeNull();
       });
 
+      /**
+       * Said aloud alone, the form looked just as it had before signing up,
+       * and someone who reads the screen had no word that the account was
+       * gone. (Found in review, in the browser.) Drawn above the form, until
+       * the courier signs up again.
+       */
       it('starts over: removes the account, and goes back to the form with what was typed', async () => {
+        const STARTED_OVER = 'The account has been removed. You can sign up again.';
         await confirmedUnfinished();
 
         await user.press(button('Start over'));
 
         expect(mockRemoveUnfinishedAccount).toHaveBeenCalledTimes(1);
         expect(mockSignOut).not.toHaveBeenCalled();
-        expect(mockedAnnounce).toHaveBeenLastCalledWith(
-          'The account has been removed. You can sign up again.',
-        );
+        expect(mockedAnnounce).toHaveBeenLastCalledWith(STARTED_OVER);
+        expect(screen.getByText(STARTED_OVER)).toBeOnTheScreen();
         expect(screen.getByLabelText('Username').props.value).toBe('AnnaWeber');
         expect(screen.getByLabelText('Email').props.value).toBe('anna@example.com');
         expect(button('Create account')).toBeOnTheScreen();
+      });
+
+      it('says the account was removed until the courier signs up again', async () => {
+        const STARTED_OVER = 'The account has been removed. You can sign up again.';
+        await confirmedUnfinished();
+        await user.press(button('Start over'));
+        const NO_CONNECTION = 'No connection. Check your network and try again.';
+        mockSignUp.mockRejectedValue(new Error(NO_CONNECTION));
+
+        await user.type(screen.getByLabelText('Password'), 'another-password');
+        await user.press(button('Create account'));
+
+        // Still on the form: what it says now is why this try failed.
+        expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+        expect(screen.queryByText(STARTED_OVER)).toBeNull();
       });
 
       it('stays, held, and says why, when the account cannot be removed', async () => {

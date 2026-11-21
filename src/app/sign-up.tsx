@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { Button } from '@/components/button';
+import { Card } from '@/components/card';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { TextField } from '@/components/text-field';
@@ -49,6 +50,11 @@ export default function SignUpScreen() {
   const [sentTo, setSentTo] = useState<string | null>(resumed?.email ?? null);
   // Until the courier goes back to the form from it.
   const [resuming, setResuming] = useState(resumed !== null);
+  // What the code screen has to say on the way back to the form: the account
+  // has been removed, after Start over. Read aloud alone, it reached nobody
+  // who reads the screen, and the form looked as it had before. (Found in
+  // review.) Until the courier signs up again.
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The fields the keyboard's "next" key moves on to, in order.
   const usernameField = useRef<TextInput>(null);
@@ -75,6 +81,7 @@ export default function SignUpScreen() {
     };
     setErrors(next);
     setFormError(null);
+    setNotice(null);
     // Asked, not checked: nobody's age is known or stored. But the rule is
     // said where it applies, and agreeing to it is a deliberate act. Said aloud
     // whatever else is wrong - the fields say their own errors - so a screen
@@ -118,9 +125,10 @@ export default function SignUpScreen() {
         reason="signed-up"
         details={{ email, password, username, displayName }}
         resumed={resuming}
-        onBack={() => {
+        onBack={(said) => {
           setResuming(false);
           setSentTo(null);
+          setNotice(said ?? null);
         }}
       />
     );
@@ -136,6 +144,12 @@ export default function SignUpScreen() {
       <Text variant="caption" tone="secondary" style={styles.subtitle}>
         {BATS_PER_USER} bats come with the account. There is nothing to buy.
       </Text>
+
+      {notice ? (
+        <Card style={styles.notice}>
+          <Text variant="body">{notice}</Text>
+        </Card>
+      ) : null}
 
       <View style={styles.form}>
         <TextField
@@ -259,6 +273,7 @@ const AGE_RULE =
 const styles = StyleSheet.create({
   screen: { paddingVertical: Spacing.xl },
   subtitle: { marginTop: Spacing.xs },
+  notice: { marginTop: Spacing.lg },
   form: { gap: Spacing.md, marginTop: Spacing.xl },
   rules: { lineHeight: 19 },
 });
