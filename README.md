@@ -279,8 +279,11 @@ Do not answer the report with `npm audit fix`:
 
 What can be taken safely is a fix that lies within the versions a package's dependents already
 ask for: `npm update <package>` for that package alone, then `npm run verify` and the three
-bundles (`npx expo export --platform web`, `ios` and `android`). The rest waits for the next Expo
-SDK, and is worth looking at again then.
+bundles (`npx expo export --platform web`, `ios` and `android`). On 21 November 2026 that was done
+for shell-quote, node-forge, @xmldom/xmldom, compression, js-yaml, source-map-js, brace-expansion
+and zod. Some of what is left would go with newer releases of Expo's command-line tools and of the
+linter's parser that lie within the versions already asked for; those have not been tried. The
+rest waits for the next Expo SDK, and is worth looking at again then.
 
 ## Licence and intent
 
