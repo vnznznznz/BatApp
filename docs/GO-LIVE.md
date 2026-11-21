@@ -1151,10 +1151,10 @@ transits it, so a content-free push keeps message text out of a US processor.
   ```
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
-  README has the command with the values filled in. It was written before `LAUNCH_STATE` existed,
-  and as it stands there the build refuses it ("set LAUNCH_STATE"): with the first rebuild, add
-  `LAUNCH_STATE=before-launch` to the command there, and a line saying that a live build also
-  needs `DPA_SIGNED` (below).
+  README gives the same command with `…` for the four details, and says when `LAUNCH_STATE=live`
+  and `DPA_SIGNED` are due (below). Since 21 November 2026 it no longer has the operator's name,
+  postal address and email address written out: they stand on the published privacy policy, in
+  section 1, and nowhere else in either repository.
 
   **Check that it arrived,** a few minutes after the push. The pages are what people read, not
   the repository:
