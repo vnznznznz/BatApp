@@ -1,4 +1,4 @@
-import { MESSAGE_MAX_LENGTH } from '@/constants/config';
+import { MESSAGE_MAX_LENGTH, VISIBLE_CHARACTER_PATTERN } from '@/constants/config';
 import { toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 
@@ -222,7 +222,10 @@ export function asOneLine(text: string): string {
 /** Mirrors the database's checks, so a mistake is caught before a round trip. */
 export function validateBody(text: string): string | null {
   const body = prepareBody(text);
-  if (!body) return 'Write something first.';
+  // Something to see, as the database asks: trimming leaves a zero-width
+  // space, a soft hyphen or a blank braille pattern, and a letter of nothing
+  // else passed here only to be refused by the server.
+  if (!VISIBLE_CHARACTER_PATTERN.test(body)) return 'Write something first.';
   if (letterLength(body) > MESSAGE_MAX_LENGTH) {
     return `A letter can be at most ${MESSAGE_MAX_LENGTH} characters.`;
   }

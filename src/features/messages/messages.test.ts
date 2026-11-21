@@ -220,6 +220,23 @@ describe('validateBody', () => {
     expect(validateBody('Hello')).toBeNull();
   });
 
+  /**
+   * JavaScript's trim keeps these, so a letter of nothing else passed here
+   * and was refused by the server, which asks for something to see.
+   */
+  it.each([
+    ['a zero-width space', '\u200B'],
+    ['a soft hyphen', '\u00AD'],
+    ['a blank braille pattern', '\u2800'],
+    ['all three, between line breaks', '\n\u200B\u00AD\u2800\n'],
+  ])('refuses a letter of nothing but %s, in the same words', (_, body) => {
+    expect(validateBody(body)).toBe(REFUSALS.empty_message);
+  });
+
+  it('accepts a letter with something to see among them', () => {
+    expect(validateBody('\u200BDear Ben,\u2800\n\nThe bats are well.\u00AD')).toBeNull();
+  });
+
   it('accepts a letter of exactly the maximum length', () => {
     expect(validateBody('a'.repeat(MESSAGE_MAX_LENGTH))).toBeNull();
   });
