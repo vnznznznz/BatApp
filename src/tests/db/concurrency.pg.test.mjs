@@ -1419,6 +1419,40 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
     });
 
     /**
+     * A sign-up more than a week old whose last code is not: that code gives
+     * it another week. The tidy-up chooses its sign-ups by their last code
+     * too, so it neither deletes this one nor waits for its rows - a wait that
+     * anything holding them would have kept the whole night's run in.
+     * (Found in review.)
+     */
+    it('neither deletes nor waits for a sign-up whose last code is under a week old', async () => {
+      const recent = await unconfirmedSignUp('recent');
+      await admin.query(
+        `update auth.users
+         set created_at = now() - interval '10 days', confirmation_sent_at = now() - interval '6 days'
+         where id = $1`,
+        [recent],
+      );
+      const holder = await connect();
+      const tidier = await connect();
+
+      await holder.query('begin');
+      await holder.query(`select 1 from public.bats where owner_id = $1 limit 1 for update`, [
+        recent,
+      ]);
+      const tidying = tidyUp(tidier);
+      const first = await Promise.race([
+        tidying.then(() => 'finished'),
+        pause(2000).then(() => 'still waiting'),
+      ]);
+      await holder.query('commit');
+      await tidying;
+
+      assert.equal(first, 'finished');
+      assert.equal(await accountsLeft([recent]), 1);
+    });
+
+    /**
      * If Postgres does stop the tidy-up, only the step it was in is undone. The
      * whole night's run used to go with it - old sign-in records, idle
      * sessions, sign-up names all stayed another day - and nothing said so.
