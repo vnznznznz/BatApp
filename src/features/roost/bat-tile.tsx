@@ -66,7 +66,9 @@ export function BatTile({ bat, now, onPress, active = true }: BatTileProps) {
       <View style={styles.detail}>
         {flight ? (
           <>
-            <Text variant="caption" tone="secondary" center numberOfLines={1}>
+            {/* Two lines: a tile is a third of a narrow phone, and on one line
+                "to Bruno Mond" read "to Bruno M…". (Found in the browser.) */}
+            <Text variant="caption" tone="secondary" center numberOfLines={2}>
               to {flight.recipient.displayName}
             </Text>
             <Text variant="mono" center numberOfLines={1} adjustsFontSizeToFit>

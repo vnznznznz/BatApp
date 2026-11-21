@@ -56,6 +56,17 @@ describe('BatTile', () => {
     expect(screen.queryByTestId('flying-bat', HIDDEN)).toBeNull();
   });
 
+  /**
+   * A tile is a third of a narrow phone. On one line "to Bruno Mond" read "to
+   * Bruno M…", and a long name was cut to its first letters. (Found in the
+   * browser at 360 px.)
+   */
+  it('lets the name of whom the bat flies to take a second line', async () => {
+    await render(<BatTile bat={flying} now={NOW} />);
+
+    expect(screen.getByText('to Anna Weber').props.numberOfLines).toBe(2);
+  });
+
   /** The bar is drawing, not news: the tile already says when the bat lands. */
   it('keeps one description for a screen reader, with when the bat lands', async () => {
     await render(<BatTile bat={flying} now={NOW} />);
