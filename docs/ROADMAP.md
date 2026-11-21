@@ -346,9 +346,12 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
   server five seconds at most and tells it after all once it can - at the latest at the next
   sign-in, while the app stays open - and every way of signing in waits for a sign-out still under
   way, and says so after five seconds, under the buttons that check a code as well. On the web a
-  sign-in in another tab is no longer taken for the session let go, and ended.
+  sign-in in another tab is no longer taken for the session let go, and ended. A session ended
+  elsewhere - signed out on another device, unused for 90 days, a password set anew - is told on
+  the welcome screen: "You were signed out. Sign in again to go on."
 - **Loading.** A load that got no answer is made again by itself, a screen with nothing to show has
-  Try again, a long first load says it is still trying, and Try again renews the session first.
+  Try again, a long first load says it is still trying, and Try again renews the session first. A
+  name saved on the profile shows at once, before the profile is read back.
 - **Accounts that end.** The database refuses a suspended account at once. The screens give an
   account that is gone or suspended the way out, Sign out and Contact; deleting an account says
   that it happened; signing in to a suspended account is answered as a wrong password. Words that
@@ -359,30 +362,40 @@ review" in [`ARCHITECTURE.md`](ARCHITECTURE.md). Done:
   makes way for the courier's; and confirming an address takes its password away until the
   courier's own is set (migration `20261121160000`). A code whose check got no answer, refused
   later, says that the address may be confirmed and how to go on; the forms say what Start over and
-  Sign out did; and on the web a code's sign-in in one tab holds the way in in the others too.
+  Sign out did; and on the web a code's sign-in in one tab holds the way in in the others too. "I
+  forgot my password" starts the reset with the address typed to sign in, or the one the code
+  went to.
 - **Database.** One lock order for everything that ends an account, the nightly tidy-up included,
   and a gate for each courier; twenty new friend requests an hour per account, friends listed
   before requests, and a Withdraw that cannot end a friendship; bounds on what a sign-in carries,
   on a city search, and on what a name or a letter may be; a letter read in the one order; and a
   send that answers its repeat with the letter that went, with `sent_letter` to ask what became of
-  one.
+  one. The tidy-up counts an unconfirmed sign-up's week from the last code sent to it, and forgets
+  pg_cron's runs that never ended a week after they began (`20261121180000_tidy_up_ages.sql`).
 - **Compose.** A letter not sent yet survives leaving the screen, a send outlives its screen, a
   send without an answer is asked after rather than taken for failed, and changed words wait until
   it is known what became of the first. Write back, Write on the friends list and "Write a letter"
   on a courier's page name a former friend, and a name in the route is shown only if it could be
-  someone's.
+  someone's. A letter with a NUL or half an emoji in it, which the server refuses before it reads
+  the letter, is kept back with words that say what to do; every try of it used to end in "Your
+  letter did not go." with no reason.
 - **Cities.** Saints' towns and names with brackets and slashes are found as people type them; 28
   pairs of towns of the same name are told apart wherever a city is shown; the sixteen rows nothing
   could find are settled, and the table holds 4,308 cities; a move counts at once until the first
   letter; and the city picker asks before it saves.
 - **Forms and layout.** The forms stay reachable above the keyboard on iOS and Android and check
-  what the server checks; a link that leads nowhere lands on a page of the app's own; rows keep
-  names and routes whole at a narrow phone's width, and so do the letters list and a letter's
-  flight path; a distance keeps its "km" on its line.
+  what the server checks; an empty field is asked for in the words of its form - "Enter your
+  password." at sign-in, "Enter their username." on Friends; a link that leads nowhere lands on a
+  page of the app's own; rows keep names and routes whole at a narrow phone's width, and so do the
+  letters list and a letter's flight path; a distance keeps its "km" on its line.
 - **Tests.** The suite runs again compiled by the React Compiler, in CI, and what the compiler
   leaves out is listed; presses go through the real controls; the scheduled jobs run in a test; the
-  races fail CI when there is no database; a focused test fails lint; and the ages every document
-  gives are held to the two constants.
+  races fail CI when there is no database; a focused test fails lint; the ages every document
+  gives are held to the two constants; and the profile's credit to GeoNames is tested, as the
+  city picker's was.
+- **The web pages.** The build refuses to write the pages, with the operator's details, anywhere
+  inside this repository, and refuses every way a page could fetch something from another site,
+  naming what it found.
 
 Verified on 187439c, the merged tree before the dependency updates of 21 November 2026: the
 typecheck, lint and format check; 2,095 app tests, run as written and again compiled; 554 database
@@ -391,17 +404,22 @@ last round of fixes after it - sign-outs the server did not hear of, tabs on the
 after a lost answer, the forms' notices, the lines of the letters list and the flight path, Write
 naming a friend - was checked on its own branch with the same commands, ending at 555 database
 tests (c0f80fc); and the merged tree, 236c734, at 2,179 app tests, as written and again compiled,
-and the 90 of the scripts. The groups also checked their parts against the local stack, and the
-screens in the web build. None of it has been run on a phone.
+and the 90 of the scripts. A last audit of every finding against 236c734 left some open; the fixes
+for them - a session ended elsewhere told, a letter with a character no letter can carry kept
+back, the forms' own words, the reset's address, a saved name, the web pages' build and the
+tidy-up's ages - were checked on their own branches the same way, and merged in 93c70c3 at 2,224
+app tests, as written and again compiled, 559 database tests, 74 of them races on a real Postgres,
+and 111 tests of the scripts and the runbooks. The groups also checked their parts against the
+local stack, and the screens in the web build. None of it has been run on a phone.
 
 Still open:
 
 - **Seen on no phone.** The keyboard's room on Android and iOS, the code field's autofill and
   number pad, the swipe and the back button held on the code screens, an app closed with a code
   half done, VoiceOver and TalkBack on the code screens, the forms' notices and the hint after a
-  lost answer, Hermes reading the auth server's times and a session's id, and the twin towns' lines
-  in a phone's own fonts were tried in Jest and, where they could be, against the local stack and in
-  the web build - not on a device.
+  lost answer, Hermes reading the auth server's times and a session's id, the words for a session
+  ended elsewhere, and the twin towns' lines in a phone's own fonts were tried in Jest and, where
+  they could be, against the local stack and in the web build - not on a device.
 - **The hosted project.** Everything above goes with its first `db push` and `config push`, and
   whether it takes a code life of a day (`otp_expiry = 86400`) shows at that push. Custom SMTP, and
   email confirmation on, before anyone else signs up (GO-LIVE).

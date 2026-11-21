@@ -62,8 +62,9 @@ Hinweise für den Betreiber - vor dem Veröffentlichen entfernen, wie alle Komme
    Server (SERVER_SIGN_OUT_WAIT_MS in src/features/auth/auth-context.tsx); das Speichern einer Stadt
    schickt die Bedingung, unter der gespeichert wird, in der Adresse der Anfrage mit, die in die
    Server-Protokolle gelangt: die Stadt, von der die Fledermäuse losfliegen, oder dass noch kein
-   Brief ging (updateCity in src/features/profile/use-profile.ts). Ändert sich daran etwas, diese
-   Abschnitte anpassen.
+   Brief ging (updateCity in src/features/profile/use-profile.ts); eine unbestätigte Registrierung
+   wird 7 Tage nach dem letzten Code gelöscht, der an sie ging (20261121180000_tidy_up_ages.sql).
+   Ändert sich daran etwas, diese Abschnitte anpassen.
 -->
 
 # Datenschutzerklärung für Night Courier
@@ -512,12 +513,13 @@ enthalten die E-Mails nicht. Keine Newsletter, keine Werbung. Schreibe ich dir s
 
 Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht bestätigt. Wenn jemand deine
 E-Mail-Adresse ohne dein Wissen für ein Konto benutzt hat, schreib mir; dann lösche ich dieses
-Konto. Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher Auftrag jede Registrierung,
-deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde, samt Profil. Registrierst du
-dich vorher selbst mit deiner Adresse, macht der Code, der sie bestätigt, dieses Konto zu deinem:
-Mit der Bestätigung wird das zuvor gesetzte Passwort gelöscht, und die App gibt dem Konto das
-Passwort und den Anzeigenamen, die du gewählt hast – oder sie löscht es, wenn es einen anderen
-Benutzernamen hat, und richtet an seiner Stelle deines ein, mit einem neuen Code. Benutzt du für ein
+Konto. Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher Auftrag jede Registrierung
+samt Profil, deren E-Mail-Adresse 7 Tage nach dem letzten Code, der sie bestätigen sollte, noch
+nicht bestätigt ist. Registrierst du dich vorher selbst mit deiner Adresse, macht der Code, der sie
+bestätigt, dieses Konto zu deinem: Mit der Bestätigung wird das zuvor gesetzte Passwort gelöscht,
+und die App gibt dem Konto das Passwort und den Anzeigenamen, die du gewählt hast – oder sie löscht
+es, wenn es einen anderen Benutzernamen hat, und richtet an seiner Stelle deines ein, mit einem
+neuen Code. Benutzt du für ein
 solches Konto stattdessen „I forgot my password“, löscht sein Code das Konto, und du kannst dich
 danach registrieren. Geht die Antwort auf deinen Code unterwegs verloren – die Verbindung bricht
 gerade dann ab –, kann deine Adresse bestätigt sein, ohne dass die App dem Konto dein Passwort und
@@ -531,9 +533,15 @@ false), weil Supabases eigener Mailversand bis zum eigenen SMTP nur den Betreibe
 E-Mail-Bestätigung an sind, "Zurzeit wird eine E-Mail-Adresse bei der Registrierung noch nicht
 bestätigt." ersetzen durch "Bei der Registrierung schicke ich dir einen Code, mit dem du deine
 E-Mail-Adresse bestätigst." und oben "– sobald das eingeschaltet ist –" streichen; in den
-späteren Sätzen des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht" durch "Ein
-täglicher Auftrag löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen. Die 7 Tage sind
-private.unconfirmed_sign_up_lifetime() (tidy_up). Die 8 Ziffern und der Tag des Codes sind
+späteren Sätzen des Absatzes "Sobald die Bestätigung eingeschaltet ist, löscht ein täglicher
+Auftrag" durch "Ein täglicher Auftrag löscht" ersetzen. Bis dahin die jetzigen Sätze stehen lassen.
+Die 7 Tage sind private.unconfirmed_sign_up_lifetime() (tidy_up), gezählt ab
+auth.users.confirmation_sent_at, das GoTrue mit jedem Code setzt, den es zum Bestätigen einer
+Adresse schickt - bei der Registrierung, bei "Send the code again" und bei einer zweiten
+Registrierung -, oder ab der Registrierung, wo kein Code ging (20261121180000_tidy_up_ages.sql).
+Ein Konto, das der Betreiber von Hand anlegt, ohne die Adresse zu bestätigen, geht nach derselben
+Woche, auch solange die Bestätigung aus ist; anmelden kann es sich nicht. Die 8 Ziffern und der
+Tag des Codes sind
 otp_length und otp_expiry = 86400 in supabase/config.toml, und die Vorlagen in supabase/templates
 sagen dasselbe. Das gehostete Projekt verschickt sie erst, wenn config push sie dorthin gebracht
 hat (docs/GO-LIVE.md, "Setting up the hosted project"); seine eigenen Vorlagen enthalten einen
@@ -849,7 +857,7 @@ gefragt.
 | Sitzungen                                               | bis zum Abmelden, wenn der Server davon erfährt, oder zur Kontolöschung; sonst löscht sie ein täglicher Auftrag, sobald sie 90 Tage nicht benutzt wurde |
 | Anmelde-Token                                           | höchstens so lange wie die Sitzung                                                                                                                      |
 | Anmeldeprotokoll                                        | 30 Tage; deine Einträge gehen sofort, wenn du dein Konto löschst oder ich es auf deine Bitte lösche (Abschnitt 3.9)                                     |
-| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                                                       |
+| Registrierung, deren E-Mail-Adresse nie bestätigt wurde | 7 Tage nach dem letzten Code zur Bestätigung, sobald die Bestätigung eingeschaltet ist (Abschnitt 3.10)                                                 |
 | Server-Protokolle bei Supabase                          | kurz, dann automatisch gelöscht (Abschnitt 3.9)                                                                                                         |
 | Sicherungskopien der Datenbank                          | gelöschte Daten können darin enthalten sein, bis die Sicherung automatisch überschrieben wird                                                           |
 | E-Mails an mich                                         | solange ich sie für dein Anliegen brauche                                                                                                               |

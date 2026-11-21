@@ -599,6 +599,9 @@ On the hosted project, with a build that points at it:
    sees them as new.
 5. Sign out on every device used for this. The sign-in goes only into App Store Connect.
 
+Make both accounts through the app's sign-up, as above. An account made in the dashboard and left
+unconfirmed cannot sign in, and the daily tidy-up deletes it after a week.
+
 After each review, look at `public.reports` (GO-LIVE, "Handling a report"). Resolve the reviewer's
 test reports with `resolution = 'app review test'`. If the reviewer blocked Demo Friend, unblock in
 Your profile → Blocked couriers and become friends again. If the reviewer deleted the account, make
@@ -634,7 +637,7 @@ it again from step 1, because Apple wants a demo account that does not expire.
       names a step the job skips for want of
       a privilege; until that is fixed, what section 3 and the privacy policy say about the sign-in
       log (30 days), sessions (90 days unused), the names from sign-up, unconfirmed sign-ups (a
-      week) and removed accounts is wrong.
+      week after their last code) and removed accounts is wrong.
 - [ ] Custom SMTP set up and email confirmation on before the second person signs up, and so before
       the first submission, because the reviewer may create an account (GO-LIVE, "Before a second
       person can sign up"). The emails need the templates and code settings of

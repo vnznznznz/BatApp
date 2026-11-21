@@ -58,8 +58,9 @@ Notes for the operator - remove before publishing, like every comment in this fi
    waits at most 5 seconds for the server (SERVER_SIGN_OUT_WAIT_MS in
    src/features/auth/auth-context.tsx); saving a city puts the condition it is saved on into the
    address of the request, which ends up in the server logs: the city the bats leave from, or that
-   no letter has gone yet (updateCity in src/features/profile/use-profile.ts). If any of that
-   changes, update those sections.
+   no letter has gone yet (updateCity in src/features/profile/use-profile.ts); an unconfirmed
+   sign-up is deleted 7 days after the last code sent to it (20261121180000_tidy_up_ages.sql). If
+   any of that changes, update those sections.
 -->
 
 # Privacy policy for Night Courier
@@ -466,11 +467,12 @@ newest one counts. The emails contain no link. No newsletters, no ads. When I wr
 
 At the moment, an email address is not yet confirmed at sign-up. If someone has used your email
 address for an account without your knowledge, write to me, and I will delete that account. Once
-confirmation is switched on, a daily job deletes every sign-up whose email address has not been
-confirmed within 7 days, profile and all. If you sign up with your address yourself before then,
-the code that confirms it makes that account yours: confirming the address deletes the password
-set before, and the app gives the account the password and the display name you chose – or, if the
-account has another username, deletes it and sets up yours in its place, with a new code. If you
+confirmation is switched on, a daily job deletes every sign-up whose email address is still not
+confirmed 7 days after the last code sent to confirm it, profile and all. If you sign up with your
+address yourself before then, the code that confirms it makes that account yours: confirming the
+address deletes the password set before, and the app gives the account the password and the
+display name you chose – or, if the account has another username, deletes it and sets up yours in
+its place, with a new code. If you
 use "I forgot my password" for such an account instead, its code deletes the account, and you can
 then sign up. If the answer to your code is lost on the way – the connection breaks just then –
 your address can be confirmed without the app having given the account your password and names.
@@ -485,7 +487,12 @@ are on, replace "At the moment, an email address is not yet confirmed at sign-up
 sign up, I send you a code to confirm your email address.", drop "– once it is switched on –"
 above, and in the paragraph's later sentences replace "Once confirmation is switched on, a daily
 job deletes" with "A daily job deletes". Until then, keep the current sentences. The 7 days are
-private.unconfirmed_sign_up_lifetime() (tidy_up). The code's 8 digits and its day are otp_length
+private.unconfirmed_sign_up_lifetime() (tidy_up), counted from auth.users.confirmation_sent_at,
+which GoTrue sets with every code it sends to confirm an address - at sign-up, at "Send the code
+again" and at a second sign-up - or from the sign-up where no code was sent
+(20261121180000_tidy_up_ages.sql). An account the operator makes by hand without confirming its
+address goes after the same week, also while confirmation is off; it cannot sign in. The code's
+8 digits and its day are otp_length
 and otp_expiry = 86400 in supabase/config.toml, and the templates in supabase/templates say the
 same. The hosted project sends them only once config push has carried them there (docs/GO-LIVE.md,
 "Setting up the hosted project"); its own templates carry a link. After that push, check that the
@@ -771,7 +778,7 @@ cities comes from – the list is in Night Courier's database, and GeoNames is n
 | Sessions                                         | until you sign out and the server hears of it, or the account is deleted; otherwise a daily job deletes it once unused for 90 days |
 | Sign-in tokens                                   | at most as long as the session                                                                                                     |
 | Sign-in log                                      | 30 days; your entries go at once when you delete your account or I delete it at your request (section 3.9)                         |
-| A sign-up whose email address is never confirmed | 7 days, once confirmation is switched on (section 3.10)                                                                            |
+| A sign-up whose email address is never confirmed | 7 days after the last code sent to confirm it, once confirmation is switched on (section 3.10)                                     |
 | Server logs at Supabase                          | a short time, then deleted automatically (section 3.9)                                                                             |
 | Database backups                                 | deleted data may remain in them until the backup is overwritten automatically                                                      |
 | Emails to me                                     | as long as I need them for your request                                                                                            |

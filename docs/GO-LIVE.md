@@ -555,8 +555,9 @@ tried on a real project**; go slowly there, and correct this page when you know 
    runs `supabase/seed.sql`, which is for the local stack only: do not add `--include-seed`, and
    never aim a `db reset` at this project.
 
-   The newest file as this is written, `20261121160000_confirmation_clears_password.sql`, puts a
-   trigger on `auth.users`. As an address that was emailed a code to confirm it is confirmed, the
+   `20261121160000_confirmation_clears_password.sql`, the last file but one as this is written,
+   puts a trigger on `auth.users`; the last, `20261121180000_tidy_up_ages.sql`, changes only the
+   ages the tidy-up counts. As an address that was emailed a code to confirm it is confirmed, the
    account's password goes, in the same statement: whoever signed up first chose it, and that may
    have been anyone who typed the address. From then on no password signs in until one is set with
    the session the code brought, and the app sets one at once - the password typed at sign-up, the
@@ -691,12 +692,14 @@ tried on a real project**; go slowly there, and correct this page when you know 
      from cron.job j
      left join lateral (
        select * from cron.job_run_details d
-       where d.jobid = j.jobid order by d.start_time desc limit 1
+       where d.jobid = j.jobid order by d.start_time desc nulls last limit 1
      ) d on true
      order by j.jobname"
    ```
 
-   Each of the three must have a `status` of `succeeded` and a `start_time` within its schedule.
+   (`nulls last`, because a run that a restart cut off before it began has no `start_time`, and
+   would otherwise come first; the tidy-up deletes such a row within about a week.) Each of the
+   three must have a `status` of `succeeded` and a `start_time` within its schedule.
    For the tidy-up that says only that it ran: a step it left out is in what it returns, which the
    job shows to nobody, and in the Postgres log, as a warning that begins `the tidy-up left out:`.
    So run `select private.tidy_up()` by hand once more, with the command above: it must return the
@@ -983,7 +986,13 @@ arrive: find out why they do not. (A password set with the admin API stays - in 
 `"email_confirm": true` with a `"password"`, or in one before it: the auth server saves it first,
 and that clears the time the code was sent. It would be a password you chose for someone and sent
 them, and the app has no way to change it but "I forgot my password" - so not that either.) A
-sign-up nobody confirms is deleted after a week, and the address can then sign up afresh.
+sign-up nobody confirms is deleted a week after the last code sent to it, and the address can then
+sign up afresh.
+
+An account made by hand without confirming its address - in the dashboard, or through the admin
+API without `"email_confirm": true` - cannot sign in, and the tidy-up deletes it a week after it
+was made, or after the last code sent to it if one was asked for, confirmation on or off. So make
+accounts in the app, as the demo accounts are made, or confirm them as you make them.
 
 ### Push notifications: none
 
@@ -1178,7 +1187,16 @@ transits it, so a content-free push keeps message text out of a US processor.
   that exists (30 February) or is still to come, a live build has no date for the agreement, a
   placeholder is left over, a link within a page leads nowhere, or a page would load anything
   from another site, and its test builds the pages with made-up details on every
-  `npm run verify`.
+  `npm run verify`. Before anything else it refuses an `--out` inside this repository, by any
+  path - `.`, a whole path, a folder not made yet, a link - and writes nothing: this repository is
+  public, and the pages carry the operator's name and address. A folder beside it, such as the
+  site's checkout, is outside it. "Anything from another site" is any element that runs or embeds
+  something (`<script>`, `<img>`, `<iframe>`, `<object>`, `<embed>` and the like), any attribute
+  that fetches what it names (`src`, `srcset`, `data`, `poster`, `background`, `ping` and the
+  like), an `href` or `xlink:href` on anything but a link, an event handler, a `javascript:` link,
+  a refresh in a `<meta>`, and `@import`, `url(` or `image-set(` in a style; the refusal names what
+  it found. Plain links - to the pages themselves, to other sites, to anchors, to `mailto:` - still
+  build.
 
   It also refuses to build from a checkout whose migrations lack a function that a promise on
   the pages rests on, and names it: that an account deleted on request loses its sign-in records

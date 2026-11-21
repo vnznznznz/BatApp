@@ -28,8 +28,9 @@ in `docs/GO-LIVE.md` (Commits 67562f9, 3a343b0, 611813b, 665924d, acd4efe und 19
 Durchsicht des ganzen Projekts am 21. November 2026 gegen den Code bis Commit 187439c nachgeführt:
 die Migrationen bis `20261121160000_confirmation_clears_password.sql` (gesperrte Konten, die Grenze
 für Freundschaftsanfragen, Umzüge vor dem ersten Brief, das Passwort beim Bestätigen einer Adresse)
-und die App mit Codes statt Links in den E-Mails und einem Merkzettel im Schlüsselbund
-(Änderungsverlauf am Ende).
+und die App mit Codes statt Links in den E-Mails und einem Merkzettel im Schlüsselbund; danach bis
+Commit 93c70c3 mit `20261121180000_tidy_up_ages.sql`, das festlegt, ab wann der tägliche Auftrag
+zählt (Änderungsverlauf am Ende).
 
 **Persönliche Daten stehen nicht in dieser Datei.** Dieses Repository ist öffentlich. Wo das
 Verzeichnis Angaben zum Betreiber braucht, steht ein Platzhalter: `{{OPERATOR_NAME}}`,
@@ -158,8 +159,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   geschlossen wurde, das Konto, bevor es eingerichtet ist (zu prüfen wie der Satz davor).
 - **Betroffene:** Nutzer. Außerdem Personen, deren E-Mail-Adresse jemand anderes ohne ihr Wissen
   registriert hat: Die E-Mail-Bestätigung ist zurzeit aus (`supabase/config.toml`). Ist sie an,
-  bleibt eine solche Registrierung unbestätigt, und der tägliche Auftrag löscht sie nach sieben
-  Tagen (4.5). Registriert sich die Person, der die Adresse gehört, vorher selbst und gibt den Code
+  bleibt eine solche Registrierung unbestätigt, und der tägliche Auftrag löscht sie sieben Tage
+  nach dem letzten Code, der ihre Adresse bestätigen sollte (4.5). Registriert sich die Person,
+  der die Adresse gehört, vorher selbst und gibt den Code
   aus der E-Mail ein, macht die App das Konto zu ihrem: Es bekommt das Passwort und den
   Anzeigenamen, die sie eingegeben hat; trug es einen anderen Benutzernamen, löscht die App es und
   legt es mit ihren Angaben neu an, mit einem neuen Code. Bestätigt erst der Code zum Zurücksetzen
@@ -275,7 +277,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   `src/features/auth/unfinished.ts`; `src/lib/supabase.ts`; `src/lib/session-store.ts`;
   `src/lib/secure-storage.ts`; `src/app/sign-up.tsx`;
   `supabase/migrations/20261104120000_privacy_housekeeping.sql` (`delete_own_account`, `tidy_up`),
-  `20261114120006_sign_up_details_limit.sql`, `20261121160000_confirmation_clears_password.sql`.
+  `20261114120006_sign_up_details_limit.sql`, `20261121160000_confirmation_clears_password.sql`,
+  `20261121180000_tidy_up_ages.sql` (`tidy_up`, wie es heute ist).
 
 ### V2 Profil und Stadt
 
@@ -361,7 +364,7 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   einen Tag zurückliegt, also spätestens zwei Tage nach deren Beginn. Eine neue Anfrage nach Ablauf
   der Stunde beginnt die Zählung in derselben Zeile von vorn.
 - **Quelle:** `20261031120300_friendships.sql`, `20261102120000_safety.sql`,
-  `20261114120001_friend_requests.sql`, `20261114120004_one_lock_order.sql` (`tidy_up`),
+  `20261114120001_friend_requests.sql`, `20261121180000_tidy_up_ages.sql` (`tidy_up`),
   `20261114120008_courier_gate.sql` (`request_friend`); `src/lib/rpc-error.ts`.
 
 ### V4 Briefe und Fledermäuse (Zustellung)
@@ -688,7 +691,9 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   Zeitpunkt und aufgerufene Seite, soweit GitHub sie festhält (genaue Felder: zu prüfen). Die Seiten
   selbst setzen keine Cookies und laden nichts von anderen Websites; beim Bauen prüfen, dass es so
   bleibt (keine Web-Schriften, Skripte, Analyse oder Einbettungen von fremden Adressen, auch kein
-  Theme, das so etwas nachlädt).
+  Theme, das so etwas nachlädt). Der Bau selbst weist eine Seite ab, die etwas von anderswo laden
+  würde, und sagt, was er fand; und er schreibt die Seiten mit Name und Anschrift nie in dieses
+  Repository (`scripts/build-store-pages.mjs`; GO-LIVE, „Where the web pages live“).
 - **Empfänger:** GitHub, Inc. (USA). Ob GitHub für GitHub Pages eigener Verantwortlicher oder
   Auftragsbearbeiter ist und es dafür einen Vertrag gibt, wie lange GitHub die IP-Adressen
   aufbewahrt und ob GitHub nach dem Swiss-US bzw. EU-US Data Privacy Framework zertifiziert ist: zu
@@ -834,15 +839,21 @@ fehlt, steht in 4.8.
   des Kontos im Anmeldeprotokoll, und sperrt nichts. Der Knopf „Delete user“ im Dashboard tut
   das nicht und wird dafür nicht benutzt.
 - **Täglicher Auftrag** `private.tidy_up()` (pg_cron-Job `tidy-up`, `43 4 * * *`, UTC): löscht
-  zuerst eine Registrierung, deren E-Mail-Adresse nicht innerhalb von 7 Tagen bestätigt wurde,
-  samt Profil (`private.unconfirmed_sign_up_lifetime()`; findet nichts, solange die Bestätigung
-  aus ist), und den Anmeldedatensatz eines entfernten Kontos, sobald die Sperre abgelaufen ist;
-  dann löscht er Einträge im Anmeldeprotokoll nach 30 Tagen; löscht Sitzungen, die 90 Tage nicht
-  benutzt wurden, mit ihren Refresh-Token; entfernt die Namen von der Registrierung aus
-  `auth.users` und `auth.identities`; leert die vorherige Stadt nach einem abgeschlossenen Umzug;
-  löscht die Zählung der Freundschaftsanfragen eines Kontos, deren Stunde mehr als einen Tag
-  zurückliegt; behält das Laufprotokoll von pg_cron (`cron.job_run_details`) eine Woche
-  (`20261114120004_one_lock_order.sql`).
+  zuerst samt Profil eine Registrierung, deren E-Mail-Adresse 7 Tage nach dem letzten Code zur
+  Bestätigung (`auth.users.confirmation_sent_at`; ohne Code: nach der Registrierung) noch nicht
+  bestätigt ist (`private.unconfirmed_sign_up_lifetime()`). Wer am siebten Tag einen neuen Code
+  anfordert, hat dessen Tag, und vor dem Löschen fragt der Auftrag noch einmal nach. Solange die
+  Bestätigung aus ist, findet er Konten, die der Betreiber von Hand angelegt hat, ohne die Adresse
+  zu bestätigen (im Dashboard oder über die Admin-API), und löscht auch sie nach dieser Woche;
+  anmelden kann sich ein solches Konto nicht. Dann löscht er den Anmeldedatensatz eines entfernten
+  Kontos, sobald die Sperre abgelaufen ist; Einträge im Anmeldeprotokoll nach 30 Tagen; Sitzungen,
+  die 90 Tage nicht benutzt wurden, mit ihren Refresh-Token; er entfernt die Namen von der
+  Registrierung aus `auth.users` und `auth.identities`; leert die vorherige Stadt nach einem
+  abgeschlossenen Umzug; löscht die Zählung der Freundschaftsanfragen eines Kontos, deren Stunde
+  mehr als einen Tag zurückliegt; und behält das Laufprotokoll von pg_cron (`cron.job_run_details`)
+  eine Woche, auch einen Lauf, den ein Neustart abgebrochen hat: eine Woche ab seinem Beginn. Ein
+  Lauf, der vor seinem Beginn abgebrochen wurde, hat keine Zeit; er geht, sobald ein später
+  nummerierter Lauf vor mehr als einer Woche begann (`20261121180000_tidy_up_ages.sql`).
 - **Was bei fehlenden Rechten passiert:** Jeder Schritt an einer Tabelle von Supabase
   (`auth.audit_log_entries`, `auth.users`, `auth.identities`, `auth.sessions`,
   `cron.job_run_details`) steht für sich: Fehlt das Recht oder die Tabelle, wird er übersprungen,
@@ -908,7 +919,7 @@ dieses Verzeichnis, die Datenschutzerklärung und die Store-Formulare mit.
 | L7  | Während einer Sperre bleiben neben der E-Mail-Adresse auch Passwort-Hash und Zeitpunkte zwei Jahre ab dem Entfernen stehen, die Sitzungen mit IP-Adresse und User-Agent bis zu rund 91 Tage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Beim Entfernen auch die Sitzungen löschen (5.6), bei einer Drohung erst nach dem Export für die Polizei (GO-LIVE, „A threat“); einen anderen Grund, sie stehen zu lassen, gibt es dann nicht mehr. Dann die Datenschutzerklärung (3.8) mit ändern. Entscheidung des Betreibers                                                                                                                                                                                               |
 | L8  | Ob das gehostete Projekt `tidy_up` jeden Schritt erlaubt, ist offen. Fehlt ein Recht, wird nur dieser Schritt übersprungen und im Ergebnis genannt (4.5); der tägliche Lauf meldet trotzdem `succeeded`, und die Datenschutzerklärung stimmt an dieser Stelle nicht. Ob GoTrue ersetzte Refresh-Token aufräumt, ist ebenfalls offen; wenn nicht, wächst die Kette einer benutzten Sitzung um etwa eine Zeile je Stunde Nutzung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `select private.tidy_up();` nach dem ersten `db push` und monatlich von Hand; es muss eine leere Liste ergeben (`[]`, in psql `{}`; 5.2, 5.7). Für die Token: `GOTRUE_DB_CLEANUP_ENABLED` auf dem gehosteten Projekt erfragen, sonst `tidy_up` ersetzte Token nach einem Tag löschen lassen (Code-Änderung; vorher prüfen, dass GoTrues Erkennung wiederverwendeter Token das verträgt)                                                                                      |
 | L9  | Ordnung, keine Nutzerdaten im engeren Sinn: im Supabase Studio gespeicherte SQL-Schnipsel können Nutzer-IDs aus dem Runbook enthalten                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Schnipsel ohne IDs speichern, gelegentlich aufräumen                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung, und solange ein Code nicht getan hat, wofür er war, der Merkzettel dazu, im Klartext in localStorage (oder nur im Speicher, wo der Browser localStorage verweigert)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| L10 | Nur eine Web-Version (nicht geplant) läge die Sitzung, und solange ein Code nicht getan hat, wofür er war, der Merkzettel dazu, im Klartext in localStorage (oder nur im Speicher, wo der Browser localStorage verweigert); dazu stünde die E-Mail-Adresse, mit der jemand „I forgot my password“ drückt, in der Adresse der Seite und im Verlauf des Browsers (`/reset-password?email=…`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Vor einer Web-Version lösen                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | L11 | Ob ein Benutzername vergeben ist, verrät eine Registrierung jedem, auch ohne Konto: Mit einer Adresse, die noch kein Konto hat, schlägt sie für einen vergebenen Namen fehl. Mit einem Konto verrät es auch eine Freundschaftsanfrage; dort zählen nur Treffer gegen die Grenze von 20 neuen Anfragen je Stunde (V2, V3). Ob eine E-Mail-Adresse ein Konto hat, sagt eine Registrierung offen, solange die Bestätigung aus ist („There is already an account with that email address“). Ist sie an, verrät es die App noch auf zwei Wegen: Solange das Projekt alle E-Mails der Stunde verschickt hat, antwortet sie auf eine Adresse mit bestätigtem Konto anders als auf eine ohne; und wer einen vergebenen Benutzernamen kennt, kann mit ihm Adressen durchprobieren, denn an ihm scheitert die Registrierung nur für eine Adresse ohne Konto. Der Anmeldeserver verrät es außerdem selbst, was immer die App zeigt (GO-LIVE, „Known gaps already logged“) | Beim Benutzernamen eine Änderung an der Datenbank: eine Registrierung, die an einem vergebenen Namen nicht scheitert, oder eine Prüfung der Namen, die keine Adresse braucht; ob sie nötig ist, entscheidet der Betreiber. Bei der Adresse die Schritte 2 und 4 in GO-LIVE, „Before a second person can sign up“: ein E-Mail-Limit weit über den Registrierungen einer Stunde, die Bestätigung an (L3). Was der Anmeldeserver sonst selbst verrät, kann die App nicht ändern |
 
 Am 4. November 2026 behoben (Migration `20261104120000_privacy_housekeeping.sql`,
@@ -937,7 +948,10 @@ wer sich vor der Person, der eine Adresse gehört, mit dieser Adresse registrier
 nach ihrer Bestätigung noch mit seinem Passwort an; der Knopf „Delete user“ im Dashboard konnte mit
 einer Landung in einen Deadlock geraten (jetzt `private.delete_account`, 5.4); und Abmelden ließ
 ohne Netz 25 bis 40 Sekunden warten, bevor die Sitzung vom Gerät ging (jetzt höchstens fünf
-Sekunden).
+Sekunden). Zuletzt, mit `20261121180000_tidy_up_ages.sql`: Eine unbestätigte Registrierung zählte
+ihre Woche ab der Registrierung, sodass ein am siebten Tag angeforderter Code mit dem Konto in der
+Nacht verschwand; und ein Lauf von pg_cron, den ein Neustart abbrach, blieb für immer im
+Laufprotokoll.
 
 ---
 
@@ -1433,12 +1447,14 @@ Betreiber noch selbst tut:
   er keinen Schritt überspringt und dass keine abgelaufene Sperre übrig ist. Die zweite Abfrage muss
   eine leere Liste ergeben (`[]`, in psql `{}`), die dritte 0; dazu die Abfrage oben nach
   gesperrten Konten mit Profil. `succeeded`
-  allein genügt nicht: Ein übersprungener Schritt ist kein Fehler (4.5).
+  allein genügt nicht: Ein übersprungener Schritt ist kein Fehler (4.5). `nulls last` in der ersten
+  Abfrage, weil ein Lauf, den ein Neustart vor seinem Beginn abbrach, keine `start_time` hat und
+  sonst zuoberst stünde, bis `tidy_up` ihn nach etwa einer Woche löscht.
 
   ```sql
   select status, start_time from cron.job_run_details
   where jobid = (select jobid from cron.job where jobname = 'tidy-up')
-  order by start_time desc limit 3;
+  order by start_time desc nulls last limit 3;
 
   select private.tidy_up();
 
@@ -1557,3 +1573,4 @@ Betreiber noch selbst tut:
 | 4. November 2026  | Gegen den Code bis Commit 31cf850 geprüft: jeder Schritt von `tidy_up` abgesichert, Prüfung mit `select private.tidy_up();` statt der Rechteabfrage; Android-Berechtigungen; Konto eines Kindes unter 12 ohne Sperre löschen; zwei Jahre Sperre ab dem Entfernen; Anschrift öffentlich nur in der Datenschutzerklärung                                                                                                                                                                                                                                                                                                                                                                                           | –                                  |
 | 5. November 2026  | Entscheidungen des Betreibers: Er lebt in der Schweiz, als Privatperson – DSG zuerst (Verzeichnis nach Art. 12 DSG, EDÖB als Aufsicht, Datenpannen nach Art. 24 DSG, Rechte nach Art. 25, 28 und 32 DSG, die Länder Schweiz und USA mit ihren Garantien), die DSGVO für Menschen in der EU; Vertreter nach Art. 27 zu prüfen; die BDSG-Hinweise nur noch als „zu prüfen“. Altersgrenze 13 statt 12, Families Policy damit entschieden. Webseiten bei GitHub Pages (V13, Abschnitt 2)                                                                                                                                                                                                                             | –                                  |
 | 21. November 2026 | Gegen den Code bis Commit 187439c geprüft, nach der Durchsicht des ganzen Projekts: gesperrte Konten sofort abgewiesen, auch beim Löschen, Anmeldung wie mit falschem Passwort beantwortet (V7); Grenze und Zählung der Freundschaftsanfragen (V3); `has_corresponded`, Umzüge vor dem ersten Brief sofort (V2); Codes statt Links in allen E-Mails, kein PKCE, Passwort beim Bestätigen geleert (V1, V10, 4.3); Merkzettel auf dem Gerät (V1, 4.4); Grenze für Angaben bei der Registrierung, sichtbare Anzeigenamen; Ablauf und Deadlocks von `tidy_up` (4.5); Auskunftsabfrage mit `briefe_gehabt`, der Zählung und Städten mit Zusatz (5.3); Benutzernamen nicht änderbar (Entscheidung des Betreibers, 5.4) | –                                  |
+| 21. November 2026 | Gegen den Code bis Commit 93c70c3 nachgeführt: die Woche einer unbestätigten Registrierung ab dem letzten Code, von Hand angelegte unbestätigte Konten, das Laufprotokoll von pg_cron (V1, 4.5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | –                                  |
