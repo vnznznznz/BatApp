@@ -8,6 +8,7 @@ import {
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { normaliseUsername } from '@/features/auth/validation';
+import { noteAccountDeleted } from '@/lib/farewell';
 import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
@@ -45,10 +46,48 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * what it brings and announces it, and the device would be signed in again
  * with nobody having signed in. A session announced while this is set is
  * therefore not taken, but ended - with the server, now that it answers.
- * Signing in or up, which the person does, clears it; so must any other way
- * of signing in that is added here.
+ * Signing in or up, which the person does, clears it, in beforeSigningIn; so
+ * must any other way of signing in that is added here.
  */
 let signedOutUnheard = false;
+
+/**
+ * Sign-outs that are not over yet: the app's own, with what it still does once
+ * the device has let go, and the client's, where the provider has it end a
+ * session that came back. Each ends by removing whatever session is stored by
+ * then, or by telling the server to end every session of the account. See
+ * beforeSigningIn.
+ */
+const signOutsUnderWay = new Set<Promise<void>>();
+
+/** Counts `work` among the sign-outs under way until it is over, however it ends. */
+function underWay<T>(work: Promise<T>): Promise<T> {
+  const over = work.then(
+    () => undefined,
+    () => undefined,
+  );
+  signOutsUnderWay.add(over);
+  void over.then(() => signOutsUnderWay.delete(over));
+  return work;
+}
+
+/**
+ * Waits until no sign-out is under way, and then lets the next session be
+ * taken. Signing in and signing up start with it; so must any other way of
+ * signing in that is added here - with a code from an email, say.
+ *
+ * A sign-out goes on after the device has let go of it (signOutHere), and it
+ * ends by removing whatever session is stored by then. Someone who signed in
+ * meanwhile was signed out again within seconds, and when the client had been
+ * renewing at the start, the server was told to end every session of theirs.
+ * (Found in review.) The wait has an end: no request waits longer than twenty
+ * seconds for its answer (guarded-fetch.ts), and the client starts no new
+ * attempt at a renewal after half a minute.
+ */
+async function beforeSigningIn(): Promise<void> {
+  while (signOutsUnderWay.size > 0) await Promise.all(signOutsUnderWay);
+  signedOutUnheard = false;
+}
 
 /**
  * How many sign-outs the client has announced. Whatever else the app keeps for
@@ -97,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (next && signedOutUnheard) {
         // Nobody signed in. Signing out is finished instead: the server is
         // told, and what the client has just saved goes with it.
-        void supabase.auth.signOut().catch(() => {});
+        void underWay(supabase.auth.signOut()).catch(() => {});
         return;
       }
       announced = true;
@@ -112,46 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(() => {
-    async function signOut() {
-      const announcedBefore = signOutsAnnounced;
-      // The server is asked first: only that ends the session on the
-      // courier's other devices as well.
-      const heard = await supabase.auth.signOut().then(
-        ({ error }) => !error,
-        () => false,
-      );
-      if (heard) return;
-
-      // It was not told, or cannot be known to have been. Signing out signs
-      // this device out all the same - and the client does not see to that
-      // by itself: with a token over an hour old and no network, it gives up
-      // before it has removed anything.
-      signedOutUnheard = true;
-      try {
-        await clearStoredSession();
-      } catch (cause) {
-        // Still signed in, then, and to be treated as such.
-        signedOutUnheard = false;
-        throw new Error('This device could not be signed out. Try again.', { cause });
-      }
-      setSession(null);
-
-      // The client has then announced no sign-out either, and whatever listens
-      // to it would go on holding the account. With nothing stored any more,
-      // signing out on this device alone sends nothing, and is announced.
-      // Where the client did remove the session - as it does when its token is
-      // still fresh - it has announced that already, and once is enough.
-      if (signOutsAnnounced === announcedBefore) {
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-      }
-    }
+    const signOut = () => signOutHere(() => setSession(null));
 
     return {
       session,
       isRestoring,
 
       async signIn(email, password) {
-        signedOutUnheard = false;
+        await beforeSigningIn();
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -160,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signUp({ email, password, username, displayName }) {
-        signedOutUnheard = false;
+        await beforeSigningIn();
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -212,14 +219,157 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
         // The session belongs to a user that no longer exists; ending it on
-        // this device is what returns the app to the welcome screen.
-        await signOut();
+        // this device is what returns the app to the welcome screen, which is
+        // told why. The server is not asked: it has no session left to end,
+        // and answered with an error, user_not_found. (Found in the browser.)
+        noteAccountDeleted();
+        await signOutHere(() => setSession(null), false);
       },
     };
   }, [session, isRestoring]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
 }
+
+/**
+ * Signs this device out; `forget` lets go of the session the provider holds,
+ * and `tellServer` false skips asking the server first - for an account that
+ * has just been deleted, whose sessions went with it.
+ *
+ * Out here, not in the provider, on purpose. A real build compiles the provider
+ * with the React Compiler, which takes a module variable for a value that does
+ * not change while a function of the component runs: it compiled the snapshot
+ * below away, compared the count with itself, and announced every sign-out
+ * twice. (Found in the merged tree, in the bundle and in Jest run compiled.)
+ * The compiler leaves functions outside components and hooks as they are.
+ */
+function signOutHere(forget: () => void, tellServer = true): Promise<void> {
+  return underWay(signOutOfDevice(forget, tellServer));
+}
+
+async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise<void> {
+  const announcedBefore = signOutsAnnounced;
+  // The server is asked first: only that ends the session on the courier's
+  // other devices as well. But not for long. To be told, it may first need the
+  // session renewed, and without a network the client tries that for half a
+  // minute - and every sign-out shares a renewal already under way, the one at
+  // the app's start included. "Sign out" spun for 25 to 40 seconds. (Found in
+  // the merged tree and in the browser.)
+  const told = tellServer
+    ? supabase.auth.signOut().then(
+        ({ error }) => !error,
+        () => false,
+      )
+    : Promise.resolve(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const heard = await Promise.race([
+    told,
+    new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), SERVER_SIGN_OUT_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (heard) return;
+
+  // It was not told, or cannot be known to have been. Signing out signs this
+  // device out all the same - and the client does not see to that by itself:
+  // with a token over an hour old and no network, it gives up before it has
+  // removed anything.
+  signedOutUnheard = true;
+  // What the server has not heard the end of, should it be told after all.
+  const left = tellServer ? await readStoredSession().catch(() => null) : null;
+  try {
+    await clearStoredSession();
+  } catch (cause) {
+    // Still signed in, then, and to be treated as such - once the client is
+    // done with the server: left running, its sign-out could still sign the
+    // device out after this one was said to have failed.
+    signedOutUnheard = false;
+    if (await told) return;
+    throw new Error('This device could not be signed out. Try again.', { cause });
+  }
+  forget();
+
+  // The client may still be at it, renewing and then telling the server. If it
+  // gets that far, or finds nothing stored any more, it removes the session
+  // itself and announces that; whether it has is known once it is done. A
+  // renewal that comes back now, though, it throws away, the session being no
+  // longer stored, and then it tells the server nothing (see below).
+  await told;
+
+  // The client has then announced no sign-out either, and whatever listens to
+  // it would go on holding the account. With nothing stored any more, signing
+  // out on this device alone sends nothing, and is announced. Where the client
+  // did remove the session - as it does when its token is still fresh - it has
+  // announced that already, and once is enough. Nor is it announced over
+  // someone who has signed in meanwhile.
+  if (signOutsAnnounced === announcedBefore && signedOutUnheard) {
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+  }
+
+  // A token the client had to renew before it could tell the server: the
+  // server may have heard nothing although the network is back. Not waited for
+  // here - the device is signed out - but whoever signs in next waits for it.
+  if (left && signedOutUnheard && hasRunOut(left)) {
+    void underWay(tellServerAfterAll(left)).catch(() => {});
+  }
+}
+
+/**
+ * How long signing out waits for the server to hear of it before this device
+ * lets go regardless. Enough for a slow connection to renew the session and
+ * tell the server; a sign-out that does not get through in this time is seldom
+ * going to. The client goes on meanwhile, and a request it has sent may still
+ * get through. A token it had to renew first is another matter: it throws away
+ * a renewal that comes back after the device has let go, and tells the server
+ * nothing. So the server is told once more when the client is done
+ * (tellServerAfterAll), which reaches it if the network is back by then; after
+ * that, nothing tells it.
+ */
+const SERVER_SIGN_OUT_WAIT_MS = 5000;
+
+/**
+ * Tells the server of a sign-out once more, for a session whose token had run
+ * out when the device let go. The client renews such a token before it can
+ * tell the server, and a renewal that comes back once the session is no longer
+ * stored it throws away: the server heard nothing, however soon the network
+ * was back. (Found in review.)
+ *
+ * As the client would have: with the token the session had, which is enough
+ * where the server's clock does not agree that it has run out, and when the
+ * server says no, with a renewed one. Nothing is kept or announced on the way:
+ * nobody is signed in with it. When the server cannot be reached, the first
+ * request fails - without a network, at once - and nothing more is tried.
+ */
+async function tellServerAfterAll(left: Session): Promise<void> {
+  const { error } = await supabase.auth.admin.signOut(left.access_token, 'global');
+  // Heard, or not reachable, and that is that. A session that is over already
+  // is refused its renewal as well.
+  if (!isAuthApiError(error)) return;
+  const renewed = await renewedWithoutKeeping(left.refresh_token);
+  if (renewed) await supabase.auth.admin.signOut(renewed.access_token, 'global');
+}
+
+/**
+ * The client's renewal of a session, without its keeping or announcing what
+ * comes back. Not public in auth-js 2.112: the tests beside this file run the
+ * real client, and fail if an update renames it or changes what it returns.
+ */
+async function renewedWithoutKeeping(refreshToken: string): Promise<Session | null> {
+  const client = supabase.auth as unknown as {
+    _refreshAccessToken?: (token: string) => Promise<{ data: { session: Session | null } | null }>;
+  };
+  if (typeof client._refreshAccessToken !== 'function') return null;
+  const { data } = await client._refreshAccessToken(refreshToken);
+  return data?.session ?? null;
+}
+
+/**
+ * Whether the client renews this session's token before it uses it: from a
+ * minute and a half before it runs out (EXPIRY_MARGIN_MS in auth-js 2.112).
+ */
+const hasRunOut = (session: Session) =>
+  session.expires_at !== undefined && session.expires_at * 1000 - Date.now() < 90_000;
 
 export function useAuth(): AuthContextValue {
   const value = use(AuthContext);

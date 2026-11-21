@@ -50,17 +50,22 @@ jest.mock('@/features/friends/friends', () => ({
   withdrawRequest: jest.fn(),
 }));
 
-/** The courier's profile as the database has it now. */
-const mockProfileState: { profile: Profile | null } = { profile: null };
+/** The courier's profile as the database has it now, and how often it was read. */
+const mockProfileState: { profile: Profile | null; reads: number } = { profile: null, reads: 0 };
 
-// As the real hook does, it holds what it read last, and reads again only when
-// asked to.
+// As the real hook does, it holds what it read last, and reads again each time
+// the screen comes into view - the first time included - and when asked to.
 jest.mock('@/features/profile/use-profile', () => {
   const React = jest.requireActual<typeof import('react')>('react');
+  const { useFocusEffect } = jest.requireMock<typeof import('expo-router')>('expo-router');
   return {
     useProfile: () => {
       const [profile, setProfile] = React.useState(() => mockProfileState.profile);
-      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      const reload = React.useCallback(async () => {
+        mockProfileState.reads += 1;
+        setProfile(mockProfileState.profile);
+      }, []);
+      useFocusEffect(React.useCallback(() => void reload(), [reload]));
       return { profile, isLoading: false, error: null, reload };
     },
   };
@@ -216,6 +221,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockFocusEffects.clear();
   mockProfileState.profile = courier;
+  mockProfileState.reads = 0;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedRequestFriend.mockReset();
@@ -543,6 +549,22 @@ describe('FriendsScreen', () => {
       expect(mockPush).toHaveBeenCalledWith('/city-picker');
     });
 
+    /**
+     * The hook reads the profile again as the screen comes into view, which is
+     * what shows a city the picker has just saved. The screen asked as well,
+     * and made two requests for the same row at every focus. (Found in the
+     * merged tree.)
+     */
+    it('reads the profile once each time the screen comes into view', async () => {
+      await renderScreen(<FriendsScreen />);
+      await listLoaded();
+      expect(mockProfileState.reads).toBe(1);
+
+      await comeBack();
+
+      expect(mockProfileState.reads).toBe(2);
+    });
+
     // Ben has no city, so there is no route to him whoever has one: only the
     // courier's own city tells that the notice is not theirs.
     it('says nothing of a city of their own once the courier has one, though no friend has', async () => {
@@ -853,5 +875,44 @@ describe('FriendsScreen', () => {
       // Asking someone does not depend on the list.
       expect(sendRequestButton()).toBeEnabled();
     });
+  });
+});
+
+/** The one thing left to do for an account that is suspended, besides writing to Night Courier. */
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
+}));
+
+describe('FriendsScreen for a suspended account', () => {
+  const suspended = () => new RpcError(REFUSALS.account_suspended, 'account_suspended');
+
+  /**
+   * "Send request" stayed on under the suspension, with no way out: a request
+   * would only have been refused. (Found in the browser.)
+   */
+  it('offers the way out, and no request to send', async () => {
+    mockSignOut.mockClear();
+    mockedFetchFriendships.mockRejectedValue(suspended());
+    await renderScreen(<FriendsScreen />);
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(sendRequestButton()).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockedRequestFriend).not.toHaveBeenCalled();
+  });
+
+  it('says so, with the way out, when the list shown before is refused', async () => {
+    await renderScreen(<FriendsScreen />);
+    await screen.findByText('Anna Weber');
+    mockedFetchFriendships.mockRejectedValue(suspended());
+
+    await comeBack();
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    expect(sendRequestButton()).toBeDisabled();
   });
 });

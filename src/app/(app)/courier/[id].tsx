@@ -1,5 +1,5 @@
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -16,6 +16,7 @@ import {
   withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { useProfile } from '@/features/profile/use-profile';
 import { blockCourier } from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
@@ -37,19 +38,14 @@ export default function CourierScreen() {
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const list = useRemote(fetchFriendships);
-  const { reload } = list;
-  const { profile, reload: reloadProfile } = useProfile();
+  const { reload, refresh } = list;
+  // The city picker, opened from here, saves the city itself and pops back:
+  // what this page says about a city of the courier's own is read again each
+  // time it comes back into view - by the hook itself, which the page used to
+  // repeat. (Found in the merged tree.)
+  const { profile } = useProfile();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // The city picker, opened from here, saves the city itself and pops back:
-  // what this page says about a city of the courier's own has to be read again
-  // each time it comes back into view.
-  useFocusEffect(
-    useCallback(() => {
-      void reloadProfile();
-    }, [reloadProfile]),
-  );
 
   const friendship = list.data?.find((entry) => entry.friend.id === id) ?? null;
 
@@ -75,7 +71,13 @@ export default function CourierScreen() {
               {list.error}
             </Text>
             <View style={styles.actions}>
-              <Button label="Try again" variant="secondary" onPress={() => void reload()} />
+              {/* Asked again, a suspended account would only be refused
+                  again. (Found in the browser.) */}
+              {list.reason === 'account_suspended' ? (
+                <AccountClosedActions />
+              ) : (
+                <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
+              )}
             </View>
           </>
         ) : (

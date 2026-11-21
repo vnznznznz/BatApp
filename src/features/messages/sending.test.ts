@@ -39,6 +39,9 @@ const onItsWay = (): Dispatch => ({
 /** A request that ended without the server saying anything. */
 const noAnswer = () => new RpcError('No connection. Check your network and try again.', null);
 
+/** The database's refusal of everything a suspended account asks. */
+const suspended = () => new RpcError(REFUSALS.account_suspended, 'account_suspended');
+
 /** A promise the test settles by hand, to look at things while a call is out. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -346,6 +349,82 @@ describe('sendLetter', () => {
   });
 
   /**
+   * Refused, the question has an answer of a kind: the server will not say
+   * what became of the letter, for a reason of its own, and asking again would
+   * only be refused again. A suspended account was asked after without end,
+   * and never told why. (Found in the merged tree.)
+   */
+  it('says why, and keeps the letter in doubt, when asking after a send without an answer is refused', async () => {
+    mockedSendMessage.mockRejectedValueOnce(noAnswer());
+    mockedFetchSentLetter.mockRejectedValue(suspended());
+
+    await writeAndSend(anna, 'Dear Anna,');
+
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    // Noted as any letter in doubt is: asked after once more, a moment later,
+    // by the screen showing it. Refused again, it is left as it is (see
+    // askAfterLetter).
+    expect(readSend(MARA, 'user-anna').unanswered).toEqual({
+      ref: mockedSendMessage.mock.calls[0]?.[2],
+      words: 'Dear Anna,',
+      unknown: true,
+      since: NOW,
+      askAt: NOW + 2 * SECOND,
+    });
+  });
+
+  /**
+   * A suspended account is refused before the server looks for the letter's
+   * reference at all (private.caller(), in send_message's declarations), so the
+   * refusal says nothing about a letter that may have gone under it. Taken for
+   * "nothing went", the letter stopped being in doubt: its words went back to
+   * being merely unsent, and nothing asked after it again. (Found in review,
+   * on the real server: once the suspension was lifted, the same reference
+   * was answered with the letter that had gone.)
+   */
+  it('keeps a letter in doubt when the same words are refused for a suspended account', async () => {
+    mockedSendMessage.mockRejectedValueOnce(noAnswer());
+    mockedFetchSentLetter.mockRejectedValue(suspended());
+    await writeAndSend(anna, 'Dear Anna,');
+    const inDoubt = readSend(MARA, 'user-anna').unanswered;
+    told = [];
+
+    mockedSendMessage.mockRejectedValueOnce(suspended());
+    await sendLetter(MARA, anna);
+
+    expect(mockedSendMessage.mock.calls[1]?.[2]).toBe(inDoubt?.ref);
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    // As it was: still in doubt, and with no new time to ask after it.
+    expect(readSend(MARA, 'user-anna').unanswered).toBe(inDoubt);
+  });
+
+  it('notes nothing unanswered when the words of a new letter are refused for a suspended account', async () => {
+    mockedSendMessage.mockRejectedValueOnce(suspended());
+
+    await writeAndSend(anna, 'Dear Anna,');
+
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    expect(readSend(MARA, 'user-anna').unanswered).toBeNull();
+  });
+
+  it('holds changed words back with the reason when asking after the first letter is refused', async () => {
+    mockedSendMessage.mockRejectedValueOnce(noAnswer());
+    mockedFetchSentLetter.mockRejectedValueOnce(noAnswer());
+    await writeAndSend(anna, 'Dear Anna,');
+    const first = readSend(MARA, 'user-anna').unanswered!;
+    told = [];
+    mockedFetchSentLetter.mockRejectedValue(suspended());
+
+    await writeAndSend(anna, 'Dear Anna, one more thing.');
+
+    expect(mockedSendMessage).toHaveBeenCalledTimes(1);
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    expect(readDraft(MARA, 'user-anna')).toBe('Dear Anna, one more thing.');
+    // Still in doubt, and not set to be asked after again.
+    expect(readSend(MARA, 'user-anna').unanswered).toBe(first);
+  });
+
+  /**
    * A sign-out clears every unsent letter. An answer that comes back after it
    * must not bring one back, for an account that has left the phone.
    */
@@ -499,6 +578,24 @@ describe('askAfterLetter', () => {
       // Half as long again as the question has been open.
       askAt: NOW + 15 * SECOND,
     });
+  });
+
+  /**
+   * The server refuses to say - the account has been suspended - and would
+   * refuse again: the courier is told why, and the letter stays as it was, in
+   * doubt, with no later time to ask. It was asked after every minute for as
+   * long as it was on screen, without a word. (Found in the merged tree.)
+   */
+  it('says why, and sets no time to ask again, when the server refuses to answer', async () => {
+    await leaveUnanswered();
+    const before = readSend(MARA, 'user-anna').unanswered;
+    mockedFetchSentLetter.mockRejectedValue(suspended());
+    jest.setSystemTime(NOW + 10 * SECOND);
+
+    await askAfterLetter(MARA, anna);
+
+    expect(told).toEqual([['user-anna', { kind: 'held', message: REFUSALS.account_suspended }]]);
+    expect(readSend(MARA, 'user-anna').unanswered).toBe(before);
   });
 
   it('asks once at a time, however many are waiting to know', async () => {

@@ -13,6 +13,7 @@ import {
 } from '@/features/friends/friends';
 import type { Profile } from '@/features/profile/use-profile';
 import { blockCourier, type BlockOutcome } from '@/features/safety/safety';
+import * as renewal from '@/lib/renewal';
 import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
@@ -66,17 +67,22 @@ jest.mock('@/features/safety/safety', () => ({
   blockCourier: jest.fn(),
 }));
 
-/** The courier's profile as the database has it now. */
-const mockProfileState: { profile: Profile | null } = { profile: null };
+/** The courier's profile as the database has it now, and how often it was read. */
+const mockProfileState: { profile: Profile | null; reads: number } = { profile: null, reads: 0 };
 
-// As the real hook does, it holds what it read last, and reads again only when
-// asked to.
+// As the real hook does, it holds what it read last, and reads again each time
+// the page comes into view - the first time included - and when asked to.
 jest.mock('@/features/profile/use-profile', () => {
   const React = jest.requireActual<typeof import('react')>('react');
+  const { useFocusEffect } = jest.requireMock<typeof import('expo-router')>('expo-router');
   return {
     useProfile: () => {
       const [profile, setProfile] = React.useState(() => mockProfileState.profile);
-      const reload = React.useCallback(async () => setProfile(mockProfileState.profile), []);
+      const reload = React.useCallback(async () => {
+        mockProfileState.reads += 1;
+        setProfile(mockProfileState.profile);
+      }, []);
+      useFocusEffect(React.useCallback(() => void reload(), [reload]));
       return { profile, isLoading: false, error: null, reload };
     },
   };
@@ -278,6 +284,7 @@ beforeEach(() => {
   mockFocus.focused = true;
   mockFocusEffects.clear();
   mockProfileState.profile = courier;
+  mockProfileState.reads = 0;
   mockedFetchFriendships.mockReset();
   serve(() => [anna, ben, carla, dora]);
   mockedAcceptFriend.mockReset().mockResolvedValue(undefined);
@@ -390,6 +397,20 @@ describe('CourierScreen', () => {
       await fireEvent.press(button('Choose your city'));
 
       expect(mockPush).toHaveBeenCalledWith('/city-picker');
+    });
+
+    /**
+     * The hook reads the profile again as the page comes into view. The page
+     * asked as well, and made two requests for the same row at every focus.
+     * (Found in the merged tree.)
+     */
+    it('reads the profile once each time the page comes into view', async () => {
+      await openPageOf(ben);
+      expect(mockProfileState.reads).toBe(1);
+
+      await comeBack();
+
+      expect(mockProfileState.reads).toBe(2);
     });
 
     /**
@@ -981,18 +1002,46 @@ describe('CourierScreen', () => {
 
     it('says why the list could not be loaded, rather than that the courier is gone, and tries again', async () => {
       const failure = 'Your friends could not be loaded. Check your connection.';
+      const renewing = jest.spyOn(renewal, 'renewOnNextRequest');
       mockedFetchFriendships.mockRejectedValueOnce(new RpcError(failure, null));
       await renderScreen(<CourierScreen />);
       expect(await screen.findByText(failure)).toBeOnTheScreen();
       expect(screen.queryByText(GONE)).toBeNull();
       expect(spinners()).toHaveLength(0);
 
+      expect(renewing).not.toHaveBeenCalled();
       await fireEvent.press(button('Try again'));
 
       expect(await screen.findByText('Anna Weber')).toBeOnTheScreen();
       expect(screen.queryByText(failure)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(mockedFetchFriendships).toHaveBeenCalledTimes(2);
+      // A press: the session is renewed first if that failed a moment ago.
+      expect(renewing).toHaveBeenCalledTimes(1);
+      renewing.mockRestore();
     });
+  });
+});
+
+/** The one thing left to do for an account that is suspended, besides writing to Night Courier. */
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
+}));
+
+describe('CourierScreen for a suspended account', () => {
+  /** As on every page: "Try again" under the suspension would only be refused again. (Found in the browser.) */
+  it('offers the way out, not Try again', async () => {
+    mockSignOut.mockClear();
+    mockedFetchFriendships.mockRejectedValue(
+      new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+    );
+    await renderScreen(<CourierScreen />);
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    await fireEvent.press(button('Sign out'));
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 });

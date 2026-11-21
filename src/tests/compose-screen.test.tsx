@@ -61,9 +61,15 @@ jest.mock('@/features/roost/roost', () => ({
   fetchRoost: jest.fn(),
 }));
 
-const mockProfileState: { profile: Profile | null; isLoading: boolean; error: string | null } = {
+const mockProfileState: {
+  profile: Profile | null;
+  isLoading: boolean;
+  isGone: boolean;
+  error: string | null;
+} = {
   profile: null,
   isLoading: false,
+  isGone: false,
   error: null,
 };
 
@@ -288,6 +294,9 @@ const sendButton = () => screen.getByRole('button', { name: 'Send by bat' });
 const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
 
 const ROOST_NOT_LOADED = 'Your roost could not be loaded. Check your connection.';
+const ACCOUNT_GONE =
+  'This account no longer exists: it has been deleted or removed. ' +
+  'All that is left to do is to sign out.';
 const PROFILE_NOT_LOADED = 'Your profile could not be loaded. Check your connection.';
 const FRIENDS_NOT_LOADED = 'Your friends could not be loaded. Check your connection.';
 
@@ -334,6 +343,7 @@ beforeEach(() => {
   forgetAllDrafts();
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
+  mockProfileState.isGone = false;
   mockProfileState.error = null;
   mockReloadProfile.mockReset();
   mockReloadProfile.mockImplementation(() => Promise.resolve());
@@ -406,6 +416,21 @@ describe('ComposeScreen', () => {
       expect(screen.getByText('Who is it for?')).toBeOnTheScreen();
       expect(screen.getByRole('button', { name: /^Anna Weber/ })).toBeOnTheScreen();
       expect(screen.queryByLabelText('Your letter')).toBeNull();
+    });
+
+    /**
+     * "Write back" on the letter of someone who is no longer a friend, with no
+     * friend left: "Choose one below" pointed at nothing, right above "You
+     * have no friends to write to yet". (Found in the browser.)
+     */
+    it('points at no list that is not there when the one in the route is not a friend', async () => {
+      serveFriends(() => [carla, dora]);
+      mockParams.to = 'user-bruno';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText('You can only write to friends.')).toBeOnTheScreen();
+      expect(screen.queryByText(/Choose one below/)).toBeNull();
+      expect(screen.getByText('You have no friends to write to yet.')).toBeOnTheScreen();
     });
 
     it('sends someone with nobody to write to off to find friends', async () => {
@@ -2055,6 +2080,231 @@ describe('ComposeScreen', () => {
         expect.any(String),
       );
       expect(await screen.findByText('Your bat is on its way')).toBeOnTheScreen();
+    });
+
+    /**
+     * A suspended account is refused everything: the bats could not be counted
+     * again, and "Send by bat" stayed on under the count from before. (Found
+     * in the browser.) What the server said is shown, with the way out.
+     */
+    it('holds the letter back, with only the way out, once the account is suspended', async () => {
+      await openLetterTo('user-anna');
+      mockedFetchRoost.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+
+      await act(async () => roostChanged());
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('offers no try again for the friends of a suspended account', async () => {
+      mockedFetchFriendships.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    /**
+     * An account that is gone cannot send, and asking again changes nothing.
+     * The screen offered "Try again" under "All that is left to do is to sign
+     * out", and kept "Send by bat" on. (Found in the merged tree.)
+     */
+    it('holds the letter back, with only the way out, when the account is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(screen.getAllByText(ACCOUNT_GONE)).toHaveLength(1);
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
+      // Its notice says why nothing can go; the bats have nothing to add.
+      expect(screen.queryByText(/bats at home/)).toBeNull();
+    });
+
+    /**
+     * The bats could not be counted at all: the line where the count goes says
+     * the suspension, and it was said a second time below it. (Found in review.)
+     */
+    it('says a suspension once when the bats were never counted', async () => {
+      mockedFetchRoost.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+
+      await screen.findAllByText(REFUSALS.account_suspended);
+      expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    /** The friends can be the first to say it: they are asked again on the app's return. */
+    it('holds the letter back, with only the way out, once the friends say the account is suspended', async () => {
+      const listening = jest.mocked(AppState.addEventListener);
+      const alreadyListening = listening.mock.calls.length;
+      await openLetterTo('user-anna');
+      mockedFetchFriendships.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+
+      await act(async () => {
+        for (const [, listener] of listening.mock.calls.slice(alreadyListening)) {
+          listener('active');
+        }
+      });
+
+      expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    /**
+     * Send refused for the suspension: the field said it in red as if the words
+     * were wrong, the block below said it again, and the line between still
+     * offered a bat - "This letter takes one". (Found in the browser.)
+     */
+    it('says a suspension once, with no bat on offer, when Send is refused for it', async () => {
+      await openLetterTo('user-anna');
+      mockedSendMessage.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      mockedFetchRoost.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+
+      await writeAndSend('See you at the lake.');
+
+      await screen.findByRole('button', { name: 'Sign out' });
+      expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+      expect(screen.queryByText(/This letter takes one/)).toBeNull();
+      expect(sendButton()).toBeDisabled();
+      expect(letterField()).toHaveDisplayValue('See you at the lake.');
+    });
+
+    it('says a suspension once even before the bats have been asked about again', async () => {
+      await openLetterTo('user-anna');
+      mockedSendMessage.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      // The roost has not answered yet when the refusal comes.
+      mockedFetchRoost.mockReturnValue(new Promise<Bat[]>(() => {}));
+
+      await writeAndSend('See you at the lake.');
+
+      await screen.findByRole('button', { name: 'Sign out' });
+      expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+      expect(screen.queryByText(/This letter takes one/)).toBeNull();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    /**
+     * A send without an answer, and the question after it refused: the letter
+     * may have gone. The suspension stood in the field in place of that, so
+     * the courier was not told until they typed. (Found in review.) Nothing
+     * will check again for a suspended account, so that is not promised.
+     */
+    it('still says that the letter may have gone when the account is suspended', async () => {
+      await openLetterTo('user-anna');
+      mockedSendMessage.mockRejectedValue(noAnswer());
+      mockedFetchSentLetter.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      mockedFetchRoost.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+
+      await writeAndSend('See you at the lake.');
+
+      expect(
+        await screen.findByText('No answer came back, so your letter may or may not have gone.'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/will check again/)).toBeNull();
+      expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    /**
+     * Opened on an account that is gone: its friendships went with it, and
+     * the list said "You have no friends to write to yet" with Find friends,
+     * and not a word that the account is gone. (Found in the browser.)
+     */
+    it('offers only the way out when the account is gone, with nobody to choose', async () => {
+      serveFriends(() => []);
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(screen.queryByText('You have no friends to write to yet.')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Find friends' })).toBeNull();
+    });
+
+    it('offers only the way out when the account is gone, whoever the route names', async () => {
+      serveFriends(() => []);
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+
+      expect(await screen.findByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(screen.queryByText(/You can only write to friends/)).toBeNull();
+      expect(screen.queryByText('You have no friends to write to yet.')).toBeNull();
+    });
+
+    /**
+     * Deleted while a letter was being written: Send was refused with "Letters
+     * can only go to friends", the roost came back without a bat, and the
+     * screen said "All your bats are out" - both untrue, and not a word that
+     * the account was gone. (Found in the browser.)
+     */
+    it('says that the account is gone when it went while the letter was written', async () => {
+      await openLetterTo('user-anna');
+      mockedSendMessage.mockRejectedValue(new RpcError(REFUSALS.not_friends, 'not_friends'));
+      serveRoost(() => []);
+      mockReloadProfile.mockImplementation(async () => {
+        mockProfileState.profile = null;
+        mockProfileState.isGone = true;
+        mockProfileState.error = ACCOUNT_GONE;
+      });
+
+      await writeAndSend('See you at the lake.');
+
+      expect(await screen.findByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      expect(screen.queryByText(REFUSALS.not_friends)).toBeNull();
+      expect(screen.queryByText(/All your bats are out/)).toBeNull();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('says nothing of bats being out when there are none at all', async () => {
+      serveRoost(() => []);
+      mockParams.to = 'user-anna';
+      await renderScreen(<ComposeScreen />);
+      await screen.findByLabelText('Your letter');
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      expect(screen.queryByText(/All your bats are out/)).toBeNull();
+      expect(sendButton()).toBeDisabled();
+      // No bats is what an account that has gone has: whether it has is asked.
+      expect(mockReloadProfile).toHaveBeenCalled();
     });
 
     it('says that the profile could not be loaded, and loads it again when asked', async () => {

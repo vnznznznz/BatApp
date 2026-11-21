@@ -1,5 +1,5 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useRouter } from 'expo-router';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -22,6 +22,7 @@ import {
   withdrawRequest,
   type Friendship,
 } from '@/features/friends/friends';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { useProfile } from '@/features/profile/use-profile';
 import { announce } from '@/lib/announce';
 import { confirmAction, notify } from '@/lib/confirm';
@@ -39,18 +40,13 @@ import { useRemote } from '@/lib/use-remote';
  */
 export default function FriendsScreen() {
   const router = useRouter();
-  const { profile, reload: reloadProfile } = useProfile();
-  const list = useRemote(fetchFriendships);
-  const { reload, refresh } = list;
-
   // The city picker, opened from here or from the profile, saves the city
   // itself and pops back: what this screen says about a city of the courier's
-  // own has to be read again each time it comes back into view.
-  useFocusEffect(
-    useCallback(() => {
-      void reloadProfile();
-    }, [reloadProfile]),
-  );
+  // own is read again each time it comes back into view - by the hook itself,
+  // which the screen used to repeat. (Found in the merged tree.)
+  const { profile } = useProfile();
+  const list = useRemote(fetchFriendships);
+  const { reload, refresh } = list;
 
   const [username, setUsername] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -65,6 +61,10 @@ export default function FriendsScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const groups = groupFriendships(list.data ?? []);
+  // The server refuses a suspended account everything: a request would only
+  // be refused, and "Send request" stood on, with no way out. (Found in the
+  // browser.)
+  const suspended = list.reason === 'account_suspended';
 
   async function ask() {
     const problem = validateUsername(username);
@@ -172,9 +172,15 @@ export default function FriendsScreen() {
           autoCorrect={false}
           autoComplete="off"
           returnKeyType="send"
+          editable={!suspended}
           onSubmitEditing={() => void ask()}
         />
-        <Button label="Send request" loading={asking} onPress={() => void ask()} />
+        <Button
+          label="Send request"
+          loading={asking}
+          disabled={suspended}
+          onPress={() => void ask()}
+        />
         {outcome ? (
           <Text variant="caption" tone="available" accessibilityLiveRegion="polite">
             {outcome}
@@ -188,7 +194,14 @@ export default function FriendsScreen() {
         </Text>
       ) : null}
 
-      {list.error && !list.data ? (
+      {suspended ? (
+        <View style={styles.section}>
+          <Text variant="caption" tone="danger">
+            {list.error}
+          </Text>
+          <AccountClosedActions />
+        </View>
+      ) : list.error && !list.data ? (
         <Text variant="caption" tone="danger" style={styles.section}>
           {list.error}
         </Text>

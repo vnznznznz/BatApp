@@ -351,6 +351,26 @@ describe('opening the app', () => {
   });
 
   /**
+   * A suspended account an hour after the app was last used was signed out at
+   * its start, and landed on the welcome screen with nothing to say why.
+   * (Found in the browser.)
+   */
+  it('leaves word for the welcome screen when the session ends for a suspension', async () => {
+    await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    network = (request) =>
+      isRenewal(request)
+        ? authRefusal(400, 'user_banned', 'Invalid Refresh Token: User Banned')
+        : json(200, []);
+
+    await launch();
+    await passes(1000);
+
+    expect(state()).toBe('signed out');
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.farewellDue()).toBe('suspended');
+  });
+
+  /**
    * The keychain is read while the client starts. If the client has spoken by
    * the time the read comes back, the read is the older news.
    */
@@ -581,6 +601,359 @@ describe('signing out', () => {
     expect(Date.now() - started).toBeLessThanOrEqual(45_000);
   });
 
+  describe('when the server cannot be told in time', () => {
+    /**
+     * Presses Sign out, and lets time pass until the device is signed out, or
+     * a minute has gone by. Resolves with how long that took, and with how the
+     * press itself ended, once it has.
+     */
+    async function pressSignOut() {
+      const started = Date.now();
+      let ended = 'still waiting';
+      await act(async () => {
+        void outcomeOf(auth.signOut()).then((said) => {
+          ended = said;
+        });
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      while (state() !== 'signed out' && Date.now() - started < 60_000) await passes(100);
+      return { took: Date.now() - started, ended: () => ended };
+    }
+
+    /**
+     * The client renews a token over an hour old before it can tell the
+     * server, and without a network it tries for half a minute: "Sign out"
+     * spun all that time, on the welcome screen's doorstep. (Found in the
+     * browser: 24.6 s, at the app's start; and as long again after any
+     * renewal, while the client was at it.)
+     */
+    it('signs out of the device within seconds while the client is still renewing', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+      network = offline;
+      await launch();
+      await passes(A_MOMENT);
+
+      const { took, ended } = await pressSignOut();
+
+      expect(state()).toBe('signed out');
+      expect(mockKeychain.size).toBe(0);
+      expect(took).toBeLessThanOrEqual(5_500);
+      // And it is over, without a word of complaint, once the client has given up.
+      await passes(30_000);
+      expect(ended()).toBe('done');
+    });
+
+    it('signs out of the device within seconds on a connection that never answers', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+      network = () => new Promise<Response>(() => {});
+      await launch();
+      await passes(A_MOMENT);
+
+      const { took, ended } = await pressSignOut();
+
+      expect(state()).toBe('signed out');
+      expect(took).toBeLessThanOrEqual(5_500);
+      await passes(45_000);
+      expect(ended()).toBe('done');
+    });
+
+    /** A renewal begun later - by "Try again", say - is waited for no longer. */
+    it('signs out of the device within seconds while a renewal asked for later is under way', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+      network = offline;
+      const { client } = await launch();
+      // The renewal at the start has failed by now, and is remembered.
+      await passes(30_000);
+      jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+      void client.rpc('get_roost').then(() => {});
+      await passes(1000);
+      const renewals = sent.filter(isRenewal).length;
+
+      const { took, ended } = await pressSignOut();
+
+      expect(state()).toBe('signed out');
+      expect(took).toBeLessThanOrEqual(5_500);
+      // The renewal was under way: the press waited for it, and started none.
+      expect(sent.filter(isRenewal).length - renewals).toBeLessThanOrEqual(5);
+      await passes(30_000);
+      expect(ended()).toBe('done');
+    });
+
+    /**
+     * Whoever signs in while the client is still at the sign-out stays signed
+     * in when it gives up: what it gives up on is the session before theirs.
+     */
+    it('leaves someone who signs in meanwhile signed in', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+      network = offline;
+      const { client } = await launch();
+      await passes(30_000);
+      jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+      void client.rpc('get_roost').then(() => {});
+      await passes(1000);
+      await pressSignOut();
+      expect(state()).toBe('signed out');
+
+      network = (request) => {
+        if (isSignIn(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+        return isLogout(request) ? loggedOut() : json(200, []);
+      };
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+      await passes(30_000);
+
+      expect(state()).toBe('signed in');
+      expect((await kept())?.refresh_token).toBe('refresh-new');
+    });
+
+    /**
+     * The server is told, only later than the device lets go. Whoever answers
+     * last, the sign-out is heard of once.
+     */
+    it('lets the server hear of it when the answer comes late', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      network = (request) =>
+        isLogout(request)
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 8000))
+          : json(200, []);
+      await launch();
+      await passes(A_MOMENT);
+
+      const { took, ended } = await pressSignOut();
+      expect(took).toBeLessThanOrEqual(5_500);
+      await passes(5000);
+
+      expect(sent.filter(isLogout)).toHaveLength(1);
+      expect(ended()).toBe('done');
+      expect(state()).toBe('signed out');
+      expect(mockKeychain.size).toBe(0);
+    });
+
+    /**
+     * The device lets go after five seconds, but the client's sign-out goes on,
+     * and when its request ends - answered, or given up on after twenty seconds
+     * - it removes whatever session is stored by then. Whoever had signed in
+     * meanwhile was signed out again, and once the client was renewing at the
+     * start, it even told the server to end every session of theirs. (Found in
+     * review.) Signing in waits until the sign-out is over.
+     */
+    describe('and someone signs in again meanwhile', () => {
+      const THEIR_TOKEN = `header.${'c'.repeat(1000)}.signature`;
+      const theirs = () => sessionOf(THEIR_TOKEN, 'refresh-theirs', 3600);
+      const isSignUp = (request: Sent) => request.url.includes('/auth/v1/signup');
+      const answeredLate = () =>
+        new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 12_000));
+
+      it.each<[string, () => Promise<Response>]>([
+        ['is answered after twelve seconds', answeredLate],
+        ['is never answered', () => new Promise<Response>(() => {})],
+      ])('stays signed in when the logout request %s', async (_, logout) => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+        network = (request) => {
+          if (isLogout(request)) return logout();
+          return isSignIn(request) ? json(200, theirs()) : json(200, []);
+        };
+        await launch();
+        await passes(A_MOMENT);
+        const { took } = await pressSignOut();
+        expect(took).toBeLessThanOrEqual(5_500);
+
+        await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out', 'signed in']);
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      });
+
+      it('stays signed in after signing up', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+        network = (request) => {
+          if (isLogout(request)) return answeredLate();
+          return isSignUp(request) ? json(200, theirs()) : json(200, []);
+        };
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        await asked(() =>
+          auth.signUp({
+            email: 'ben@example.test',
+            password: 'night-courier',
+            username: 'ben',
+            displayName: 'Ben',
+          }),
+        );
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+      });
+
+      /**
+       * The client takes no sign-out further while it renews the session at
+       * the start. Once that was over it found the newcomer's session stored,
+       * told the server to end every session of theirs, and removed it.
+       */
+      it('stays signed in, everywhere, when the client was renewing at the start', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        network = (request) => {
+          if (isSignIn(request)) return json(200, theirs());
+          if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+          return isLogout(request) ? loggedOut() : json(200, []);
+        };
+        await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+        await passes(30_000);
+
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-theirs');
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).not.toContain(THEIR_TOKEN);
+      });
+    });
+
+    /**
+     * A token over an hour old is renewed before the server can be told, and a
+     * renewal that comes back once the device has let go, the client throws
+     * away: the session is no longer stored. It then told the server nothing,
+     * however soon the network was back. (Found in review.) The server is told
+     * once more with the token the session had, and, when it says that one has
+     * run out, with a renewed one.
+     */
+    describe('with a token over an hour old', () => {
+      const RENEWED_TOKEN = `header.${'d'.repeat(1000)}.signature`;
+      const isLogoutWith = (token: string) => (request: Sent) =>
+        isLogout(request) && request.bearer === token;
+
+      /** The auth server, reachable again, as it answers. */
+      function backOnline({ logoutTakes = 0 } = {}) {
+        network = (request) => {
+          if (isRenewal(request)) {
+            return json(200, sessionOf(RENEWED_TOKEN, 'refresh-renewed', 3600));
+          }
+          if (isLogoutWith(OLD_TOKEN)(request)) {
+            return authRefusal(
+              403,
+              'bad_jwt',
+              'invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired',
+            );
+          }
+          if (isLogout(request)) {
+            return new Promise<Response>((resolve) =>
+              setTimeout(() => resolve(loggedOut()), logoutTakes),
+            );
+          }
+          return json(200, []);
+        };
+      }
+
+      it('tells the server after all when the network is back while the client renews at the start', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        const { ended } = await pressSignOut();
+        expect(mockKeychain.size).toBe(0);
+
+        backOnline();
+        await passes(40_000);
+
+        expect(
+          sent
+            .filter(isLogoutWith(RENEWED_TOKEN))
+            .map(({ url, bearer }) => [url.split('?')[1], bearer]),
+        ).toEqual([['scope=global', RENEWED_TOKEN]]);
+        expect(sent.filter(isRenewal).at(-1)?.body).toEqual({ refresh_token: 'refresh-old' });
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
+        expect(mockKeychain.size).toBe(0);
+        expect(ended()).toBe('done');
+      });
+
+      it('tells the server after all when the network is back while a renewal asked for later is under way', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        const { client } = await launch();
+        await passes(30_000);
+        jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+        void client.rpc('get_roost').then(() => {});
+        await passes(1000);
+        await pressSignOut();
+
+        // The client's next attempt comes within 13 seconds; the logout is
+        // answered 18 seconds after it is sent.
+        backOnline({ logoutTakes: 18_000 });
+        await passes(13_000);
+        // Nothing of the account is kept or shown while the server is told.
+        expect(sent.filter(isLogoutWith(RENEWED_TOKEN))).toHaveLength(1);
+        expect(mockKeychain.size).toBe(0);
+        expect(state()).toBe('signed out');
+        await passes(20_000);
+
+        expect(sent.filter(isLogoutWith(RENEWED_TOKEN))).toHaveLength(1);
+        expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
+        expect(mockKeychain.size).toBe(0);
+      });
+
+      /**
+       * Telling the server ends every session of the account, a session begun
+       * a moment before included. Whoever signs in next waits until it is told.
+       */
+      it('lets whoever signs in next wait until the server has been told', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        await pressSignOut();
+
+        backOnline({ logoutTakes: 3000 });
+        const answer = network;
+        network = (request) =>
+          isSignIn(request)
+            ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600))
+            : answer(request);
+        await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+        const order = sent
+          .filter((request) => isSignIn(request) || isLogoutWith(RENEWED_TOKEN)(request))
+          .map((request) => (isSignIn(request) ? 'signed in' : 'told'));
+        expect(order).toEqual(['told', 'signed in']);
+        expect(state()).toBe('signed in');
+        expect((await kept())?.refresh_token).toBe('refresh-new');
+      });
+
+      /**
+       * Without a network the one more try fails at once, and the client's
+       * half minute of renewals is not begun again: nobody who signs in next is
+       * kept waiting for it.
+       */
+      it('tries once more, and holds nobody up, when the network stays away', async () => {
+        await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+        network = offline;
+        await launch();
+        await passes(A_MOMENT);
+        const { ended } = await pressSignOut();
+        await passes(30_000);
+        expect(ended()).toBe('done');
+        const renewals = sent.filter(isRenewal).length;
+
+        network = (request) =>
+          isSignIn(request) ? json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600)) : json(200, []);
+        const started = Date.now();
+        await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+        expect(Date.now() - started).toBeLessThan(1000);
+        expect(sent.filter(isRenewal)).toHaveLength(renewals);
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+        expect(state()).toBe('signed in');
+      });
+    });
+  });
+
   describe('when the server did not hear of it', () => {
     /** Signed out in flight mode, an hour after the app was last used. */
     async function signOutUnheard() {
@@ -625,8 +998,10 @@ describe('signing out', () => {
 
       expect(sent.filter(isRenewal).at(-1)?.body).toEqual({ refresh_token: 'refresh-old' });
       expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
-      // Everywhere, as the sign-out it finishes was meant: on the other devices too.
+      // Everywhere, as the sign-out it finishes was meant: on the other devices
+      // too. (The first is the sign-out's own last try, without a network.)
       expect(sent.filter(isLogout).map(({ url, bearer }) => [url.split('?')[1], bearer])).toEqual([
+        ['scope=global', OLD_TOKEN],
         ['scope=global', NEW_TOKEN],
       ]);
       expect(mockKeychain.size).toBe(0);
@@ -646,12 +1021,38 @@ describe('signing out', () => {
           : answer(request);
 
       await aLateRenewalArrives(client);
-      expect(sent.filter(isLogout)).toHaveLength(1);
+      expect(
+        sent.filter((request) => isLogout(request) && request.bearer === NEW_TOKEN),
+      ).toHaveLength(1);
       expect(state()).toBe('signed out');
       await passes(5000);
 
       expect(shown).toEqual(['restoring', 'signed in', 'signed out']);
       expect(mockKeychain.size).toBe(0);
+    });
+
+    /**
+     * Ending that session ends with the client removing whatever is stored by
+     * then. Someone who signs in while the server is being told stays signed in.
+     */
+    it('lets someone who signs in while that session is being ended stay signed in', async () => {
+      const { client } = await signOutUnheard();
+      online();
+      const answer = network;
+      network = (request) =>
+        isLogout(request)
+          ? new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 10_000))
+          : answer(request);
+      await passes(61_000);
+      await asked(async () => client.auth.refreshSession({ refresh_token: 'refresh-old' }));
+
+      const theirs = sessionOf(`header.${'c'.repeat(1000)}.signature`, 'refresh-theirs', 3600);
+      network = (request) => (isSignIn(request) ? json(200, theirs) : answer(request));
+      await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+      await passes(20_000);
+
+      expect(state()).toBe('signed in');
+      expect((await kept())?.refresh_token).toBe('refresh-theirs');
     });
 
     it('lets the courier sign in again', async () => {
@@ -661,7 +1062,8 @@ describe('signing out', () => {
       await asked(() => auth.signIn('mara@example.test', 'night-courier'));
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout)).toEqual([]);
+      // None but the sign-out's own last try, without a network.
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
       expect((await kept())?.refresh_token).toBe('refresh-new');
     });
 
@@ -682,7 +1084,7 @@ describe('signing out', () => {
       );
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout)).toEqual([]);
+      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
     });
   });
 
@@ -779,20 +1181,49 @@ describe('deleting the account', () => {
   /**
    * Once the account is gone the device is signed out by the app's own
    * signing out, which does not depend on the server hearing of it, and has
-   * words of its own for a keychain that will not let go.
+   * words of its own for a keychain that will not let go. The server is not
+   * asked at all: it has no session left to end, and answered the sign-out
+   * with an error, user_not_found, that the browser logged. (Found in the
+   * browser.)
    */
-  it('signs out of the device when the server cannot be told of it after the deletion', async () => {
+  it('signs out of the device without asking the server, which has nothing left to end', async () => {
     network = (request) => {
       if (isDeletion(request)) return new Response(null, { status: 204 });
-      return isLogout(request) ? offline() : json(200, []);
+      return isLogout(request) ? noSuchUser() : json(200, []);
     };
     await signedIn();
 
     expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
 
-    expect(sent.filter(isLogout)).toHaveLength(1);
+    expect(sent.filter(isLogout)).toEqual([]);
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
+  });
+
+  /** The welcome screen says what happened: it said nothing. (Found in the browser.) */
+  it('leaves word for the welcome screen that the account has been deleted', async () => {
+    network = (request) =>
+      isDeletion(request) ? new Response(null, { status: 204 }) : json(200, []);
+    await signedIn();
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.isFarewellDue()).toBe(false);
+
+    await asked(() => auth.deleteAccount());
+
+    expect(farewell.isFarewellDue()).toBe(true);
+  });
+
+  it('leaves no such word when the account could not be deleted', async () => {
+    network = (request) =>
+      isDeletion(request)
+        ? json(400, { code: 'P0001', hint: 'account_suspended', message: 'suspended' })
+        : json(200, []);
+    await signedIn();
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+
+    await outcomeOf(asked(() => auth.deleteAccount()));
+
+    expect(farewell.isFarewellDue()).toBe(false);
   });
 
   it('says so when the device cannot be signed out after the deletion', async () => {
@@ -1060,8 +1491,11 @@ describe('what the rest of the app hears when the session ends', () => {
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
     expect(ending()).toEqual(ONCE);
-    // Announcing it asked nothing more of the network than the attempt to tell the server.
-    expect(sent.filter(isLogout)).toEqual([]);
+    // Announcing it asked nothing of the network: the one logout request is the
+    // last try at telling the server, everywhere, with the token the session had.
+    expect(sent.filter(isLogout).map(({ url, bearer }) => [url.split('?')[1], bearer])).toEqual([
+      ['scope=global', OLD_TOKEN],
+    ]);
   });
 
   it('hears of a sign-out on a connection that never answers, once', async () => {
@@ -1072,6 +1506,103 @@ describe('what the rest of the app hears when the session ends', () => {
 
     expect(state()).toBe('signed out');
     expect(ending()).toEqual(ONCE);
+  });
+
+  /**
+   * The device lets go before the client has finished with the server, and
+   * the client may yet announce the sign-out itself: then the app does not.
+   */
+  it('hears of a sign-out once when the server answers after the device has let go', async () => {
+    network = (request) =>
+      isLogout(request)
+        ? new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 8000))
+        : json(200, []);
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+    await passes(10_000);
+
+    expect(sent.filter(isLogout)).toHaveLength(1);
+    expect(ending()).toEqual(ONCE);
+  });
+
+  /** Telling the server later stores nothing and announces nothing: nobody is signed in with it. */
+  it('hears of a sign-out once when the server is told after all', async () => {
+    network = offline;
+    await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    await act(async () => {
+      void outcomeOf(auth.signOut());
+      await jest.advanceTimersByTimeAsync(0);
+    });
+    await passes(5500);
+    expect(state()).toBe('signed out');
+
+    network = (request) => {
+      if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+      if (isLogout(request) && request.bearer === OLD_TOKEN) {
+        return authRefusal(
+          403,
+          'bad_jwt',
+          'invalid JWT: token has invalid claims: token is expired',
+        );
+      }
+      return isLogout(request) ? loggedOut() : json(200, []);
+    };
+    await passes(40_000);
+
+    expect(
+      sent.filter((request) => isLogout(request) && request.bearer === NEW_TOKEN),
+    ).toHaveLength(1);
+    expect(heard.slice(heard.findIndex(([event]) => event === 'SIGNED_OUT'))).toEqual([
+      ['SIGNED_OUT', false],
+    ]);
+  });
+
+  it('hears of a sign-out once while a renewal asked for later is still under way', async () => {
+    network = offline;
+    const { client } = await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    await passes(30_000);
+    jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+    void client.rpc('get_roost').then(() => {});
+    await passes(1000);
+
+    expect(await outcomeOf(asked(() => auth.signOut()))).toBe('done');
+
+    expect(state()).toBe('signed out');
+    expect(ending()).toEqual(ONCE);
+  });
+
+  /**
+   * Whoever signs in while a sign-out is still under way comes after it: the
+   * sign-out is heard of first, and what was kept for the account before goes.
+   */
+  it('hears of a sign-out before whoever signs in while it is still under way', async () => {
+    network = offline;
+    const { client } = await opened(sessionOf(OLD_TOKEN, 'refresh-old', -600));
+    await passes(30_000);
+    jest.requireActual<typeof import('@/lib/renewal')>('@/lib/renewal').renewOnNextRequest();
+    void client.rpc('get_roost').then(() => {});
+    await passes(1000);
+    await act(async () => {
+      void outcomeOf(auth.signOut());
+      await jest.advanceTimersByTimeAsync(0);
+    });
+    await passes(5500);
+    expect(state()).toBe('signed out');
+
+    network = (request) => {
+      if (isRenewal(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-renewed', 3600));
+      if (request.url.includes('/auth/v1/token?grant_type=password')) {
+        return json(200, sessionOf(NEW_TOKEN, 'refresh-theirs', 3600));
+      }
+      return isLogout(request) ? loggedOut() : json(200, []);
+    };
+    await asked(() => auth.signIn('ben@example.test', 'night-courier'));
+    await passes(30_000);
+
+    const events = heard.map(([event]) => event);
+    expect(events.slice(events.lastIndexOf('SIGNED_OUT'))).toEqual(['SIGNED_OUT', 'SIGNED_IN']);
+    expect(state()).toBe('signed in');
   });
 
   it('hears nothing of a sign-out that did not happen', async () => {

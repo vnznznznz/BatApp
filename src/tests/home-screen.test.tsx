@@ -8,7 +8,7 @@ import { fetchBadges } from '@/features/messages/messages';
 import type { Profile } from '@/features/profile/use-profile';
 import { fetchRoost, roostChanged, type Bat, type Person } from '@/features/roost/roost';
 import { formatTimestamp } from '@/lib/format';
-import { RpcError } from '@/lib/rpc-error';
+import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
@@ -49,17 +49,40 @@ jest.mock('@/features/messages/messages', () => ({
   fetchBadges: jest.fn(),
 }));
 
-const mockProfileState: { profile: Profile | null; isLoading: boolean; error: string | null } = {
+const mockProfileState: {
+  profile: Profile | null;
+  isLoading: boolean;
+  isGone: boolean;
+  error: string | null;
+} = {
   profile: null,
   isLoading: false,
+  isGone: false,
   error: null,
 };
-// Stable, as the real hook's is: the screen reloads the profile on focus, and a
-// new function on every render would read as a new focus on every render.
+// Stable, as the real hook's is: a new function on every render would read as
+// a new focus on every render.
 const mockReloadProfile = jest.fn(() => Promise.resolve());
+const mockReloadProfileOnFocus = () => void mockReloadProfile();
 
-jest.mock('@/features/profile/use-profile', () => ({
-  useProfile: () => ({ ...mockProfileState, reload: mockReloadProfile }),
+// As the real hook does, it reads the profile each time the screen comes into
+// view, the first time included.
+jest.mock('@/features/profile/use-profile', () => {
+  const { useFocusEffect } = jest.requireMock<typeof import('expo-router')>('expo-router');
+  return {
+    useProfile: () => {
+      useFocusEffect(mockReloadProfileOnFocus);
+      return { ...mockProfileState, reload: mockReloadProfile };
+    },
+  };
+});
+
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+// Signing out is the one thing the roost asks of the session: for an account
+// that is gone, it is all there is left to do.
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
 }));
 
 const mockedFetchRoost = jest.mocked(fetchRoost);
@@ -126,8 +149,13 @@ const tryAgainButton = () => screen.getByRole('button', { name: 'Try again' });
 /** What every request ends with while there is no connection: no answer, and no refusal. */
 const NO_CONNECTION = 'No connection. Check your network and try again.';
 const noConnection = () => new RpcError(NO_CONNECTION, null);
+/** The database's refusal of everything a suspended account asks. */
+const suspended = () => new RpcError(REFUSALS.account_suspended, 'account_suspended');
 
 const PROFILE_NOT_LOADED = 'Your profile could not be loaded. Check your connection.';
+const ACCOUNT_GONE =
+  'This account no longer exists: it has been deleted or removed. ' +
+  'All that is left to do is to sign out.';
 
 /** A promise the test settles by hand, to look at the screen while a call is in flight. */
 function deferred<T>() {
@@ -173,7 +201,9 @@ beforeEach(() => {
   mockReloadProfile.mockImplementation(() => Promise.resolve());
   mockProfileState.profile = courier;
   mockProfileState.isLoading = false;
+  mockProfileState.isGone = false;
   mockProfileState.error = null;
+  mockSignOut.mockClear();
   mockedFetchRoost.mockReset();
   serve(everyBatHome);
   mockedFetchBadges.mockReset();
@@ -609,6 +639,160 @@ describe('HomeScreen', () => {
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
 
+    /**
+     * An account that is gone has nothing to try again and nothing to write
+     * with. The roost offered both, under "All that is left to do is to sign
+     * out". (Found in the merged tree.)
+     */
+    it('offers only the way out when the account is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      await renderScreen(<HomeScreen />);
+
+      expect(await screen.findByText(ACCOUNT_GONE)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(writeButton()).toBeDisabled();
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Its bats went with it: the roost said "0 of 0 at home" under the notice
+     * that the account is gone. (Found in the browser.) Nor are bats from
+     * before shown, or why they could not be counted again.
+     */
+    it('shows no roost for an account that is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      await renderScreen(<HomeScreen />);
+      await screen.findByText(ACCOUNT_GONE);
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      expect(screen.queryByText('Your roost')).toBeNull();
+      expect(screen.queryByText(/at home$/)).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Bat 1/ })).toBeNull();
+    });
+
+    it('offers no try again for the bats either when the account is gone', async () => {
+      mockProfileState.profile = null;
+      mockProfileState.isGone = true;
+      mockProfileState.error = ACCOUNT_GONE;
+      mockedFetchRoost.mockRejectedValue(noConnection());
+      await renderScreen(<HomeScreen />);
+      await screen.findByText(ACCOUNT_GONE);
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      expect(mockedFetchRoost).toHaveBeenCalled();
+      expect(screen.queryByText(NO_CONNECTION)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    it('says nothing of how many bats are home when there are none', async () => {
+      serve(() => []);
+      await renderScreen(<HomeScreen />);
+      await screen.findByText('Your roost');
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      expect(mockedFetchRoost).toHaveBeenCalled();
+      expect(screen.queryByText(/at home$/)).toBeNull();
+      expect(writeButton()).toBeDisabled();
+    });
+
+    /**
+     * A suspended account is refused everything, and asking again is refused
+     * again. The roost offered "Try again", and an enabled "Write a letter"
+     * under the bats it had shown before the suspension. (Found in the
+     * browser.)
+     */
+    it('offers no try again and no letter to write once the account is suspended', async () => {
+      await renderScreen(<HomeScreen />);
+      await screen.findByText('3 of 3 at home');
+      mockedFetchRoost.mockRejectedValue(suspended());
+      mockedFetchBadges.mockRejectedValue(suspended());
+
+      await comeBackToRoost();
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(writeButton()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    /** Either answer can be the first to say it, and either is enough. */
+    it.each([
+      ['the bats', () => mockedFetchRoost.mockRejectedValue(suspended())],
+      ['the counts', () => mockedFetchBadges.mockRejectedValue(suspended())],
+    ])(
+      'holds writing back, with only the way out, when %s say the account is suspended',
+      async (_, refuse) => {
+        refuse();
+        await renderScreen(<HomeScreen />);
+
+        expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+        expect(screen.getAllByText(REFUSALS.account_suspended)).toHaveLength(1);
+        expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+        expect(writeButton()).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+      },
+    );
+
+    /**
+     * Refused for the suspension, the counts are not a check that failed: "Could
+     * not check for new letters" read like a fault of the network. (Found in
+     * the browser.) The roost says why.
+     */
+    it('does not say the counts could not be checked when the account is suspended', async () => {
+      mockedFetchRoost.mockRejectedValue(suspended());
+      mockedFetchBadges.mockRejectedValue(suspended());
+      await renderScreen(<HomeScreen />);
+      await screen.findByText(REFUSALS.account_suspended);
+
+      expect(screen.queryByText(/^Could not check/)).toBeNull();
+      expect(screen.getByText('Received and sent')).toBeOnTheScreen();
+      expect(screen.getByText('Add friends by their username')).toBeOnTheScreen();
+    });
+
+    it('offers no try again to an account suspended before the roost was first loaded', async () => {
+      mockedFetchRoost.mockRejectedValue(suspended());
+      mockedFetchBadges.mockRejectedValue(suspended());
+      await renderScreen(<HomeScreen />);
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(writeButton()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    });
+
+    /**
+     * Without a network, an hour after the app was last used, the first loads
+     * wait about half a minute behind the session's renewal before they fail,
+     * and the roost showed spinners and nothing else. (Found in the browser.)
+     */
+    it('says that it is still trying when the bats take long to load', async () => {
+      mockedFetchRoost.mockReturnValue(new Promise<Bat[]>(() => {}));
+      await renderScreen(<HomeScreen />);
+      await letTimePass(4 * SECOND);
+      expect(screen.queryByText('Still trying to reach Night Courier…')).toBeNull();
+
+      await letTimePass(SECOND);
+
+      expect(screen.getByText('Still trying to reach Night Courier…')).toBeOnTheScreen();
+    });
+
+    it('says nothing of trying once the bats are in', async () => {
+      await renderScreen(<HomeScreen />);
+      await roostLoaded();
+
+      await letTimePass(10 * SECOND);
+
+      expect(screen.queryByText('Still trying to reach Night Courier…')).toBeNull();
+    });
+
     // Without a connection all of it fails at once. One way out is enough.
     it('offers it once when neither the roost nor the profile could be loaded', async () => {
       mockProfileState.profile = null;
@@ -744,33 +928,35 @@ describe('HomeScreen', () => {
 
   describe('staying current', () => {
     // The profile screen and the city picker both change what the roost shows,
-    // and the courier comes back here from each of them.
+    // and the courier comes back here from each of them. The hook reads the
+    // profile again by itself; the screen asking as well made two requests for
+    // the row at every return. (Found in the merged tree; home-profile.test.tsx
+    // counts the requests with the real hook.)
     it('reloads the profile, the roost and the counts when the roost comes back into view', async () => {
       await renderScreen(<HomeScreen />);
       await roostLoaded();
 
       await comeBackToRoost();
 
-      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
+      expect(mockReloadProfile).toHaveBeenCalledTimes(2);
       expect(mockedFetchRoost).toHaveBeenCalledTimes(2);
       expect(mockedFetchBadges).toHaveBeenCalledTimes(2);
 
       await comeBackToRoost();
 
-      expect(mockReloadProfile).toHaveBeenCalledTimes(2);
+      expect(mockReloadProfile).toHaveBeenCalledTimes(3);
     });
 
     /**
      * The hook that reads the profile asks for it itself when the screen
      * opens. Asking here as well made two requests for the same row at every
-     * start. (Found in review; home-profile.test.tsx counts the requests with
-     * the real hook.)
+     * start. (Found in review.)
      */
     it('does not ask for the profile a second time as it opens', async () => {
       await renderScreen(<HomeScreen />);
       await roostLoaded();
 
-      expect(mockReloadProfile).not.toHaveBeenCalled();
+      expect(mockReloadProfile).toHaveBeenCalledTimes(1);
     });
 
     /**

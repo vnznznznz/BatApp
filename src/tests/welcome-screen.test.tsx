@@ -4,6 +4,9 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import WelcomeScreen from '@/app/index';
 import { BATS_PER_USER } from '@/constants/config';
+import { forgetFarewell, noteAccountDeleted, noteAccountSuspended } from '@/lib/farewell';
+import { openLink } from '@/lib/links';
+import { REFUSALS } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
@@ -19,6 +22,12 @@ jest.mock('@/features/auth/auth-context', () => ({
   useAuth: () => mockAuth,
 }));
 
+jest.mock('@/lib/links', () => ({
+  ...jest.requireActual('@/lib/links'),
+  CONTACT_URL: 'https://night-courier.example/help',
+  openLink: jest.fn(),
+}));
+
 /** Fixed insets so the screen renders deterministically outside a device. */
 const metrics: Metrics = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -31,6 +40,7 @@ const renderScreen = (ui: ReactElement) =>
 beforeEach(() => {
   mockPush.mockClear();
   mockAuth.session = null;
+  forgetFarewell();
 });
 
 describe('WelcomeScreen', () => {
@@ -59,6 +69,70 @@ describe('WelcomeScreen', () => {
     expect(
       screen.getByText(/No purchases, no credits, no subscriptions, no advertising/),
     ).toBeOnTheScreen();
+  });
+
+  /**
+   * A suspended account whose session is over an hour old is signed out at
+   * the app's start, and landed here with nothing to say why. (Found in the
+   * browser.) Said once, with the way to write to Night Courier.
+   */
+  it('says once that the account has been suspended, with the way to write', async () => {
+    noteAccountSuspended();
+
+    const first = await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Contact' }));
+    expect(jest.mocked(openLink)).toHaveBeenCalledWith('https://night-courier.example/help');
+
+    await first.unmount();
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText(REFUSALS.account_suspended)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Contact' })).toBeNull();
+  });
+
+  /**
+   * At the app's start this screen is opened while the stored session is
+   * still held, and shows nothing; the auth server's refusal can come before
+   * that. Said and forgotten there, the word was gone by the time the screen
+   * was shown signed out - only a screen reader heard it. (Found in the
+   * browser.)
+   */
+  it('keeps the word until it is shown to someone signed out', async () => {
+    noteAccountSuspended();
+    mockAuth.session = { user: { id: 'user-sam' } };
+    const first = await renderScreen(<WelcomeScreen />);
+    await first.unmount();
+
+    mockAuth.session = null;
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+  });
+
+  /**
+   * Deleting the account lands here, as any sign-out does, and nothing said
+   * that the deletion had gone through. (Found in the browser.) It is said
+   * once: whoever opens the app next is not told it again.
+   */
+  it('says once that the account has been deleted', async () => {
+    noteAccountDeleted();
+
+    const first = await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText('Your account has been deleted.')).toBeOnTheScreen();
+
+    await first.unmount();
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText('Your account has been deleted.')).toBeNull();
+  });
+
+  it('says nothing of a deletion after an ordinary sign-out', async () => {
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText('Your account has been deleted.')).toBeNull();
   });
 
   it('offers a way to create an account and a way to sign in', async () => {

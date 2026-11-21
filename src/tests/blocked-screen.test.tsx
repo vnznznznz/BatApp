@@ -5,7 +5,8 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import BlockedScreen from '@/app/(app)/blocked';
 import { fetchBlocked, unblockCourier, type BlockedCourier } from '@/features/safety/safety';
-import { RpcError } from '@/lib/rpc-error';
+import * as renewal from '@/lib/renewal';
+import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
@@ -279,6 +280,7 @@ describe('BlockedScreen', () => {
     });
 
     it('says why the list could not be loaded, rather than that nobody is blocked, and tries again when asked', async () => {
+      const renewing = jest.spyOn(renewal, 'renewOnNextRequest');
       mockedFetchBlocked.mockRejectedValueOnce(new RpcError(LOAD_FAILED, null));
       await renderScreen(<BlockedScreen />);
 
@@ -288,12 +290,16 @@ describe('BlockedScreen', () => {
       expect(screen.queryByText(REPORT_FROM_HERE)).toBeNull();
       expect(spinners()).toHaveLength(0);
 
+      expect(renewing).not.toHaveBeenCalled();
       await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
 
       expect(await screen.findByText('@anna')).toBeOnTheScreen();
       expect(screen.queryByText(LOAD_FAILED)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(mockedFetchBlocked).toHaveBeenCalledTimes(2);
+      // A press: the session is renewed first if that failed a moment ago.
+      expect(renewing).toHaveBeenCalledTimes(1);
+      renewing.mockRestore();
     });
   });
 
@@ -479,5 +485,28 @@ describe('BlockedScreen', () => {
       expect(reportButton('ben')).toBeEnabled();
       expect(mockedUnblockCourier).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/** The one thing left to do for an account that is suspended, besides writing to Night Courier. */
+const mockSignOut = jest.fn(() => Promise.resolve());
+
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: mockSignOut }),
+}));
+
+describe('BlockedScreen for a suspended account', () => {
+  /** As on every page: "Try again" under the suspension would only be refused again. (Found in the browser.) */
+  it('offers the way out, not Try again', async () => {
+    mockSignOut.mockClear();
+    mockedFetchBlocked.mockRejectedValue(
+      new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+    );
+    await renderScreen(<BlockedScreen />);
+
+    expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 });

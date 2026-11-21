@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 
 import { RELOCATION_HOURS } from '@/constants/config';
 import { useAuth } from '@/features/auth/auth-context';
+import { toRpcError } from '@/lib/rpc-error';
 import { supabase } from '@/lib/supabase';
 import { useRetry } from '@/lib/use-retry';
 
@@ -217,7 +218,9 @@ export function useProfile() {
         .update({ display_name: displayName.trim() })
         .eq('id', userId);
 
-      if (failure) throw new Error('That name could not be saved.');
+      // A refusal keeps its words - "this account has been suspended" - as it
+      // does from every function of the database. (Found in the merged tree.)
+      if (failure) throw toRpcError(failure, 'That name could not be saved.');
       await load();
     },
     [userId, load],
@@ -255,7 +258,7 @@ export function useProfile() {
             ? change.eq('has_corresponded', false)
             : change.or(departingFrom(condition.departing, Date.now()))
       ).select('id');
-      if (failure) throw new Error('That city could not be saved.');
+      if (failure) throw toRpcError(failure, 'That city could not be saved.');
       await load();
       if ((data ?? []).length > 0) return { saved: true };
 

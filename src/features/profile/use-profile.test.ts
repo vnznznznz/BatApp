@@ -8,6 +8,7 @@ import {
   type CityCondition,
   type CitySave,
 } from '@/features/profile/use-profile';
+import { REFUSALS, RpcError, type ApiError } from '@/lib/rpc-error';
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 9, 31, 12, 0);
@@ -34,7 +35,7 @@ type Asked = { table: string; where: [column: string, value: unknown] };
 /** A further condition on the row a change is made to: a column's value, or PostgREST's `or`. */
 type Condition = [kind: 'eq', column: string, value: unknown] | [kind: 'or', filters: string];
 
-type Changed = { data: { id: string }[] | null; error: { message: string } | null };
+type Changed = { data: { id: string }[] | null; error: ApiError | null };
 
 /**
  * The database, as far as this hook asks it: one row read, and one row changed.
@@ -45,10 +46,7 @@ type Changed = { data: { id: string }[] | null; error: { message: string } | nul
 const mockDatabase = {
   read: jest.fn<Promise<Answer>, [asked: Asked & { columns: string }]>(),
   /** A change awaited as it is: answered with whether it failed, and nothing else. */
-  change: jest.fn<
-    Promise<{ error: { message: string } | null }>,
-    [asked: Asked & { values: object }]
-  >(),
+  change: jest.fn<Promise<{ error: ApiError | null }>, [asked: Asked & { values: object }]>(),
   /**
    * A change asked for the rows it changed: made only where its conditions
    * hold as well, so it can change none at all.
@@ -61,6 +59,9 @@ const mockDatabase = {
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
+    // Asked to say when the session is renewed: a load that got no answer is
+    // made again then (src/lib/renewal.ts).
+    auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
     from: (table: string) => ({
       select: (columns: string) => ({
         eq: (...where: Asked['where']) => ({
@@ -666,7 +667,9 @@ describe('useProfile', () => {
         'That city could not be saved.',
       ],
     ])('says so when %s could not be saved, and keeps what it had', async (_, save, words) => {
-      const refused = { message: 'TypeError: Network request failed' };
+      // Neither a refusal with a reason nor a lost connection: the words the
+      // save falls back on. (A lost connection has words of its own.)
+      const refused = { message: 'internal error', code: 'XX000', hint: null };
       mockDatabase.read.mockResolvedValue(found());
       mockDatabase.change.mockResolvedValue({ error: refused });
       mockDatabase.changeRows.mockResolvedValue({ data: null, error: refused });
@@ -681,6 +684,58 @@ describe('useProfile', () => {
       expect(failure).toEqual(new Error(words));
       expect(mockDatabase.read).toHaveBeenCalledTimes(1);
       expect(result.current.profile?.displayName).toBe('Anna');
+    });
+
+    /**
+     * A refusal has words of its own, as it has from every other function of
+     * the database. The profile's were dropped: a suspended courier saving a
+     * name or a city read "could not be saved". (Found in the merged tree:
+     * PATCH /rest/v1/profiles answers 400, P0001, hint account_suspended.)
+     */
+    it.each([
+      ['a name', (hook: ReturnType<typeof useProfile>) => hook.updateDisplayName('Anna B.')],
+      ['a city', (hook: ReturnType<typeof useProfile>) => hook.updateCity(2911298)],
+    ])('says why when saving %s was refused', async (_, save) => {
+      mockDatabase.read.mockResolvedValue(found());
+      const refusal = {
+        message: 'this account is suspended',
+        code: 'P0001',
+        hint: 'account_suspended',
+      };
+      // A name is saved as it is; a city asks for the row it changed.
+      mockDatabase.change.mockResolvedValue({ error: refusal });
+      mockDatabase.changeRows.mockResolvedValue({ data: null, error: refusal });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      let failure: unknown;
+      await act(async () => {
+        failure = await save(result.current).catch((error: unknown) => error);
+      });
+
+      expect(failure).toBeInstanceOf(RpcError);
+      expect(failure).toMatchObject({
+        message: REFUSALS.account_suspended,
+        reason: 'account_suspended',
+      });
+    });
+
+    it('says that there is no connection when the save got no answer', async () => {
+      mockDatabase.read.mockResolvedValue(found());
+      mockDatabase.change.mockResolvedValue({
+        error: { message: 'TypeError: Network request failed' },
+      });
+      const { result } = await renderHook(() => useProfile());
+      await waitFor(() => expect(result.current.profile?.displayName).toBe('Anna'));
+
+      let failure: unknown;
+      await act(async () => {
+        failure = await result.current
+          .updateDisplayName('Anna B.')
+          .catch((error: unknown) => error);
+      });
+
+      expect(failure).toEqual(new Error('No connection. Check your network and try again.'));
     });
 
     /**

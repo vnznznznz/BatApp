@@ -12,7 +12,9 @@ import {
   type ReceivedLetter,
   type SentLetter,
 } from '@/features/messages/messages';
+import { fetchBlocked, type BlockedCourier } from '@/features/safety/safety';
 import { formatTimestamp } from '@/lib/format';
+import { REFUSALS, RpcError } from '@/lib/rpc-error';
 
 const mockPush = jest.fn();
 
@@ -68,6 +70,19 @@ jest.mock('@/features/messages/messages', () => {
   };
 });
 
+// Signing out is all the list asks of the session, and only of a suspended
+// account's: there is nothing else left to do with it.
+jest.mock('@/features/auth/auth-context', () => ({
+  useAuth: () => ({ signOut: () => Promise.resolve() }),
+}));
+
+// Whom the courier has blocked is asked only when there is no letter to show.
+jest.mock('@/features/safety/safety', () => ({
+  ...jest.requireActual('@/features/safety/safety'),
+  fetchBlocked: jest.fn(),
+}));
+
+const mockedFetchBlocked = jest.mocked(fetchBlocked);
 const mockedFetchInbox = jest.mocked(fetchInbox);
 const mockedFetchSent = jest.mocked(fetchSent);
 
@@ -207,6 +222,8 @@ beforeEach(() => {
   mockedFetchInbox.mockResolvedValue([]);
   mockedFetchSent.mockReset();
   mockedFetchSent.mockResolvedValue([]);
+  mockedFetchBlocked.mockReset();
+  mockedFetchBlocked.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -333,6 +350,70 @@ describe('LettersScreen', () => {
       ).toBeOnTheScreen();
     });
 
+    /**
+     * A block hides the blocked courier's letters, and the list said "Nothing
+     * has landed yet" over letters that had landed. (Found in the browser,
+     * after a report that also blocked.)
+     */
+    it('says that the letters of blocked couriers are hidden, when there is none to show', async () => {
+      mockedFetchBlocked.mockResolvedValue([
+        { id: 'user-anna', username: 'anna', blockedAt: new Date(NOW - 60_000) },
+      ]);
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          'The letters of couriers you have blocked are hidden from you. To see them again, ' +
+            'unblock them: Your profile, then Blocked couriers.',
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+    });
+
+    /**
+     * Until it is known whom the courier has blocked, "Nothing has landed yet"
+     * may be untrue: it stood for half a second on every visit, and on every
+     * switch back from Sent, before the words about a block replaced it.
+     * (Found in the browser.)
+     */
+    it('says nothing has landed only once it is known that nobody is blocked', async () => {
+      const blocks = deferred<BlockedCourier[]>();
+      mockedFetchBlocked.mockReturnValue(blocks.promise);
+      await renderScreen(<LettersScreen />);
+      await waitFor(() => expect(mockedFetchBlocked).toHaveBeenCalled());
+
+      expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+      expect(spinners()).toHaveLength(1);
+
+      await act(async () => blocks.resolve([]));
+
+      expect(await screen.findByText(/^Nothing has landed yet\./)).toBeOnTheScreen();
+    });
+
+    /** And if it cannot be found out, "Nothing has landed yet" stood for good. (Found in the browser.) */
+    it('says what is true either way when it cannot be found out whom the courier has blocked', async () => {
+      mockedFetchBlocked.mockRejectedValue(
+        new RpcError('Your blocked couriers could not be loaded.', null),
+      );
+      await renderScreen(<LettersScreen />);
+
+      expect(
+        await screen.findByText(
+          'No letter to show. When a friend’s bat arrives, the letter will be here; the ' +
+            'letters of couriers you have blocked are hidden from you.',
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText(/^Nothing has landed yet/)).toBeNull();
+    });
+
+    it('asks nothing about blocks while there are letters to show', async () => {
+      mockedFetchInbox.mockResolvedValue([received()]);
+      await renderScreen(<LettersScreen />);
+      await screen.findByText('Anna Weber');
+
+      expect(mockedFetchBlocked).not.toHaveBeenCalled();
+    });
+
     it('does not say nothing has landed while the first letters are still loading', async () => {
       mockedFetchInbox.mockReturnValue(new Promise<ReceivedLetter[]>(() => {}));
       await renderScreen(<LettersScreen />);
@@ -383,6 +464,21 @@ describe('LettersScreen', () => {
 
       expect(tryAgainButton()).not.toBeBusy();
       expect(screen.getByText(NOT_LOADED)).toBeOnTheScreen();
+    });
+
+    /**
+     * A suspended account is refused its letters, and would be refused again.
+     * The list offered "Try again" under the refusal. (Found in the browser.)
+     */
+    it('offers the way out, not a try again, to a suspended account', async () => {
+      mockedFetchInbox.mockRejectedValue(
+        new RpcError(REFUSALS.account_suspended, 'account_suspended'),
+      );
+      await renderScreen(<LettersScreen />);
+
+      expect(await screen.findByText(REFUSALS.account_suspended)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
     });
 
     it('offers nothing to try again while the first letters are loading, or when there are none', async () => {

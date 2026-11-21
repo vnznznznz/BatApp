@@ -56,6 +56,46 @@ describe('BatTile', () => {
     expect(screen.queryByTestId('flying-bat', HIDDEN)).toBeNull();
   });
 
+  /**
+   * A tile is a third of a narrow phone. On one line "to Bruno Mond" read "to
+   * Bruno M…", and a long name was cut to its first letters. (Found in the
+   * browser at 360 px.) Two lines still cut a name of some 25 letters or more
+   * - "to Konstantin Alexandro…" - and a name may have 40. (Found in review.)
+   * The name takes the lines it needs; the tiles beside it grow alike.
+   */
+  it('shows the whole name of whom the bat flies to, on as many lines as it takes', async () => {
+    await render(<BatTile bat={flying} now={NOW} />);
+
+    expect(screen.getByText('to Anna Weber').props.numberOfLines).toBeUndefined();
+  });
+
+  /**
+   * On the web a centred line grows to its longest word, and a word wider than
+   * the tile - "Alexandrowitsch" at 360 px - ran over its edge. (Found in the
+   * browser.) The line is as wide as the tile, so such a word breaks inside it.
+   */
+  it('keeps the name as wide as the tile, so that a long word breaks inside it', async () => {
+    const recipient = {
+      id: 'user-konstantin',
+      username: 'konstantin',
+      displayName: 'Konstantin Alexandrowitsch',
+    };
+    const bat: Bat = {
+      ...flying,
+      flight: {
+        messageId: 'letter-2',
+        recipient,
+        sentAt: new Date(NOW - 30 * MINUTE),
+        deliverAt: new Date(NOW + 90 * MINUTE),
+        distanceKm: 1800,
+      },
+    };
+
+    await render(<BatTile bat={bat} now={NOW} />);
+
+    expect(screen.getByText('to Konstantin Alexandrowitsch')).toHaveStyle({ alignSelf: 'stretch' });
+  });
+
   /** The bar is drawing, not news: the tile already says when the bat lands. */
   it('keeps one description for a screen reader, with when the bat lands', async () => {
     await render(<BatTile bat={flying} now={NOW} />);

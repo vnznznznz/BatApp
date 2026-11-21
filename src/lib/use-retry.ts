@@ -2,6 +2,8 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 
+import { onSessionRenewed, renewOnNextRequest } from '@/lib/renewal';
+
 /**
  * The pauses between attempts: two seconds, then twice as long each time, up
  * to a minute - the bounds `useRefreshAt` has for a landing that is overdue.
@@ -23,12 +25,20 @@ const LONGEST_PAUSE_MS = 60_000;
  * way, and then goes on by itself for as long as the answer is true, the
  * screen is in front of the courier and the app in front of everything else.
  * Being asked for a load - on focus, on the app's return, by hand - starts the
- * pauses again from the shortest.
+ * pauses again from the shortest. A load someone pressed for - "Try again", a
+ * pull: the visible ones - also renews the session first if that failed a
+ * moment ago (see renewal.ts). The others do not: without a network, each such
+ * renewal is half a minute of attempts that every request waits for, Sign out
+ * included, and coming into view started one at every screen opened. (Found in
+ * review.) A load waiting to be made again is made at once when the session
+ * has been renewed: the want of one is the likeliest reason it got no answer.
  */
 export function useRetry(
   attempt: (visible: boolean) => Promise<boolean>,
 ): (visible: boolean) => Promise<void> {
   const waiting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** The attempt waiting its turn, to make at once instead; null when none is. */
+  const next = useRef<(() => void) | null>(null);
   const failures = useRef(0);
   const inFront = useRef(false);
 
@@ -42,10 +52,14 @@ export function useRetry(
         inFront.current = state === 'active';
         if (!inFront.current) clearTimeout(waiting.current);
       });
+      const unsubscribe = onSessionRenewed(() => {
+        if (inFront.current) next.current?.();
+      });
       return () => {
         inFront.current = false;
         clearTimeout(waiting.current);
         subscription.remove();
+        unsubscribe();
       };
     }, []),
   );
@@ -55,13 +69,17 @@ export function useRetry(
       async function load(visible: boolean, unasked: boolean): Promise<void> {
         // This load takes the place of an attempt still waiting its turn.
         clearTimeout(waiting.current);
+        next.current = null;
         if (!unasked) failures.current = 0;
+        if (visible) renewOnNextRequest();
         if (!(await attempt(visible)) || !inFront.current) return;
 
         const pause = Math.min(FIRST_PAUSE_MS * 2 ** failures.current, LONGEST_PAUSE_MS);
         failures.current += 1;
         // Quietly: nobody asked, so nothing should spin.
-        waiting.current = setTimeout(() => void load(false, true), pause);
+        const again = () => void load(false, true);
+        next.current = again;
+        waiting.current = setTimeout(again, pause);
       }
 
       return load(visible, false);

@@ -499,10 +499,22 @@ moment a request noticed it.
 
 A phone can lose the answer to a send that succeeded - a network change, the OS suspending the app
 mid-request - and the courier, told it failed, taps Send again. That used to send a copy on a second
-bat. The app now names each letter with a `client_ref` it keeps across retries of the same words
-to the same friend, and changes when either changes; `send_message` answers a repeated ref with the
-letter that went. Two repeats arriving at once are settled by a unique index, and the loser's claim
-on a bat is undone with it - a concurrency test holds the original open while the retry runs.
+bat. The app now names each letter with a `client_ref`, and the same words to the same friend keep
+their ref for as long as an earlier send of them is unanswered, or known not to have gone;
+`send_message` answers a repeated ref with the letter that went. A send without an answer is not
+taken for a failure: the app asks `sent_letter(client_ref)` what became of it - at once, again while
+the letter is on screen, and before any other words may go out under a new ref. Until the server has
+answered, changed words are held back rather than sent as a second letter
+(`src/features/messages/sending.ts`). A question the server refuses - it refuses a suspended account
+everything - is reported, and the letter stays in doubt without being asked after again until it is
+opened anew (a letter just noted as in doubt is first asked after once more, a moment later). A send
+refused for the suspension says nothing about its ref either: `send_message` refuses before it
+looks. On the server,
+everything about one send of one courier - the send, a repeat of it, the question - takes its turn
+behind `private.lock_send(caller, client_ref)`, an advisory lock held to the end of the transaction:
+a repeat that overlaps its original finds the letter that went, or that none did, never half of it.
+The unique index on `(sender_id, client_ref)` stays as the table's own guarantee. Concurrency tests
+hold the original open while the repeat and the question run.
 
 ### An unusable page cursor is reported, not answered with nothing
 
@@ -739,7 +751,10 @@ accounts at once and fail without it.
 
 "Also block" is on when the report screen opens. Someone reporting a letter almost always wants it to
 stop, and a report alone changes nothing they can see until the operator acts. It can be turned off,
-for a report about someone the reporter still wants to hear from.
+for a report about someone the reporter still wants to hear from - and reporting the same letter, or
+the same courier without a letter, again starts from the choice made last time, while the app runs
+and until someone signs out (in memory only, `src/features/safety/safety.ts`). Another letter starts
+from on again.
 
 Blocking first and reporting later must also work, and once someone is blocked their letters and
 their page are out of reach. The blocked list therefore has Report beside Unblock. Unblocking asks

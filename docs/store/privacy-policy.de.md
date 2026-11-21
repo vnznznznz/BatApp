@@ -274,7 +274,9 @@ wegen eines gemeldeten Briefs etwas unternehme, kann sich der Absender denken, v
 kam.
 
 Beim Melden ist „auch blockieren“ schon eingeschaltet. Du kannst es ausschalten, wenn du von der
-Person weiter Briefe bekommen möchtest.
+Person weiter Briefe bekommen möchtest. Meldest du denselben Brief noch einmal, oder dieselbe Person
+noch einmal ohne einen Brief, bevor du die App schließt oder dich abmeldest, steht es so, wie du es
+beim letzten Mal gelassen hast.
 
 **Was ich mit einer Meldung mache:** Ich lese jede Meldung. Je nachdem, was passiert ist, unternehme
 ich nichts, schreibe der Person eine Verwarnung an die E-Mail-Adresse ihres Kontos oder entferne ihr

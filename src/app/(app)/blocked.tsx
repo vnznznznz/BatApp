@@ -8,6 +8,7 @@ import { ListRow } from '@/components/list-row';
 import { Screen } from '@/components/screen';
 import { Text } from '@/components/text';
 import { Colors, Spacing } from '@/constants/theme';
+import { AccountClosedActions } from '@/features/profile/account-closed';
 import { fetchBlocked, unblockCourier, type BlockedCourier } from '@/features/safety/safety';
 import { announce } from '@/lib/announce';
 import { confirmAction } from '@/lib/confirm';
@@ -99,7 +100,13 @@ export default function BlockedScreen() {
           <Text variant="caption" tone="danger">
             {list.error}
           </Text>
-          <Button label="Try again" variant="secondary" onPress={() => void reload()} />
+          {/* Asked again, a suspended account would only be refused again.
+              (Found in the browser.) */}
+          {list.reason === 'account_suspended' ? (
+            <AccountClosedActions />
+          ) : (
+            <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
+          )}
         </View>
       ) : null}
 

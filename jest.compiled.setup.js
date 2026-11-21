@@ -12,29 +12,10 @@
 
 const { isDeepStrictEqual } = require('util');
 
-/**
- * Both tests end on `expect(ending()).toEqual(ONCE)`: the sign-outs a
- * listener heard, and whether a session was announced after the last.
- */
-const SIGN_OUT_ANNOUNCED_TWICE = {
-  because:
-    'auth-context.tsx compares signOutsAnnounced, a module-level let, with the value it had ' +
-    'before an await; the compiler takes the two reads for one and makes it ' +
-    '"signOutsAnnounced === signOutsAnnounced", so every sign-out the server did not hear is ' +
-    'announced a second time.',
-  failure: {
-    matcher: 'toEqual',
-    expected: { signOuts: 1, signedInAfter: false },
-    received: { signOuts: 2, signedInAfter: false },
-  },
-};
-
-const KNOWN_TO_FAIL = {
-  'what the rest of the app hears when the session ends hears of a sign-out without a network, once':
-    SIGN_OUT_ANNOUNCED_TWICE,
-  'what the rest of the app hears when the session ends hears of an account deleted, once, when the server cannot be told':
-    SIGN_OUT_ANNOUNCED_TWICE,
-};
+// Empty: the two sign-out tests the compiler used to break (it folded a
+// comparison of a module-level count with its earlier value into a comparison
+// with itself) pass compiled since the sign-out moved out of the component.
+const KNOWN_TO_FAIL = {};
 
 /** Whether `error` is the failed check an entry records: that matcher, given those values. */
 function isTheKnownFailure(error, { matcher, expected, received }) {

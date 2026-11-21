@@ -22,11 +22,27 @@ import { REFUSALS, RpcError, type ApiError, type RefusalReason } from '@/lib/rpc
 
 const mockRpc = jest.fn();
 
+/** Whoever asked the client to be told when someone signs in or out. */
+const mockAuthListeners = new Set<(event: string) => void>();
+
 // The module is under test, not Supabase's client: this stands in for the calls
 // it makes, and keeps every test here off the network.
 jest.mock('@/lib/supabase', () => ({
-  supabase: { rpc: (...args: unknown[]) => mockRpc(...args) },
+  supabase: {
+    rpc: (...args: unknown[]) => mockRpc(...args),
+    auth: {
+      onAuthStateChange: (listener: (event: string) => void) => {
+        mockAuthListeners.add(listener);
+        return {
+          data: { subscription: { unsubscribe: () => mockAuthListeners.delete(listener) } },
+        };
+      },
+    },
+  },
 }));
+
+/** The client tells everyone who asked, as it does when a session ends or is renewed. */
+const clientAnnounces = (event: string) => mockAuthListeners.forEach((listener) => listener(event));
 
 /** A refusal as PostgREST reports one: SQLSTATE P0001 with a machine-readable hint. */
 const refusal = (hint: RefusalReason): ApiError => ({
@@ -476,6 +492,43 @@ describe('the block chosen last time', () => {
     rememberBlockChoice(mara, letter, false);
 
     expect(blockChoiceFor('user-noor', letter)).toBe(true);
+  });
+
+  /**
+   * Whom someone chose not to block is theirs alone, and goes when they do -
+   * as their unsent letters go. The choices stayed for as long as the app
+   * ran, after a sign-out and after the account was deleted. (Found in the
+   * merged tree.)
+   */
+  it('forgets every choice when someone signs out', () => {
+    rememberBlockChoice(mara, letter, false);
+    rememberBlockChoice(mara, { courier: 'user-ben' }, false);
+
+    clientAnnounces('SIGNED_OUT');
+
+    expect(blockChoiceFor(mara, letter)).toBe(true);
+    expect(blockChoiceFor(mara, { courier: 'user-ben' })).toBe(true);
+  });
+
+  /**
+   * Once, however many choices are remembered: a listener for each would be
+   * one more call at every sign-out, held for as long as the app runs.
+   * (Unpinned until the tests review.)
+   */
+  it('asks the client once to be told of sign-outs, however many choices it remembers', () => {
+    rememberBlockChoice(mara, letter, false);
+    rememberBlockChoice(mara, { courier: 'user-ben' }, true);
+    rememberBlockChoice(mara, letter, true);
+
+    expect(mockAuthListeners.size).toBe(1);
+  });
+
+  it('keeps the choices while the session is only renewed', () => {
+    rememberBlockChoice(mara, letter, false);
+
+    clientAnnounces('TOKEN_REFRESHED');
+
+    expect(blockChoiceFor(mara, letter)).toBe(false);
   });
 
   it('remembers nothing, and blocks by default, while nobody is signed in', () => {

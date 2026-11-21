@@ -79,6 +79,9 @@ jest.mock('@/lib/supabase', () => {
         mockQueried(table);
         return query;
       },
+      // Asked to say when the session is renewed: a load that got no answer is
+      // made again then (src/lib/renewal.ts).
+      auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
     },
   };
 });
@@ -141,17 +144,19 @@ describe('the roost and the profile it shows', () => {
   });
 
   // The profile screen and the city picker both change what the roost shows,
-  // and the courier comes back here from each of them.
-  it('asks for it again each time the roost comes back into view', async () => {
+  // and the courier comes back here from each of them. Once each time: the hook
+  // reads the profile again as the screen comes into view, and the roost did as
+  // well, which made two requests for the row at every return. (Found in the
+  // merged tree.)
+  it('asks for it again, once, each time the roost comes back into view', async () => {
     await renderRoost();
     await screen.findByText('Mara Lind');
-    const asOpened = profileRequests();
+    expect(profileRequests()).toBe(1);
 
     await comeBack();
-    expect(profileRequests()).toBeGreaterThan(asOpened);
+    expect(profileRequests()).toBe(2);
 
-    const afterOneReturn = profileRequests();
     await comeBack();
-    expect(profileRequests()).toBeGreaterThan(afterOneReturn);
+    expect(profileRequests()).toBe(3);
   });
 });

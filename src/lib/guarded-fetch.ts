@@ -18,6 +18,8 @@
  * tries again later, and `toRpcError` words it as "No connection".
  */
 
+import { forgetSuspension, noteAccountSuspended } from '@/lib/farewell';
+
 export type GuardedFetchOptions = {
   /** The publishable key: what a request carries in a token's place when it has no session. */
   anonKey: string;
@@ -167,6 +169,17 @@ function endsTheSession(body: string): boolean {
 }
 
 /**
+ * Whether a refused renewal says the account is suspended - the one answer
+ * that tells why a suspended account's session is over. The app has nothing
+ * else to tell it by: signed out by the client, it lands on the welcome screen
+ * as after any sign-out, which is told (see farewell.ts).
+ */
+function saysSuspended(body: string): boolean {
+  const said = fieldsOf(body);
+  return [said.code, said.error_code].map(textOf).includes('user_banned');
+}
+
+/**
  * How long an answer asks to be left alone: its `Retry-After`, which counts in
  * seconds or names a time of day. The usual pause when it does not say, or
  * says nothing that lies ahead.
@@ -230,6 +243,8 @@ export function createGuardedFetch({
         throw networkError(`not sent: the auth server answered ${unrenewed.status} a moment ago`);
       }
       const answer = await exchange(send, input, init);
+      if (answer.response.ok) forgetSuspension();
+      else if (saysSuspended(answer.body)) noteAccountSuspended();
       // Anything but a new session, or the auth server's own word that this
       // one is over, is a renewal that has not happened yet - and one that
       // asking again at once would not make happen.

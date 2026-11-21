@@ -1,3 +1,4 @@
+import { farewellDue, forgetFarewell } from '@/lib/farewell';
 import { createGuardedFetch, RENEWAL_PAUSE_MS, REQUEST_TIMEOUT_MS } from '@/lib/guarded-fetch';
 
 const ANON_KEY = 'sb_publishable_test_key';
@@ -446,6 +447,70 @@ describe('the answer to a renewal of the session', () => {
     await expect(guarded(new Request(RENEWAL, { method: 'POST' }))).rejects.toThrow(
       /^Network request/,
     );
+  });
+});
+
+/**
+ * A suspended account's session ends at the next renewal, and the app lands on
+ * the welcome screen as after any sign-out - without a word of why. (Found in
+ * the browser.) The refusal is the one place that says it, so word is left
+ * here for the welcome screen, as the account's deletion leaves its own.
+ */
+describe('a renewal refused because the account is suspended', () => {
+  // The auth server's answer, as the local stack gave it.
+  const banned = () => authRefusal(400, 'user_banned', 'Invalid Refresh Token: User Banned');
+
+  beforeEach(() => forgetFarewell());
+
+  it('leaves word for the welcome screen, and is handed on as it came', async () => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValue(banned());
+
+    const answer = await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(answer.status).toBe(400);
+    expect(farewellDue()).toBe('suspended');
+  });
+
+  it('leaves word whichever way the code is given', async () => {
+    const { guarded, network } = setUp();
+    network.mockResolvedValue(
+      json(400, {
+        code: 400,
+        error_code: 'user_banned',
+        msg: 'Invalid Refresh Token: User Banned',
+      }),
+    );
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(farewellDue()).toBe('suspended');
+  });
+
+  it('takes the word back once a renewal goes through: the suspension is over', async () => {
+    const { guarded, network } = setUp();
+    network
+      .mockResolvedValueOnce(banned())
+      .mockResolvedValueOnce(
+        json(200, { access_token: 'a', refresh_token: 'r', expires_in: 3600 }),
+      );
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+
+    expect(farewellDue()).toBeNull();
+  });
+
+  it('leaves no word for any other end of the session, nor for a sign-in refused', async () => {
+    const { guarded, network } = setUp();
+    network
+      .mockResolvedValueOnce(authRefusal(400, 'refresh_token_not_found', 'Invalid Refresh Token'))
+      .mockResolvedValueOnce(authRefusal(400, 'user_banned', 'User is banned'));
+
+    await guarded(RENEWAL, { method: 'POST', body: '{"refresh_token":"r"}' });
+    await guarded(SIGN_IN, { method: 'POST', body: '{}' });
+
+    expect(farewellDue()).toBeNull();
   });
 });
 
