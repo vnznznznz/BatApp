@@ -418,6 +418,42 @@ describe('SignInScreen', () => {
       expect(mockPush).toHaveBeenCalledWith('/reset-password');
     });
 
+    /**
+     * Only the code whose check got no answer can have been used up by it;
+     * another one refused after it is one that did not work. (Found in review.)
+     */
+    it('says only that another code did not work, and what may have happened once that code is refused', async () => {
+      const CODE_DID_NOT_WORK =
+        'That code did not work. Check it against the newest email, or ask for a new one.';
+      const MAY_BE_CONFIRMED =
+        'That code did not work. If the try before it reached us, it confirmed your address, ' +
+        'and no new code will come: set a password with "I forgot my password", and sign in ' +
+        'with it.';
+      mockConfirmEmail
+        .mockRejectedValueOnce(
+          new CodeUnanswered('No connection. Check your network and try again.'),
+        )
+        .mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+      await signedInUnconfirmed();
+      await user.type(screen.getByLabelText('Code'), '87654321');
+      await user.press(button('Confirm'));
+
+      await user.clear(screen.getByLabelText('Code'));
+      await user.type(screen.getByLabelText('Code'), '87654320');
+      await user.press(button('Confirm'));
+
+      expect(screen.queryByText(MAY_BE_CONFIRMED)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'I forgot my password' })).toBeNull();
+      expect(screen.getByLabelText('Code')).toHaveProp('accessibilityHint', CODE_DID_NOT_WORK);
+
+      await user.clear(screen.getByLabelText('Code'));
+      await user.type(screen.getByLabelText('Code'), '87654321');
+      await user.press(button('Confirm'));
+
+      expect(screen.getByText(MAY_BE_CONFIRMED)).toBeOnTheScreen();
+      expect(button('I forgot my password')).toBeOnTheScreen();
+    });
+
     it('asks for the code sent to the address', async () => {
       await signedInUnconfirmed();
 

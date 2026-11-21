@@ -88,9 +88,9 @@ const NOT_SAVED_RESUMED =
   `takes it away until it is saved again. Type it - the one you signed in with, or a new one. ${SIGN_OUT_INSTEAD}`;
 const SIGNED_OUT = 'Signed out. To sign in, set a password with "I forgot my password".';
 /**
- * Said, in place of the code's refusal, once a check that got no answer has
- * been followed by a refused one: the first may have used the code up, and
- * then no new code comes - the address is confirmed - and signing in finds no
+ * Said, in place of the code's refusal, once a code whose check got no answer
+ * has been refused on a later one: the first may have used it up, and then no
+ * new code comes - the address is confirmed - and signing in finds no
  * password. (Found in review.)
  */
 const MAY_BE_CONFIRMED =
@@ -153,9 +153,16 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   // An earlier sign-up's account made way for the courier's, and a new code
   // has gone out for theirs.
   const [setUpAgain, setSetUpAgain] = useState(false);
-  // A check of a code got no answer, and so may have been carried out; and
-  // once a check after it was refused, the screen says what that may mean.
-  const [unanswered, setUnanswered] = useState(false);
+  // The codes whose check got no answer since a code was last taken: each may
+  // have been carried out all the same. Only such a code, refused after, says
+  // what that may mean, and the way on - a reset, which removes an account its
+  // own code confirms. Another code refused is a code that did not work: one
+  // mistyped after a try that never left the device was answered with the
+  // hint, and its reset removed the courier's own account. (Found in review,
+  // in the browser.) Whether a try left the device at all, auth-js cannot
+  // say: a request called off before it reached the server and an answer
+  // lost on the way back come back as the same failed fetch, status 0.
+  const [unanswered, setUnanswered] = useState<readonly string[]>([]);
   const [mayBeConfirmed, setMayBeConfirmed] = useState(false);
   // A code has just gone - or the address has an account, and none has: the
   // minute is waited for both alike. One from signing in may be days old.
@@ -216,18 +223,21 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
   async function confirmThenFinish() {
     if (!unfinished) {
       // A code to check: whatever was left unfinished before was signed out
-      // of, and this one starts afresh.
+      // of, and this one starts afresh. So does the reset offered when the
+      // last code was refused: it stands only beside the words that say when
+      // to take it, if this check comes to them as well.
       setNotFinished(false);
+      setMayBeConfirmed(false);
       // Signed in, and held by the root layout (src/app/_layout.tsx) until
       // what follows is done.
       const checked = await settled(
         chosen ? confirmSignUp(chosen, code) : confirmEmail(email, code),
       );
       if (!checked.ok) {
-        if (checked.error instanceof CodeUnanswered) setUnanswered(true);
+        if (checked.error instanceof CodeUnanswered) setUnanswered((codes) => [...codes, code]);
         // "Ask for a new one" would send the courier after a code that never
         // comes: what may have happened is said instead, and the way on.
-        if (unanswered && wordsOf(checked.error) === CODE_DID_NOT_WORK) {
+        if (unanswered.includes(code) && wordsOf(checked.error) === CODE_DID_NOT_WORK) {
           setMayBeConfirmed(true);
           failed(new Error(MAY_BE_CONFIRMED));
           return;
@@ -235,6 +245,9 @@ export function ConfirmEmail(props: ConfirmEmailProps) {
         failed(checked.error, { atTheCode: true });
         return;
       }
+      // Taken: no check before it was carried out, or this one would have been
+      // refused, the address confirmed already.
+      setUnanswered([]);
     }
     await finish(chosen);
   }

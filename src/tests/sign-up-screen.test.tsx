@@ -719,6 +719,99 @@ describe('SignUpScreen', () => {
         expect(screen.queryByText(MAY_BE_CONFIRMED)).toBeNull();
         expect(screen.queryByRole('button', { name: 'I forgot my password' })).toBeNull();
       });
+
+      /** Types `code` in place of what the field holds, and sends it. */
+      async function confirmed(code: string) {
+        await user.clear(codeField());
+        await user.type(codeField(), code);
+        await user.press(button('Confirm'));
+      }
+
+      /**
+       * Only the code whose check got no answer can have been used up by it.
+       * Another one refused - mistyped after a try that never left the device -
+       * said the address might be confirmed, and offered the reset: whose code
+       * then confirmed the courier's own account, still waiting for its code,
+       * and had it removed. (Found in review, in the browser.)
+       */
+      it('says only that another code did not work, and what may have happened once that code is refused', async () => {
+        mockConfirmSignUp
+          .mockRejectedValueOnce(new CodeUnanswered(NO_CONNECTION))
+          .mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+        await signedUp();
+        await confirmed('12345678');
+        expect(screen.getByText(NO_CONNECTION)).toBeOnTheScreen();
+
+        await confirmed('12345670');
+
+        expect(screen.queryByText(MAY_BE_CONFIRMED)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'I forgot my password' })).toBeNull();
+        expect(codeField()).toHaveProp('accessibilityHint', CODE_DID_NOT_WORK);
+
+        await confirmed('12345678');
+
+        expect(screen.getByText(MAY_BE_CONFIRMED)).toBeOnTheScreen();
+        expect(button('I forgot my password')).toBeOnTheScreen();
+      });
+
+      /** Each code that got no answer may have been used up by it, not only the last. */
+      it('says what may have happened when any code that got no answer is refused', async () => {
+        mockConfirmSignUp
+          .mockRejectedValueOnce(new CodeUnanswered(NO_CONNECTION))
+          .mockRejectedValueOnce(new CodeUnanswered(NO_CONNECTION))
+          .mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+        await signedUp();
+        await confirmed('12345678');
+        await confirmed('12345670');
+
+        await confirmed('12345678');
+
+        expect(screen.getByText(MAY_BE_CONFIRMED)).toBeOnTheScreen();
+        expect(button('I forgot my password')).toBeOnTheScreen();
+      });
+
+      /** The way on goes with the words that say when to take it. */
+      it('takes back what may have happened when another code is refused after it', async () => {
+        mockConfirmSignUp
+          .mockRejectedValueOnce(new CodeUnanswered(NO_CONNECTION))
+          .mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+        await signedUp();
+        await confirmed('12345678');
+        await confirmed('12345678');
+        expect(screen.getByText(MAY_BE_CONFIRMED)).toBeOnTheScreen();
+
+        await confirmed('12345670');
+
+        expect(screen.queryByText(MAY_BE_CONFIRMED)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'I forgot my password' })).toBeNull();
+        expect(codeField()).toHaveProp('accessibilityHint', CODE_DID_NOT_WORK);
+      });
+
+      /**
+       * A code taken says that no check before it was carried out: the address
+       * was still waiting for one. Once the account had to be set up again,
+       * the code from before is one that no longer works, and no more.
+       */
+      it('says only that the code did not work once a code has been taken since', async () => {
+        mockConfirmSignUp
+          .mockRejectedValueOnce(new CodeUnanswered(NO_CONNECTION))
+          .mockImplementationOnce(async () => mockHold.set(true))
+          .mockRejectedValue(new Error(CODE_DID_NOT_WORK));
+        mockFinishSignUp.mockImplementationOnce(async () => {
+          mockHold.set(false);
+          return 'new code';
+        });
+        await signedUp();
+        await confirmed('12345678');
+        await confirmed('12345678');
+        expect(screen.getByText('One more code')).toBeOnTheScreen();
+
+        await confirmed('12345678');
+
+        expect(screen.queryByText(MAY_BE_CONFIRMED)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'I forgot my password' })).toBeNull();
+        expect(codeField()).toHaveProp('accessibilityHint', CODE_DID_NOT_WORK);
+      });
     });
 
     describe('when the account could not be set up after the code', () => {
