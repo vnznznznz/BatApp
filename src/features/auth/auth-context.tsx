@@ -9,6 +9,7 @@ import { createContext, use, useEffect, useMemo, useState, type ReactNode } from
 
 import {
   EMAIL_NOT_ACCEPTED,
+  EMAIL_TOO_LONG,
   normaliseUsername,
   PASSWORD_TOO_LONG,
 } from '@/features/auth/validation';
@@ -410,8 +411,9 @@ function describeAuthError(error: AuthError): string {
   // cause - likely, which is all that can be said.
   if (said.includes('database error saving new user')) return USERNAME_MAY_BE_TAKEN;
   if (said.includes('user is banned')) return REFUSALS.account_suspended;
-  // The form refuses such an address itself, in the same words.
+  // The form refuses such addresses itself, in the same words.
   if (said.includes('unable to validate email address')) return EMAIL_NOT_ACCEPTED;
+  if (said.includes('email address is too long')) return EMAIL_TOO_LONG;
   if (said.includes('error sending')) return 'The email could not be sent. Try again later.';
 
   // Two limits on emails. One is per address, a minute or so apart; the other

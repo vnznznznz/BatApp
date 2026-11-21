@@ -39,12 +39,30 @@ const DISPLAY_NAME_MAX_LENGTH = 40;
 export const EMAIL_CODE_LENGTH = 8;
 
 /**
+ * The one shape of address the auth server takes (GoTrue v2.197's pattern,
+ * read from the server itself): before the @ the letters a to z, digits and a
+ * few signs; after it, labels of letters and digits, with hyphens only inside
+ * them and at most 63 long, between dots. Anything else it refuses as
+ * "invalid format" - a letter such as ä anywhere (only the xn-- spelling of
+ * such a domain gets through), a quote or a bracket, an underscore after the @.
+ */
+const ADDRESS_THE_SERVER_TAKES =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+/** The longest address the auth server takes, in bytes. */
+const EMAIL_MAX_BYTES = 255;
+
+/**
  * Said for an address the auth server does not take, whether it is the app
- * that sees it first or the server that refuses it.
+ * that sees it first or the server that refuses it. The words fit every shape
+ * it refuses, not only the letters most people will have typed.
  */
 export const EMAIL_NOT_ACCEPTED =
-  'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
-  'cannot be used.';
+  'That email address was not accepted. Check it for mistakes - letters such as ä or é, ' +
+  'and signs such as quotes or brackets, cannot be used.';
+
+/** Said for an address too long for the auth server, wherever that is seen. */
+export const EMAIL_TOO_LONG = `That email address is too long: it can have at most ${EMAIL_MAX_BYTES} characters.`;
 
 /** Said for a password the auth server does not take for its length, wherever that is seen. */
 export const PASSWORD_TOO_LONG =
@@ -57,10 +75,10 @@ export function validateEmail(value: string): string | null {
   // Deliberately permissive: the only reliable test of an address is sending to
   // it, and signup does exactly that.
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'That does not look like an email address.';
-  // But the auth server refuses an address with any letter outside ASCII, in
-  // the name or the domain, as "invalid format" - only the xn-- spelling of
-  // such a domain gets through.
-  if (/[^\u0000-\u007F]/.test(email)) return EMAIL_NOT_ACCEPTED;
+  // But what the auth server refuses is refused here first, in the words its
+  // refusal gets, rather than after a round trip; it looks at the length first.
+  if (utf8Length(email) > EMAIL_MAX_BYTES) return EMAIL_TOO_LONG;
+  if (!ADDRESS_THE_SERVER_TAKES.test(email)) return EMAIL_NOT_ACCEPTED;
   return null;
 }
 

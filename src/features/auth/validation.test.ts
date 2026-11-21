@@ -1,6 +1,7 @@
 import {
   EMAIL_CODE_LENGTH,
   EMAIL_NOT_ACCEPTED,
+  EMAIL_TOO_LONG,
   normaliseUsername,
   PASSWORD_MAX_BYTES,
   PASSWORD_MIN_LENGTH,
@@ -45,6 +46,48 @@ describe('validateEmail', () => {
 
   it('accepts a domain written the way the auth server takes it', () => {
     expect(validateEmail('anna@xn--mller-kva.example')).toBeNull();
+  });
+
+  /**
+   * The auth server takes an address only in one shape (GoTrue v2.197's
+   * pattern, read from the server itself): before the @ the letters a to z,
+   * digits and the signs . ! # $ % & ' * + / = ? ^ _ ` { | } ~ -, and after
+   * it labels of letters and digits, with hyphens only inside them and at
+   * most 63 long, between dots. These it refused as "invalid format" while
+   * the form let them through (tried on the local stack).
+   */
+  it.each([
+    ['an underscore in the domain', 'anna@x_y.com'],
+    ['a hyphen at the start of the domain', 'anna@-x.com'],
+    ['a hyphen at the end of a label', 'anna@example-.com'],
+    ['two dots in a row in the domain', 'anna@example..com'],
+    ['a label longer than 63', `anna@${'a'.repeat(64)}.com`],
+    ['a later label longer than 63', `anna@mail.${'a'.repeat(64)}.com`],
+    ['quotes around the name', '"anna"@example.com'],
+    ['brackets in the name', 'anna(work)@example.com'],
+    ['a comma in the name', 'anna,weber@example.com'],
+  ])('refuses an address with %s, as the auth server would', (_, address) => {
+    expect(validateEmail(address)).toBe(EMAIL_NOT_ACCEPTED);
+  });
+
+  it.each([
+    ['dots and a plus in the name', 'anna.weber+bats@example.com'],
+    ['every sign the auth server takes in the name', "a!#$%&'*+/=?^_`{|}~-z@example.com"],
+    ['hyphens inside the domain', 'anna@my-mail.example.co.uk'],
+    ['capitals', 'Anna@Example.COM'],
+    ['labels of 63', `anna@${'a'.repeat(63)}.${'b'.repeat(63)}.com`],
+  ])('accepts an address with %s', (_, address) => {
+    expect(validateEmail(address)).toBeNull();
+  });
+
+  /** "An email address is too long" past 255 characters, from the auth server. */
+  it('refuses an address longer than the auth server takes', () => {
+    const longest = `${'a'.repeat(243)}@example.com`;
+    expect(longest).toHaveLength(255);
+
+    expect(validateEmail(longest)).toBeNull();
+    expect(validateEmail(`a${longest}`)).toBe(EMAIL_TOO_LONG);
+    expect(validateEmail(`  ${longest}  `)).toBeNull();
   });
 });
 

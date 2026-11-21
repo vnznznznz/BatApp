@@ -642,8 +642,20 @@ describe('SignUpScreen', () => {
       expect(mockSignUp).not.toHaveBeenCalled();
       expect(screen.getByLabelText('Email')).toHaveProp(
         'accessibilityHint',
-        'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
-          'cannot be used.',
+        'That email address was not accepted. Check it for mistakes - letters such as ä or é, ' +
+          'and signs such as quotes or brackets, cannot be used.',
+      );
+    });
+
+    /** The auth server's own pattern, beyond letters outside ASCII. */
+    it('refuses an address in a shape the auth server does not take, and sends nothing', async () => {
+      await renderScreen(<SignUpScreen />);
+
+      await fillWith({ email: 'anna@x_y.com' });
+
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Email').props.accessibilityHint).toMatch(
+        /^That email address was not accepted\./,
       );
     });
   });

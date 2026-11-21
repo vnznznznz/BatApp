@@ -1391,8 +1391,14 @@ describe('what the courier is told when the auth server says no', () => {
         'the address is one the server does not take',
         () =>
           authRefusal(400, 'validation_failed', 'Unable to validate email address: invalid format'),
-        'That email address was not accepted. Check it for mistakes - letters such as ä or é ' +
-          'cannot be used.',
+        'That email address was not accepted. Check it for mistakes - letters such as ä or é, ' +
+          'and signs such as quotes or brackets, cannot be used.',
+      ],
+      [
+        // Past 255 characters. The form says the same before it asks.
+        'the address is longer than the server takes',
+        () => authRefusal(400, 'validation_failed', 'An email address is too long'),
+        'That email address is too long: it can have at most 255 characters.',
       ],
       [
         'the password is shorter than the server allows',
