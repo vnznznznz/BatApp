@@ -556,6 +556,8 @@ describe('while the app is open', () => {
 
 describe('signing out', () => {
   const isLogout = (request: Sent) => request.url.includes('/auth/v1/logout');
+  /** Whom a logout was for - this session, or every session of the account - and with which token. */
+  const scopeAndBearer = ({ url, bearer }: Sent) => [url.split('?')[1], bearer];
   const isSignIn = (request: Sent) => request.url.includes('/auth/v1/token?grant_type=password');
   const loggedOut = () => new Response(null, { status: 204 });
 
@@ -814,10 +816,16 @@ describe('signing out', () => {
       const answeredLate = () =>
         new Promise<Response>((resolve) => setTimeout(() => resolve(loggedOut()), 12_000));
 
-      it.each<[string, () => Promise<Response>]>([
-        ['is answered after twelve seconds', answeredLate],
-        ['is never answered', () => new Promise<Response>(() => {})],
-      ])('stays signed in when the logout request %s', async (_, logout) => {
+      // A request never answered is told once more as someone signs in: the
+      // session let go by itself, which leaves theirs alone.
+      it.each<[string, () => Promise<Response>, string[]]>([
+        ['is answered after twelve seconds', answeredLate, ['scope=global']],
+        [
+          'is never answered',
+          () => new Promise<Response>(() => {}),
+          ['scope=global', 'scope=local'],
+        ],
+      ])('stays signed in when the logout request %s', async (_, logout, scopes) => {
         await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
         network = (request) => {
           if (isLogout(request)) return logout();
@@ -834,7 +842,10 @@ describe('signing out', () => {
         expect(state()).toBe('signed in');
         expect(shown).toEqual(['restoring', 'signed in', 'signed out', 'signed in']);
         expect((await kept())?.refresh_token).toBe('refresh-theirs');
-        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+        expect(sent.filter(isLogout).map(({ url }) => url.split('?')[1])).toEqual(scopes);
+        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual(
+          scopes.map(() => OLD_TOKEN),
+        );
       });
 
       it('stays signed in after signing up', async () => {
@@ -1073,7 +1084,7 @@ describe('signing out', () => {
       /**
        * Without a network the one more try fails at once, and the client's
        * half minute of renewals is not begun again: nobody who signs in next is
-       * kept waiting for it.
+       * kept waiting for it. It is told once more as they sign in, by itself.
        */
       it('tries once more, and holds nobody up, when the network stays away', async () => {
         await keep(sessionOf(OLD_TOKEN, 'refresh-old', -600));
@@ -1092,9 +1103,119 @@ describe('signing out', () => {
 
         expect(Date.now() - started).toBeLessThan(1000);
         expect(sent.filter(isRenewal)).toHaveLength(renewals);
-        expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+        expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+          ['scope=global', OLD_TOKEN],
+          ['scope=local', OLD_TOKEN],
+        ]);
         expect(state()).toBe('signed in');
       });
+    });
+  });
+
+  /**
+   * A token still fresh needs no renewal, and the client's own request is the
+   * one try: without a network it fails at once, and the server was never
+   * told, however soon the network was back. The session stayed on the server,
+   * beside the one the courier signed in with a moment later. (Found in
+   * review: two sessions where there had been one.) It is told by the next
+   * sign-in on the device.
+   */
+  describe('when the server could not be reached at all', () => {
+    async function signOutOffline() {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      network = offline;
+      await launch();
+      await passes(A_MOMENT);
+      await asked(() => auth.signOut());
+      expect(state()).toBe('signed out');
+    }
+
+    const backOnline = ({ logoutTakes = 0 } = {}) => {
+      network = (request) => {
+        if (isSignIn(request)) return json(200, sessionOf(NEW_TOKEN, 'refresh-new', 3600));
+        if (!isLogout(request)) return json(200, []);
+        return new Promise<Response>((resolve) =>
+          setTimeout(() => resolve(loggedOut()), logoutTakes),
+        );
+      };
+    };
+
+    it('tells it at the next sign-in, ending the session let go alone', async () => {
+      await signOutOffline();
+
+      backOnline();
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+      await passes(1000);
+
+      // The sign-out's own try, without a network; then the session let go by
+      // itself, and not every session of the account: one begun since, on
+      // another device, is not the sign-out's to end.
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
+      expect(state()).toBe('signed in');
+      expect((await kept())?.refresh_token).toBe('refresh-new');
+    });
+
+    it('tells it only once', async () => {
+      await signOutOffline();
+      backOnline();
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+      await asked(() => auth.signOut());
+
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+        ['scope=global', NEW_TOKEN],
+      ]);
+    });
+
+    it('keeps it to tell while the server still cannot be reached', async () => {
+      await signOutOffline();
+      expect(await outcomeOf(asked(() => auth.signIn('mara@example.test', 'night-courier')))).toBe(
+        'No connection. Check your network and try again.',
+      );
+
+      backOnline();
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+      await passes(1000);
+
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
+      expect(state()).toBe('signed in');
+    });
+
+    /** Ending the session let go alone, it can be told while the courier is let in. */
+    it('holds nobody up while it is told', async () => {
+      await signOutOffline();
+
+      backOnline({ logoutTakes: 15_000 });
+      const started = Date.now();
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(state()).toBe('signed in');
+      expect(auth.isSigningOut).toBe(false);
+    });
+
+    /** A request that got through in the end needs telling no more. */
+    it('tells it nothing more when its own request was heard, late', async () => {
+      await keep(sessionOf(OLD_TOKEN, 'refresh-old', 3000));
+      backOnline({ logoutTakes: 8000 });
+      await launch();
+      await passes(A_MOMENT);
+      await asked(() => auth.signOut());
+
+      await asked(() => auth.signIn('mara@example.test', 'night-courier'));
+      await passes(1000);
+
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([['scope=global', OLD_TOKEN]]);
     });
   });
 
@@ -1231,8 +1352,12 @@ describe('signing out', () => {
       await asked(() => auth.signIn('mara@example.test', 'night-courier'));
 
       expect(state()).toBe('signed in');
-      // None but the sign-out's own last try, without a network.
-      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      // None but the sign-out's own last try, without a network, and the
+      // session let go once more, by itself, as someone signs in.
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
       expect((await kept())?.refresh_token).toBe('refresh-new');
     });
 
@@ -1253,7 +1378,10 @@ describe('signing out', () => {
       );
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
     });
 
     /**
@@ -1274,8 +1402,12 @@ describe('signing out', () => {
       await asked(() => auth.confirmEmail('ben@example.test', '12345678'));
 
       expect(state()).toBe('signed in');
-      // None but the sign-out's own last try, without a network.
-      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      // None but the sign-out's own last try, without a network, and the
+      // session let go once more, by itself, as someone signs in.
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
       expect((await kept())?.refresh_token).toBe('refresh-new');
     });
 
@@ -1291,7 +1423,10 @@ describe('signing out', () => {
       );
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
     });
 
     it('lets the courier set a new password with a code on the device', async () => {
@@ -1301,7 +1436,10 @@ describe('signing out', () => {
       await asked(() => auth.verifyResetCode('mara@example.test', '12345678'));
 
       expect(state()).toBe('signed in');
-      expect(sent.filter(isLogout).map(({ bearer }) => bearer)).toEqual([OLD_TOKEN]);
+      expect(sent.filter(isLogout).map(scopeAndBearer)).toEqual([
+        ['scope=global', OLD_TOKEN],
+        ['scope=local', OLD_TOKEN],
+      ]);
     });
 
     /**

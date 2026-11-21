@@ -256,10 +256,41 @@ const isSignOutUnderWay = () => signOutsUnderWay.size > 0;
  * (Found in review.) The wait has an end: no request waits longer than twenty
  * seconds for its answer (guarded-fetch.ts), and the client starts no new
  * attempt at a renewal after half a minute.
+ *
+ * A sign-out the server could not be told of at all is told now, as someone
+ * signs in, and the network is likely to be back (tellServerOwed).
  */
 async function beforeSigningIn(): Promise<void> {
   while (signOutsUnderWay.size > 0) await Promise.all(signOutsUnderWay);
   signedOutUnheard = false;
+  tellServerOwed();
+}
+
+/**
+ * Sessions this device let go of that the server has not heard the end of:
+ * the sign-out's request got no answer - without a network it fails at once -
+ * and neither did the one more try for a token that had run out
+ * (tellServerAfterAll). The server would honour them until the tidy-up ends a
+ * session nobody has used for 90 days. (Found in review.)
+ */
+const owedToServer: Session[] = [];
+
+/**
+ * Tells the server of the sessions in owedToServer, each by itself: scope
+ * 'local', the session let go and no other. The sign-out was meant for every
+ * session of the account, but told this late, that would end the ones begun
+ * since as well - on another device, or on this one a moment from now. So
+ * nobody waits for it. Those the server still cannot be reached for stay owed.
+ */
+function tellServerOwed() {
+  for (const left of owedToServer.splice(0)) {
+    void tellServerAfterAll(left, 'local').then(
+      (answered) => {
+        if (!answered) owedToServer.push(left);
+      },
+      () => owedToServer.push(left),
+    );
+  }
 }
 
 /**
@@ -749,7 +780,7 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
   // itself and announces that; whether it has is known once it is done. A
   // renewal that comes back now, though, it throws away, the session being no
   // longer stored, and then it tells the server nothing (see below).
-  await told;
+  const heardAfterAll = await told;
 
   // The client has then announced no sign-out either, and whatever listens to
   // it would go on holding the account. With nothing stored any more, signing
@@ -761,12 +792,27 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   }
 
+  if (!left) return;
   // A token the client had to renew before it could tell the server: the
-  // server may have heard nothing although the network is back. Not waited for
-  // here - the device is signed out - but whoever signs in next waits for it.
-  if (left && signedOutUnheard && hasRunOut(left)) {
-    void underWay(tellServerAfterAll(left)).catch(() => {});
+  // server may have heard nothing although the network is back - and the
+  // client's sign-out ends without an error when it threw the renewal away.
+  // Not waited for here - the device is signed out - but whoever signs in next
+  // waits for it. Unless someone has signed in meanwhile, in another tab of the
+  // browser: ending every session of the account could end theirs, and the
+  // session let go is told by itself, at the next sign-in here.
+  if (hasRunOut(left)) {
+    if (!signedOutUnheard) owedToServer.push(left);
+    else {
+      const tellingNow = tellServerAfterAll(left, 'global').then((answered) => {
+        if (!answered) owedToServer.push(left);
+      });
+      void underWay(tellingNow).catch(() => {});
+    }
+    return;
   }
+  // A token still fresh is told by the client's own request, with nothing to
+  // renew first: that ended without an error only if the server answered it.
+  if (!heardAfterAll) owedToServer.push(left);
 }
 
 /**
@@ -777,31 +823,34 @@ async function signOutOfDevice(forget: () => void, tellServer: boolean): Promise
  * get through. A token it had to renew first is another matter: it throws away
  * a renewal that comes back after the device has let go, and tells the server
  * nothing. So the server is told once more when the client is done
- * (tellServerAfterAll), which reaches it if the network is back by then; after
- * that, nothing tells it.
+ * (tellServerAfterAll), which reaches it if the network is back by then; and
+ * if it still cannot be reached, or the client's own request got no answer, at
+ * the next sign-in on the device (owedToServer).
  */
 const SERVER_SIGN_OUT_WAIT_MS = 5000;
 
 /**
- * Tells the server of a sign-out once more, for a session whose token had run
- * out when the device let go. The client renews such a token before it can
- * tell the server, and a renewal that comes back once the session is no longer
- * stored it throws away: the server heard nothing, however soon the network
- * was back. (Found in review.)
+ * Tells the server of a sign-out once more, for a session the device has let
+ * go of. The client renews a token that has run out before it can tell the
+ * server, and a renewal that comes back once the session is no longer stored
+ * it throws away: the server heard nothing, however soon the network was back.
+ * (Found in review.)
  *
  * As the client would have: with the token the session had, which is enough
  * where the server's clock does not agree that it has run out, and when the
  * server says no, with a renewed one. Nothing is kept or announced on the way:
- * nobody is signed in with it. When the server cannot be reached, the first
- * request fails - without a network, at once - and nothing more is tried.
+ * nobody is signed in with it. Resolves with whether the server answered. When
+ * it cannot be reached, the first request fails - without a network, at once -
+ * and nothing more is tried.
  */
-async function tellServerAfterAll(left: Session): Promise<void> {
-  const { error } = await supabase.auth.admin.signOut(left.access_token, 'global');
-  // Heard, or not reachable, and that is that. A session that is over already
-  // is refused its renewal as well.
-  if (!isAuthApiError(error)) return;
+async function tellServerAfterAll(left: Session, scope: 'global' | 'local'): Promise<boolean> {
+  const { error } = await supabase.auth.admin.signOut(left.access_token, scope);
+  // Heard, or not reachable, and that is all for now. A session that is over
+  // already is refused its renewal as well.
+  if (!isAuthApiError(error)) return error === null;
   const renewed = await renewedWithoutKeeping(left.refresh_token);
-  if (renewed) await supabase.auth.admin.signOut(renewed.access_token, 'global');
+  if (renewed) await supabase.auth.admin.signOut(renewed.access_token, scope);
+  return true;
 }
 
 /**
