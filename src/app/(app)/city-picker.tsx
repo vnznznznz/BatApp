@@ -262,7 +262,11 @@ function describeChoice(
     };
   }
 
-  if (!profile.city) {
+  // Bats that are nowhere: no city yet, or one cleared and the day since out.
+  // No letter can go to or from a courier without a city, so none can come
+  // in between and make this take a day.
+  const departing = departingCity(profile, now);
+  if (!departing) {
     return {
       title: `Make ${name} your city?`,
       message:
@@ -274,7 +278,6 @@ function describeChoice(
     };
   }
 
-  const departing = profile.move?.from ?? profile.city;
   if (departing.id === city.id) {
     return {
       title: `Move back to ${name}?`,
@@ -305,13 +308,25 @@ function describeChoice(
  * move takes a day.
  */
 function describeLateMove(city: City, profile: Profile | null, now: Date): Question {
-  const departing = profile?.move?.from ?? profile?.city;
   return describeDaysMove(
     city,
-    departing ?? null,
+    profile ? departingCity(profile, now) : null,
     now,
     'A letter has gone to or from you since, so a move now takes a day to count.',
   );
+}
+
+/**
+ * Where the courier's bats leave from as a change arrives, as
+ * `private.settle_city` reads it: while a move is settling, the city it is
+ * settling away from - even with the city cleared by hand in the meantime -
+ * and otherwise the courier's city. Asked at the moment of the question, so
+ * that a move which settled while the picker was open counts as settled.
+ */
+function departingCity(profile: Profile, now: Date): ProfileCity | null {
+  return profile.move && profile.move.settlesAt.getTime() > now.getTime()
+    ? profile.move.from
+    : profile.city;
 }
 
 /** A move that takes a day: until when, and where letters leave from meanwhile. */

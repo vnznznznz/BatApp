@@ -559,6 +559,94 @@ describe('CityPickerScreen', () => {
       });
     });
 
+    /**
+     * A courier who has had letters can clear her city by hand while a move
+     * is settling, or straight after one: the profile then has no city, but
+     * her bats are still in Berlin, and a new city takes a day from there.
+     * The picker took no city for a first one and said it counted at once.
+     * (Found in review.)
+     */
+    describe('with the city cleared while the bats are still settling', () => {
+      const cleared: Profile = {
+        ...courier,
+        city: null,
+        move: {
+          from: { id: 2950159, name: 'Berlin', countryCode: 'DE' },
+          settlesAt: new Date(NOW + 3_600_000),
+        },
+      };
+
+      it('says a new city takes a day, and saves it as such', async () => {
+        mockProfileState.profile = cleared;
+        await renderScreen(<CityPickerScreen />);
+
+        await choose('Ham', hamburg);
+
+        expect(lastAlert()).toEqual({
+          title: 'Move to Hamburg, DE?',
+          message:
+            'A move takes a day to count. Until 18 Nov 21:00, your letters leave from Berlin, ' +
+            "DE, and your friends' letters land there.",
+          buttons: ['Cancel', 'Move'],
+        });
+        await chooseInAlert('Move');
+        expect(mockUpdateCity.mock.calls).toEqual([[hamburg.id]]);
+      });
+
+      it('says the city the bats are in counts at once', async () => {
+        mockProfileState.profile = cleared;
+        const berlin: City = { ...hamburg, id: 2950159, name: 'Berlin', population: 3_426_354 };
+        mockedSearchCities.mockResolvedValue([berlin]);
+        await renderScreen(<CityPickerScreen />);
+
+        await choose('Ber', berlin);
+
+        expect(lastAlert()).toEqual({
+          title: 'Move back to Berlin, DE?',
+          message: 'Your bats are still there, so it counts at once.',
+          buttons: ['Cancel', 'Move'],
+        });
+      });
+
+      /** Once the day is out the bats have nowhere to be, and a new city is a first one. */
+      it('says a new city counts at once once the move would have settled', async () => {
+        mockProfileState.profile = cleared;
+        await renderScreen(<CityPickerScreen />);
+        jest.setSystemTime(NOW + 2 * 3_600_000);
+
+        await choose('Ham', hamburg);
+
+        expect(lastAlert().message).toBe(
+          'It counts at once: your bats fly from Hamburg, DE from now on. If you change it ' +
+            'later, the new city takes a day to count.',
+        );
+      });
+    });
+
+    /**
+     * The picker can be open when the move it read settles. From then on the
+     * bats are in the courier's city, and that is where a move leaves from.
+     */
+    it('reads a move that settled while the picker was open as settled', async () => {
+      mockProfileState.profile = {
+        ...courier,
+        city: { id: 2867714, name: 'Munich', countryCode: 'DE' },
+        move: { from: { ...hamburg }, settlesAt: new Date(NOW + 3_600_000) },
+      };
+      await renderScreen(<CityPickerScreen />);
+      jest.setSystemTime(NOW + 2 * 3_600_000);
+
+      await choose('Ham', hamburg);
+
+      expect(lastAlert()).toEqual({
+        title: 'Move to Hamburg, DE?',
+        message:
+          'A move takes a day to count. Until 18 Nov 23:00, your letters leave from Munich, DE, ' +
+          "and your friends' letters land there.",
+        buttons: ['Cancel', 'Move'],
+      });
+    });
+
     /** Without the profile, the picker cannot tell which applies, and says both. */
     it('says what holds either way when the profile has not loaded', async () => {
       mockProfileState.profile = null;
