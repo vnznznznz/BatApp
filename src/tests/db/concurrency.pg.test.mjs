@@ -1903,6 +1903,38 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       const { rows: kept } = await admin.query(`select count(*)::int as count from public.reports`);
       assert.equal(kept[0].count, 1);
     });
+
+    /**
+     * The same for a courier, from two phones at once. Neither request can see
+     * the other's report before it commits, so only the unique index can make
+     * the second wait, and then be told it was already reported.
+     */
+    it('records the same courier reported twice at once as one report', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE']);
+      const ben = await createCourier('ben', ['Munich', 'DE']);
+      const first = await connectAs(anna);
+      const second = await connectAs(anna);
+      await first.query('begin');
+      await second.query('begin');
+      const report = (session) =>
+        session.query(`select public.report_courier($1, 'harassment') as outcome`, [ben]);
+
+      const one = await report(first);
+      const other = report(second);
+      assert.equal(await settlesWithin(other, 300), false, 'the second report did not wait');
+      await first.query('commit');
+      const two = await other;
+      await second.query('commit');
+
+      assert.deepEqual(
+        [one.rows[0].outcome, two.rows[0].outcome],
+        ['reported', 'already_reported'],
+      );
+      const { rows: kept } = await admin.query(
+        `select reporter_id, reported_id from public.reports`,
+      );
+      assert.deepEqual(kept, [{ reporter_id: anna, reported_id: ben }]);
+    });
   });
 
   /**
