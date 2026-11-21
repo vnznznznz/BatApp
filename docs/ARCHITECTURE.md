@@ -64,6 +64,25 @@ said. `npm run typecheck` now generates the types first (`npm run generate:route
 expected error: if the route types ever go missing from the typecheck again, that mark fails it.
 No link in the app was broken when this was switched on.
 
+_Found in November 2026:_ the compiler was on for every build and in no test. `babel-preset-expo`
+runs it only when Metro asks for it, so Jest tested the code as written, which no phone runs. The
+compiler memoizes what it can prove it may; where a component breaks a rule of React it cannot see,
+the compiled one behaves differently. `npm run test:compiled` (`jest.compiled.config.js`) runs the
+whole suite again with the code compiled as a production build compiles it, and CI runs it after
+`npm run verify`. A test known to fail compiled would be listed in `jest.compiled.setup.js` with
+the check it fails on; the list is empty since the auth provider's sign-out moved out of the
+component, where the compiler had folded a count taken before an `await` into a comparison with
+itself, and announced every sign-out twice.
+
+The compiler also leaves out, without a word, any component or hook it cannot compile - one with a
+`finally` in it, for one. It still works, but draws again whenever anything above it does.
+`src/tests/react-compiler.test.ts` compiles the app as a production build does and lists what is
+left out, with why: six screens (the blocked list, a courier's page, Friends, a letter, the
+profile, the report) and two hooks (`useRemote`, `usePaged`), all for a `finally`. A change to the
+list is a decision: the compose screen came back by writing its `finally` as a `then`, and the
+forms and the auth provider by waiting with `settled()` (`src/features/auth/settled.ts`) instead
+of a `try` (`src/tests/forms-compiled.test.ts`).
+
 ### A design system, not per-screen styling
 
 `src/components/` holds five primitives — `Screen`, `Text`, `Button`, `Card`, `BatMark` — and
@@ -98,12 +117,31 @@ broader `^@/(.*)$` would otherwise resolve `@/assets/...` under `src/`.
 `tsconfig.json` sets `"types": ["jest"]` explicitly — automatic `@types` discovery did not pick
 it up under TypeScript 6.
 
+Two more, added in November 2026:
+
+**`fireEvent` does not touch the control.** It looks up the tree for the first prop named
+`onPress` or `onChangeText` and calls it, and the first it finds is on the app's own wrapper - a
+`Button`, a `ListRow`, a `TextField`. A wrapper that stopped handing its handler on to React
+Native's control would leave every button in the app doing nothing, and every screen test green.
+`src/components/wiring.test.tsx` therefore presses and types with `userEvent`, which delivers the
+touch, and each keystroke, to the native control itself.
+
+**One time limit for every file.** With a cold transform cache - a fresh checkout, CI - the first
+render in a file compiles React Native's components, seconds of work that count against whichever
+test runs first. `testTimeout` is set once, to 20 seconds, in `jest.config.js`, rather than raised
+in the files that happened to time out once.
+
 ### Linting: ESLint flat config, run directly rather than through `expo lint`
 
 `expo lint` reported success on a codebase where `eslint .` reported ten errors: it was not
 covering `scripts/`. `npm run lint` therefore calls `eslint . --max-warnings=0` so nothing is
 silently skipped. `eslint-config-prettier` is applied last to switch off the stylistic rules
 Prettier owns.
+
+Since November 2026 it also refuses a test left focused, in `src` and `scripts`: `.only` on a test
+or a group, wherever Jest keeps it (`it.only.each`, `test.concurrent.only`), and `fit` and
+`fdescribe`. Jest runs a focused test alone in its file, skips the rest without a failure and exits
+with success, so the typecheck, the format check and CI would all stay green with tests not run.
 
 ### Artwork generated from source
 
@@ -198,18 +236,28 @@ abroad, GDPR Art. 13 for where data goes, and "in the EU" would be wrong.
 Supabase's built-in email service **refuses to deliver to any address that is not on the
 project's team**, and is capped at two messages per hour across the whole project. With email
 confirmation enabled and no custom SMTP, a friend's signup therefore fails silently — the account
-is created and the confirmation link never arrives.
+is created and the confirmation code never arrives. (A link, when this was written; the emails
+carry a code since November 2026, see "Codes, not links" below.)
 
 So the order is: confirmation **off** while the only account is the operator's; configure custom
 SMTP (Resend, Postmark, SES) before inviting anyone; then turn confirmation **on**. It stays
 worth turning on, because password reset is only a recovery route if the address is real, and a
 typo'd address on a project with no support desk is a permanent lockout.
 
-Because that setting lives in the Supabase dashboard rather than in this repository, `signUp`
-**reports** which case occurred rather than assuming one: Supabase returns a user but no session
-when confirmation is pending, and a session immediately when it is not. The sign-up screen
-branches on that. Telling someone to check an inbox when no email was sent leaves them waiting
-forever, and both tests for it are in `src/tests/sign-up-screen.test.tsx`.
+Because that setting is the project's rather than the app's - `supabase/config.toml` declares it
+(`enable_confirmations`), and the dashboard can change it - `signUp` **reports** which case
+occurred rather than assuming one: Supabase returns a user but no session when confirmation is
+pending, and a session immediately when it is not. The sign-up screen branches on that: with
+confirmation on it asks for the code emailed to the address, and with it off the session arrives
+and the root layout takes the courier in. Telling someone to check an inbox when no email was sent
+leaves them waiting forever, and the tests for both are in `src/tests/sign-up-screen.test.tsx`.
+
+An address that has an account already is answered as a new one is while confirmation is on (see
+"Who can tell whether an address has an account" below). With it off, a new address is signed in
+at once anyway, so the form says plainly "There is already an account with that email address.
+Sign in instead." Which of the two the project does is read from `mailer_autoconfirm` in the
+settings the auth server shows anyone (`GET /auth/v1/settings`), and taken for "on" when that
+cannot be read: the form then says what is true either way.
 
 ### The database is tested, not just written
 
@@ -229,6 +277,13 @@ for more than it is:
 The tests must also `set role authenticated`: PGlite connects as a superuser, and superusers
 bypass RLS entirely, so a test that forgot this would pass no matter what the policies said.
 
+The same holds for whoever writes a row. Since November 2026 the stub also has Supabase Auth's own
+role, `supabase_auth_admin`, and the tests sign people up as it (`createUser` in
+`src/tests/db/harness.mjs`), as GoTrue does on the platform. A trigger on `auth.users` runs with
+that role's rights, which reach nothing in the `private` schema, and a check constraint runs as
+whoever writes the row. Signed up as a superuser, the tests would pass a trigger that refuses every
+sign-up on the platform.
+
 **These tests run under `node --test`, not Jest.** PGlite resolves its WebAssembly bundles
 relative to `import.meta.url`, which Jest's CommonJS transform leaves undefined. Supplying the
 bundles by hand did not help — the loader still wanted a URL. Native ESM has no such problem and
@@ -247,6 +302,14 @@ Applying it everywhere removes the question of which functions needed it.
 `enable row level security` does not apply policies to the table's owner. `force` does. Without
 it, anything running as the owner silently sees every row.
 
+A `SECURITY DEFINER` function reads the tables as its owner, and with `force` the policies hold for
+that owner too. On the platform the owner, `postgres`, is no superuser: it passes row level
+security by, and it is also a member of `authenticated`, whom the policies let read the cities -
+either is enough for `search_cities`, which runs with its owner's rights since November 2026. The
+database tests run as a superuser, which passes every policy by, so one test runs `search_cities`
+under an owner that is neither superuser nor allowed past the policies, and only a member of
+`authenticated`.
+
 ### Account deletion is a SQL function, not an Edge Function
 
 `delete_own_account()` is `SECURITY DEFINER` and takes **no arguments**, so there is no id to
@@ -256,6 +319,10 @@ profile and to everything later phases hang off it.
 The alternative — an Edge Function holding the service-role key — is more moving parts, another
 deploy target, and a second place the privileged key exists. Both satisfy Apple Guideline
 5.1.1(v) and GDPR Art. 17; this one has less surface.
+
+Since November 2026 it refuses an account the operator has suspended or removed, and it takes the
+account's rows in the one order everything that ends an account takes them; what the app does
+around it is under "Deleting an account" in "The whole-project review" below.
 
 ### Refusing to start on a service-role key
 
@@ -277,6 +344,25 @@ Supabase session — two JWTs plus user metadata — routinely exceeds that.
 key, writes chunks before the manifest so an interrupted write leaves the previous complete set
 intact, and treats a partially readable value as absent. The alternative, quietly falling back to
 AsyncStorage, trades a visible failure for an invisible one.
+
+_Corrected in November 2026:_ the chunks were written before the manifest, but over the chunks of
+the value before, so an interrupted write left neither value whole. A chunked value is now written
+to one of two sets of entries in turn (`<key>.a.<n>`, `<key>.b.<n>`), never over the set the
+manifest names; the manifest (`ncchunks:<count>:<set>`), one entry and so one write, switches from
+the old set to the new, and the old set is cleared after it. Every write and every removal also
+clears what an earlier write or clean-up that was cut short left behind, in either set or in the
+old layout - as far as the manifest says, and at least eight chunks of each - so that signing out
+leaves no piece of a session in the keychain. Values in the old layout are still read. A read the
+keychain refuses counts as nothing stored and leaves the entry alone, and a write or a removal goes
+ahead without it.
+
+The session's entry is named by the app, `night-courier.session` (`src/lib/session-store.ts`),
+rather than by supabase-js, which derives a name from the project's address that the app does not
+know - and for some addresses one the keychain refuses. Named, the entry can be read by the app as
+well as by the client (see "Sessions" in "The whole-project review" below). On the web it is the
+browser's storage, held in memory where the browser refuses it. An app updated from a build before
+the change finds no session under the new name, and signs in again; its old entry stays in the
+keychain unread.
 
 ---
 
@@ -306,6 +392,13 @@ every city worldwide above 200,000. A village below the cut-off cannot be chosen
 picks the nearest town instead. At city-level granularity that changes nothing meaningful. The
 data is CC BY 4.0 and attributed in the generated migration's header.
 
+Each run writes a new migration, because a database runs a migration once and never again: it
+brings the table up to date and takes no town away, since a courier may live there. Since November
+2026 the generator leaves out a city with no name to search by, and the two rows a migration took
+out; and it no longer works out what tells two towns of the same name apart, but ends every
+migration it writes by calling `private.qualify_cities()`, which does that over the whole table.
+Both are under "Cities" in "The whole-project review" below.
+
 ### Alias search, because GeoNames stores English names
 
 GeoNames' primary name is frequently the English one: Vienna not Wien, Munich not München,
@@ -317,6 +410,9 @@ name, lower-cased and diacritic-folded, pipe-delimited. Folding also means "Zuri
 and "Koln" finds Köln, which matters because typing umlauts on a phone is possible but nobody
 bothers. Non-Latin forms are dropped - most of the volume, none of the value here.
 
+The folding learnt the ways people write saints' towns, brackets and slashes in November 2026: see
+"How a town is typed" under "Cities" in "The whole-project review" below.
+
 ### The folding is a tested contract, not a convention
 
 `fold()` exists twice: in the generator that built `search_index`, and in the client that folds
@@ -324,7 +420,10 @@ the query. If they diverge, nothing throws - search simply stops finding cities,
 worse than a crash.
 
 The generator therefore emits `fold-parity.fixture.json`, 200 sampled name/folded pairs weighted
-toward diacritics, and a test asserts the TypeScript implementation reproduces every one.
+toward diacritics, and a test asserts the TypeScript implementation reproduces every one. Since
+November 2026 the fixture also holds typed spellings ("St. Gallen", "Biel/Bienne"), which the
+database tests look towns up by, and the spelling rules exist a third time, in SQL, held to the
+fixture's spellings that need no letter folded (see "How a town is typed").
 
 ### Search ranking, and the bug that produced it
 
@@ -332,6 +431,10 @@ Ranking is exact-match, then own-name-prefix, then population. The middle tier a
 enough: searching "wien" returned **Wiener Neustadt** above **Vienna**, because "wien" is a
 prefix of Wiener Neustadt's own name but only an alias of Vienna's. An exact match on any name or
 alias has to outrank a prefix match. Caught by a test, and the test stayed.
+
+The own-name tier reads the first term of the index, which is the city's own name as it is
+written; since November 2026, once a whole saint has been typed, its form with "sankt" counts too
+(see "How a town is typed").
 
 ### No index on `search_index`
 
@@ -364,6 +467,13 @@ username cannot change), and creates a `private` schema the API roles cannot rea
 reproduces Supabase's defaults, and `privileges.db.test.mjs` lists, in full, what each API role
 holds on every table and function - so a new table or function fails a test until someone decides
 its privileges.
+
+_Corrected in November 2026:_ "in full" was not yet true. The audit asked about whole tables only,
+and passed a column of letters granted to a signed-out visitor, and a view over them. It now
+counts views as tables and privileges on single columns as privileges - there are exactly two,
+UPDATE on `profiles.display_name` and `profiles.city_id` - checks that nothing in the `private`
+schema can be executed by the API roles or by Supabase Auth's own role, and is itself tested on a
+scratch database that grants a column and a view.
 
 **Trade-off:** a table created later through the dashboard is not reachable through the API until
 it is granted. That is the intended failure direction.
@@ -403,6 +513,13 @@ and reports what happened (`requested`, `already_requested`, `accepted`, `alread
 than raising for cases that are not mistakes. Usernames are matched exactly, never by prefix, so
 the service cannot be browsed; that a username exists is revealed, which is inherent in finding
 friends by username.
+
+_Corrected in November 2026:_ "cannot be browsed" said too much. Usernames can be guessed: a
+request to a name nobody has is refused as often as it is tried, and leaves nothing behind to
+count. What is limited is how many couriers one account can reach - twenty new requests an hour -
+and with that how many usernames it can confirm to exist, each confirmation putting a request with
+the asker's name in front of that person (see "Friend requests" under "Database" in "The
+whole-project review"). A short username gives no privacy.
 
 Profiles remain readable only by their owner. `list_friends()` picks columns by hand: a name is
 shown once a person has asked you or accepted you, a city only to friends. A policy letting friends
@@ -447,8 +564,13 @@ it tests something.
 `private.deliver_due_messages()` lands every due letter and brings its bat home in one statement,
 idempotently (only while `delivered_at` is null). pg_cron runs it every minute, inside the
 database: the worker is one SQL statement, so an Edge Function would add a deploy target, a network
-hop and a service-role key for nothing. The migration schedules it only where pg_cron exists, which
-includes hosted and local Supabase and excludes PGlite and plain CI Postgres.
+hop and a service-role key for nothing. The migration schedules it only where pg_cron is available,
+which includes hosted and local Supabase and excludes PGlite and plain CI Postgres. So the database
+tests went the way that schedules nothing, and none went the way the hosted project goes, until
+November 2026: `src/tests/db/cron.db.test.mjs` gives PGlite a stand-in pg_cron before the
+migrations run - pg_cron's table of jobs, its log of runs, and `cron.schedule` in SQL - so that
+each migration finds it and schedules its job as written. The three jobs (delivery, old reports,
+the tidy-up) are read back from `cron.job`, and each command is run as pg_cron runs it.
 
 Every function the app reads through first runs the same delivery for the caller. Correctness
 therefore never depends on the schedule: if pg_cron stopped, letters would still be readable and
@@ -484,6 +606,11 @@ so while it applies.
 For an app whose letters take hours anyway, that is in character.
 
 **Confirmed** by the operator on 2 November 2026.
+
+_Changed in November 2026:_ until a courier's first letter, sent or received, a move counts at once
+as the first city does, because there is no flight to shorten yet; the city picker asks before it
+saves; and the roost says so too while a move settles. See "Moves before the first letter" under
+"Cities" in "The whole-project review" below.
 
 ### Nothing reads the bats table directly
 
@@ -551,6 +678,11 @@ the top) and `useRefreshAt` (fetch again when a bat is due). Countdowns tick fro
 `deliver_at` via `useNow`, which stops when its screen is not focused. A query library would earn
 its place if screens started sharing cached data; today each screen owns what it shows.
 
+_Grown in November 2026:_ a load that got no answer is made again by itself (`useRetry`), the
+profile has a hook of its own (`useProfile`), a long wait says so (`useLingering`), and two things
+are no longer owned by a screen: a letter not sent yet, and the sending of it. See "Loading, and
+loading again" and "Compose" in "The whole-project review" below. Still no query library.
+
 Generated database types (`npm run generate:types`, from the local stack) type the names and
 arguments of tables and functions. Each feature still declares its own row types, because the
 generator marks every column a `returns table (...)` function returns as non-null - including, for
@@ -574,7 +706,12 @@ text would, and four things changed:
   `ListRow` with `actions` is never pressable itself; each action is its own button.
 - **Rows reflow at large text.** From a font scale of 1.2, a row's actions move below its text,
   where beside it two scaled-up buttons squeezed a requester's name to an ellipsis. 1.2, not 1.3,
-  because Android reports its 130% setting as 1.2999999523162842.
+  because Android reports its 130% setting as 1.2999999523162842. Since November 2026 a row can
+  ask for its actions below at every size (`ListRow`'s `actionsBelow`), and "Your friends" does:
+  on a 360dp phone a name and a username beside Write and Remove were cut to a few characters. In
+  "Asking you", Accept and Decline sit under the name for the same reason. A row can also give
+  its subtitle and detail every line they need (`subtitleLines`, `detailLines`), which the friends'
+  routes and compose's chooser use for a town told apart from its twin (see "Cities").
 - **Errors and outcomes are spoken.** `aria-invalid` reaches assistive technology only on the web.
   `TextField` announces an error as it appears and makes it the field's hint; sends, friend
   requests and saves announce how they went (`src/lib/announce.ts`).
@@ -585,6 +722,14 @@ The compose screen also stopped using a `KeyboardAvoidingView` inside a scroll v
 which on iOS padded too little and left "Send by bat" under the keyboard; `Screen`'s
 `avoidKeyboard` lets the scroll view's insets follow the keyboard instead.
 
+The sign-in, sign-up and reset forms followed in November 2026: inside a scroll view a
+`KeyboardAvoidingView` pads itself without end. Android needed more. The app is drawn edge to edge
+there, and the system no longer makes the window smaller for the keyboard, so whatever lay under it
+stayed there: every `Screen` now pads its bottom by the keyboard's height from `keyboardDidShow` -
+the keyboard's inset less the navigation bar's - adding the bar where the safe area does not pad
+the bottom edge already. On the forms the keyboard's "next" key moves to the next field without
+closing the keyboard (`submitBehavior="submit"`). None of it has been seen on a device yet.
+
 ### Navigation
 
 A native header carrying only a back button on every signed-in screen but the roost, painted in the
@@ -593,6 +738,16 @@ appearing anywhere outside the app - restored at launch, or created by the form 
 the user to the roost with the stack cleared. That guard did not exist before Phase 4, though the
 sign-in screen's comments said it did: sign-in and sign-up both succeeded and then left the user on
 the form.
+
+Since November 2026 the guard also holds the way in while a code from an email is checked, or has
+signed the courier in with their password still to be saved: it keeps them on the screen that asked
+for the code, wherever else they find themselves (see "A code holds the way in" in "The
+whole-project review"). And the app has a page of its own for a link that leads nowhere
+(`src/app/+not-found.tsx`): one sentence and "Back to the start". Without it Expo Router showed its
+own page, with a link to its sitemap - a list of every screen, which a production build served at
+`/_sitemap`. The sitemap is off (`"sitemap": false` for the `expo-router` plugin in `app.json`), and
+the guard lets anyone stay on the not-found page, as on the house rules, so that a courier sees
+why the link did not take them where it pointed.
 
 ### Configuration inlining
 
@@ -685,10 +840,10 @@ letter still in the air when the block is made lands as usual and its bat comes 
 blocker stops seeing it.
 
 A blocked courier's display name stops reaching the blocker too. It is theirs to change at any
-time, to anything - "I know where you live" - and the blocker would otherwise still see it on every
-letter they ever sent them and on a bat flying there. `get_roost`, `list_sent` and `read_message`
-name someone the caller has blocked by username alone, as `list_blocked` always did. (Found in
-review.)
+time, to any name the rules allow - "I know where you live" is one (see "Names and letters with
+something to see") - and the blocker would otherwise still see it on every letter they ever sent
+them and on a bat flying there. `get_roost`, `list_sent` and `read_message` name someone the
+caller has blocked by username alone, as `list_blocked` always did. (Found in review.)
 
 Unblocking does not restore the friendship. Being friends again takes a new request and a yes, as it
 did the first time.
@@ -734,7 +889,13 @@ victim might need. The privacy policy has to say so, and the account deletion di
   sends 25 at once and fails without the lock.
 - Reports are deleted 180 days after they were made, by a pg_cron job
   (`private.forget_old_reports`) that runs hourly, so the 180 days hold to within the hour. As with
-  delivery, the job is scheduled only where pg_cron exists.
+  delivery, the job is scheduled only where pg_cron is available, and `cron.db.test.mjs` runs its
+  command as scheduled.
+- At the limit the report screen says the report was not recorded, and counts the limit as the
+  last 24 hours ("24 hours from now", not "tomorrow"). For a letter whose sender it has just
+  blocked, it says how to report that letter later - unblock, open the letter, report again - since
+  a report from the blocked list carries no letter, which the blocked list says too. The block
+  itself is made at the limit, deliberately: it protects now, and the report can wait.
 - The numbers live in `src/constants/config.ts` and the migration, and a parity test fails if they
   drift apart.
 
@@ -747,6 +908,11 @@ each other, deleting their accounts at the same moment, deadlocked (8 pairs in 2
 bats, as before - so the second deletion waits for the first. Two real-Postgres tests delete both
 accounts at once and fail without it.
 
+The order left out friendships, and the nightly tidy-up took nothing before it deleted; and an
+order can only take the rows there are. Both were found in November 2026, and what closes them -
+one order for every way an account ends, and a gate for each courier - is under "One order for
+every row, and a gate for each courier" in "The whole-project review" below.
+
 ### Reporting blocks by default
 
 "Also block" is on when the report screen opens. Someone reporting a letter almost always wants it to
@@ -754,7 +920,8 @@ stop, and a report alone changes nothing they can see until the operator acts. I
 for a report about someone the reporter still wants to hear from - and reporting the same letter, or
 the same courier without a letter, again starts from the choice made last time, while the app runs
 and until someone signs out (in memory only, `src/features/safety/safety.ts`). Another letter starts
-from on again.
+from on again. Only a choice made with a report that was recorded is kept: from the blocked list
+there is no choice to make, and over the daily limit nothing is recorded.
 
 Blocking first and reporting later must also work, and once someone is blocked their letters and
 their page are out of reach. The blocked list therefore has Report beside Unblock. Unblocking asks
@@ -773,9 +940,10 @@ checklist before a build for anyone else.
 ### The house rules live outside the signed-in group
 
 `/rules` has to be readable from the sign-up form, before an account exists, and from the profile.
-It is the one route outside `(app)` that the root guard lets a signed-in courier stay on. Creating an
-account agrees to the rules, and the form says so beside the button - the zero-tolerance terms App
-Review asks of apps with user content.
+It is the one route outside `(app)` that the root guard lets a signed-in courier stay on - with the
+not-found page, since November 2026 (see "Navigation"). Creating an account agrees to the rules,
+and the form says so beside the button - the zero-tolerance terms App Review asks of apps with user
+content.
 
 ### What the review changed on the client
 
@@ -825,12 +993,16 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
 - **Sign-up details.** The username and display name typed at sign-up stay in
   `auth.users.raw_user_meta_data`, and travel in every access token, long after the profile has
   changed; GoTrue keeps another copy in the email identity. The profile is the record of who
-  someone is, so both copies are removed once the profile has been made.
+  someone is, so both copies are removed once the profile has been made. Since November 2026 what a
+  sign-in may carry is bounded as well (see "Bounds" under "Database" in "The whole-project
+  review").
 - **Removed accounts.** The operator removes an account with `private.remove_account`, which
   deletes everything it holds and bans its sign-in for exactly `private.ban_period()` - two years
   from the removal, the operator's decision - so that the same email cannot simply sign up again.
   The ban used to be a hundred years, set by hand, and kept for ever. When it runs out, the sign-in
-  is deleted.
+  is deleted. Since November 2026 it says "there is no account …" when the courier deleted the
+  account while it waited, and refuses a second run on an account already removed, saying when the
+  ban ends, rather than setting it again for two years from then.
 - **Accounts deleted for someone.** An account its owner asks to have deleted, a child's, an
   address that was not the person's to use: the operator deletes these with
   `private.delete_account`, which bans nothing and takes the account's rows in the order the
@@ -847,10 +1019,16 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
 - **Unconfirmed sign-ups.** Once email confirmation is on, a sign-up whose address is never
   confirmed can never sign in, but `handle_new_user` has already made its profile - with someone's
   email address, perhaps not the sign-up's own. The tidy-up deletes it after 7 days
-  (`private.unconfirmed_sign_up_lifetime()`), long after any link has expired. While confirmation is
-  off, GoTrue confirms every address at sign-up, and the step finds nothing.
+  (`private.unconfirmed_sign_up_lifetime()`), long after any code has expired - a code lasts a
+  day. While confirmation is off, GoTrue confirms every address at sign-up, and the step finds
+  nothing. Until then the username it took stays taken, which the code screen tells someone who
+  has mistyped their address; and a later sign-up for the address under another username replaces
+  such an account once its code is confirmed (see "A code holds the way in").
 - **Moves.** The city a courier moved away from stays on their profile only while the move
-  settles, then goes.
+  settles, then goes. Before a courier's first letter nothing of a move is kept at all: it counts
+  at once. Whether a letter has ever gone to or from a courier (`profiles.has_corresponded`, since
+  November 2026) is kept as long as the account, even once the letters are gone, because it is what
+  makes a move take a day.
 - **pg_cron's own log** is kept a week.
 
 One daily job, `private.tidy_up()`, does all of it at 04:43. Each step that touches a table
@@ -865,6 +1043,21 @@ stack's real GoTrue: the records it writes, the copy in the identity, a banned a
 sign-in, at token refresh and at sign-up, its sign-in deleted with its identities once the ban has
 run out, and a session left unused for 91 days ended while one in use renews as before.
 
+_Changed in November 2026:_ the job deletes first - sign-ups never confirmed, all together after
+taking their rows in the one order everything that ends an account takes them, then expired bans -
+and only then tidies the sign-in log, sessions, sign-up names, settled moves, the counts of friend
+requests (once their hour began more than a day ago, so at most two days after) and pg_cron's log.
+Whatever a step touches, the job holds until it ends; with the deletions done while it holds
+nothing else, a courier deleting their own account at that moment waits for it and is never
+waited for. Review's stress test, a courier deleting their account while the tidy-up deleted a
+sign-up they had asked to be friends and reported, ended with one of the two stopped in 30 rounds
+of 150. A step that Postgres still stops because it and a request were each waiting for the other
+is undone alone, listed in what the run returns (`<step>: deadlock detected`) and done the next
+night; and since what a nightly run returns is seen by nobody, whatever it left out is also written
+to the server's log as a warning. Any other error still fails the run. The database's own refusal
+of a suspended account (see "Accounts the operator has stopped") was seen against the local stack
+in the merged tree.
+
 The iOS build also no longer asks for Face ID: expo-secure-store declares that permission by
 default, and the app never uses biometrics, so the store's privacy questions would have had to
 explain an access it never makes. And the session kept in the iOS keychain is now kept on that
@@ -876,6 +1069,670 @@ What it cannot do from SQL, and the privacy policy therefore says plainly:
 - Letters are kept until one of the two people deletes their account; there is no per-letter
   deletion.
 - Supabase's own request logs and backups, which follow the plan's retention, not ours.
+
+## The whole-project review, November 2026
+
+In November 2026 the whole project was reviewed at once - the database, signing in, the screens,
+the tests, the setup and the documents - and each finding was verified before it was fixed. The
+fixes were made in groups, each reviewed and checked again, and then merged; the seams between them
+were checked against the local stack and in the browser. None of it has been run on a phone yet.
+What the review changed or added is recorded here; where it made an earlier entry untrue, that
+entry says so. What it left open is in the roadmap.
+
+### Sessions
+
+**Who is signed in is a question about the device.** The client's own answer to it waits for the
+server: after an hour away it first renews the token, and without a network that was half a minute
+of splash screen followed by the welcome screen - for someone signed in. `AuthProvider` now reads
+the stored session itself at launch (`readStoredSession`, `src/lib/session-store.ts`) and lets the
+splash go at once; the client's events take over from there. The client also says "no session"
+when it only could not renew one just now, so that counts only when it announces a sign-out, or
+when nothing is stored any more (`isSessionStored`).
+
+**The client's fetch.** supabase-js decides what becomes of the session from what its fetch returns
+or throws, and three of its decisions cost a courier their session, or an hour of the app, for no
+fault of theirs. `src/lib/guarded-fetch.ts` stands between it and the network:
+
+- A request may take 20 seconds, its whole answer included (`REQUEST_TIMEOUT_MS`). On a phone the
+  platform's own wait has no end.
+- A renewal answered with anything but a new session, or the auth server's own word that this
+  session is over, counts as a request that did not get through, and auth-js keeps the session. It
+  used to delete it on almost any failed renewal, a rate limit or a gateway's error page included.
+  After such an answer no renewal is sent for as long as its `Retry-After` asks, five minutes at
+  most, or else for 30 seconds - counted from the answer, so that a clock put back ends the wait -
+  and auth-js's burst of eight attempts costs one request.
+- A request to the database is not sent with the publishable key in a token's place while a
+  session is stored: it would be refused as a stranger's.
+- A request the database refuses because its token has run out (PostgREST's `PGRST301` and
+  `PGRST303`) renews the session once and is sent again. auth-js goes by the phone's clock, which a
+  slow phone has wrong. If the auth server refuses that renewal too, the session is over, and the
+  app signs out on the device (`renewSession` in `src/lib/supabase.ts`).
+
+**Renewing for a press.** auth-js remembers a failed renewal for a minute
+(`REFRESH_FAILURE_COOLDOWN_MS` in auth-js 2.112) and answers every request from that memory,
+sending nothing. After a start without a network "Try again" sent nothing at all, and the screens
+went on saying "No connection" for one to two minutes after the network was back.
+`renewOnNextRequest` (`src/lib/renewal.ts`) clears the memory for a load someone pressed for - "Try
+again", a pull - and for no other: loads on coming into view and on the app's return started a
+renewal at every screen opened, and without a network each one is half a minute of attempts that
+every request waits for, Sign out included. A load waiting to be made again is made at once when
+the session has been renewed (`TOKEN_REFRESHED`). The memory is not part of auth-js's public face,
+so `src/lib/renewal.test.tsx` runs on the real client and fails if a new version names it
+differently.
+
+**Signing out takes five seconds at most.** The server is asked first, since only that ends the
+session on the courier's other devices as well, but for no longer than `SERVER_SIGN_OUT_WAIT_MS`
+(5 seconds, in `src/features/auth/auth-context.tsx`): to be told, it may first need the session
+renewed, and without a network Sign out spun for 25 to 40 seconds. Not told by then, the device
+lets go regardless. The app removes the session from the keychain itself and remembers that the
+server never heard (`signedOutUnheard`): a session the client announces after that, which nobody
+signed in to - a renewal under way as the entry went - is not taken but ended with the server.
+Signing out can fail only when the keychain will not let go of the entry, and that is said once the
+client is done with the server.
+
+A logout request already sent may still reach the server after the device has let go. A session
+whose token had run out cannot: the client renews it before it tells the server, and throws away a
+renewal that comes back once the session is no longer stored. So when the client is done, the app
+tells the server once more - a global logout with the old token, and when the server refuses that,
+with a token renewed without keeping or announcing it (auth-js 2.112's private
+`_refreshAccessToken`, which the provider's tests run on the real client). That reaches the server
+if the network is back by then; after that nothing does, and the server's session lasts until the
+courier signs in and out again or the tidy-up ends it after 90 days unused.
+
+Every way a session ends on the device ends with the client announcing `SIGNED_OUT`, once: a
+sign-out with or without a network, a renewal the auth server refuses, an account deleted or gone.
+Where the app removed the session itself, it has the client sign out on the device alone, which
+with nothing stored sends nothing and is announced - but not over someone who has signed in
+meanwhile. What the app keeps for an account besides the session - the letters not sent yet and the
+"Also block" choices in memory, what a code was for in the keychain - is let go of at that
+announcement.
+
+Every way of signing in first waits until no sign-out is under way (`beforeSigningIn`): a password,
+a sign-up, each code from an email, and the sign-up again after an account under another username
+was removed. A sign-out goes on after the device has let go of it and ends by removing whatever
+session is stored by then: someone who signed in meanwhile was signed out again within seconds, and
+when the client had been renewing at the start, the server was told to end every session of
+theirs. The wait has an end - no request waits more than 20 seconds, and the client starts no new
+attempt at a renewal after half a minute - but with a stale session on a connection that never
+answers it is about a minute. After 5 seconds of it, Sign in and Create account say under the
+button, and aloud, "Finishing the last sign-out first. Without a connection, that can take a
+minute." The code screens wait the same way with a spinner alone.
+
+### Loading, and loading again
+
+- **`useRetry`** (`src/lib/use-retry.ts`) makes a load again by itself when it got no answer -
+  after 2 seconds, then twice as long each time, up to a minute - while the screen is in front and
+  the app in the foreground, and never after a refusal from the server (`RpcError.reason`), which
+  would only be refused again. A load that is asked for - on coming into view, on the app's return,
+  by a pull or a button - starts the pauses again from the shortest. A screen opened without a
+  signal used to keep its error until the courier left it; on compose that was a letter written and
+  never sent. `useRemote`, `usePaged` (its first page) and `useProfile` load through it.
+- **`usePaged`** has `reload()`, the first page again quietly - no spinner, and the list as it is
+  until the answer is in - beside `refresh()` for a pull, and says why a load was refused
+  (`reason`), as `useRemote` does.
+- **`useProfile`** used to load once per mount. It loads on coming into view and on the app's
+  return, takes the newest answer only, and says when the account is gone (`isGone`): the profile
+  row is made with the account, so no row of one's own means the account has been deleted or
+  removed. The roost, Friends and a courier's page read the profile through it, once each time they
+  come into view; the roost asking as well had made two requests for the same row.
+- **`useLingering`** (`src/lib/use-lingering.ts`) says when a wait has gone on: "Still trying to
+  reach Night Courier…" under the first load's spinner on the roost and on the profile, after 5
+  seconds. Without a network, an hour after the app was last used, every first load waits about
+  half a minute while the client tries to renew the session, and the spinners said nothing all that
+  time. The profile now shows its Safety and Account sections, Sign out among them, while it is
+  still loading, so that the way out does not wait for the network. The sign-in and sign-up forms
+  use `useLingering` for a sign-out still under way.
+- **`useRefreshAt`** sets no timer for a landing time that is not a number, which fired at once
+  after every answer. The Sent list uses it now as well: it calls a letter landed only when the
+  server says `delivered`, reads "landing any moment now" until then, and asks again, quietly, when
+  the next letter in the air is due. It went by the phone's clock alone, and on a phone running fast
+  called a letter landed that was still in the air.
+
+An error that says "try again" comes with a button for it where a screen has nothing else to show,
+beside the hooks' own retries, and the button shows itself busy: once on the roost (the bats, the
+counts and the profile together), on compose for the friends and for the bats and the profile
+together, and in the letters list while no letter is held. A profile that could not be loaded holds
+nothing back: only a profile known to have no city, or one still on its way, keeps "Write a letter"
+and "Send by bat" off, because the server refuses a sender without a city itself. One failed request
+as compose opened used to disable sending until the screen was left, and the letter with it.
+
+Smaller things: a letter's unread mark goes when the server has answered with the letter, marked
+opened (`onLetterOpened` in `src/features/messages/messages.ts`), not when its row is tapped.
+`formatTimestamp` drops the time of day only for a moment more than 300 days back ("12 Oct 2025"),
+and writes a moment in a year not yet begun with its year and time ("1 Jan 2027 04:18"); it dropped
+the time whenever the year differed, from a landing a few hours ahead on New Year's Eve too. The
+letter counter counts what will be sent, without the blank space around it. And an empty inbox
+says nothing until it is known whether the courier has blocked anyone, since a block hides letters:
+"Nothing has landed yet" stood over letters a block had hidden. If that cannot be found out, it
+says what is true either way.
+
+### Accounts that are gone, or suspended
+
+An account can end while its app is open - deleted on another phone, removed or suspended by the
+operator - and the API still takes its token for up to an hour. The screens offered "Try again"
+under every refusal, which could not help.
+
+- **Gone.** The roost and the profile say "This account no longer exists: it has been deleted or
+  removed. All that is left to do is to sign out.", with Sign out beside it, and Contact in a build
+  with a contact address (`AccountClosedActions` on the roost and on compose; the profile has both
+  buttons anyway). The roost's bats are hidden, where it said "0 of 0 at home"; compose shows the
+  notice in place of the friends; the profile offers neither Blocked couriers nor Delete my
+  account. Every account has its bats from the start, so a roost without one makes compose read the
+  profile again, which is how the end is found there. A city saved to an account that is gone says
+  so.
+- **Suspended.** The database refuses a suspended account everything that reaches anyone else (see
+  "Accounts the operator has stopped"), with the hint `account_suspended`. The roost, compose - one
+  notice, wherever it shows - the letters list, a letter, Friends, a courier's page and the blocked
+  list then say why, with Sign out and Contact in place of "Try again" (`AccountClosedActions`;
+  Contact only in a build with a contact address), and writing is off; Friends turns off its
+  request field and button as well. A name or a city saved is refused with the same words: "This
+  account has been suspended. To ask why, write to the person who runs Night Courier." They name
+  whom to write to rather than a button or a page, because they also stand under a save with
+  nothing beside them, and in a build without a contact address. A renewal the auth server refuses
+  with `user_banned` signs the device out, and the welcome screen then says the suspension once,
+  with Contact where the build has one (`src/lib/farewell.ts`, in memory).
+- **Signing in to a suspended account** is answered as a wrong password. The auth server refuses a
+  banned account before it looks at the password, so whoever typed an address would learn that it
+  had an account, and what became of it. Only the code of "I forgot my password", which proves the
+  address, is answered with the suspension. (Decided on the operator's behalf.)
+- **Friends can still write to a suspended account**, and its letters already in the air land:
+  refusing either would tell its friends of the suspension. (Decided on the operator's behalf.) The
+  account cannot read them.
+
+### Deleting an account
+
+`delete_own_account` deletes the account, and the device is then signed out without asking the
+server: it has no session left to end, and answered with an error, `user_not_found`. The welcome
+screen says once "Your account has been deleted." (`noteAccountDeleted` in `src/lib/farewell.ts`),
+where it said nothing. That word follows only the deletion asked for in the profile. Removing an
+account a code had only just confirmed - Start over, a reset's code that confirmed an account
+nobody had, the sign-up again under another username - signs out the same way and leaves the
+welcome screen nothing to say (`removeAccount(farewell)` in `auth-context.tsx`). A deletion whose
+answer is lost is not taken for a failure: the app asks the auth server whether the account is
+still there, and when that cannot be answered either it says "Your account may or may not have been
+deleted - no answer came back. Check again once you are online." A suspended or removed account
+cannot delete itself (see "Accounts the operator has stopped").
+
+### Codes, not links
+
+The auth server's emails carried a link. It came back through the app's URL scheme,
+`nightcourier://`, with a whole session in it - for whichever app on the phone answered to the
+scheme - and the app had no screen to finish a reset with (the roadmap's "Incomplete, and not by
+design"). Every email the auth server sends to confirm an address, reset a password, sign in,
+change an address, invite or reauthenticate now carries an 8-digit code to type into the app, and
+no link: the six templates in `supabase/templates`, which `supabase/config.toml` names, with the
+subject "Your Night Courier code". The app asks for two of them. The others carry a code too,
+because anyone can ask the auth server for a sign-in code for an address with an account, a
+signed-in account can ask to change its address, and the operator can invite, and the auth
+server's own templates for those carry a link that signs in whoever follows it.
+`src/tests/email-codes.test.ts` checks every template: the code, and no link nor any field a link
+is made of.
+
+The notices the auth server can send of its own accord - of a changed password or address, among
+others (`[auth.email.notification]`) - have no template of the app's, and `config.toml` turns none
+of them on; whether a new hosted project sends any is to be checked (GO-LIVE, "Setting up the
+hosted project", step 2).
+
+- `otp_length = 8`, as many digits as the code field asks for (`EMAIL_CODE_LENGTH`), and
+  `otp_expiry = 86400`, a day, where the auth server's own is an hour: someone who signs up in the
+  evening may open the email the next morning. What holds guessing back is the eight digits and the
+  hosted project's limit on attempts from one network address; each new code replaces the one
+  before, and a code works once.
+- Codes are asked for after a sign-up ("Check your email"); after a sign-in the auth server answers
+  with "email not confirmed", which it says only once the password is right ("Confirm your
+  address"); and on the reset screen, which takes the code and the new password together. A code
+  that is wrong, has run out, has been used or has been replaced gets one answer from the auth
+  server (`otp_expired`), so one sentence fits them all: "That code did not work. Check it against
+  the newest email, or ask for a new one."
+- A new code can be asked for a minute after the last, which the screens count themselves
+  (`RESEND_WAIT_SECONDS`): the hosted project's own 60 seconds between two emails to an address.
+  `config.toml` names no `max_frequency`, so that a push leaves those 60 seconds as they are; the
+  local stack's own is one second.
+- No code flow (PKCE): `createClient` says `flowType: 'implicit'` rather than leave it to a default
+  a later supabase-js may change. With codes only, a verifier kept on the device protects nothing,
+  and with one, each emailed code left a row on the auth server that nothing deletes
+  (`auth.flow_state`), and verifier entries in the keychain until the next sign-out.
+
+### A code holds the way in
+
+A code signs the courier in before the password they chose is saved: the new one of a reset, the
+one typed at sign-up, or the one signed in with (see the next section). Saving it can fail. From
+the moment the code goes to be checked until the password is saved (`isSettingPassword`), the root
+layout keeps the courier on the screen that asked for the code - the sign-up, sign-in or reset
+screen - wherever else they find themselves: the welcome screen, the sign-in form, the house rules,
+the not-found page, a screen of the app opened from a link. The app's own layout draws nothing
+meanwhile, so the roost is not mounted on the way. The code screens take the swipe back and
+Android's back button away while they hold (`HoldBack`), and their buttons that lead elsewhere are
+off. Codes being checked are counted, not flagged: a form can send the same code twice before its
+spinner shows, and the second check, refused, must not let go of the hold the first still needs.
+
+What a code is for is kept in the keychain beside the session, under `night-courier.unfinished`
+(`src/features/auth/unfinished.ts`): the address, username and name typed at sign-up, or the
+address of a sign-in or a reset - never a password. It is written before the code goes, because the
+client keeps the session the moment the code is answered, and an app closed in between opened in
+the roost. It is forgotten once the work is done, when the account is removed, at any sign-out, at
+a sign-in with a password, and at launch when no session for that address is stored. At launch a
+stored session for the same address holds the way in again, and the root layout takes the courier
+to the screen that asked for the code, which asks for what is left: a password - the one chosen
+before, or a new one - on the sign-up and sign-in screens, and the new password on the reset
+screen.
+
+If saving fails, the code screen becomes "Almost there". After a sign-up it offers Try again, or
+Start over, which removes the account and then signs out - never a plain sign-out, which would leave
+the account confirmed with whatever an earlier sign-up had given it. After signing in it offers Try
+again, or Sign out, and then a password set with "I forgot my password". If the session the code
+brought has been ended elsewhere - a change of password ends every other session - the courier is
+signed out with the reason (`SignedOutUnfinished`).
+
+**One more code, when a stranger signed up first.** GoTrue keeps an account that is waiting for its
+code exactly as the first sign-up for the address made it: a second sign-up sends a new code and
+changes nothing else. That first sign-up may have been anyone's - someone who typed the address,
+with a password and a username of their own. So after a sign-up's code, before the way in opens,
+`finishSignUp` makes the account the one the courier set up: it sets the password typed at sign-up,
+then reads the profile. A username cannot be changed, so an account an earlier sign-up gave another
+username is removed - nothing can have been done with it, the code having confirmed it only now -
+and the courier is signed up again with what they typed, which sends a new code ("One more code").
+A different name is changed to the one typed.
+
+**A reset's code that confirms an account.** The auth server confirms an address with a reset's
+code too, so an account a sign-up left waiting for its code - perhaps someone else's, with their
+password, username and name - would become the courier's with all of that and a new password. When
+a reset's code is what confirmed the account, the account is removed instead, and the courier is
+asked to sign up; until it is gone, the way in is held. The test is the code's own answer: the
+address confirmed within a second of the sign-in the code brings (`email_confirmed_at` and
+`last_sign_in_at`, which the auth server writes in one request, milliseconds apart), and the same
+test is made at launch. At first the confirmation was compared with when the reset was asked for,
+and then a reset's code asked for before a sign-up's code confirmed the account, and typed within
+its day, removed the courier's own finished account.
+
+### Confirming an address takes its password away
+
+A stranger's sign-up first left one gap more: the password it chose worked from the moment the
+owner of the address typed the code until the app had set the owner's own, one request later, and
+an access token taken in that moment stayed good for up to an hour after.
+`20261121160000_confirmation_clears_password.sql` closes it in the database: a trigger on
+`auth.users` (`private.clear_password_on_confirmation`, before an update of `email_confirmed_at`)
+empties the password in the very statement that confirms an address a code was emailed to - every
+sign-up's, while confirmation is on. From the code on, no password signs in to the account until
+the app sets one with the session the code brought: `finishSignUp` the one typed at sign-up,
+`finishSignIn` the one typed at sign-in, `setNewPassword` the new one of a reset. With confirmation
+off nothing changes: the auth server inserts each new account unconfirmed and confirms it within
+the same request, nothing is emailed, and the password just chosen stays. An operator who confirms
+an account by hand clears its password too, if a code had been emailed to it; its owner then sets
+one with "I forgot my password". (Decided on the operator's behalf.) On a server without the
+migration, setting the password the account has already is answered as the same password, and
+taken as done.
+
+### Who can tell whether an address has an account
+
+No screen says whether an address has an account, as far as the app can keep it so:
+
+- Sign-up answers an address that has one as it answers a new address, and the code screen says
+  what is true of both: "If … is new here, a code is on its way to it … If you already have an
+  account, sign in instead." A code sent to it a moment ago counts as on its way too.
+- The reset takes for sent the three answers that come only for an address with an account: a code
+  sent less than a minute ago, an email that could not be sent, and the project's emails for the
+  hour used up.
+- The screens wait their own minute before a new code can be asked for, because the auth server's
+  refusal of a second email within its minute comes only for an address that has an account.
+- Signing in to a suspended or removed account is answered as a wrong password (above).
+
+What still tells:
+
+- A taken username. Sign-up answers it with an error - the auth server's "Database error saving
+  new user", which the form shows at the username as "That username may already be taken. Try
+  another." - and only for an address without an account, so anyone who knows a username can try it
+  with an address. A function that says whether a username is free would make the form's guess an
+  answer, and needs a database change.
+- While confirmation is off, by design: a new address is signed in at once, and one with an account
+  is told so.
+- While the project has used up its emails for the hour: sign-up and "Send the code again" then
+  answer "Too many emails have been sent for now. Try again in an hour." for an address without a
+  confirmed account, and show the code screen for a confirmed one, which the auth server answers
+  before it sends anything. Hiding that would leave a new courier waiting for a code that never
+  comes; an hourly allowance well above the sign-ups expected keeps it rare.
+- The auth server's API, whatever the app does (seen in review): inside its minute it refuses a
+  second email for a known address and answers an unknown one as sent; a known address takes
+  measurably longer to answer; a sign-up for a confirmed address is answered "User already
+  registered" for as long as confirmation by phone is off, as `supabase/config.toml` leaves it,
+  phone sign-up being off altogether; a taken username is an error; and a banned account is refused
+  at sign-in whatever the password. Turning `enable_confirmations` on under `[auth.sms]` as well as
+  under `[auth.email]` should make it answer that sign-up as for a new address, but no server here
+  has had both on, so that is still to be checked (GO-LIVE, "Before a second person can sign up:
+  custom SMTP", step 4).
+
+### The forms check what the server checks
+
+A mistake the auth server or the database would refuse is caught on the form, at its field, and in
+the words the server's refusal gets (`src/features/auth/validation.ts`):
+
+- Passwords are counted in bytes, as the auth server counts them: between eight and 72, the most
+  bcrypt reads, a letter such as ä counting two and an emoji four. Counted in characters, the form
+  had refused four umlauts, which the server takes.
+- An address in a shape the auth server refuses - a letter such as ä anywhere, a quote or a
+  bracket - is refused with "That email address was not accepted. Check it for mistakes - letters
+  such as ä or é, and signs such as quotes or brackets, cannot be used." The `xn--` spelling of
+  such a domain is taken.
+- A display name is held to the database's rules (see "Names and letters with something to see")
+  and to its 40 characters, counted as the database counts them: the auth server reports a name the
+  database refuses at sign-up as the same error as a taken username.
+- A username may be typed with its @, as the app writes it.
+- The auth server's answers are read by their code or by their words, since it gives both. One the
+  app has no words for is shown as "That did not work. Try again. (…)", with the server's words in
+  the brackets, and the error is kept as the cause.
+
+### Database
+
+#### Accounts the operator has stopped
+
+The operator stops an account by banning its sign-in (GO-LIVE, "Handling a report"). After a
+threat the ban is set at once, for `private.ban_period()`, two years, and a week later the account
+is removed, which sets the two years afresh - or the ban is lifted, if the threat proved unfounded.
+After a serious or repeated breach `private.remove_account` removes the account and bans its
+sign-in for the two years in one step. Supabase Auth honours a ban at sign-in and at renewal, but
+an access token already held stays good at the API for up to an hour, and the database never
+looked. In that hour a suspended account could go on writing to people, and delete itself - the
+letters a reporter was promised a week to copy, the sign-in records kept for the police, and the
+banned sign-in itself, so that the same address could sign up again at once.
+
+Now the database looks (`20261114120000_suspended_accounts.sql`). `private.caller()`, which every
+function a client can reach starts from, refuses a suspended account with the hint
+`account_suspended` (`private.is_suspended`: a ban that has not run out), and so does a trigger on
+the profile for an update the account makes itself, while the operator's own changes pass. Until its
+token runs out such an account can read only what is its own or public: its profile row, the bare
+rows of its friendships, the cities. `delete_own_account` refuses a suspended or removed account,
+and the ban is a condition of the DELETE itself, so that a suspension that commits while the
+deletion waits for its rows still counts. `private.remove_account` says so when the courier deleted
+the account while it waited, refuses a second run and says when the ban ends, and takes the sign-in
+last, after the account's other rows. `private.delete_account` deletes an account for someone, with
+no ban, in the same order (see "Keeping less, for less long").
+
+#### One order for every row, and a gate for each courier
+
+Whatever ends an account - its owner's deletion, the operator's removal or deletion, the nightly
+tidy-up - first takes every row the deletion will reach, in one order for everyone: letters, bats,
+friendships, blocks, reports, each table whole before the next
+(`private.lock_rows_of_couriers`, `20261114120004_one_lock_order.sql`). Friendships were missing
+from it, and the tidy-up had gone into the cascade without taking anything first. With the order
+comes a rule: a request that has written a row naming a courier must not afterwards wait for a row
+of that courier's, which is why blocking ends a friendship before it writes the block, and a report
+that blocks does so before it is written - and why a courier's count of friend requests, which a
+request writes after the friendship, is not among the rows taken. That serves the rows an ending
+has taken already, and no others (see below). Reading a letter takes, oldest first, the letters it
+lands together with the one it marks opened, where it used to take the newer ones first
+(`20261114120007_reading_in_order.sql`).
+
+An order can only take the rows there are. A friend request written after the end of an account had
+taken its rows, and then a block, deadlocked every way an account can end, and no order of the
+block's two steps served that case and the other. So each courier has a gate, an advisory lock
+(`20261114120008_courier_gate.sql`). Whatever writes a row that names couriers - a friend request,
+a letter, a block, a report - passes their gates, shared, before it touches a row, and holds them to
+its end. Whatever ends an account closes the gate first, which waits for the writes already through
+it and holds back every later one until the account is gone. A write that waited asks again whether
+the courier is there, and is answered as if it had come a moment later - `unknown_username`,
+`courier_not_found`, `message_not_found`, `not_friends` - where it used to fail on a foreign key.
+Gates are taken in the order of their keys. Accepting, withdrawing and declining a request, ending a
+friendship and lifting a block write no new row, and pass no gate. `concurrency.pg.test.mjs` holds
+these against each other on a real Postgres.
+
+#### Friend requests
+
+Review flooded one courier with 1,005 requests from throwaway accounts, and three things gave way.
+The friends list came back newest first, and the API hands over at most 1,000 rows of an answer, so
+the courier's real friends were cut off its end and the app said "No friends yet". Nothing limited
+asking: one account could put a request, with a name of its choosing, in front of every courier
+whose username it could find, and ask again the moment it was declined. And Withdraw, on a request
+the other person had accepted a moment before, ended the friendship instead, telling neither of
+them.
+
+`list_friends` now lists accepted friendships first, then requests, each newest first: what the row
+limit cuts off is requests (`20261114120001_friend_requests.sql`). One account can make twenty new
+requests an hour (`FRIEND_REQUESTS_PER_HOUR`, with a parity test), counted one call at a time under
+an advisory lock, in one row per courier in `private.friend_request_counts` - when the hour being
+counted began, and how many - which goes with the account, and which the daily tidy-up deletes
+once its hour began more than a day ago, so at most two days after it began. The limit is decided
+before the username is looked up, so its refusal is the same for a name that exists and one that
+does not. A request counts whatever becomes of it, or asking, being declined and asking again would
+never run out; accepting is not asking. The app says "That is a lot of requests in a short time.
+Try again in an hour." Withdrawing is `withdraw_request`, which refuses once the request is no
+longer waiting, and the app then says whether they accepted in the meantime. Declining is still
+`remove_friend`, but a request withdrawn before the decline is said as one no longer waiting rather
+than as a friendship that ended (`declineRequest`), on Friends and on a courier's page.
+
+#### Bounds
+
+- **What a sign-in carries.** A sign-up sends a username and a display name, and Supabase Auth keeps
+  whatever else comes with them - any JSON up to a megabyte a request, twice, on the sign-in and in
+  its email identity - and a signed-in account can add to its own; it travels in every access token
+  as well. A trigger on `auth.users` now refuses a sign-up, or a change, that would make a sign-in
+  carry more than 4,096 bytes (`private.sign_up_details_max_bytes()`, `SIGN_UP_DETAILS_MAX_BYTES`,
+  with a parity test). Only growing is refused: an account that carries more already, from before
+  the bound, may stay as it is or become smaller, or one such account would stop every night's
+  tidy-up. The trigger is `SECURITY DEFINER` because Supabase Auth's role writes the row, and that
+  role cannot reach the `private` schema.
+- **A city search** reads the first 64 characters of its query. The query was tidied again for
+  every one of the cities, over its whole length, so a search cost more the longer the query: on
+  the real stack 100,000 characters ran until the API's eight-second timeout cancelled them, from
+  any signed-in account. No name or alias is longer than 40 characters. PGlite, which is Postgres
+  18, plans the function differently and answered in milliseconds, so the guard is tested in
+  `concurrency.pg.test.mjs`, on a real Postgres.
+
+#### Names and letters with something to see
+
+All the database asked of a display name was its length, one to forty characters. Review stored a
+name that is a single zero-width space, one of forty line breaks, one of control characters, and
+one that reads as something other than it is stored, with a right-to-left override - several of
+them through the app's own form (`20261114120005_visible_names.sql`). A display name is now plain
+text - no control characters or line breaks, nothing that embeds, overrides or isolates the
+direction of text, while the joiners and direction marks that scripts and emoji need are allowed -
+with at least one character that shows. What shows nothing is Unicode's white space, its control
+characters and what it calls default-ignorable, with the blank braille pattern, the annotation
+marks and the hieroglyph format controls; other format characters, such as a number sign, show.
+Both rules are check constraints that name their characters by code point, because what white
+space is depends on the server: the three Postgres versions this project runs on, 16, 17 and 18,
+disagreed about nine characters. The checks call no function, because a check runs with the rights
+of whoever writes the row, and the API's role cannot reach the `private` schema. The app holds the
+same two lists (`src/constants/config.ts`), the parity test compares them with the database's for
+every character there is, and `config.test.ts` checks them against Unicode's own classes. Names
+that broke the rules were put right before the checks were added; one with nothing left to see
+became "Courier".
+
+A letter likewise needs a character that shows (`send_message`): a letter of one zero-width space
+used to cost a bat and arrive blank. The table's own check is left as it was, so that no letter
+already sent is judged again.
+
+#### Known gaps
+
+- `sent_letter` cannot see a send that has not reached the database yet. A first send still on its
+  way both times the app asks after it - in a gateway, waiting for a connection - can arrive later
+  and go, and changed words sent under a new reference in between would then be a second letter.
+  The window is normally milliseconds.
+- Usernames can be guessed for as long as the guesses miss, and many accounts can each make their
+  requests; the oldest requests beyond a thousand rows are not shown until newer ones are answered.
+- An account deleted on another phone keeps its token on this one for up to an hour. The database
+  answers it as an account with nothing in it, and a friend request, a block or a report from it
+  fails with a database error rather than as a session that has ended.
+- The dashboard's "Delete user" passes no gate, as it already passes the lock order by; the runbook
+  uses `private.delete_account`.
+
+### Compose
+
+**A letter not sent yet.** The words of a letter lived in the compose screen alone, so every way
+out of it threw them away without a question - the header's arrow, a swipe, Android's back button,
+going back to read once more the letter being answered. They are kept outside it now
+(`src/features/messages/drafts.ts`): one unsent letter for each friend, for each signed-in account,
+in memory only, and all of it forgotten when the client announces a sign-out. Screens read them
+with `useSyncExternalStore`, so a screen shows what will still be there when it is opened again,
+and compose's list of friends says to whom a letter was started. Nothing of them is written to the
+device, because the privacy policy says that a letter you have started is gone when you close the
+app or sign out, and that the app stores nothing on the device but the session and, while a code
+from an email is in use, the note of what it is for (see "A code holds the way in").
+
+**The sending of it.** A send outlives its screen too (`src/features/messages/sending.ts`). It runs
+to its end whether or not the screen that started it is still there, notes what became of the
+letter beside its words, tells every screen showing that letter, and tells the roost
+(`roostChanged`, which `onRoostChanged` in `src/features/roost/roost.ts` passes on), so that the
+roost and compose count the bats again: they had asked a moment too early. A screen opened onto a
+letter still on its way out shows it so, rather than offering to send it again, and a second tap,
+or another screen, cannot send it twice.
+
+**Asking after a letter.** A send that ends without an answer is not taken for a failure. It ends
+when the client gives up after 20 seconds, and the app asks `sent_letter(client_ref)` straight
+after (see "A send can be repeated safely"). If the letter went, the confirmation is for that
+letter, "has arrived" once its landing time has passed. If the server has no such letter, the
+screen says "Your letter did not go. It is still here to send." If it cannot be asked, the letter is
+in doubt - "No answer came back, so your letter may or may not have gone." - and is asked after
+again while it is on screen, after 2 seconds growing to a minute, and at once when it is opened
+again; compose's list of friends names it "A letter that may or may not have gone". The same words
+go out again under the same reference, so they cannot become a second letter. Changed words wait
+until what became of the first is known: no new reference is made while that is unknown, and Send
+then says "What you changed has not been sent: …" and sends nothing. If the first had gone after
+all, the changed words stay as an unsent letter of their own, with "Back to what you wrote". The
+button can spin for up to about 40 seconds for a first send - the send, then the question - and
+about a minute for changed words after a send without an answer. A letter read just as it lands is
+stamped opened no earlier than it landed: a request that began before the landing used to fail on
+it.
+
+**Writing back to a former friend.** Write back passes the correspondent's name with the route.
+When they are no longer a friend, compose says "… is no longer among your friends, so you cannot
+write to them." rather than only that letters go to friends; Write back stays on such a letter, and
+compose names them (decided on the operator's behalf). Choosing a friend on compose puts their name
+in the route too, so that a name left from before cannot stand for someone else.
+
+### Cities
+
+#### How a town is typed
+
+Review typed the names in the list the ways people write them, and several found nothing although
+the town was there: "St Gallen", "St. Ingbert", "Saint Paul" - GeoNames writes some "Sankt …" and
+some "Saint …", with some aliases and never all - and the list's own "Halle (Saale)" and
+"Biel/Bienne", whose names the generator had passed over for their bracket or their slash. The
+folding has three more rules, in the client (`fold()` in `src/features/cities/search.ts`), in the
+generator, and in SQL (`private.search_form`, `20261121120000_city_search_spellings.sql`) for the
+rows already in the table:
+
+- st, st., sankt and saint at the start of a word are one form, "sankt" - a whole word only: "st" at
+  the end of what is typed may still become Stuttgart, and "saint" Saintes;
+- brackets, slashes and commas part words as spaces do, and a run of spaces is one;
+- a typographic apostrophe is a plain one, as a phone's keyboard may type it.
+
+Each term keeps the form it was written in, ahead of its "sankt" form: someone half-way through
+typing "Saint" has typed "Sain", and only the written form still begins with that. So nothing that
+found a city before stops finding it: `cities.db.test.mjs` types every term of every row, in full
+and every shorter start of it down to two letters - 275,400 things to type - and each still finds
+its row. It also holds the generator to the migration: given the table's own names, the generator
+writes every row's index as the migration left it. Names with those characters are indexed by
+their own name now; aliases with them arrive only with the generator's next run on a GeoNames dump.
+
+`search_cities` ranks a city whose own name begins with the query by the first term of its index,
+the name as written; once a whole saint has been typed, the name's "sankt" form counts too. "Sai"
+ranks Saint Paul by its own name, "St. Pe" both Petersburgs, and "San" no longer ranks Saint
+Petersburg as if its name began so. It runs with its owner's rights to call `private.search_form`
+(see "`force row level security`").
+
+#### Towns of the same name
+
+Twenty-eight pairs of cities share their name and their country - Friedberg in Hessen and in
+Bavaria, Hamm, Langen, Mülheim and Senden in Germany, Sankt Peter in Austria, and twenty-two more
+elsewhere - and the picker listed each pair as the same row twice, while the friends list and the
+letters said "Friedberg, DE" for either. GeoNames has the state a town is in, but not in the file
+this list is built from, so what tells a town apart is worked out from the table itself:
+`cities.qualifier`, set by `private.qualify_cities()` over the whole table
+(`20261121120002_city_qualifiers.sql`).
+
+- A town is named by a larger city of its country with a name of its own: the largest within 30 km,
+  otherwise the nearest larger one.
+- That city is "near" when it is within 50 km; farther, the distance is given instead - "near
+  Augsburg", "131 km from San Pedro Sula".
+- Should the two towns of a pair read alike, each gives its distance; a town with no larger city in
+  its country is named by the nearest city of any size. Neither happens today, and both are tested
+  on towns made up for them.
+
+Every migration the generator writes ends by calling `private.qualify_cities()`: such a migration
+holds the cities of one dump, and a town that has dropped out of the dump stays in the table, where
+among the dump's cities alone its twin would look like the only town of its name. The qualifier
+comes wherever a city is read with its country - `search_cities`, the profile's two cities,
+`list_friends` (a friend's city, only once they are friends), `list_inbox`, `list_sent` and
+`read_message` - and the app writes it after the name: "Friedberg (near Augsburg), DE" wherever
+a city is shown with its country, and "Friedberg (near Augsburg)" where it stands without one, on
+the letters list, a letter's flight path and the confirmation of a send (`describeCity`,
+`cityName`). A town with a name of its own is written as before. In the
+friends list and in compose's list of friends the town has a line of its own and the way there the
+next.
+
+#### Rows nothing could find
+
+Sixteen rows had an empty search index - the generator had passed over every name with a bracket,
+a slash, a comma or a typographic apostrophe, and these had no other name - yet a profile or a
+letter could name one. Fourteen are found by their names now: nine districts of Zürich ("Zürich
+(Kreis 11)"), three of Winterthur, Mianzhu and Ra's Bayrūt. Two quarters of Köln, Neustadt/Süd
+and Neustadt/Nord, a kilometre or two from Köln's own row, are taken out
+(`20261121120001_dead_city_rows.sql`): found by their names, they would sit among the Neustadts
+of the list under no name that says Köln. A courier who lived in one lives in Köln, at once and
+with no move to settle, and a letter that flew from or to one flew from or to Köln. The generator
+leaves the two out of every migration it writes (`LEFT_OUT`), and writes no city with nothing to
+search by. The table holds 4,308 cities.
+
+#### Moves before the first letter
+
+A first city counts at once and every later change took a day (see "A new city takes a day"), so a
+first city chosen by mistake - the other Friedberg, a slip on the list - and put right a minute
+later stood for a whole day, for every flight to and from the courier. The day's wait is there so
+that nobody can move to shorten a flight, and until a letter has gone to or from a courier there is
+no flight to shorten: a move then counts at once
+(`20261121120003_moves_before_the_first_letter.sql`). From the first letter on - sent, in the air
+or landed - the day holds as before.
+
+Whether a courier has had a letter is kept on the profile, `profiles.has_corresponded`, rather than
+looked up among the letters: letters go when either account goes, and that a courier has had one
+does not. `send_message` sets it for both couriers, and nothing unsets it. Setting it is a change
+of the profile row, so `profiles.updated_at` moves with it - for a friend's first letter to the
+courier as well: it is the time of the row's last change, not only of the courier's own (decided on
+the operator's behalf). `private.settle_city` reads it from the row it updates, and that row is
+where a move and a first letter meet: for a first letter, `send_message` takes both profiles, in the
+order of their ids, before it reads where either courier is. A move that meets a first letter
+therefore waits for it and then takes a day, or makes it wait, and the letter flies from the new
+city - never the letter timed from the old city while the move counts at once. Two first letters
+between the same couriers, or to one, wait for each other for milliseconds, once in a courier's
+life. `concurrency.pg.test.mjs` holds each pair open against the other.
+
+The city picker asks before it saves, in the words that fit: a first city, and any move before the
+first letter, count at once; a move takes a day, naming the city letters still leave from and land
+at; a move back counts at once. It words its question from where the bats leave, as `settle_city`
+reads it, and saves the answer in the same UPDATE only while that still holds - no letter yet
+(`has_corresponded = false`), or the bats still leaving from the city it named (`CityCondition` in
+`src/features/profile/use-profile.ts`). Otherwise it saves nothing and asks again, from the profile
+as it is now. Whether a settling move's day is over is told by the device's clock, as everywhere the
+app speaks of a move (decided on the operator's behalf). The filters the app sends are kept in
+`src/features/profile/departing-filter.fixture.json`, and `relocation.db.test.mjs` applies them as
+PostgREST would, beside what `settle_city` decides, for twelve states of a profile. A save that
+changed no row is told only by a profile read after it: when that read got no answer, or a newer
+one took its place, the picker says "That city could not be saved." rather than ask again from what
+it read before the save.
+
+What this leaves as it was: a courier who has had letters and clears their city through the API,
+and lets the day pass, has no city in effect, and the next one counts at once.
+
+### Tests
+
+What the tests were missing, and what they do now, is under the entries it concerns: the compiled
+run and the list of what the React Compiler leaves out ("Routing"), presses that reach the control
+and one time limit ("Testing"), focused tests ("Linting"), sign-ups made as Supabase Auth's role
+("The database is tested"), the privilege audit ("Least privilege"), and the scheduled jobs
+("Delivery: a worker, and every read"). Besides those:
+
+- `concurrency.pg.test.mjs` holds, beside the bat reservation and the worker, repeated sends and
+  the question after them, a landing inside a request, every way an account ends against letters,
+  sends, reads, blocks, requests and each other, the tidy-up, friend requests and their limit,
+  reports, first letters against moves, the city search, and sign-ups as the platform's roles make
+  them, making transactions collide on purpose. Where `CI` is set, a missing `DATABASE_URL` fails
+  the run: a skipped suite counts as no test at all, and a workflow that lost its database would
+  otherwise stay green with not one race run.
+- A test that asked whether a courier can read another's letter passed without testing it: the
+  letter was never landed, and before it lands nobody but its sender can see it anyway. It lands
+  now.
+- `src/constants/config.test.ts` reads every Markdown document, at the root and under `docs/`, for
+  the ages it gives, and holds each to `MINIMUM_AGE` and `PARENTAL_PERMISSION_UNDER`.
 
 ## Deferred to later phases
 
