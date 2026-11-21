@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BatMark } from '@/components/bat-mark';
@@ -9,6 +10,8 @@ import { Text } from '@/components/text';
 import { BATS_PER_USER } from '@/constants/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-context';
+import { announce } from '@/lib/announce';
+import { ACCOUNT_DELETED, forgetFarewell, isFarewellDue } from '@/lib/farewell';
 
 /** The promises the app makes, stated on the way in. */
 const PROMISES = [
@@ -29,6 +32,14 @@ const PROMISES = [
 export default function WelcomeScreen() {
   const router = useRouter();
   const { session } = useAuth();
+  // After a deletion the app lands here, as after any sign-out: this says
+  // that it went through, once. (Found in the browser.)
+  const [deleted] = useState(isFarewellDue);
+  useEffect(() => {
+    if (!deleted) return;
+    forgetFarewell();
+    announce(ACCOUNT_DELETED);
+  }, [deleted]);
 
   // A signed-in user is on their way to the roost - the root layout sends them -
   // so the pitch is not shown to someone who already has an account.
@@ -38,6 +49,14 @@ export default function WelcomeScreen() {
     // Scrolls rather than clips: this content does not fit a smaller iPhone
     // once the reader has turned Dynamic Type up.
     <Screen center scroll style={styles.screen}>
+      {deleted ? (
+        <Card style={styles.card}>
+          <Text variant="body" center>
+            {ACCOUNT_DELETED}
+          </Text>
+        </Card>
+      ) : null}
+
       <BatMark size={132} />
 
       <Text variant="display" style={styles.title}>

@@ -779,20 +779,49 @@ describe('deleting the account', () => {
   /**
    * Once the account is gone the device is signed out by the app's own
    * signing out, which does not depend on the server hearing of it, and has
-   * words of its own for a keychain that will not let go.
+   * words of its own for a keychain that will not let go. The server is not
+   * asked at all: it has no session left to end, and answered the sign-out
+   * with an error, user_not_found, that the browser logged. (Found in the
+   * browser.)
    */
-  it('signs out of the device when the server cannot be told of it after the deletion', async () => {
+  it('signs out of the device without asking the server, which has nothing left to end', async () => {
     network = (request) => {
       if (isDeletion(request)) return new Response(null, { status: 204 });
-      return isLogout(request) ? offline() : json(200, []);
+      return isLogout(request) ? noSuchUser() : json(200, []);
     };
     await signedIn();
 
     expect(await outcomeOf(asked(() => auth.deleteAccount()))).toBe('done');
 
-    expect(sent.filter(isLogout)).toHaveLength(1);
+    expect(sent.filter(isLogout)).toEqual([]);
     expect(state()).toBe('signed out');
     expect(mockKeychain.size).toBe(0);
+  });
+
+  /** The welcome screen says what happened: it said nothing. (Found in the browser.) */
+  it('leaves word for the welcome screen that the account has been deleted', async () => {
+    network = (request) =>
+      isDeletion(request) ? new Response(null, { status: 204 }) : json(200, []);
+    await signedIn();
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+    expect(farewell.isFarewellDue()).toBe(false);
+
+    await asked(() => auth.deleteAccount());
+
+    expect(farewell.isFarewellDue()).toBe(true);
+  });
+
+  it('leaves no such word when the account could not be deleted', async () => {
+    network = (request) =>
+      isDeletion(request)
+        ? json(400, { code: 'P0001', hint: 'account_suspended', message: 'suspended' })
+        : json(200, []);
+    await signedIn();
+    const farewell = jest.requireActual<typeof import('@/lib/farewell')>('@/lib/farewell');
+
+    await outcomeOf(asked(() => auth.deleteAccount()));
+
+    expect(farewell.isFarewellDue()).toBe(false);
   });
 
   it('says so when the device cannot be signed out after the deletion', async () => {

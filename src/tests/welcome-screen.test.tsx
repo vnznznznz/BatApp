@@ -4,6 +4,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import WelcomeScreen from '@/app/index';
 import { BATS_PER_USER } from '@/constants/config';
+import { forgetFarewell, noteAccountDeleted } from '@/lib/farewell';
 
 const mockPush = jest.fn();
 
@@ -31,6 +32,7 @@ const renderScreen = (ui: ReactElement) =>
 beforeEach(() => {
   mockPush.mockClear();
   mockAuth.session = null;
+  forgetFarewell();
 });
 
 describe('WelcomeScreen', () => {
@@ -59,6 +61,30 @@ describe('WelcomeScreen', () => {
     expect(
       screen.getByText(/No purchases, no credits, no subscriptions, no advertising/),
     ).toBeOnTheScreen();
+  });
+
+  /**
+   * Deleting the account lands here, as any sign-out does, and nothing said
+   * that the deletion had gone through. (Found in the browser.) It is said
+   * once: whoever opens the app next is not told it again.
+   */
+  it('says once that the account has been deleted', async () => {
+    noteAccountDeleted();
+
+    const first = await renderScreen(<WelcomeScreen />);
+
+    expect(screen.getByText('Your account has been deleted.')).toBeOnTheScreen();
+
+    await first.unmount();
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText('Your account has been deleted.')).toBeNull();
+  });
+
+  it('says nothing of a deletion after an ordinary sign-out', async () => {
+    await renderScreen(<WelcomeScreen />);
+
+    expect(screen.queryByText('Your account has been deleted.')).toBeNull();
   });
 
   it('offers a way to create an account and a way to sign in', async () => {

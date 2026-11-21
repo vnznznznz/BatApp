@@ -8,6 +8,7 @@ import {
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { normaliseUsername } from '@/features/auth/validation';
+import { noteAccountDeleted } from '@/lib/farewell';
 import { REFUSALS, toRpcError } from '@/lib/rpc-error';
 import { clearStoredSession, isSessionStored, readStoredSession } from '@/lib/session-store';
 import { supabase } from '@/lib/supabase';
@@ -180,8 +181,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
         // The session belongs to a user that no longer exists; ending it on
-        // this device is what returns the app to the welcome screen.
-        await signOut();
+        // this device is what returns the app to the welcome screen, which is
+        // told why. The server is not asked: it has no session left to end,
+        // and answered with an error, user_not_found. (Found in the browser.)
+        noteAccountDeleted();
+        await signOutHere(() => setSession(null), false);
       },
     };
   }, [session, isRestoring]);
@@ -190,7 +194,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Signs this device out; `forget` lets go of the session the provider holds.
+ * Signs this device out; `forget` lets go of the session the provider holds,
+ * and `tellServer` false skips asking the server first - for an account that
+ * has just been deleted, whose sessions went with it.
  *
  * Out here, not in the provider, on purpose. A real build compiles the provider
  * with the React Compiler, which takes a module variable for a value that does
@@ -199,14 +205,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * twice. (Found in the merged tree, in the bundle and in Jest run compiled.)
  * The compiler leaves functions outside components and hooks as they are.
  */
-async function signOutHere(forget: () => void): Promise<void> {
+async function signOutHere(forget: () => void, tellServer = true): Promise<void> {
   const announcedBefore = signOutsAnnounced;
   // The server is asked first: only that ends the session on the courier's
   // other devices as well.
-  const heard = await supabase.auth.signOut().then(
-    ({ error }) => !error,
-    () => false,
-  );
+  const heard =
+    tellServer &&
+    (await supabase.auth.signOut().then(
+      ({ error }) => !error,
+      () => false,
+    ));
   if (heard) return;
 
   // It was not told, or cannot be known to have been. Signing out signs this
