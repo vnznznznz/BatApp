@@ -411,9 +411,9 @@ describe('SignInScreen', () => {
 
       expect(
         screen.getByText(
-          'That code did not work. If the try before it reached us, it confirmed your address, ' +
-            'and no new code will come: set a password with "I forgot my password", and sign in ' +
-            'with it.',
+          'That code did not work. If the try before it reached us, it confirmed your address. ' +
+            'Ask for a new code first. If none comes within a few minutes, your address is ' +
+            'confirmed: set a password with "I forgot my password", and sign in with it.',
         ),
       ).toBeOnTheScreen();
       expect(screen.queryByText(/username or name you did not choose/)).toBeNull();
@@ -429,9 +429,9 @@ describe('SignInScreen', () => {
       const CODE_DID_NOT_WORK =
         'That code did not work. Check it against the newest email, or ask for a new one.';
       const MAY_BE_CONFIRMED =
-        'That code did not work. If the try before it reached us, it confirmed your address, ' +
-        'and no new code will come: set a password with "I forgot my password", and sign in ' +
-        'with it.';
+        'That code did not work. If the try before it reached us, it confirmed your address. ' +
+        'Ask for a new code first. If none comes within a few minutes, your address is ' +
+        'confirmed: set a password with "I forgot my password", and sign in with it.';
       mockConfirmEmail
         .mockRejectedValueOnce(
           new CodeUnanswered('No connection. Check your network and try again.'),

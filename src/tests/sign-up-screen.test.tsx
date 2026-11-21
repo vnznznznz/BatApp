@@ -698,10 +698,11 @@ describe('SignUpScreen', () => {
        * (Found in review.)
        */
       const MAY_BE_CONFIRMED =
-        'That code did not work. If the try before it reached us, it confirmed your address, ' +
-        'and no new code will come: set a password with "I forgot my password", and sign in ' +
-        'with it. If the account shows a username or name you did not choose, you can delete ' +
-        'it in your profile and sign up again.';
+        'That code did not work. If the try before it reached us, it confirmed your address. ' +
+        'Ask for a new code first. If none comes within a few minutes, your address is ' +
+        'confirmed: set a password with "I forgot my password", and sign in with it. If the ' +
+        'account shows a username or name you did not choose, you can delete it in your ' +
+        'profile and sign up again.';
 
       async function refusedAfterNoAnswer() {
         mockConfirmSignUp

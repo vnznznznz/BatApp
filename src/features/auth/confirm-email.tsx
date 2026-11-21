@@ -94,11 +94,16 @@ const SIGNED_OUT = 'Signed out. To sign in, set a password with "I forgot my pas
  * Said, in place of the code's refusal, once a code whose check got no answer
  * has been refused on a later one: the first may have used it up, and then no
  * new code comes - the address is confirmed - and signing in finds no
- * password. (Found in review.)
+ * password. (Found in review.) Whether it did cannot be told: auth-js answers
+ * a try that never left the phone as it answers one whose answer was lost. So
+ * a new code first: one that comes means the address is not confirmed, and
+ * that code finishes the sign-up; "I forgot my password" only if none comes,
+ * since a reset whose own code confirms the address removes the account.
  */
 const MAY_BE_CONFIRMED =
-  'That code did not work. If the try before it reached us, it confirmed your address, and ' +
-  'no new code will come: set a password with "I forgot my password", and sign in with it.';
+  'That code did not work. If the try before it reached us, it confirmed your address. Ask ' +
+  'for a new code first. If none comes within a few minutes, your address is confirmed: set ' +
+  'a password with "I forgot my password", and sign in with it.';
 
 /**
  * Asks for the code that confirms an account's address. The right one signs
