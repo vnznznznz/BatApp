@@ -28,6 +28,14 @@
 -- every distance is the one the database measures.
 --
 -- scripts/build-cities.mjs works out the same for the cities it writes.
+--
+-- It comes wherever the app reads a city with its country: from the search,
+-- with the courier's own city and the one a move is settling away from (the
+-- profile reads those from the table), with a friend's city in the friends
+-- list, and with both ends of a letter in the inbox, the sent list and the
+-- letter itself. A friend in Friedberg (Hessen) was "Friedberg, DE" in all of
+-- those, the trouble the picker had seen from the friend's side. (Found in
+-- review.)
 
 alter table public.cities add column qualifier text;
 
@@ -144,3 +152,323 @@ $$;
 
 revoke all on function public.search_cities(text, integer) from public, anon;
 grant execute on function public.search_cities(text, integer) to authenticated;
+
+/* -------------------------------------------------------------------------- */
+/* Friends and letters                                                        */
+/* -------------------------------------------------------------------------- */
+
+-- Each as before, returning beside a city's name and country what tells it
+-- apart, under the same conditions as the name: a friend's city only once
+-- the two are friends. What a function returns cannot be changed in place,
+-- so each is made anew, with its grants.
+
+-- As before (see the friend requests migration), with city_qualifier.
+drop function public.list_friends();
+
+create function public.list_friends()
+returns table (
+  friendship_id uuid,
+  status text,
+  direction text,
+  friend_id uuid,
+  username text,
+  display_name text,
+  city_name text,
+  country_code text,
+  city_qualifier text,
+  distance_km double precision,
+  flight_seconds integer,
+  requested_at timestamptz,
+  accepted_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := private.caller();
+begin
+  return query
+    select
+      f.id,
+      f.status,
+      case when f.requester_id = me.id then 'outgoing' else 'incoming' end,
+      friend.id,
+      friend.username,
+      case when f.status = 'accepted' or f.requester_id = friend.id then friend.display_name end,
+      case when f.status = 'accepted' then city.name end,
+      case when f.status = 'accepted' then city.country_code end,
+      case when f.status = 'accepted' then city.qualifier end,
+      route.km,
+      round(extract(epoch from private.flight_duration(route.km)))::integer,
+      f.created_at,
+      f.accepted_at
+    from public.profiles me
+    join public.friendships f
+      on me.id in (f.requester_id, f.addressee_id)
+    join public.profiles friend
+      on friend.id = case when f.requester_id = me.id then f.addressee_id else f.requester_id end
+    -- Where letters actually fly between - see private.flight_city - so the
+    -- estimate is the flight a letter sent now would take, even mid-move.
+    left join public.cities city on city.id = private.flight_city(friend.id)
+    left join public.cities home on home.id = private.flight_city(me.id)
+    left join lateral (
+      select private.distance_km(home.latitude, home.longitude, city.latitude, city.longitude) as km
+      where f.status = 'accepted'
+    ) as route on true
+    where me.id = caller
+    order by (f.status = 'accepted') desc, f.created_at desc, f.id;
+end;
+$$;
+
+revoke all on function public.list_friends() from public, anon;
+grant execute on function public.list_friends() to authenticated;
+
+-- As before (see the safety migration), with origin_qualifier.
+drop function public.list_inbox(integer, uuid);
+
+create function public.list_inbox(
+  max_results integer default 50,
+  older_than uuid default null
+)
+returns table (
+  message_id uuid,
+  sender_id uuid,
+  sender_username text,
+  sender_display_name text,
+  origin_city_name text,
+  origin_country_code text,
+  origin_qualifier text,
+  distance_km double precision,
+  sent_at timestamptz,
+  arrived_at timestamptz,
+  opened_at timestamptz,
+  preview text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := private.caller();
+  after_at timestamptz;
+  after_id uuid;
+begin
+  perform private.deliver_due_messages(caller);
+
+  if list_inbox.older_than is not null then
+    select c.deliver_at, c.id into after_at, after_id
+    from public.messages c
+    where c.id = list_inbox.older_than
+      and c.recipient_id = caller
+      and c.delivered_at is not null;
+
+    if not found then
+      raise exception 'the letter this page continues from is gone'
+        using errcode = 'P0001', hint = 'cursor_not_found';
+    end if;
+  end if;
+
+  return query
+    select
+      m.id,
+      s.id,
+      s.username,
+      s.display_name,
+      origin.name,
+      origin.country_code,
+      origin.qualifier,
+      m.distance_km,
+      m.sent_at,
+      m.deliver_at,
+      m.opened_at,
+      left(m.body, 200)
+    from public.messages m
+    join public.profiles s on s.id = m.sender_id
+    join public.cities origin on origin.id = m.origin_city_id
+    where m.recipient_id = caller
+      and m.delivered_at is not null
+      and not private.has_blocked(caller, m.sender_id)
+      and (after_id is null or (m.deliver_at, m.id) < (after_at, after_id))
+    order by m.deliver_at desc, m.id desc
+    limit least(greatest(coalesce(list_inbox.max_results, 50), 1), 100);
+end;
+$$;
+
+revoke all on function public.list_inbox(integer, uuid) from public, anon;
+grant execute on function public.list_inbox(integer, uuid) to authenticated;
+
+-- As before (see the safety migration), with destination_qualifier.
+drop function public.list_sent(integer, uuid);
+
+create function public.list_sent(
+  max_results integer default 50,
+  older_than uuid default null
+)
+returns table (
+  message_id uuid,
+  recipient_id uuid,
+  recipient_username text,
+  recipient_display_name text,
+  destination_city_name text,
+  destination_country_code text,
+  destination_qualifier text,
+  distance_km double precision,
+  sent_at timestamptz,
+  deliver_at timestamptz,
+  delivered boolean,
+  preview text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := private.caller();
+  after_at timestamptz;
+  after_id uuid;
+begin
+  perform private.deliver_due_messages(caller);
+
+  if list_sent.older_than is not null then
+    select c.sent_at, c.id into after_at, after_id
+    from public.messages c
+    where c.id = list_sent.older_than
+      and c.sender_id = caller;
+
+    if not found then
+      raise exception 'the letter this page continues from is gone'
+        using errcode = 'P0001', hint = 'cursor_not_found';
+    end if;
+  end if;
+
+  return query
+    select
+      m.id,
+      r.id,
+      r.username,
+      case when not private.has_blocked(caller, r.id) then r.display_name end,
+      destination.name,
+      destination.country_code,
+      destination.qualifier,
+      m.distance_km,
+      m.sent_at,
+      m.deliver_at,
+      m.delivered_at is not null,
+      left(m.body, 200)
+    from public.messages m
+    join public.profiles r on r.id = m.recipient_id
+    join public.cities destination on destination.id = m.destination_city_id
+    where m.sender_id = caller
+      and (after_id is null or (m.sent_at, m.id) < (after_at, after_id))
+    order by m.sent_at desc, m.id desc
+    limit least(greatest(coalesce(list_sent.max_results, 50), 1), 100);
+end;
+$$;
+
+revoke all on function public.list_sent(integer, uuid) from public, anon;
+grant execute on function public.list_sent(integer, uuid) to authenticated;
+
+-- As before (see the reading in order migration), with origin_qualifier and
+-- destination_qualifier.
+drop function public.read_message(uuid);
+
+create function public.read_message(message_id uuid)
+returns table (
+  id uuid,
+  direction text,
+  other_id uuid,
+  other_username text,
+  other_display_name text,
+  origin_city_name text,
+  origin_country_code text,
+  origin_qualifier text,
+  destination_city_name text,
+  destination_country_code text,
+  destination_qualifier text,
+  distance_km double precision,
+  sent_at timestamptz,
+  deliver_at timestamptz,
+  delivered boolean,
+  opened_at timestamptz,
+  body text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller uuid := private.caller();
+begin
+  -- The second half is the same letter the update below marks, by the same
+  -- conditions; the first is what deliver_due_messages is about to land.
+  perform 1
+  from public.messages m
+  where caller in (m.sender_id, m.recipient_id)
+    and (
+      (m.delivered_at is null and m.deliver_at <= now())
+      or (
+        m.id = read_message.message_id
+        and m.recipient_id = caller
+        and m.delivered_at is not null
+        and m.opened_at is null
+        and not private.has_blocked(caller, m.sender_id)
+      )
+    )
+  order by m.deliver_at, m.id
+  for update;
+
+  perform private.deliver_due_messages(caller);
+
+  update public.messages m
+  set opened_at = greatest(now(), m.delivered_at)
+  where m.id = read_message.message_id
+    and m.recipient_id = caller
+    and m.delivered_at is not null
+    and m.opened_at is null
+    and not private.has_blocked(caller, m.sender_id);
+
+  return query
+    select
+      m.id,
+      case when m.sender_id = caller then 'sent' else 'received' end,
+      other.id,
+      other.username,
+      case when not private.has_blocked(caller, other.id) then other.display_name end,
+      origin.name,
+      origin.country_code,
+      origin.qualifier,
+      destination.name,
+      destination.country_code,
+      destination.qualifier,
+      m.distance_km,
+      m.sent_at,
+      m.deliver_at,
+      m.delivered_at is not null,
+      case when m.recipient_id = caller then m.opened_at end,
+      m.body
+    from public.messages m
+    join public.profiles other
+      on other.id = case when m.sender_id = caller then m.recipient_id else m.sender_id end
+    join public.cities origin on origin.id = m.origin_city_id
+    join public.cities destination on destination.id = m.destination_city_id
+    where m.id = read_message.message_id
+      and (
+        m.sender_id = caller
+        or (
+          m.recipient_id = caller
+          and m.delivered_at is not null
+          and not private.has_blocked(caller, m.sender_id)
+        )
+      );
+
+  if not found then
+    raise exception 'no such letter'
+      using errcode = 'P0001', hint = 'message_not_found';
+  end if;
+end;
+$$;
+
+revoke all on function public.read_message(uuid) from public, anon;
+grant execute on function public.read_message(uuid) to authenticated;

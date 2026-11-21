@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { fastForward, rpc } from './fixtures.mjs';
 import {
   applyMigrations,
   asAnon,
@@ -502,6 +503,111 @@ describe('cities.qualifier, for towns of the same name', () => {
       ['near Augsburg', 'near Frankfurt am Main'],
     );
     assert.equal((await search(anna, 'berlin'))[0].qualifier, null);
+  });
+});
+
+/**
+ * The picker told the two Friedbergs apart, and nothing else did: a friend in
+ * one of them was "Friedberg, DE" in the friends list, on their page, on the
+ * compose screen and on every letter - the trouble the picker had, seen from
+ * the friend's side. (Found in review.) Wherever the app reads a city with
+ * its country, what tells it apart comes with it.
+ */
+describe('cities.qualifier, wherever a city is read with its country', () => {
+  const HESSEN = 'near Frankfurt am Main';
+  const BAVARIA = 'near Augsburg';
+  let anna;
+  let ben;
+  let cara;
+  let dora;
+  let letter;
+
+  /** A courier living in one of the two Friedbergs, or in Berlin. */
+  const courier = async (username, qualifier) => {
+    const id = await createUser(db, { username, displayName: username });
+    await db.query(
+      `update public.profiles
+       set city_id = (select c.id from public.cities c
+                      where c.country_code = 'DE'
+                        and (c.name, c.qualifier) is not distinct from ($2, $3))
+       where id = $1`,
+      [id, qualifier ? 'Friedberg' : 'Berlin', qualifier],
+    );
+    return id;
+  };
+  const befriend = (a, b, status = 'accepted') =>
+    db.query(
+      `insert into public.friendships (requester_id, addressee_id, status, accepted_at)
+       values ($1, $2, $3, case when $3 = 'accepted' then now() end)`,
+      [a, b, status],
+    );
+
+  before(async () => {
+    anna = await courier('friedberg_hessen', HESSEN);
+    ben = await courier('friedberg_bavaria', BAVARIA);
+    cara = await courier('berlin_cara', null);
+    dora = await courier('friedberg_dora', BAVARIA);
+    await befriend(anna, ben);
+    await befriend(anna, cara);
+    // Dora has asked Anna, who has not answered: no city is shown either way.
+    await befriend(dora, anna, 'pending');
+
+    [letter] = await rpc(db, anna, 'send_message', {
+      recipient_id: ben,
+      body: 'Grüße aus der Wetterau.',
+    });
+    await fastForward(db, letter.message_id);
+  });
+
+  it('comes with a friend’s city in list_friends, and only once they are friends', async () => {
+    const cities = Object.fromEntries(
+      (await rpc(db, anna, 'list_friends')).map((row) => [
+        row.username,
+        [row.city_name, row.country_code, row.city_qualifier],
+      ]),
+    );
+
+    assert.deepEqual(cities, {
+      friedberg_bavaria: ['Friedberg', 'DE', BAVARIA],
+      berlin_cara: ['Berlin', 'DE', null],
+      friedberg_dora: [null, null, null],
+    });
+    const [annaSeenByBen] = await rpc(db, ben, 'list_friends');
+    assert.equal(annaSeenByBen.city_qualifier, HESSEN);
+  });
+
+  it('comes with where a letter landed in list_sent', async () => {
+    const [sent] = await rpc(db, anna, 'list_sent');
+
+    assert.deepEqual(
+      [sent.destination_city_name, sent.destination_country_code, sent.destination_qualifier],
+      ['Friedberg', 'DE', BAVARIA],
+    );
+  });
+
+  it('comes with where a letter came from in list_inbox', async () => {
+    const [received] = await rpc(db, ben, 'list_inbox');
+
+    assert.deepEqual(
+      [received.origin_city_name, received.origin_country_code, received.origin_qualifier],
+      ['Friedberg', 'DE', HESSEN],
+    );
+  });
+
+  it('comes with both ends of a letter in read_message, for its sender and its recipient', async () => {
+    for (const reader of [anna, ben]) {
+      const [read] = await rpc(db, reader, 'read_message', { message_id: letter.message_id });
+
+      assert.deepEqual(
+        [read.origin_city_name, read.origin_qualifier],
+        ['Friedberg', HESSEN],
+        `as ${reader === anna ? 'its sender' : 'its recipient'}`,
+      );
+      assert.deepEqual(
+        [read.destination_city_name, read.destination_qualifier],
+        ['Friedberg', BAVARIA],
+      );
+    }
   });
 });
 

@@ -424,6 +424,7 @@ export type Database = {
         Returns: {
           accepted_at: string;
           city_name: string;
+          city_qualifier: string;
           country_code: string;
           direction: string;
           display_name: string;
@@ -445,6 +446,7 @@ export type Database = {
           opened_at: string;
           origin_city_name: string;
           origin_country_code: string;
+          origin_qualifier: string;
           preview: string;
           sender_display_name: string;
           sender_id: string;
@@ -459,6 +461,7 @@ export type Database = {
           delivered: boolean;
           destination_city_name: string;
           destination_country_code: string;
+          destination_qualifier: string;
           distance_km: number;
           message_id: string;
           preview: string;
@@ -476,12 +479,14 @@ export type Database = {
           delivered: boolean;
           destination_city_name: string;
           destination_country_code: string;
+          destination_qualifier: string;
           direction: string;
           distance_km: number;
           id: string;
           opened_at: string;
           origin_city_name: string;
           origin_country_code: string;
+          origin_qualifier: string;
           other_display_name: string;
           other_id: string;
           other_username: string;

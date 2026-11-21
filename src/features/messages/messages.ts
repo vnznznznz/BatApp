@@ -21,7 +21,12 @@ export type Correspondent = {
   displayName: string | null;
 };
 
-export type Place = { name: string; countryCode: string };
+export type Place = {
+  name: string;
+  countryCode: string;
+  /** Where it is, if another town in the country has its name: "near Augsburg". */
+  qualifier?: string | null;
+};
 
 export type ReceivedLetter = {
   id: string;
@@ -81,6 +86,10 @@ export const PREVIEW_LENGTH = 200;
 /* Rows, with the nullability the SQL actually has                             */
 /* -------------------------------------------------------------------------- */
 
+// Each `..._qualifier` is null for a city whose name is its own in its
+// country, and absent from a database older than the city qualifiers
+// migration.
+
 export type InboxRow = {
   message_id: string;
   sender_id: string;
@@ -88,6 +97,7 @@ export type InboxRow = {
   sender_display_name: string;
   origin_city_name: string;
   origin_country_code: string;
+  origin_qualifier?: string | null;
   distance_km: number;
   sent_at: string;
   arrived_at: string;
@@ -103,6 +113,7 @@ export type SentRow = {
   recipient_display_name: string | null;
   destination_city_name: string;
   destination_country_code: string;
+  destination_qualifier?: string | null;
   distance_km: number;
   sent_at: string;
   deliver_at: string;
@@ -119,8 +130,10 @@ export type LetterRow = {
   other_display_name: string | null;
   origin_city_name: string;
   origin_country_code: string;
+  origin_qualifier?: string | null;
   destination_city_name: string;
   destination_country_code: string;
+  destination_qualifier?: string | null;
   distance_km: number;
   sent_at: string;
   deliver_at: string;
@@ -137,7 +150,11 @@ export function toReceivedLetter(row: InboxRow): ReceivedLetter {
       username: row.sender_username,
       displayName: row.sender_display_name,
     },
-    origin: { name: row.origin_city_name, countryCode: row.origin_country_code },
+    origin: {
+      name: row.origin_city_name,
+      countryCode: row.origin_country_code,
+      qualifier: row.origin_qualifier,
+    },
     distanceKm: row.distance_km,
     sentAt: new Date(row.sent_at),
     arrivedAt: new Date(row.arrived_at),
@@ -154,7 +171,11 @@ export function toSentLetter(row: SentRow): SentLetter {
       username: row.recipient_username,
       displayName: row.recipient_display_name,
     },
-    destination: { name: row.destination_city_name, countryCode: row.destination_country_code },
+    destination: {
+      name: row.destination_city_name,
+      countryCode: row.destination_country_code,
+      qualifier: row.destination_qualifier,
+    },
     distanceKm: row.distance_km,
     sentAt: new Date(row.sent_at),
     deliverAt: new Date(row.deliver_at),
@@ -172,8 +193,16 @@ export function toLetter(row: LetterRow): Letter {
       username: row.other_username,
       displayName: row.other_display_name,
     },
-    origin: { name: row.origin_city_name, countryCode: row.origin_country_code },
-    destination: { name: row.destination_city_name, countryCode: row.destination_country_code },
+    origin: {
+      name: row.origin_city_name,
+      countryCode: row.origin_country_code,
+      qualifier: row.origin_qualifier,
+    },
+    destination: {
+      name: row.destination_city_name,
+      countryCode: row.destination_country_code,
+      qualifier: row.destination_qualifier,
+    },
     distanceKm: row.distance_km,
     sentAt: new Date(row.sent_at),
     deliverAt: new Date(row.deliver_at),
