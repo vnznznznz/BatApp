@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react-native';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 
 import { TextField } from '@/components/text-field';
+import { Colors } from '@/constants/theme';
 
 describe('TextField', () => {
   /**
@@ -51,5 +52,56 @@ describe('TextField', () => {
     expect(screen.getByLabelText('Your letter').props.accessibilityHint).toBe(
       'Write something first.',
     );
+  });
+});
+
+describe('TextField colours', () => {
+  const DEFAULT_OS = Platform.OS;
+
+  afterEach(() => {
+    Platform.OS = DEFAULT_OS;
+  });
+
+  /** Red, green, blue and opacity (0 to 1) of a colour given as #RRGGBB, #RRGGBBAA or rgba(). */
+  function channels(color: unknown): [number, number, number, number] {
+    if (typeof color !== 'string') throw new Error(`Not a colour: ${String(color)}`);
+    const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})?$/i.exec(color);
+    if (hex) {
+      const [r = '', g = '', b = '', a = 'ff'] = hex.slice(1);
+      return [parseInt(r, 16), parseInt(g, 16), parseInt(b, 16), parseInt(a, 16) / 255];
+    }
+    const rgba = /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)$/.exec(color);
+    if (rgba) {
+      const [r = '', g = '', b = '', a = '1'] = rgba.slice(1);
+      return [Number(r), Number(g), Number(b), Number(a)];
+    }
+    throw new Error(`Not a colour this test reads: ${color}`);
+  }
+
+  /**
+   * Android draws the selection colour as the highlight behind selected text,
+   * exactly as given, and leaves the text's own colour alone: the opaque
+   * accent made a solid cream block with near-white words on it.
+   */
+  it('on Android, highlights a selection see-through, with the caret and handles in the accent', async () => {
+    Platform.OS = 'android';
+    await render(<TextField label="Your letter" value="Dear Ben," multiline />);
+    const field = screen.getByLabelText('Your letter');
+
+    const [r, g, b, opacity] = channels(field.props.selectionColor);
+    expect([r, g, b]).toEqual(channels(Colors.accent).slice(0, 3));
+    expect(opacity).toBeCloseTo(0.3, 1);
+    // Given no colour of their own, the caret and the handles would take the
+    // highlight's, and fade with it.
+    expect(field).toHaveProp('cursorColor', Colors.accent);
+    expect(field).toHaveProp('selectionHandleColor', Colors.accent);
+  });
+
+  /** On iOS the selection colour is the tint: iOS draws the highlight see-through itself. */
+  it('on iOS, gives the accent as the selection colour', async () => {
+    Platform.OS = 'ios';
+    await render(<TextField label="Your letter" value="Dear Ben," multiline />);
+
+    expect(screen.getByLabelText('Your letter')).toHaveProp('selectionColor', Colors.accent);
   });
 });
