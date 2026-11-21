@@ -115,7 +115,7 @@ const NOT_SAVED =
  */
 const NEVER_CONFIRMED =
   'The code was right, but this address had an account nobody had confirmed: one a sign-up ' +
-  'for it left waiting for its code - perhaps yours, perhaps someone else’s, with a password ' +
+  "for it left waiting for its code - perhaps yours, perhaps someone else's, with a password " +
   'and a username you may not have chosen.';
 const REMOVED = `${NEVER_CONFIRMED} It has been removed, with nothing in it, and the address is free: sign up with it to make it yours.`;
 const TO_REMOVE = `${NEVER_CONFIRMED} It has to be removed before the address can be yours, and that could not be done just now.`;
