@@ -1664,6 +1664,125 @@ describe('concurrency, against a real Postgres', { skip: SKIP }, () => {
       );
       assert.equal(rows[0].corresponded, 2);
     });
+
+    /**
+     * The same, with what could make the two take the profiles in different
+     * orders. An update takes the rows it changes in the order it comes to
+     * them: by the index in one plan, as they lie in the table in another, and
+     * two connections can plan the same statement differently. So the send
+     * takes both profiles first, in the order of their ids, whatever the plan.
+     * Here one connection may only go by the index (a bitmap of it visits the
+     * rows as they lie, too) and the other may not use an index at all, the
+     * two rows lie in the table against the order of their ids, and each
+     * profile the send changes takes a moment.
+     */
+    it('lets two first letters each way go at once, however each connection plans', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+      const [first, second] = [anna, ben].sort();
+      // Written again, the row whose id comes first now lies after the other.
+      await admin.query(`update public.profiles set display_name = display_name where id = $1`, [
+        first,
+      ]);
+      const { rows: lying } = await admin.query(
+        `select id from public.profiles where id = any($1) order by ctid`,
+        [[anna, ben]],
+      );
+      assert.deepEqual(
+        lying.map((row) => row.id),
+        [second, first],
+      );
+
+      const byIndex = await connectAs(anna);
+      await byIndex.query(
+        `set application_name = 'first-letters'; set enable_seqscan = off; set enable_bitmapscan = off`,
+      );
+      const byTable = await connectAs(ben);
+      await byTable.query(
+        `set application_name = 'first-letters'; set enable_indexscan = off; set enable_bitmapscan = off`,
+      );
+
+      const outcomes = await slowly(
+        'before update',
+        'public.profiles',
+        () =>
+          Promise.allSettled([
+            byIndex.query(`select * from public.send_message($1, 'Hello!')`, [ben]),
+            byTable.query(`select * from public.send_message($1, 'Hello!')`, [anna]),
+          ]),
+        { seconds: 0.5, onlyFor: 'first-letters' },
+      );
+
+      allFulfilled(outcomes);
+      assert.equal(
+        (
+          await admin.query(`select id from public.messages where sender_id = any($1)`, [
+            [anna, ben],
+          ])
+        ).rows.length,
+        2,
+      );
+    });
+
+    /**
+     * The picker saves a move it said would count at once only while no letter
+     * has gone to or from the courier: an update of the city on the condition
+     * that has_corresponded is still false. Against a first letter on its way,
+     * that condition is asked of the row as the letter left it.
+     */
+    it('saves nothing of a move said to count at once once a first letter being sent has gone', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+
+      const sender = await connectAs(ben);
+      await sender.query('begin');
+      await sender.query(`select * from public.send_message($1, 'The first.')`, [anna]);
+      const saving = (await connectAs(anna)).query(
+        `update public.profiles set city_id = ${munich}
+         where id = $1 and has_corresponded = false
+         returning id`,
+        [anna],
+      );
+
+      assert.equal(await settlesWithin(saving, 400), false, 'the save did not wait');
+      await sender.query('commit');
+
+      assert.deepEqual((await saving).rows, []);
+      assert.ok(Math.abs((await letterKm(ben)) - 505) < 5, 'the letter flew to Berlin');
+      assert.deepEqual(await standing(anna), { city: 'Berlin', settled: null, pending: false });
+    });
+
+    it('makes a first letter wait for a move said to count at once, and then fly from there', async () => {
+      const anna = await createCourier('anna', ['Berlin', 'DE'], { corresponded: false });
+      const ben = await createCourier('ben', ['Munich', 'DE'], { corresponded: false });
+      await makeFriends(anna, ben);
+
+      const mover = await connectAs(anna);
+      await mover.query('begin');
+      const saved = await mover.query(
+        `update public.profiles set city_id = ${munich}
+         where id = $1 and has_corresponded = false
+         returning id`,
+        [anna],
+      );
+      const sending = (await connectAs(anna)).query(
+        `select * from public.send_message($1, 'The first.')`,
+        [ben],
+      );
+
+      assert.equal(await settlesWithin(sending, 400), false, 'the letter did not wait');
+      await mover.query('commit');
+      await sending;
+
+      assert.deepEqual(
+        saved.rows.map((row) => row.id),
+        [anna],
+      );
+      assert.equal(await letterKm(anna), 0, 'the letter left from Munich');
+      assert.deepEqual(await standing(anna), { city: 'Munich', settled: null, pending: false });
+    });
   });
 
   describe('the city search', () => {

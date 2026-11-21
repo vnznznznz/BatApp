@@ -191,6 +191,11 @@ begin
   -- comes after has to wait for this to end: so the profiles are taken here,
   -- in the order of their ids, and kept. Once both have had a letter there is
   -- nothing left to take, and nothing waits.
+  --
+  -- The update below would take them as well, but in the order its plan comes
+  -- to them - by the index in one plan, as they lie in the table in another -
+  -- and two first letters each way, planned differently, then each held one
+  -- profile and wanted the other (concurrency.pg.test.mjs).
   perform 1
   from public.profiles p
   where p.id in (caller, send_message.recipient_id)
