@@ -62,7 +62,10 @@ export type Outcome =
       /** True when the words now written are not the ones that went. They are kept. */
       changed: boolean;
     }
-  /** The letter did not go. `message` says why, or that it did not. */
+  /**
+   * Nothing went. `message` says why: the server refused it, or refused to say
+   * what became of an earlier send - or that the letter did not go.
+   */
   | { kind: 'held'; message: string }
   /** No answer, and no way of asking yet. It is noted with the letter as unanswered. */
   | { kind: 'unknown' }
@@ -105,12 +108,19 @@ function nextAsk(since: number): number {
 
 const COULD_NOT_ASK = Symbol('could not ask');
 
-/** The letter that went out under `ref`, null if none did - or that it could not be asked. */
-async function ask(ref: string): Promise<Dispatch | null | typeof COULD_NOT_ASK> {
+/**
+ * The letter that went out under `ref`, null if none did - or that it could not
+ * be asked, or the server's refusal to say. A refusal is an answer of its own:
+ * asked again, the server would refuse again (an account that is suspended is
+ * refused everything), so whoever asked says why instead of asking on. Taken
+ * for "could not ask", it was asked after without end and never said. (Found
+ * in the merged tree.)
+ */
+async function ask(ref: string): Promise<Dispatch | null | typeof COULD_NOT_ASK | RpcError> {
   try {
     return await fetchSentLetter(ref);
-  } catch {
-    return COULD_NOT_ASK;
+  } catch (caught) {
+    return caught instanceof RpcError && caught.reason !== null ? caught : COULD_NOT_ASK;
   }
 }
 
@@ -175,6 +185,11 @@ async function carry(
   // after a failure, it may not have had it yet.
   if (open && open.words !== words) {
     const found = await ask(open.ref);
+    if (found instanceof RpcError) {
+      // Nothing to be found out, then, and these words do not go either. The
+      // first letter stays as it was, without a later time to ask.
+      return { outcome: { kind: 'held', message: found.message }, unanswered: open };
+    }
     if (found === COULD_NOT_ASK) {
       return {
         outcome: { kind: 'withheld' },
@@ -226,6 +241,14 @@ async function carry(
     // No answer. The letter may have gone all the same, so ask.
     const since = Date.now();
     const found = await ask(ref);
+    if (found instanceof RpcError) {
+      // The letter is in doubt still, and the refusal says why that will not
+      // change for now.
+      return {
+        outcome: { kind: 'held', message: found.message },
+        unanswered: { ref, words, unknown: true, since, askAt: nextAsk(since) },
+      };
+    }
     if (found === COULD_NOT_ASK) {
       return {
         outcome: { kind: 'unknown' },
@@ -269,6 +292,13 @@ export async function askAfterLetter(courierId: string, to: Addressee): Promise<
   // untrue by now - and that send will find out for itself.
   const now = readSend(courierId, to.id);
   if (now.busy || now.unanswered !== unanswered) return;
+
+  if (found instanceof RpcError) {
+    // Said, and left as it is: still in doubt, and with no later time to ask,
+    // nothing asks after it again until it is opened anew.
+    tell(courierId, to.id, { kind: 'held', message: found.message });
+    return;
+  }
 
   if (found === COULD_NOT_ASK) {
     noteSend(courierId, to.id, {
