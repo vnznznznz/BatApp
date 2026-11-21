@@ -357,9 +357,11 @@ the removal, after which "tidy-up" deletes the sign-in and its identities. For a
 runbook suspends first (the same update, a week earlier) and removes a week later; the removal
 starts the two years afresh. "Two years from the removal" holds only as long as nobody bans for
 longer by hand. Keeping the account record with its password hash is deliberate: without it the
-ban could be got round. The sessions end after 90 days unused, like any others (tidy_up); that a
-refused renewal does not count as use (updated_at) is still to check (gdpr-records.md V7). What the
-police are to have of them, the runbook exports in the week between the suspension and the removal.
+ban could be got round. The sessions end after 90 days unused, like any others (tidy_up). That a
+refused renewal does not count as use was seen on the local stack on 14 November 2026: a renewal
+GoTrue refuses for the ban changes neither updated_at nor refreshed_at of the session
+(gdpr-records.md V7), and the hosted project runs the same GoTrue. What the police are to have of
+them, the runbook exports in the week between the suspension and the removal.
 Other deletions set no ban: the user's own, and the operator's at someone's request, which is
 "select private.delete_account('<id>');" (gdpr-records.md 5.4) and never the dashboard's
 Authentication → Users → Delete user. A suspended account: the database refuses it at once
@@ -491,8 +493,9 @@ private.unconfirmed_sign_up_lifetime() (tidy_up), counted from auth.users.confir
 which GoTrue sets with every code it sends to confirm an address - at sign-up, at "Send the code
 again" and at a second sign-up - or from the sign-up where no code was sent
 (20261121180000_tidy_up_ages.sql). An account the operator makes by hand without confirming its
-address goes after the same week, also while confirmation is off; it cannot sign in. The code's
-8 digits and its day are otp_length
+address goes after the same week, also while confirmation is off; it cannot sign in. An account
+the auth server makes for a sign-in code (/auth/v1/otp, never used by the app) is treated as a
+sign-up (the operator's decision). The code's 8 digits and its day are otp_length
 and otp_expiry = 86400 in supabase/config.toml, and the templates in supabase/templates say the
 same. The hosted project sends them only once config push has carried them there (docs/GO-LIVE.md,
 "Setting up the hosted project"); its own templates carry a link. After that push, check that the

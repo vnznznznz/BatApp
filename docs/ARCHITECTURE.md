@@ -37,6 +37,12 @@ halves the styling surface and keeps the identity coherent. `app.json` pins
 **Trade-off:** users who prefer light interfaces get no choice. Accepted as a deliberate part of
 the product identity rather than an oversight.
 
+On Android the look of the navigation bar is settled once, at launch, from the phone's own theme,
+before the app makes itself dark. So a phone in light theme with three-button navigation may draw
+a bright bar with dark buttons under every screen - read in React Native's source, not seen. It is
+to be looked at on such a phone before anyone else gets a build (decided on the operator's behalf);
+if it shows, `expo-navigation-bar` can set the bar dark as the app starts.
+
 ### Product invariants live in one typed module
 
 `src/constants/config.ts` holds the rules that define the product — three bats per user, no
@@ -258,6 +264,14 @@ at once anyway, so the form says plainly "There is already an account with that 
 Sign in instead." Which of the two the project does is read from `mailer_autoconfirm` in the
 settings the auth server shows anyone (`GET /auth/v1/settings`), and taken for "on" when that
 cannot be read: the form then says what is true either way.
+
+**Known gap:** while confirmation is off, a sign-up for the address of an account that is still
+unconfirmed - one the operator made by hand without confirming it, or one left from a time
+confirmation was on - is answered with a session in that account. Whoever signed up is in it, with
+its username and name, and without the password they typed (seen on the local stack, with an
+account made by hand). The tidy-up deletes such accounts after a week (see "Keeping less, for less
+long"), and GO-LIVE keeps confirmation in `supabase/config.toml`, so that a push does not turn it
+off again.
 
 ### The database is tested, not just written
 
@@ -502,6 +516,12 @@ so a development project at 0.01 lands a same-city letter in 12 seconds. The 20 
 duplicated from `src/constants/config.ts`; `parity.db.test.mjs` reads that file and fails if they
 drift.
 
+Values far below 0.01 are not refused (decided on the operator's behalf: the multiplier is a
+developer's setting, and production has 1). At about one ten-billionth every same-city send fails
+on the table's rule that nothing lands at the moment it is sent (`messages_never_instant`), and
+review saw a deletion deadlock once against the delivery worker with flights shorter than the
+deletion took.
+
 `flight_duration` is `STRICT`. It was not at first, and `greatest()` skips nulls, so every route
 with a missing city quoted the 20-minute floor as if it were a real flight time.
 
@@ -642,6 +662,12 @@ behind `private.lock_send(caller, client_ref)`, an advisory lock held to the end
 a repeat that overlaps its original finds the letter that went, or that none did, never half of it.
 The unique index on `(sender_id, client_ref)` stays as the table's own guarantee. Concurrency tests
 hold the original open while the repeat and the question run.
+
+A repeated ref is answered with the letter that went even when the words or the friend differ: the
+second words are dropped, and the send is reported as gone. That is by design (decided on the
+operator's behalf): the app makes a new ref for new words or another friend, so only a mistake in a
+later client could send other words under an old ref - and that letter would be lost without a
+word.
 
 ### An unusable page cursor is reported, not answered with nothing
 
@@ -899,6 +925,10 @@ victim might need. The privacy policy has to say so, and the account deletion di
   itself is made at the limit, deliberately: it protects now, and the report can wait.
 - The numbers live in `src/constants/config.ts` and the migration, and a parity test fails if they
   drift apart.
+- A courier can report someone they have never been friends with (decided on the operator's
+  behalf): a stranger can send a request under an offensive name, and the courier's page, opened
+  from the request, is where it is reported. Throwaway accounts can therefore fill the queue with
+  reports about any courier whose id they hold, each at most 20 a day.
 
 ### Deleting two accounts that had blocked or reported each other
 
@@ -981,6 +1011,10 @@ content.
   sign-in banned for two years, so that the same email cannot return (GO-LIVE, "Handling a
   report"). Retiring usernames for a while after deletion would close the rest, at the cost of more
   data kept.
+- Usernames are first come, and sign-up is open to anyone who has a build, which carries the
+  project's address and publishable key. Someone can take the username a relative is expected to
+  choose before the relative joins, and the requests meant for them then reach that someone. Who
+  is given a build is the only gate.
 
 ### A row's text may open it, beside its actions
 
@@ -1041,10 +1075,12 @@ or for longer than any reason lasts, and `20261104120000_privacy_housekeeping.sq
   and it goes after the same week, with its profile and bats. Until then the username it took
   stays taken, which the code screen tells someone who has mistyped their address; and a later
   sign-up for the address under another username replaces such an account once its code is
-  confirmed (see "A code holds the way in"). A known gap: whoever made it can keep it, and its
-  username, by asking for a new code every few days - each code goes to the owner of the address,
-  who can still take the address back by signing up; signing up again after each deletion did as
-  much before.
+  confirmed (see "A code holds the way in"). Known gaps: having its profile from the start, such
+  an account takes friend requests as anyone's does, and when its week is up a request to it goes
+  with it, out of the sender's "Waiting for an answer" with no word of why. And whoever made it can
+  keep it, and its username, by asking for a new code every few days - each code goes to the owner
+  of the address, who can still take the address back by signing up; signing up again after each
+  deletion did as much before.
 - **Moves.** The city a courier moved away from stays on their profile only while the move
   settles, then goes. Before a courier's first letter nothing of a move is kept at all: it counts
   at once. Whether a letter has ever gone to or from a courier (`profiles.has_corresponded`, since
@@ -1272,6 +1308,13 @@ the iOS and Android builds (GO-LIVE, "Recommended distribution"). Two seams stay
   the next letter in the air is due. It went by the phone's clock alone, and on a phone running fast
   called a letter landed that was still in the air.
 
+The phone's clock still decides every countdown (decided on the operator's behalf): the server
+decides when a letter lands, and the countdowns only show it. On a phone whose clock runs an hour
+ahead, each countdown ends an hour early and then reads "any moment now", every screen showing a
+letter in the air - the roost, compose, the Sent list, the letter - asks again at least once a
+minute until the landing is due by the server's clock, and auth-js, which goes by the same clock,
+renews the session before almost every request: each renewal an entry in the 30-day sign-in log.
+
 An error that says "try again" comes with a button for it where a screen has nothing else to show,
 beside the hooks' own retries, and the button shows itself busy: once on the roost (the bats, the
 counts and the profile together), on compose for the friends and for the bats and the profile
@@ -1388,6 +1431,12 @@ hosted project", step 2).
   made to default to the code flow, and finds no code challenge sent with a sign-up or a reset, and
   no verifier kept.
 
+**Known gaps.** There is no way to change a password while signed in: a courier who wants a new one
+signs out and uses "I forgot my password", which needs an email of its own. And nothing stops
+anyone from using up the project's emails for the hour on purpose, by asking again and again for
+codes for addresses they know; until the hour is over, new couriers get no code to confirm their
+address or set a password with. A CAPTCHA in front of the auth server's endpoints would stop it.
+
 ### A code holds the way in
 
 A code signs the courier in before the password they chose is saved: the new one of a reset, the
@@ -1449,6 +1498,18 @@ then reads the profile. A username cannot be changed, so an account an earlier s
 username is removed - nothing can have been done with it, the code having confirmed it only now -
 and the courier is signed up again with what they typed, which sends a new code ("One more code").
 A different name is changed to the one typed.
+
+**An account made by asking for a sign-in code.** The auth server's sign-in by code
+(`/auth/v1/otp`), which the app never uses, makes an account for an address that has none: with the
+username and name the caller sends, or else `courier_` and twelve characters of its id, and
+"Courier". With confirmation on, that is a stranger's sign-up like any other, and is treated as
+one (decided on the operator's behalf): the account waits for its code, and the email carries a
+code and no link, as every email does (seen on the local auth server that has email confirmation
+on); the owner's own sign-up sends a new code and takes the account over as above, removing it when
+its username is not the one they typed; and the tidy-up deletes it a week after its last code.
+With confirmation off it is made confirmed, with a password nobody knows; as after a stranger's
+sign-up then, its owner is told the address has an account, and writes to the operator, who
+deletes it (privacy policy 3.10).
 
 **A reset's code that confirms an account.** The auth server confirms an address with a reset's
 code too, so an account a sign-up left waiting for its code - perhaps someone else's, with their
@@ -1570,7 +1631,11 @@ the words the server's refusal gets (`src/features/auth/validation.ts`):
 
 - Passwords are counted in bytes, as the auth server counts them: between eight and 72, the most
   bcrypt reads, a letter such as ä counting two and an emoji four. Counted in characters, the form
-  had refused four umlauts, which the server takes.
+  had refused four umlauts, which the server takes. Nothing more is asked of a password - no kinds
+  of characters (`minimum_password_length = 8` and no `password_requirements` in
+  `supabase/config.toml`): length counts for most, so "12345678" is taken, and only the auth
+  server's limit per network address slows guessing. The hosted project's check against leaked
+  passwords is an option of the paid plans. (Decided on the operator's behalf.)
 - An empty field is asked for in its form's own words: "Enter your password." at sign-in, and on
   Friends, whose field is "Their username", "Enter their username." The sign-up form, a reset's new
   password and the code screen keep "Choose a password." and "Choose a username."
@@ -1676,7 +1741,12 @@ than as a friendship that ended (`declineRequest`), on Friends and on a courier'
   with a parity test). Only growing is refused: an account that carries more already, from before
   the bound, may stay as it is or become smaller, or one such account would stop every night's
   tidy-up. The trigger is `SECURITY DEFINER` because Supabase Auth's role writes the row, and that
-  role cannot reach the `private` schema.
+  role cannot reach the `private` schema. Two known gaps: the tidy-up takes the username and the
+  display name out of these details and nothing else, so whatever more a sign-up sent past the
+  app, up to the 4,096 bytes, stays in them, and in every access token, for as long as the account
+  exists. And the auth server writes the address into them at sign-up (`email`), where it stays
+  when the operator changes an account's address: only the sign-in's own address changes, and the
+  old one goes on travelling in every access token (seen in review).
 - **A city search** reads the first 64 characters of its query. The query was tidied again for
   every one of the cities, over its whole length, so a search cost more the longer the query: on
   the real stack 100,000 characters ran until the API's eight-second timeout cancelled them, from
@@ -1708,6 +1778,11 @@ A letter likewise needs a character that shows (`send_message`): a letter of one
 used to cost a bat and arrive blank. The table's own check is left as it was, so that no letter
 already sent is judged again.
 
+**Known gap:** no name and no username is kept back. Anyone can call themselves "Night Courier
+Team", or take the username `admin` or `support`, and look to their friends like the operator.
+Until there is a list of reserved names, reports are the remedy: the operator removes such an
+account.
+
 #### Known gaps
 
 - `sent_letter` cannot see a send that has not reached the database yet. A first send still on its
@@ -1721,6 +1796,10 @@ already sent is judged again.
   fails with a database error rather than as a session that has ended.
 - The dashboard's "Delete user" passes no gate, as it already passes the lock order by; the runbook
   uses `private.delete_account`.
+- A signed-in client can ask PostgREST for a table's planned count (`Prefer: count=planned`), which
+  it answers with the planner's estimate for the whole table, and can read `xmin` on the rows it
+  may read. Both tell a little about how busy the service is - roughly how many friendships there
+  are - and nothing about anyone in particular.
 
 ### Compose
 
@@ -1785,6 +1864,11 @@ characters that turn the sentence round, a paragraph. Compose shows it only if t
 rule takes it (`validateDisplayName`, which takes every name the app itself puts there, a username
 with its @ too), without the blank space around it; otherwise, and for a name given twice, it says
 only that letters go to friends, as for a route without a name. (Found in review.)
+
+**Known gap:** compose's list of friends and the letters lists name a friend by display name alone,
+with the username only where there is no name, or on compose no city. Two friends of the same name
+in the same city look alike in "Who is it for?" and in the letters, and a friend can take another
+friend's name and pass for them there.
 
 ### Cities
 
@@ -1864,6 +1948,11 @@ with no move to settle, and a letter that flew from or to one flew from or to K�
 leaves the two out of every migration it writes (`LEFT_OUT`), and writes no city with nothing to
 search by. The table holds 4,308 cities.
 
+**Known gap:** nothing guards a city deleted by hand. The database refuses it while any letter ever
+flew from or to it; otherwise its couriers lose their city, and a move away from it that was still
+settling counts at once. The one migration that deletes cities moves their couriers and letters
+to Köln first; a delete in the dashboard would do nothing of the kind.
+
 #### Moves before the first letter
 
 A first city counts at once and every later change took a day (see "A new city takes a day"), so a
@@ -1926,6 +2015,16 @@ and one time limit ("Testing"), focused tests ("Linting"), sign-ups made as Supa
   the ages it gives, and holds each to `MINIMUM_AGE` and `PARENTAL_PERMISSION_UNDER`.
 - The profile's credit to GeoNames is asserted beside the city it shows, as the city picker's is:
   it had gone untested.
+
+**Known gaps.** Three shields can be narrowed and every test still passes: the tidy-up's around
+idle sessions and around the names in identities, made to pass over `deadlock_detected` alone
+(`20261121180000_tidy_up_ages.sql`), and `delete_own_account`'s around the sign-in log, made to
+let `insufficient_privilege` through (`20261114120000_suspended_accounts.sql`). On a project that
+withholds those tables, the nightly tidy-up, or every courier's deletion of their own account,
+would then fail, and CI would not see it. And PGlite itself, not the product, starts failing with
+"stack depth limit exceeded" (`54001`) after about 3,000 statements with many errors raised in one
+database, where Postgres 16 runs the same steps cleanly: a long new test file wants a database of
+its own.
 
 ## Deferred to later phases
 

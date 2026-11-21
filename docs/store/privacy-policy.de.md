@@ -392,9 +392,11 @@ das Runbook zuerst vorläufig (dieselbe Anweisung, eine Woche früher) und entfe
 später; mit dem Entfernen beginnen die zwei Jahre neu. "Zwei Jahre ab dem Entfernen" stimmt nur,
 solange niemand von Hand länger sperrt. Dass der Kontodatensatz mit Passwort-Hash stehen bleibt,
 ist gewollt: Ohne ihn ließe sich die Sperre umgehen. Die Sitzungen enden nach 90 Tagen ohne
-Benutzung wie alle anderen (tidy_up); dass eine abgelehnte Erneuerung nicht als Benutzung zählt
-(updated_at), ist noch zu prüfen (gdpr-records.md V7). Was die Polizei davon bekommen soll,
-exportiert das Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
+Benutzung wie alle anderen (tidy_up). Dass eine abgelehnte Erneuerung nicht als Benutzung zählt,
+ist am lokalen Stack gesehen, am 14. November 2026: Eine Erneuerung, die GoTrue wegen der Sperre
+ablehnt, ändert weder updated_at noch refreshed_at der Sitzung (gdpr-records.md V7), und das
+gehostete Projekt läuft mit demselben GoTrue. Was die Polizei davon bekommen soll, exportiert das
+Runbook in der Woche zwischen vorläufiger Sperre und Entfernen. Andere Löschungen
 sperren nichts: die durch die Person selbst und die durch den Betreiber auf jemandes Bitte, also
 "select private.delete_account('<id>');" (gdpr-records.md 5.4) und nie der Knopf Authentication →
 Users → Delete user im Dashboard. Ein vorläufig gesperrtes Konto: Die Datenbank weist es sofort ab
@@ -540,8 +542,9 @@ auth.users.confirmation_sent_at, das GoTrue mit jedem Code setzt, den es zum Bes
 Adresse schickt - bei der Registrierung, bei "Send the code again" und bei einer zweiten
 Registrierung -, oder ab der Registrierung, wo kein Code ging (20261121180000_tidy_up_ages.sql).
 Ein Konto, das der Betreiber von Hand anlegt, ohne die Adresse zu bestätigen, geht nach derselben
-Woche, auch solange die Bestätigung aus ist; anmelden kann es sich nicht. Die 8 Ziffern und der
-Tag des Codes sind
+Woche, auch solange die Bestätigung aus ist; anmelden kann es sich nicht. Ein Konto, das der
+Anmeldeserver für einen Anmeldecode anlegt (/auth/v1/otp, von der App nie benutzt), gilt als
+Registrierung (Entscheidung des Betreibers). Die 8 Ziffern und der Tag des Codes sind
 otp_length und otp_expiry = 86400 in supabase/config.toml, und die Vorlagen in supabase/templates
 sagen dasselbe. Das gehostete Projekt verschickt sie erst, wenn config push sie dorthin gebracht
 hat (docs/GO-LIVE.md, "Setting up the hosted project"); seine eigenen Vorlagen enthalten einen

@@ -121,6 +121,32 @@ Recorded where the work is, not only here:
   sign-out still under way can undo another tab's sign-in, a sign-out the server never heard of is
   forgotten at a reload of the page, and the reset's "Your new password is saved" is never drawn -
   only a screen reader hears it (ARCHITECTURE, "Sessions" and "A code holds the way in").
+- **Sign-up is open to anyone who has a build,** which carries the project's address and
+  publishable key, and usernames are first come: someone can take the username a relative is
+  expected to choose, and the requests meant for the relative reach them instead. And no name is
+  kept back: "Night Courier Team", or the username `admin`, is anyone's to take, to pass for the
+  operator. Reports are the remedy until there is a list of reserved names.
+- **Two friends with the same display name look alike** on compose and in the letters, which show
+  the username only where there is no name; a friend can take another's name to pass for them
+  (ARCHITECTURE, "Compose").
+- **Anyone can use up the project's emails for the hour** by asking again and again for codes for
+  addresses they know. New couriers then get no code to confirm or reset with until the hour is
+  over. A CAPTCHA in front of the auth server would stop it.
+- **No password can be changed while signed in.** The way is to sign out and use "I forgot my
+  password", which needs an email.
+- **Two checks of the hosted project are still to be added** to "Setting up the hosted project":
+  that pg_graphql serves nothing - enabled, it would offer the same tables and functions, under the
+  same grants, by another way - and that the publication `supabase_realtime` stays empty, the app
+  using no Realtime. Until they are, neither would be noticed.
+- **Correcting an account's email by hand leaves the old address behind,** in the details the auth
+  server keeps from sign-up, and so in every access token the account is given
+  (`docs/store/gdpr-records.md`, L12).
+- **A city deleted by hand** takes the city from the couriers who live there, and a move away from
+  it that was still settling counts at once. The database refuses it only while a letter has flown
+  from or to the city. Do not delete cities by hand.
+- **Turning email confirmation off again,** once it is on, would let a sign-up for the address of an
+  account still waiting for its code into that account, its username and name with it, as it does
+  today for an account made by hand and left unconfirmed ("Before a second person can sign up").
 - ~~**The concurrency test cannot run in this harness.**~~ Solved in Phase 7:
   `concurrency.pg.test.mjs` runs the races against a real Postgres, which CI provides as a
   service container.
@@ -181,13 +207,13 @@ decision for Switzerland — see `ARCHITECTURE.md`.) Most of this is already in 
 now has a reason attached.
 
 **Impressum, separately (written for an operator in Germany):** under German law there would be **no Impressum obligation**. § 5 DDG (successor
-to § 5 TMG since 14 May 2024) applies to _geschäftsmäßige_ digital services. A free, invite-only app
-with no ads, no donations and no affiliate links is outside it. Profit intent is not the test —
-sustained commercial offering is — but a family app is not that. **To check:** this was written for
-an operator in Germany. Whether German law reaches an operator in Switzerland at all, and whether a
-comparable Swiss rule applies (Art. 3(1)(s) of the Unfair Competition Act, UWG, concerns offering
-goods, works or services in e-commerce), is a question for advice. The privacy policy names the
-operator and the postal address anyway.
+to § 5 TMG since 14 May 2024) applies to _geschäftsmäßige_ digital services. A free app handed
+to friends, with no ads, no donations and no affiliate links, is outside it. Profit intent is not
+the test — sustained commercial offering is — but a family app is not that. **To check:** this
+was written for an operator in Germany. Whether German law reaches an operator in Switzerland at
+all, and whether a comparable Swiss rule applies (Art. 3(1)(s) of the Unfair Competition Act, UWG,
+concerns offering goods, works or services in e-commerce), is a question for advice. The privacy
+policy names the operator and the postal address anyway.
 
 ### 2. A chat app is a user-generated-content app, and Apple Guideline 1.2 applies
 
@@ -203,9 +229,11 @@ Enforcement practice adds a EULA with a zero-tolerance clause for objectionable 
 first external TestFlight build of each version goes through Beta App Review against the App
 Review Guidelines, and 1.2 is exactly what reviewers check on a messaging app.
 
-Night Courier's design helps here: it is invite-only, one-to-one, and friendship-gated, so
-"block" largely already exists as "remove friend". But report, block-as-a-distinct-action and
-a contact route have to be built. **A new phase is needed** — see the roadmap change below.
+Night Courier's design helps here: it is handed only to friends, one-to-one, and
+friendship-gated, so "block" largely already exists as "remove friend". (Handed, not invite-only:
+sign-up is open to anyone who has a build, and usernames are first come - "Known gaps already
+logged".) But report, block-as-a-distinct-action and a contact route have to be built. **A new
+phase is needed** — see the roadmap change below.
 _(Built: Phase 13a.)_
 
 ---
@@ -991,8 +1019,10 @@ sign up afresh.
 
 An account made by hand without confirming its address - in the dashboard, or through the admin
 API without `"email_confirm": true` - cannot sign in, and the tidy-up deletes it a week after it
-was made, or after the last code sent to it if one was asked for, confirmation on or off. So make
-accounts in the app, as the demo accounts are made, or confirm them as you make them.
+was made, or after the last code sent to it if one was asked for, confirmation on or off. Until
+then, while confirmation is off, whoever signs up with its address is signed in to it, username,
+name and all (seen on the local stack). So make accounts in the app, as the demo accounts are made,
+or confirm them as you make them.
 
 ### Push notifications: none
 

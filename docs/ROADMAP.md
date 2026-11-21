@@ -280,7 +280,8 @@ under Apple Guideline 1.2, and Beta App Review checks it. The decisions are reco
   agreed to be friends, found by exact username. There is no search, no public profile and no way to
   write to a stranger. That gate, with report and block behind it, is the filter. There is no
   automated scanning of letters: they are private correspondence between friends, and reading them
-  by machine would be a larger intrusion than the risk it addresses in an invite-only app.
+  by machine would be a larger intrusion than the risk it addresses in an app handed only to
+  friends.
 - **A contact route**: Contact and Privacy policy buttons in the profile and the house rules, and
   the Privacy policy button on the sign-up form too. Their addresses come from the build's
   environment so that nothing personal is ever committed. The postal address for the store
@@ -419,7 +420,10 @@ Still open:
   half done, VoiceOver and TalkBack on the code screens, the forms' notices and the hint after a
   lost answer, Hermes reading the auth server's times and a session's id, the words for a session
   ended elsewhere, and the twin towns' lines in a phone's own fonts were tried in Jest and, where
-  they could be, against the local stack and in the web build - not on a device.
+  they could be, against the local stack and in the web build - not on a device. The Android
+  navigation bar of a phone in light theme with button navigation, which may stay bright under the
+  dark app, is read from React Native's source only: it is to be looked at on such a phone
+  (ARCHITECTURE, "Dark theme only").
 - **The hosted project.** Everything above goes with its first `db push` and `config push`, and
   whether it takes a code life of a day (`otp_expiry = 86400`) shows at that push. Custom SMTP, and
   email confirmation on, before anyone else signs up (GO-LIVE).
@@ -464,3 +468,35 @@ Still open:
   fail: the profile is the only table the app reads directly, and postgrest-js repeats such a read
   three times by itself, each attempt with its own 20 seconds. `db: { retry: false }` in
   `createClient` would make it fail as the rest do.
+- **No password can be changed while signed in.** The way to a new one is to sign out and use "I
+  forgot my password", which needs an email.
+- **The hour's emails can be used up on purpose**, by asking for codes again and again; new
+  couriers then get no code until the hour is over. A CAPTCHA would stop it.
+- **Usernames are first come, and no name is kept back.** Anyone with a build can take the
+  username a relative is expected to choose, or call themselves "Night Courier Team" or `admin` and
+  pass for the operator; reports are the remedy meanwhile.
+- **Two friends with the same display name look alike** on compose and in the letters, which show
+  the username only where there is no name.
+- **A request to an unconfirmed sign-up** is taken, and vanishes with the account when its week is
+  up, with no word to whoever sent it.
+- **What a sign-in carries.** Other details a sign-up sent past the app, up to 4,096 bytes, stay
+  for the account's life, and an address the operator corrects leaves the old one there: both go
+  out in every access token.
+- **Two checks to add to the hosted setup:** that pg_graphql serves nothing, and that the Realtime
+  publication stays empty. Until then neither would be noticed.
+- **A city deleted by hand** takes its couriers' city from them; only a letter that ever flew from
+  or to it stops the delete.
+- **A planned count** (`Prefer: count=planned`) and `xmin` tell a signed-in client roughly how busy
+  the service is - nothing about anyone in particular.
+- **Turning confirmation off again** would let a sign-up into an account still waiting for its
+  code, names and all - as it does today for an account made by hand and left unconfirmed.
+- **Tests.** Three shields - the tidy-up's around idle sessions and identities,
+  `delete_own_account`'s around the sign-in log - can be narrowed with every test still passing,
+  and PGlite fails a long test file with "stack depth limit exceeded" where Postgres does not.
+- **Decided on the operator's behalf** in that last audit, each with its reason in ARCHITECTURE:
+  passwords of at least 8 characters with no rule on their kinds of characters, the hosted check
+  against leaked passwords being an option of the paid plans; reports about couriers who were never
+  friends, at most 20 a day; an account made through the auth server's sign-in by code treated as a
+  stranger's sign-up, every email carrying a code; a repeated `client_ref` with other words answered
+  with the first letter; the development time multiplier left unguarded; the phone's clock deciding
+  the countdowns; and the Android navigation bar checked on a phone before anything is changed.
