@@ -69,11 +69,13 @@ jest.mock('@/lib/supabase', () => ({
   },
 }));
 
-/** Who is signed in. Anna, unless a test says otherwise. */
-const mockSignedIn = { userId: 'user-anna' };
+/** Who is signed in. Anna, unless a test says otherwise; null for nobody. */
+const mockSignedIn: { userId: string | null } = { userId: 'user-anna' };
 
 jest.mock('@/features/auth/auth-context', () => ({
-  useAuth: () => ({ session: { user: { id: mockSignedIn.userId } } }),
+  useAuth: () => ({
+    session: mockSignedIn.userId ? { user: { id: mockSignedIn.userId } } : null,
+  }),
 }));
 
 /** The signed-in courier's own row, and no other. */
@@ -447,6 +449,32 @@ describe('useProfile', () => {
       });
 
       expect(answer).toBe(true);
+      expect(mockDatabase.changeIf).not.toHaveBeenCalled();
+    });
+
+    /**
+     * With nobody signed in - signed out, or the session ran out while the
+     * picker was open - there is no row to save to. That has to be an error:
+     * the picker takes "not saved" for a letter that came in between, and
+     * told the courier so. (Found in review.)
+     */
+    it.each([
+      ['a city', undefined],
+      ['a city before the first letter', { beforeFirstLetter: true }],
+    ])('says the session has ended when asked to save %s with nobody signed in', async (_, how) => {
+      mockSignedIn.userId = null;
+      const { result } = await renderHook(() => useProfile());
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.updateCity(2911298, how).then(
+          (saved) => ({ saved }),
+          (error: unknown) => error,
+        );
+      });
+
+      expect(outcome).toEqual(new Error('Your session has ended. Sign in again.'));
+      expect(mockDatabase.change).not.toHaveBeenCalled();
       expect(mockDatabase.changeIf).not.toHaveBeenCalled();
     });
 

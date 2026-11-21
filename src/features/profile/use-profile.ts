@@ -183,10 +183,13 @@ export function useProfile() {
    * says such a move counts at once, which is so only until then, and a letter
    * can come or go between its question and the answer. If one did, nothing
    * is saved and this resolves with false.
+   *
+   * With nobody signed in there is no row to save to, and that is an error,
+   * not a false: the picker takes false for a letter that came in between.
    */
   const updateCity = useCallback(
     async (cityId: number, { beforeFirstLetter = false }: { beforeFirstLetter?: boolean } = {}) => {
-      if (!userId) return false;
+      if (!userId) throw new Error('Your session has ended. Sign in again.');
       // Only the id crosses the wire. The coordinates behind it are the
       // server's, so a client cannot shorten its own flights.
       const change = supabase.from('profiles').update({ city_id: cityId }).eq('id', userId);
