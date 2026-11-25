@@ -39,9 +39,10 @@ const DETAILS = {
 
 /**
  * The same details once Night Courier has started. A live build also has to be
- * told when the processing agreement was signed: the policy says there is one.
+ * told from when the processing agreement demonstrably applies: the policy says
+ * there is one.
  */
-const LIVE = { ...DETAILS, LAUNCH_STATE: 'live', DPA_SIGNED: '2026-11-05' };
+const LIVE = { ...DETAILS, LAUNCH_STATE: 'live', DPA_SINCE: '2026-11-05' };
 
 /**
  * The functions the pages rest on, each as a migration would create it. The
@@ -558,8 +559,8 @@ describe('what the pages promise of the database', () => {
 
 /**
  * The pages went up before anyone could use the app, and the policy speaks in
- * the present tense: a project in Zurich, a signed processing agreement. Until
- * those exist, each page has to say that Night Courier has not started.
+ * the present tense: a project in Zurich, a processing agreement with Supabase.
+ * Until those exist, each page has to say that Night Courier has not started.
  */
 describe('the launch notice', () => {
   const GERMAN = /Night Courier ist noch nicht gestartet\./;
@@ -649,68 +650,78 @@ describe('the launch notice', () => {
 /**
  * Without the notice the policy stands as written: Supabase processes the data
  * "on the basis of a data processing agreement", and a reader may ask for a
- * copy of its clauses. The pages once went up before that agreement existed,
- * and only a sentence in a runbook stood in the way. So a live build asks for
- * the date the agreement was signed - the one docs/store/gdpr-records.md, 5.1,
- * has a blank for - and whoever cannot give it has their answer.
+ * copy of its clauses. The pages once went up before anyone had made sure of
+ * that agreement, and only a sentence in a runbook stood in the way. So a live
+ * build asks for the date from which the agreement demonstrably applies - the
+ * one docs/store/gdpr-records.md, 5.1, records - and whoever cannot give it has
+ * their answer. Supabase's agreement is part of its Terms of Service and is
+ * never signed: the date is the day it was seen in force, not a signature's.
  */
 describe('a live build', () => {
-  it('is refused without the date the processing agreement was signed', () => {
+  it('is refused without the date from which the processing agreement demonstrably applies', () => {
     const rest = { ...LIVE };
-    delete rest.DPA_SIGNED;
+    delete rest.DPA_SINCE;
 
-    assert.throws(
-      () => build(rest, out),
-      /build-store-pages: LAUNCH_STATE=live needs DPA_SIGNED, the date the processing agreement with Supabase was signed/,
-    );
-    assert.deepEqual(readdirSync(out), []);
+    // Nor does the old name do: a command that still gives DPA_SIGNED, as the
+    // site repository's README did when the name changed, gets the same answer.
+    for (const env of [rest, { ...rest, DPA_SIGNED: '2026-11-05' }]) {
+      assert.throws(
+        () => build(env, out),
+        /build-store-pages: LAUNCH_STATE=live needs DPA_SINCE, the date from which the processing agreement with Supabase demonstrably applies/,
+      );
+      assert.deepEqual(readdirSync(out), []);
+    }
   });
 
   it('is refused with a date that is not one, or that does not exist', () => {
     for (const date of [
       'yes',
-      'signed',
+      'in force',
       '5 November 2026',
       '2026-11-5',
       '2026-02-30',
       '2026-13-01',
     ]) {
       assert.throws(
-        () => build({ ...LIVE, DPA_SIGNED: date }, out),
-        /build-store-pages: DPA_SIGNED must be a date that exists, as YYYY-MM-DD/,
+        () => build({ ...LIVE, DPA_SINCE: date }, out),
+        /build-store-pages: DPA_SINCE must be a date that exists, as YYYY-MM-DD/,
         date,
       );
       assert.deepEqual(readdirSync(out), [], date);
     }
   });
 
-  // A policy dated before the agreement it says exists was untrue on its date.
-  it('is refused when the agreement was signed after the date the policy carries', () => {
+  // A policy dated before the day its agreement demonstrably applied from said,
+  // on its date, what nobody could show.
+  it('is refused when the agreement demonstrably applies only from after the date the policy carries', () => {
     assert.throws(
-      () => build({ ...LIVE, EFFECTIVE_DATE: '2026-11-10', DPA_SIGNED: '2026-11-11' }, out),
-      /build-store-pages: DPA_SIGNED \(2026-11-11\) is later than EFFECTIVE_DATE \(2026-11-10\)/,
+      () => build({ ...LIVE, EFFECTIVE_DATE: '2026-11-10', DPA_SINCE: '2026-11-11' }, out),
+      /build-store-pages: DPA_SINCE \(2026-11-11\) is later than EFFECTIVE_DATE \(2026-11-10\)/,
     );
     assert.deepEqual(readdirSync(out), []);
   });
 
-  it('is refused when the agreement is still to be signed', () => {
+  it('is refused when the day the agreement demonstrably applies from is still to come', () => {
     for (const date of ['2999-01-01', dayIn(14 + 48)]) {
       assert.throws(
-        () => build({ ...LIVE, DPA_SIGNED: date }, out),
-        new RegExp(`build-store-pages: DPA_SIGNED \\(${date}\\) is in the future`),
+        () => build({ ...LIVE, DPA_SINCE: date }, out),
+        new RegExp(`build-store-pages: DPA_SINCE \\(${date}\\) is in the future`),
         date,
       );
       assert.deepEqual(readdirSync(out), [], date);
     }
   });
 
-  it('takes the day the policy is dated, and says in what it prints when the agreement was signed', () => {
-    const printed = build({ ...LIVE, EFFECTIVE_DATE: '2026-11-10', DPA_SIGNED: '2026-11-10' }, out);
+  it('takes the day the policy is dated, and says in what it prints from when the agreement demonstrably applies', () => {
+    const printed = build({ ...LIVE, EFFECTIVE_DATE: '2026-11-10', DPA_SINCE: '2026-11-10' }, out);
 
-    assert.match(printed, /live: no notice \(processing agreement signed 10 November 2026\)/);
+    assert.match(
+      printed,
+      /live: no notice \(processing agreement demonstrably in force since 10 November 2026\)/,
+    );
     // The date is the build's to check, not the page's to show.
     for (const name of ['index.html', 'privacy-policy.de.html', 'privacy-policy.en.html'])
-      assert.doesNotMatch(read(out, name), /DPA_SIGNED/, name);
+      assert.doesNotMatch(read(out, name), /DPA_SINCE/, name);
   });
 
   it('is the only build that needs it: before the launch, the notice says what is true', () => {

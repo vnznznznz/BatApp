@@ -16,7 +16,7 @@ das deutsche BDSG stehen nur noch als „zu prüfen“: Sie waren für einen Bet
 geschrieben, und ob das BDSG für einen Verantwortlichen in der Schweiz überhaupt gilt (§ 1 Abs. 4
 BDSG), ist eine Frage für rechtlichen Rat (6.21).
 
-**Stand:** 21. November 2026 (erste Fassung vom 4. November 2026). **Grundlage:** der Datenbestand,
+**Stand:** 25. November 2026 (erste Fassung vom 4. November 2026). **Grundlage:** der Datenbestand,
 wie ihn der Code ergibt – die Migrationen unter `supabase/migrations`, die App unter `src/`,
 `supabase/config.toml` – geprüft am lokalen Stack (Postgres 17, GoTrue v2.197.0). Die Kontolöschung
 wurde dort in einer Transaktion getestet, die anschließend zurückgerollt wurde. Eingeschlossen ist
@@ -100,9 +100,9 @@ im Januar 2024 bestätigt). Ob die einzelnen US-Unternehmen zertifiziert sind: z
 
 | Empfänger                                                                                            | Rolle                                                                | Was er bekommt                                                                                               | Wo                                                                                                            | Grundlage für das Ausland                                                                                                                                                                                                                                                                                                                                                   | Stand                                                                     |
 | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Supabase Inc. (USA)                                                                                  | Auftragsbearbeiter (Art. 9 DSG), Auftragsverarbeiter (Art. 28 DSGVO) | Alles in der Datenbank, Anmeldung (GoTrue), API-Gateway, Protokolle, Sicherungen, heute auch den Mailversand | Projekt in `eu-central-2` (Zürich, Schweiz) auf Amazon Web Services; Zugriff von Supabase aus den USA möglich | Schweiz: für den Betreiber keine Bekanntgabe ins Ausland; für Menschen in der EU der Angemessenheitsbeschluss (siehe oben). Zugriff aus den USA: nach DSG das Swiss-US Data Privacy Framework, falls Supabase zertifiziert ist (zu prüfen), sonst die Standardvertragsklauseln im DPA (Art. 16 Abs. 2 DSG); nach DSGVO die Standardvertragsklauseln (Art. 46 Abs. 2 lit. c) | DPA **noch nicht abgeschlossen** (Abschnitt 5.1)                          |
+| Supabase Inc. (USA)                                                                                  | Auftragsbearbeiter (Art. 9 DSG), Auftragsverarbeiter (Art. 28 DSGVO) | Alles in der Datenbank, Anmeldung (GoTrue), API-Gateway, Protokolle, Sicherungen, heute auch den Mailversand | Projekt in `eu-central-2` (Zürich, Schweiz) auf Amazon Web Services; Zugriff von Supabase aus den USA möglich | Schweiz: für den Betreiber keine Bekanntgabe ins Ausland; für Menschen in der EU der Angemessenheitsbeschluss (siehe oben). Zugriff aus den USA: nach DSG das Swiss-US Data Privacy Framework, falls Supabase zertifiziert ist (zu prüfen), sonst die Standardvertragsklauseln im DPA (Art. 16 Abs. 2 DSG); nach DSGVO die Standardvertragsklauseln (Art. 46 Abs. 2 lit. c) | DPA gilt nachweislich seit dem 25. November 2026 (Abschnitt 5.1)          |
 | Unterauftragsverarbeiter von Supabase                                                                | Unterauftragsverarbeiter                                             | Je nach Dienst                                                                                               | Zu prüfen                                                                                                     | Zu prüfen: ob vor der API ein Dienst wie Cloudflare liegt und wo die Protokolle gespeichert werden                                                                                                                                                                                                                                                                          | Liste auf supabase.com lesen (Abschnitt 5.1)                              |
-| E-Mail-Versanddienst (Resend, Postmark oder Amazon SES)                                              | Auftragsverarbeiter                                                  | Empfängeradresse, die E-Mail mit dem Code, Versandprotokoll                                                  | Zu prüfen                                                                                                     | Zu prüfen                                                                                                                                                                                                                                                                                                                                                                   | **Noch nicht gewählt**                                                    |
+| E-Mail-Versanddienst (Resend, Postmark oder Amazon SES)                                              | Auftragsverarbeiter                                                  | Empfängeradresse, die E-Mail mit dem Code, Versandprotokoll                                                  | Zu prüfen                                                                                                     | Zu prüfen                                                                                                                                                                                                                                                                                                                                                                   | Gewählt, noch nicht eingerichtet; erhält noch nichts (Abschnitt 5.1)      |
 | Microsoft (Outlook.com-Postfach `{{CONTACT_EMAIL}}`)                                                 | Zu prüfen: Verbraucherdienst, vermutlich kein AV-Vertrag             | Was Nutzer, Eltern und andere dem Betreiber schreiben, und was er ihnen schreibt                             | Zu prüfen (auch USA)                                                                                          | Zu prüfen: nach DSG das Swiss-US Data Privacy Framework, für Menschen in der EU das EU-US Data Privacy Framework (Durchführungsbeschluss (EU) 2023/1795), falls Microsoft dafür zertifiziert ist                                                                                                                                                                            | In Gebrauch                                                               |
 | Apple (App Store Connect, TestFlight, Beta App Review)                                               | Zu prüfen: eigener Verantwortlicher                                  | Apple-Konten der Tester, Installations-, Sitzungs- und Absturzdaten, Feedback, die Anmeldung des Demo-Kontos | Zu prüfen (auch USA)                                                                                          | Nach Apples eigenen Bestimmungen                                                                                                                                                                                                                                                                                                                                            | Ab der ersten TestFlight-Version                                          |
 | Google (Play Console, interner Test)                                                                 | Zu prüfen: eigener Verantwortlicher                                  | Testerliste mit E-Mail-Adressen der Google-Konten, Android-vitals                                            | Zu prüfen (auch USA)                                                                                          | Nach Googles eigenen Bestimmungen                                                                                                                                                                                                                                                                                                                                           | Ab dem ersten internen Test                                               |
@@ -631,8 +631,8 @@ Für alle Einträge gilt, sofern nicht anders angegeben:
   `supabase/templates`, geprüft von `src/tests/email-codes.test.ts`). Die zum Adresswechsel nennt
   die alte und die neue Adresse.
 - **Empfänger:** heute der eingebaute Mailversand von Supabase, der nur an Adressen des
-  Projektteams zustellt (zwei E-Mails pro Stunde); später ein eigener SMTP-Anbieter (Resend,
-  Postmark oder Amazon SES, noch nicht gewählt) als Auftragsverarbeiter; der Postfachanbieter des
+  Projektteams zustellt (zwei E-Mails pro Stunde); später ein eigener SMTP-Anbieter als
+  Auftragsverarbeiter (gewählt, noch nicht eingerichtet: 5.1); der Postfachanbieter des
   Empfängers.
 - **Löschfristen:** Versandprotokolle nach dem jeweiligen Anbieter (zu prüfen); das Postfach des
   Empfängers liegt außerhalb. Die Kontolöschung erreicht beides nicht. Der Code in einer E-Mail ist
@@ -980,20 +980,28 @@ Laufprotokoll.
 
 ### 5.1 Verträge zur Auftragsverarbeitung (Art. 9 DSG, Art. 28 DSGVO)
 
-- [ ] **Supabase:** den Data Processing Addendum (DPA) anfordern und unterzeichnen. Nach Supabases
-      eigener Seite: im Dashboard der Organisation unter „Legal Documents“ → „Request DPA“; Supabase
-      schickt dann ein Dokument über PandaDoc zum Unterzeichnen (Weg zu prüfen, er hat sich schon
-      geändert). Er enthält die Standardvertragsklauseln (Durchführungsbeschluss (EU) 2021/914;
-      welche Module: zu prüfen; ob er die Anpassungen für die Schweiz enthält, mit denen der EDÖB
-      die Klauseln anerkannt hat, Art. 16 Abs. 2 lit. d DSG: zu prüfen). Die unterzeichnete Fassung
-      privat ablegen und hier das Datum eintragen: \_\_\_\_\_\_\_\_. Vorher die Webseiten nur mit
-      `LAUNCH_STATE=before-launch` bauen (GO-LIVE, „Where the web pages live“): Die Abschnitte 7
-      und 8 der Datenschutzerklärung sagen, dass es den DPA mit den Standardvertragsklauseln gibt
-      (PRÜFEN-Hinweise dort), und nur der Hinweis oben auf jeder Seite sagt, dass Night Courier
-      noch nicht gestartet ist. Erst mit diesem Datum und dem Projekt in Zürich wird mit
-      `LAUNCH_STATE=live` gebaut; der Bau verlangt das Datum dann als `DPA_SIGNED=JJJJ-MM-TT` und
-      bricht ohne es ab. Nie ein Datum dafür erfinden: Steht hier keines, ist die Antwort
-      `LAUNCH_STATE=before-launch`.
+- [x] **Supabase:** Der Data Processing Addendum (DPA) gilt, ohne Anfrage und ohne Unterschrift.
+      Im Dashboard der Organisation steht unter „Legal Documents“ wörtlich: „Data Processing
+      Addendum (DPA) - Our Data Processing Addendum is incorporated into our Terms of Service
+      (https://supabase.com/terms), so all organizations get its protections automatically. No
+      separate signed DPA is needed. If you signed a DPA with us previously, that agreement
+      remains binding.“ Er gilt also über die Nutzungsbedingungen, die der Betreiber mit dem Konto
+      angenommen hat. Der Betreiber hat das am 25. November 2026 gesehen; an welchem Tag das Konto
+      die Nutzungsbedingungen angenommen hat, ist nicht bekannt. Nachweislich gilt der DPA deshalb
+      seit dem **25. November 2026**; nie ein früheres Datum dafür einsetzen. Der frühere Weg
+      („Request DPA“, dann ein Dokument über PandaDoc zum Unterzeichnen) ist nicht mehr nötig. Der
+      Bau der Webseiten mit `LAUNCH_STATE=live` verlangt dieses Datum als `DPA_SINCE=2026-11-25`
+      und bricht ohne es ab, ebenso mit einem `EFFECTIVE_DATE` davor. Live wird erst gebaut, wenn
+      auch das Projekt in Zürich besteht; bis dahin die Webseiten nur mit
+      `LAUNCH_STATE=before-launch` bauen, also mit dem Hinweis oben auf jeder Seite, dass Night
+      Courier noch nicht gestartet ist (GO-LIVE, „Where the web pages live“).
+- [ ] **Supabase, Inhalt des DPA:** `https://supabase.com/legal/dpa` und
+      `https://supabase.com/terms` so, wie sie heute stehen, als PDF mit Datum ablegen, in den
+      eigenen Unterlagen des Betreibers, nicht in diesem Repository. Daran zu prüfen: ob dieser DPA
+      die Standardvertragsklauseln enthält (Durchführungsbeschluss (EU) 2021/914) und welche
+      Module; ob er die Anpassungen für die Schweiz enthält, mit denen der EDÖB die Klauseln
+      anerkannt hat (Art. 16 Abs. 2 lit. d DSG). Abschnitt 8 der Datenschutzerklärung nennt die
+      Standardvertragsklauseln und bietet eine Kopie davon an (PRÜFEN-Hinweise dort).
 - [ ] Supabases Liste der Unterauftragsverarbeiter lesen; prüfen, ob vor der API ein Dienst wie
       Cloudflare liegt und wo Protokolle gespeichert werden; Abschnitt 2 und die
       Datenschutzerklärung (7, 8) ergänzen. Ob man sich für Änderungen der Liste benachrichtigen
@@ -1005,9 +1013,20 @@ Laufprotokoll.
       ist: zu prüfen. Dasselbe für Microsoft, GitHub, Apple und Google auf
       dataprivacyframework.gov nachsehen und in Abschnitt 2 und der Datenschutzerklärung (8)
       eintragen.
-- [ ] **E-Mail-Versanddienst**, sobald gewählt (Resend, Postmark oder Amazon SES): dessen DPA
-      abschließen, Sitz und Unterauftragsverarbeiter prüfen, dann Abschnitt 2, V10 und die
-      Datenschutzerklärung (7) ergänzen.
+- [ ] **E-Mail-Versanddienst: Resend.** Gewählt; der Betreiber hat dort ein Konto eröffnet. Der
+      Versand ist noch nicht eingerichtet, und bis er über Resend läuft, erhält Resend nichts.
+      Einen Vertrag zu unterzeichnen gibt es nicht: Nach Resends eigener Dokumentation ist sein DPA
+      von Resend vorunterzeichnet und gilt für jedes Konto; die unterzeichnete Fassung steht im
+      Dashboard unter Settings → Documents zum Herunterladen (mit Datum privat ablegen). Er enthält
+      die Standardvertragsklauseln der EU, und Resend ist nach dem EU-US Data Privacy Framework
+      zertifiziert. Was bleibt, in dieser Reihenfolge: eine eigene Domain des Betreibers, die Resend
+      dafür braucht, dort einrichten und bestätigen und ihre Region festlegen; die
+      SMTP-Einstellungen im gehosteten Projekt eintragen (GO-LIVE, „Before a second person can sign
+      up: custom SMTP“); dann Resend in der Datenschutzerklärung nennen (7, mit Sitz und Link; 8,
+      wenn er in den USA sitzt oder dort verarbeitet, mit seiner Absicherung; 9, wie lange er das
+      Versandprotokoll aufbewahrt) und hier Abschnitt 2 und V10 nachführen. Für das DSG zu prüfen:
+      ob Resend auch nach dem Swiss-US Data Privacy Framework zertifiziert ist oder sein DPA die
+      Anpassungen für die Schweiz enthält (Art. 16 DSG).
 - [ ] **GitHub (Webseiten, V13):** prüfen, ob GitHub für GitHub Pages als Auftragsbearbeiter
       handelt und einen Vertrag dafür anbietet (für ein privates Gratiskonto vermutlich nicht: zu
       prüfen) oder als eigener Verantwortlicher; wie lange es die IP-Adressen aufbewahrt; ob es
@@ -1027,13 +1046,14 @@ Laufprotokoll.
       Platzhaltern unter `{{PRIVACY_POLICY_URL}}` veröffentlichen, die Kontaktseite unter
       `{{SUPPORT_URL}}` (V13): geschehen am 10. November 2026.
 - [ ] Die Seiten mit dem Hinweis neu bauen und veröffentlichen, dass Night Courier noch nicht
-      gestartet ist. Die Fassung vom 10. November 2026 trägt ihn nicht: Sie nennt den DPA und das
-      Projekt in Zürich als Tatsachen, bevor es beides gibt. Befehl und Prüfung stehen in GO-LIVE,
-      „Where the web pages live“ (`LAUNCH_STATE=before-launch`, das Datum des Tages als
-      `EFFECTIVE_DATE`); erledigt ist es, wenn die Prüfung dort 2, 1 und 1 ausgibt. Der Befehl im
-      README des Seiten-Repositorys kennt `LAUNCH_STATE` noch nicht: dort ergänzen.
+      gestartet ist. Die Fassung vom 10. November 2026 trägt ihn nicht: Sie nennt das Projekt in
+      Zürich als Tatsache, bevor es besteht, und den DPA, bevor jemand nachgesehen hatte, ob er
+      gilt. Befehl und Prüfung stehen in GO-LIVE, „Where the web pages live“
+      (`LAUNCH_STATE=before-launch`, das Datum des Tages als `EFFECTIVE_DATE`); erledigt ist es,
+      wenn die Prüfung dort 2, 1 und 1 ausgibt. Im README des Seiten-Repositorys heißt die
+      Einstellung für das Datum des DPA noch `DPA_SIGNED`: dort in `DPA_SINCE` ändern (5.1).
 - [ ] Die PRÜFEN-Hinweise der Datenschutzerklärung abarbeiten. Sie waren beim Veröffentlichen noch
-      offen; bis dahin, und bis das Datum in 5.1 steht, die Seiten nur mit
+      offen; bis dahin, und bis das Projekt in Zürich besteht (5.1), die Seiten nur mit
       `LAUNCH_STATE=before-launch` bauen, also mit dem Hinweis, dass Night Courier noch nicht
       gestartet ist (GO-LIVE, „Where the web pages live“).
 - [ ] Klären, ob ein Vertreter in der EU nach Art. 27 DSGVO nötig ist (Abschnitt 1; rechtlicher
@@ -1532,10 +1552,11 @@ Betreiber noch selbst tut:
 7. Ob eine Datenschutz-Folgenabschätzung nötig ist (Art. 22 DSG, Art. 35 DSGVO), und welche Liste
    nach Art. 35 Abs. 4 DSGVO dafür maßgeblich ist (früher: nach § 38 Abs. 1 Satz 2 BDSG dann auch
    ein Datenschutzbeauftragter, 6.21).
-8. Supabase: der Weg zum DPA, welche Module der Standardvertragsklauseln er enthält und ob er die
-   Anpassungen für die Schweiz enthält, die Unterauftragsverarbeiter (Cloudflare vor der API? Ort
-   der Protokolle?), ob eine Transfer-Folgenabschätzung nötig ist oder das Swiss-US bzw. EU-US
-   Data Privacy Framework greift; die Verschlüsselung gespeicherter Daten.
+8. Supabase: ob der DPA, der über die Nutzungsbedingungen gilt (5.1), die Standardvertragsklauseln
+   enthält, welche Module, und ob er die Anpassungen für die Schweiz enthält; die
+   Unterauftragsverarbeiter (Cloudflare vor der API? Ort der Protokolle?), ob eine
+   Transfer-Folgenabschätzung nötig ist oder das Swiss-US bzw. EU-US Data Privacy Framework
+   greift; die Verschlüsselung gespeicherter Daten.
 9. Supabase-Tarif: Aufbewahrung der Protokolle (kostenlos vermutlich ein Tag), Sicherungen und ihre
    Dauer, ob Sitzungs-Höchstdauer und Inaktivitäts-Timeout verfügbar sind; und ob, wann und mit
    welcher Vorwarnung Supabase ein kostenloses Projekt ohne Aktivität pausiert. Solange ein
@@ -1560,7 +1581,9 @@ Betreiber noch selbst tut:
 12. Apple und Google: ihre Rolle bei Testerdaten; was App Store Connect bei Testern über einen
     öffentlichen Link zeigt; die Felder in Feedback und Absturzberichten; ob Feedback gelöscht
     werden kann; Pre-Launch-Berichte im internen Test; ihre Aufbewahrungsfristen.
-13. Der E-Mail-Versanddienst, sobald gewählt: Sitz, Vertrag, Protokolle, Fristen. GitHub Pages
+13. Der E-Mail-Versanddienst, Resend (5.1): Sitz, die Region der Domain, Unterauftragsverarbeiter,
+    Protokolle, Fristen; für das DSG, ob Resend nach dem Swiss-US Data Privacy Framework
+    zertifiziert ist oder sein DPA die Anpassungen für die Schweiz enthält. GitHub Pages
     (V13): Rolle (eigener Verantwortlicher oder Auftragsbearbeiter), Vertrag, welche Felder und wie
     lange GitHub protokolliert, Zertifizierung nach dem Swiss-US bzw. EU-US Data Privacy
     Framework, und dass die gebauten Seiten keine Cookies setzen und nichts nachladen.
@@ -1600,3 +1623,4 @@ Betreiber noch selbst tut:
 | 5. November 2026  | Entscheidungen des Betreibers: Er lebt in der Schweiz, als Privatperson – DSG zuerst (Verzeichnis nach Art. 12 DSG, EDÖB als Aufsicht, Datenpannen nach Art. 24 DSG, Rechte nach Art. 25, 28 und 32 DSG, die Länder Schweiz und USA mit ihren Garantien), die DSGVO für Menschen in der EU; Vertreter nach Art. 27 zu prüfen; die BDSG-Hinweise nur noch als „zu prüfen“. Altersgrenze 13 statt 12, Families Policy damit entschieden. Webseiten bei GitHub Pages (V13, Abschnitt 2)                                                                                                                                                                                                                             | –                                  |
 | 21. November 2026 | Gegen den Code bis Commit 187439c geprüft, nach der Durchsicht des ganzen Projekts: gesperrte Konten sofort abgewiesen, auch beim Löschen, Anmeldung wie mit falschem Passwort beantwortet (V7); Grenze und Zählung der Freundschaftsanfragen (V3); `has_corresponded`, Umzüge vor dem ersten Brief sofort (V2); Codes statt Links in allen E-Mails, kein PKCE, Passwort beim Bestätigen geleert (V1, V10, 4.3); Merkzettel auf dem Gerät (V1, 4.4); Grenze für Angaben bei der Registrierung, sichtbare Anzeigenamen; Ablauf und Deadlocks von `tidy_up` (4.5); Auskunftsabfrage mit `briefe_gehabt`, der Zählung und Städten mit Zusatz (5.3); Benutzernamen nicht änderbar (Entscheidung des Betreibers, 5.4) | –                                  |
 | 21. November 2026 | Gegen den Code bis Commit 93c70c3 nachgeführt: die Woche einer unbestätigten Registrierung ab dem letzten Code, von Hand angelegte unbestätigte Konten, das Laufprotokoll von pg_cron (V1, 4.5); was am lokalen Stack zu Abmelden und abgelehnter Erneuerung gesehen ist (V1, V7, 6.10); Meldungen über Fremde und Konten über `/auth/v1/otp` als Entscheidungen (V1, V6); Lücken L12 und L13                                                                                                                                                                                                                                                                                                                    | –                                  |
+| 25. November 2026 | Supabases DPA gilt über die Nutzungsbedingungen, ohne Anfrage und Unterschrift, nachweislich seit dem 25. November 2026 (5.1, Abschnitt 2); ob er die Standardvertragsklauseln und die Anpassungen für die Schweiz enthält, bleibt zu prüfen (6.8). Der Bau der Webseiten verlangt dafür `DPA_SINCE` statt `DPA_SIGNED`. E-Mail-Versand: Resend gewählt, sein DPA von Resend vorunterzeichnet, noch nicht eingerichtet (5.1, V10, 6.13)                                                                                                                                                                                                                                                                          | –                                  |

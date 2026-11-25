@@ -702,17 +702,19 @@ Receiving no data about you: Expo, a service I use to build the app, and GeoName
 cities comes from – the list is in Night Courier's database, and GeoNames is never asked.
 
 <!-- TO CHECK:
-- Supabase DPA: build with LAUNCH_STATE=live (docs/GO-LIVE.md, "Where the web pages live") only
-  after the Supabase DPA (with the standard contractual clauses) is signed, gdpr-records.md 5.1;
-  until then "on the basis of a data processing agreement" above is untrue, and the page carries
-  the notice that Night Courier has not started yet.
+- Supabase DPA: "on the basis of a data processing agreement" above is true. The DPA is part of
+  Supabase's Terms of Service and applies without a signature, demonstrably since 25 November 2026
+  (gdpr-records.md 5.1); a build with LAUNCH_STATE=live asks for that date as DPA_SINCE
+  (docs/GO-LIVE.md, "Where the web pages live"). Whether it has the standard contractual clauses:
+  section 8.
 - Supabase: open the list of sub-processors (probably https://supabase.com/legal/subprocessors) and
   link it here; check whether it lists a service in front of the API (such as Cloudflare) or a
   logging service outside Switzerland.
-- Email delivery: name the chosen provider (Resend, Postmark or Amazon SES), with where it is based
-  and a link, once it is set up, and sign its data processing agreement. If it is based or processes
-  in the USA, name it in section 8 too, with its safeguard, and put how long it keeps its sending log
-  into section 9.
+- Email delivery: name the chosen provider (gdpr-records.md 5.1), with where it is based and a link,
+  once sending goes through it, and not before: until then it receives nothing. Its data
+  processing agreement comes signed by the provider and needs no signature (5.1). If it is based or
+  processes in the USA, name it in section 8 too, with its safeguard, and put how long it keeps its
+  sending log into section 9.
 - Microsoft: whether Microsoft's consumer privacy statement is the right one for a personal
   Outlook.com mailbox.
 - GitHub Pages: how long GitHub keeps visitors' IP addresses (if it states a fixed period, write it
@@ -747,10 +749,10 @@ cities comes from – the list is in Night Courier's database, and GeoNames is n
   they safeguard it is set out in their own privacy policies.
 
 <!-- TO CHECK:
-- Build with LAUNCH_STATE=live only after the Supabase DPA (with the standard contractual clauses)
-  is signed, gdpr-records.md 5.1; until then the sentence on the USA, and the offer of a copy of
-  the clauses, are untrue, and the page carries the notice that Night Courier has not started yet.
-  Check whether the DPA has the adjustments for Switzerland with which the FDPIC
+- The Supabase DPA applies without a signature, demonstrably since 25 November 2026
+  (gdpr-records.md 5.1). Whether it has the standard contractual clauses, and which modules: check
+  in the copy kept (5.1); the sentence on the USA, and the offer of a copy of the clauses, rest on
+  it. Check whether the DPA has the adjustments for Switzerland with which the FDPIC
   recognised the EU standard contractual clauses (Art. 16(2)(d) FADP).
 - For Supabase Inc., Microsoft, GitHub, Inc., Apple and Google, look up on dataprivacyframework.gov
   whether they are certified under the Swiss-US Data Privacy Framework (and, for the EU, the EU-US

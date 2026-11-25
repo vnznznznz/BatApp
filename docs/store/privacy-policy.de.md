@@ -777,17 +777,19 @@ Liste der Städte stammt – sie liegt in der Datenbank von Night Courier, und G
 gefragt.
 
 <!-- PRÜFEN:
-- Supabase-DPA: erst mit LAUNCH_STATE=live bauen (docs/GO-LIVE.md, "Where the web pages live"),
-  wenn der DPA von Supabase (mit den Standardvertragsklauseln) unterzeichnet ist, gdpr-records.md
-  5.1; bis dahin stimmt "auf Grundlage eines Vertrags zur Auftragsverarbeitung" oben nicht, und die
-  Seite trägt den Hinweis, dass Night Courier noch nicht gestartet ist.
+- Supabase-DPA: "auf Grundlage eines Vertrags zur Auftragsverarbeitung" oben stimmt. Der DPA ist
+  Teil von Supabases Nutzungsbedingungen und gilt ohne Unterschrift, nachweislich seit dem 25.
+  November 2026 (gdpr-records.md 5.1); ein Bau mit LAUNCH_STATE=live verlangt dieses Datum als
+  DPA_SINCE (docs/GO-LIVE.md, "Where the web pages live"). Ob er die Standardvertragsklauseln
+  enthält: Abschnitt 8.
 - Supabase: Liste der Unterauftragsverarbeiter aufrufen (vermutlich https://supabase.com/legal/subprocessors)
   und hier verlinken; prüfen, ob dort ein Dienst vor der API (z. B. Cloudflare) oder ein
   Protokolldienst außerhalb der Schweiz steht.
-- E-Mail-Versand: den gewählten Anbieter (Resend, Postmark oder Amazon SES) mit Sitz und Link nennen,
-  sobald er eingerichtet ist, und seinen Auftragsverarbeitungsvertrag abschließen. Sitzt er in den
-  USA oder verarbeitet er dort, ihn auch in Abschnitt 8 mit seiner Absicherung nennen, und die Dauer
-  seines Versandprotokolls in Abschnitt 9 eintragen.
+- E-Mail-Versand: den gewählten Anbieter (gdpr-records.md 5.1) mit Sitz und Link nennen, sobald der
+  Versand über ihn läuft, und nicht vorher: Bis dahin erhält er nichts. Sein
+  Auftragsverarbeitungsvertrag ist vom Anbieter vorunterzeichnet und braucht keine Unterschrift
+  (5.1). Sitzt er in den USA oder verarbeitet er dort, ihn auch in Abschnitt 8 mit seiner
+  Absicherung nennen, und die Dauer seines Versandprotokolls in Abschnitt 9 eintragen.
 - Microsoft: ob für ein privates Outlook.com-Postfach Microsofts Verbraucher-Datenschutzerklärung
   die richtige ist.
 - GitHub Pages: wie lange GitHub die IP-Adressen der Besucher aufbewahrt (wenn es eine feste Frist
@@ -824,10 +826,10 @@ gefragt.
   verarbeiten. Wie sie das absichern, steht in ihren eigenen Datenschutzbestimmungen.
 
 <!-- PRÜFEN:
-- Erst mit LAUNCH_STATE=live bauen, wenn der DPA von Supabase (mit den Standardvertragsklauseln)
-  unterzeichnet ist, gdpr-records.md 5.1; bis dahin stimmen der Satz zu den USA und das Angebot
-  einer Kopie der Klauseln nicht, und die Seite trägt den Hinweis, dass Night Courier noch nicht
-  gestartet ist. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
+- Der DPA von Supabase gilt ohne Unterschrift, nachweislich seit dem 25. November 2026
+  (gdpr-records.md 5.1). Ob er die Standardvertragsklauseln enthält, und welche Module, an der
+  abgelegten Fassung prüfen (5.1): Der Satz zu den USA und das Angebot einer Kopie der Klauseln
+  setzen das voraus. Ob der DPA die Anpassungen für die Schweiz enthält, mit denen der EDÖB die
   Standardvertragsklauseln der EU anerkannt hat (Art. 16 Abs. 2 lit. d DSG).
 - Für Supabase Inc., Microsoft, GitHub, Inc., Apple und Google auf dataprivacyframework.gov
   nachsehen, ob sie für den Swiss-US Data Privacy Framework (und für die EU den EU-US Data Privacy

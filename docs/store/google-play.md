@@ -752,16 +752,18 @@ A short note, not legal advice.
       emails on a device, as `app-store.md`, section 7, describes. Then change section 3.10 of both
       privacy policies as their TO CHECK and PRÜFEN comments say, and rebuild the pages with a new
       `EFFECTIVE_DATE` (GO-LIVE, "Where the web pages live").
-- [ ] Supabase DPA signed before the web pages are rebuilt with `LAUNCH_STATE=live`
-      (`gdpr-records.md` 5.1; GO-LIVE, "Where the web pages live"), with the safeguard for the USA
-      that the privacy policy's section 8 names: until then, its sections 7 and 8 are untrue, and
+- [x] Supabase DPA in force: it is part of Supabase's Terms of Service, needs no signature, and has
+      demonstrably applied since 25 November 2026 (`gdpr-records.md` 5.1); a build with
+      `LAUNCH_STATE=live` asks for that date as `DPA_SINCE` (GO-LIVE, "Where the web pages live").
+      Whether it holds the safeguard for the USA that the privacy policy's section 8 names, the
+      standard contractual clauses, is still **to check** (5.1). Until the hosted project exists,
       every page carries the notice that Night Courier has not started.
 - [x] Privacy policy published on GitHub Pages at `{{PRIVACY_POLICY_URL}}`
       (`https://vnznznznz.github.io/night-courier/privacy-policy.de.html`, the English version
       alongside) since 10 November 2026, with the placeholders filled in only in the site
       repository `vnznznznz.github.io`, never in this one, and the database's location named as
-      Switzerland. It is the only page with the postal address. Until the item before this one is
-      done, and the policy's TO CHECK and PRÜFEN notes are worked through (`app-store.md`,
+      Switzerland. It is the only page with the postal address. Until the hosted project exists,
+      and the policy's TO CHECK and PRÜFEN notes are worked through (`app-store.md`,
       section 7, has the item), every rebuild uses `LAUNCH_STATE=before-launch`.
 - [x] Support page live at `{{SUPPORT_URL}}` (`https://vnznznznz.github.io/night-courier/`, from
       `support-page.md`) since 10 November 2026, with the account deletion text (section 6), and

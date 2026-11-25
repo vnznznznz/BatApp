@@ -227,8 +227,10 @@ the EEA, because the app is offered to them (Art. 3(2)(a) GDPR):
   there (support, sub-processors); so do Microsoft for the contact mailbox and GitHub for the web
   pages. Under the FADP that rests on the Swiss-US Data Privacy Framework (recognised by the
   Federal Council, in effect since 15 September 2024) for certified companies, otherwise on
-  contractual safeguards such as the SCCs in Supabase's DPA; whether each company is certified is
-  **to check** (`docs/store/gdpr-records.md`, 5.1).
+  contractual safeguards such as the SCCs in Supabase's DPA. That DPA is part of Supabase's Terms
+  of Service and needs no signature; it has demonstrably applied since 25 November 2026. Whether
+  each company is certified, and whether the DPA holds the SCCs, is **to check**
+  (`docs/store/gdpr-records.md`, 5.1).
 - **Latency is a non-issue here.** A few hundred kilometres of extra distance is single-digit
   milliseconds, and this is an application whose entire premise is that messages take hours.
 

@@ -40,7 +40,7 @@ runs in Expo Go.
 | Item                                    | Cost                                              | Status                          | Blocks                                                               |
 | --------------------------------------- | ------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
 | Supabase project in Zurich              | free tier (pauses when idle: "Traps to diarise")  | **not created**                 | everything — see "Setting up the hosted project"                     |
-| Custom SMTP (Resend/Postmark/SES)       | free tier                                         | not started                     | any second user; password reset                                      |
+| Custom SMTP (Resend)                    | free tier                                         | account opened; needs a domain  | any second user; password reset                                      |
 | Apple Developer Program                 | 99 USD/year (CHF 99 in Switzerland, **to check**) | not started                     | Phases 15–17: any install beyond Expo Go                             |
 | Expo account for EAS builds             | free tier                                         | not started                     | Phases 15–16                                                         |
 | Google Play Console                     | 25 USD once                                       | not started                     | Android only; skip if iOS-only                                       |
@@ -54,7 +54,7 @@ cost on the iOS side; nothing in the app itself costs money.
 
 | Item                              | Required by                                | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages`, as `LAUNCH_STATE=before-launch` until the project is in Zurich and the DPA is signed. The pages of 10 November went up without that notice; whether the site carries it by now is the check under "Where the web pages live" |
+| Privacy policy at a public URL    | Apple 5.1.1(i), Art. 19 FADP, GDPR Art. 13 | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/privacy-policy.de.html` (binding), English at `privacy-policy.en.html` beside it. Built from `docs/store/privacy-policy.*.md` with `npm run build:pages`, as `LAUNCH_STATE=before-launch` until the project is in Zurich (the DPA is in force). The pages of 10 November went up without that notice; whether the site carries it by now is the check under "Where the web pages live" |
 | Support URL                       | Apple 1.2                                  | **Live** since 10 November 2026: `https://vnznznznz.github.io/night-courier/`, built from `docs/store/support-page.md`. It names the operator and the contact address and points to the privacy policy for the postal address. In the app via `EXPO_PUBLIC_CONTACT_URL`. Fallback: the privacy policy URL, if Apple wants the address on the Support URL itself                                                                                                    |
 | Contact postal address            | Apple 1.2, Art. 19 FADP, GDPR Art. 13      | Decided. Published only in the hosted privacy policy, section 1 (the support page points there), whose filled-in copy exists only in the site repository `vnznznznz.github.io`; in App Store Connect where a form asks; never in this repository                                                                                                                                                                                                                   |
 | EULA with a zero-tolerance clause | Apple 1.2 enforcement practice             | **Done** in the app: the house rules (`src/app/rules.tsx`), agreed to at sign-up                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -163,17 +163,19 @@ Recorded where the work is, not only here:
 3. ~~Phases 3–9 — the product itself, ending with messages that actually arrive.~~ Done, with
    Phase 11. Push the migrations to the hosted project ("Setting up the hosted project", step 3).
 4. Custom SMTP, then email confirmation on ("Before a second person can sign up: custom SMTP").
-   Password reset and confirmation are built: both work by a code from the email, typed into the
-   app, and the codes' settings and the emails' templates go to the project with its config
-   (step 1).
+   The provider is Resend, where the operator has an account; it still needs a domain of the
+   operator's own. Password reset and confirmation are built: both work by a code from the email,
+   typed into the app, and the codes' settings and the emails' templates go to the project with its
+   config (step 1).
 5. ~~Phase 10 push.~~ Dropped.
 6. ~~Phase 13a, which App Review will check.~~ Done, and so is Phase 12. Phases 13 and 14 remain.
 7. ~~Privacy policy and support page on the GitHub Pages site.~~ Live since 10 November 2026, to
-   be built with `LAUNCH_STATE=before-launch` for now. Once the project exists in Zurich (step 1)
-   and the DPA is signed and dated in `docs/store/gdpr-records.md`, 5.1 - and before anyone but
-   the operator has an account - rebuild them with `LAUNCH_STATE=live`, that date as `DPA_SIGNED`,
-   and a new `EFFECTIVE_DATE` (see "Where the web pages live"). The rest of group C (the store
-   answers in `docs/store/`) goes in when the accounts exist.
+   be built with `LAUNCH_STATE=before-launch` for now. Once the project exists in Zurich (step 1),
+   and before anyone but the operator has an account, rebuild them with `LAUNCH_STATE=live`,
+   `DPA_SINCE=2026-11-25` and a new `EFFECTIVE_DATE` (see "Where the web pages live"). The DPA
+   needs no step of its own: it is part of Supabase's Terms of Service, and 25 November 2026 is
+   the day it was seen in force, as `docs/store/gdpr-records.md`, 5.1, records. The rest of group
+   C (the store answers in `docs/store/`) goes in when the accounts exist.
 8. `eas.json`, first build, TestFlight, invite the circle.
 
 ---
@@ -945,9 +947,12 @@ USD a year) is the cleaner foundation.
    gives data _residency_, not sovereignty — access from the US rests, under the FADP, on the
    Swiss-US Data Privacy Framework if Supabase is certified (**to check**), otherwise on the SCCs in
    their DPA, and for people in the EU on those SCCs. That is appropriate for a hobby project but
-   worth knowing. The DPA has to be requested and signed
-   (`docs/store/gdpr-records.md`, 5.1) before the web pages are rebuilt with `LAUNCH_STATE=live`,
-   since sections 7 and 8 of the privacy policy say it exists; until then the pages carry the
+   worth knowing. The DPA needs no request and no signature: the dashboard says, under the
+   organization's "Legal Documents", that it is part of Supabase's Terms of Service, which the
+   operator accepted with the account. The operator saw that on 25 November 2026, the date from
+   which it demonstrably applies (`docs/store/gdpr-records.md`, 5.1); whether it holds the SCCs,
+   which modules, and the adjustments for Switzerland is still **to check** there. Sections 7 and
+   8 of the privacy policy say the agreement exists; until the project exists, the pages carry the
    notice that Night Courier has not started (see "Where the web pages live").
 
 ### Before a second person can sign up: custom SMTP
@@ -965,13 +970,23 @@ reset. In this order:
 
 1. The codes' settings and the emails' templates are on the project already: they went with its
    config ("Setting up the hosted project", step 2, and its check of the texts).
-2. Configure a provider under Authentication → Emails → SMTP Settings (Resend, Postmark and SES
-   all have free tiers large enough for this app). That also lifts the cap to 30 messages per
-   hour. Raise it well above the sign-ups expected in an hour (Authentication → Rate Limits,
+2. Configure a provider under Authentication → Emails → SMTP Settings: Resend, the one chosen
+   (its free tier is large enough for this app). That also lifts the cap to 30 messages per hour.
+   Raise it well above the sign-ups expected in an hour (Authentication → Rate Limits,
    **to check** where exactly): while the hour's emails are used up, sign-up answers an address
    that has a confirmed account differently from one that has none ("Known gaps already logged").
    The SMTP settings themselves can stay in the dashboard: the file does not declare them, so a
    push leaves them alone.
+
+   The operator has an account at Resend. Before these settings, it needs a domain of the
+   operator's own, added and verified there, with the region it sends from chosen. Its DPA needs
+   no signature: per Resend's own documentation it is pre-signed by Resend and in force for every
+   account, with the EU standard contractual clauses, and Resend is certified under the EU-U.S.
+   Data Privacy Framework. Keep the signed copy, downloaded in Resend under Settings → Documents,
+   with its date. Nothing reaches Resend before the settings are saved, so the privacy policy
+   names it only then (section 7, and 8 and 9 as their notes say; `docs/store/gdpr-records.md`,
+   5.1, has the list).
+
 3. Try it before anyone depends on it, with an account of the operator's own on the hosted
    project: for an address without one the auth server sends nothing, while the app asks for the
    code all the same. If there is none yet - step 6 of "Setting up the hosted project" deleted its
@@ -1152,9 +1167,11 @@ transits it, so a content-free push keeps message text out of a US processor.
 
   then commit and push there; GitHub publishes within a minute or two. The site repository's
   README gives the same command with `…` for the four details, and says when `LAUNCH_STATE=live`
-  and `DPA_SIGNED` are due (below). Since 21 November 2026 it no longer has the operator's name,
-  postal address and email address written out: they stand on the published privacy policy, in
-  section 1, and nowhere else in either repository.
+  and `DPA_SIGNED` are due (below). That second name is out of date: the build asks for
+  `DPA_SINCE` instead and refuses a live build without it, so change it there with the next
+  rebuild. Since 21 November 2026 the README no longer has the operator's name, postal address and
+  email address written out: they stand on the published privacy policy, in section 1, and nowhere
+  else in either repository.
 
   **Check that it arrived,** a few minutes after the push. The pages are what people read, not
   the repository:
@@ -1188,7 +1205,7 @@ transits it, so a content-free push keeps message text out of a US processor.
   **`LAUNCH_STATE` says whether Night Courier has started,** and nothing is built without it. The
   policy speaks in the present tense - a database in Zurich, a processing agreement with Supabase,
   standard contractual clauses a reader can ask for a copy of - and the pages have been public
-  since 10 November 2026, before any of that existed. So:
+  since 10 November 2026, before the project existed or anyone had made sure of the agreement. So:
   - `LAUNCH_STATE=before-launch` puts a short notice on every page: directly under the navigation
     of each policy, and at the top of each half of the help page, in the page's language. It says
     that Night Courier has not started yet, that the page describes how the app will handle data
@@ -1198,20 +1215,24 @@ transits it, so a content-free push keeps message text out of a US processor.
   - `LAUNCH_STATE=live` builds the pages without the notice. Use it, together with a new
     `EFFECTIVE_DATE`, only once both of these are true: the hosted project exists in
     `eu-central-2` (Zurich), the region the policy names ("Setting up the hosted project", step 1
-    and its check); and the processing agreement with Supabase, the DPA with the standard
-    contractual clauses, is signed and its date is written into `docs/store/gdpr-records.md`,
-    section 5.1, first item ("hier das Datum eintragen"). The policy's PRÜFEN notes (TO CHECK in
-    the English version) list what else it says that has to be checked against the real project
-    by then. And do it before anyone but the operator gets an account: from that day "there are no
-    accounts" is the sentence that is not true.
+    and its check); and the processing agreement with Supabase, its DPA, applies, and the date
+    from which it demonstrably does is written into `docs/store/gdpr-records.md`, section 5.1,
+    first item. The second is met: the DPA is part of Supabase's Terms of Service and needs no
+    signature, and it has demonstrably applied since 25 November 2026, when the operator saw the
+    dashboard say so. Whether it holds the standard contractual clauses the policy names is still
+    **to check** (5.1). The policy's PRÜFEN notes (TO CHECK in the English version) list what else
+    it says that has to be checked against the real project by then. And do it before anyone but
+    the operator gets an account: from that day "there are no accounts" is the sentence that is
+    not true.
 
-    A live build asks for that date: add `DPA_SIGNED=YYYY-MM-DD` to the command, copied from
-    `gdpr-records.md`, 5.1. Without it the build stops, and so it does when the date is later
-    than `EFFECTIVE_DATE` or still to come. The pages do not show it; the build's last line does
-    ("live: no notice (processing agreement signed …)"). It is there so that "live" cannot be
-    typed by someone who has no date to give - the pages have once gone up before the agreement
-    existed. If the blank in 5.1 is still empty, the answer is `LAUNCH_STATE=before-launch`,
-    never a date made up for the purpose.
+    A live build asks for that date: add `DPA_SINCE=YYYY-MM-DD` to the command, copied from
+    `gdpr-records.md`, 5.1 - for this project `DPA_SINCE=2026-11-25`. Without it the build stops,
+    and so it does when the date is later than `EFFECTIVE_DATE` or still to come: a live build's
+    `EFFECTIVE_DATE` is 25 November 2026 or later. The pages do not show it; the build's last line
+    does ("live: no notice (processing agreement demonstrably in force since …)"). It is there so
+    that "live" cannot be typed by someone who has no date to give - the pages have once gone up
+    before anyone had made sure of the agreement. The date is the one in 5.1: never an earlier one
+    guessed for the day the account accepted the Terms, and never one made up for the purpose.
 
   `scripts/build-store-pages.mjs` refuses to build while a value is missing, a date is not one
   that exists (30 February) or is still to come, a live build has no date for the agreement, a

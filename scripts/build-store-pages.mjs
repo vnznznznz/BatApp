@@ -13,18 +13,22 @@
  *   npm run build:pages -- --out ../vnznznznz.github.io
  *
  * LAUNCH_STATE says whether Night Courier has started. The policy speaks in
- * the present tense - a database in Zurich, a signed processing agreement -
- * and the pages are public before any of that exists. With before-launch,
- * every page says at its top that the app has not started and that nothing is
- * processed yet; with live, the pages stand as written. There is no default:
- * docs/GO-LIVE.md, "Where the web pages live", says when live becomes true.
+ * the present tense - a database in Zurich, a processing agreement with
+ * Supabase - and the pages are public before all of that exists. With
+ * before-launch, every page says at its top that the app has not started and
+ * that nothing is processed yet; with live, the pages stand as written. There
+ * is no default: docs/GO-LIVE.md, "Where the web pages live", says when live
+ * becomes true.
  *
- * A live build also needs DPA_SIGNED=YYYY-MM-DD, the date the processing
- * agreement with Supabase was signed, as it is written into
- * docs/store/gdpr-records.md, 5.1. The pages do not show it. It is asked for
- * because the policy says the agreement exists, and the pages have once been
- * published before it did: whoever cannot give the date is not ready to build
- * as live.
+ * A live build also needs DPA_SINCE=YYYY-MM-DD, the date from which the
+ * processing agreement with Supabase demonstrably applies, as it is written
+ * into docs/store/gdpr-records.md, 5.1: for Night Courier 2026-11-25, the day
+ * it was seen in force in Supabase's dashboard. Supabase's DPA is part of its
+ * Terms of Service and is never signed, so the date is not a signature's, and
+ * never an earlier one guessed for the day the account accepted the Terms. The
+ * pages do not show it. It is asked for because the policy says the agreement
+ * exists, and the pages have once been published before anyone had made sure
+ * of it: whoever cannot give the date is not ready to build as live.
  *
  * --out is the site repository's checkout. The pages go into its folder
  * night-courier/ (index.html is the help page), with a redirect at its root and
@@ -170,22 +174,23 @@ const longDate = (locale, day = date) =>
   }).format(day);
 
 // Live means the policy stands as written, and it says that Supabase works
-// under a signed processing agreement. So a live build has to be told when it
-// was signed: not on a day still to come, and not later than the date the
-// policy itself carries.
-let agreementSigned = null;
+// under a processing agreement. So a live build has to be told from when that
+// agreement demonstrably applies: not a day still to come, and not later than
+// the date the policy itself carries.
+let agreementSince = null;
 if (env.LAUNCH_STATE === 'live') {
-  const given = process.env.DPA_SIGNED?.trim();
+  const given = process.env.DPA_SINCE?.trim();
   if (!given)
     fail(
-      'LAUNCH_STATE=live needs DPA_SIGNED, the date the processing agreement with Supabase was ' +
-        'signed (docs/store/gdpr-records.md, 5.1). Without one, build with LAUNCH_STATE=before-launch',
+      'LAUNCH_STATE=live needs DPA_SINCE, the date from which the processing agreement with ' +
+        'Supabase demonstrably applies (docs/store/gdpr-records.md, 5.1). Without one, build ' +
+        'with LAUNCH_STATE=before-launch',
     );
-  agreementSigned = dayOf(given);
-  if (!agreementSigned) fail('DPA_SIGNED must be a date that exists, as YYYY-MM-DD');
-  if (stillToCome(given)) fail(`DPA_SIGNED (${given}) is in the future`);
-  if (agreementSigned > date)
-    fail(`DPA_SIGNED (${given}) is later than EFFECTIVE_DATE (${env.EFFECTIVE_DATE})`);
+  agreementSince = dayOf(given);
+  if (!agreementSince) fail('DPA_SINCE must be a date that exists, as YYYY-MM-DD');
+  if (stillToCome(given)) fail(`DPA_SINCE (${given}) is in the future`);
+  if (agreementSince > date)
+    fail(`DPA_SINCE (${given}) is later than EFFECTIVE_DATE (${env.EFFECTIVE_DATE})`);
 }
 
 /**
@@ -481,8 +486,9 @@ for (const [name, html] of Object.entries(pages))
 writeFileSync(join(OUT, 'index.html'), ROOT_PAGE);
 writeFileSync(join(OUT, '.nojekyll'), '');
 
-const state = agreementSigned
-  ? `live: no notice (processing agreement signed ${longDate('en-GB', agreementSigned)})`
+const state = agreementSince
+  ? 'live: no notice (processing agreement demonstrably in force since ' +
+    `${longDate('en-GB', agreementSince)})`
   : 'not started yet: every page carries the notice';
 console.log(
   `Built ${Object.keys(pages).length + 1} pages into ${OUT}, dated ${POLICIES.en.date}, ${state}.`,
