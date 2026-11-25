@@ -654,8 +654,8 @@ describe('the launch notice', () => {
  * that agreement, and only a sentence in a runbook stood in the way. So a live
  * build asks for the date from which the agreement demonstrably applies - the
  * one docs/store/gdpr-records.md, 5.1, records - and whoever cannot give it has
- * their answer. Supabase's agreement is part of its Terms of Service and is
- * never signed: the date is the day it was seen in force, not a signature's.
+ * their answer. Supabase's agreement is part of its Terms of Service and
+ * needs no signature: the date is the day it was seen in force, not a signature's.
  */
 describe('a live build', () => {
   it('is refused without the date from which the processing agreement demonstrably applies', () => {

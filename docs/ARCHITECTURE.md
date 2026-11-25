@@ -248,9 +248,10 @@ is created and the confirmation code never arrives. (A link, when this was writt
 carry a code since November 2026, see "Codes, not links" below.)
 
 So the order is: confirmation **off** while the only account is the operator's; configure custom
-SMTP (Resend, Postmark, SES) before inviting anyone; then turn confirmation **on**. It stays
-worth turning on, because password reset is only a recovery route if the address is real, and a
-typo'd address on a project with no support desk is a permanent lockout.
+SMTP (Resend, the provider chosen: docs/GO-LIVE.md, "Before a second person can sign up: custom
+SMTP") before inviting anyone; then turn confirmation **on**. It stays worth turning on, because
+password reset is only a recovery route if the address is real, and a typo'd address on a project
+with no support desk is a permanent lockout.
 
 Because that setting is the project's rather than the app's - `supabase/config.toml` declares it
 (`enable_confirmations`), and the dashboard can change it - `signUp` **reports** which case

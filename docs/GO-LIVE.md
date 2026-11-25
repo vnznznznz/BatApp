@@ -1165,13 +1165,11 @@ transits it, so a content-free push keeps message text out of a US processor.
   npm run build:pages -- --out ../vnznznznz.github.io
   ```
 
-  then commit and push there; GitHub publishes within a minute or two. The site repository's
-  README gives the same command with `…` for the four details, and says when `LAUNCH_STATE=live`
-  and `DPA_SIGNED` are due (below). That second name is out of date: the build asks for
-  `DPA_SINCE` instead and refuses a live build without it, so change it there with the next
-  rebuild. Since 21 November 2026 the README no longer has the operator's name, postal address and
-  email address written out: they stand on the published privacy policy, in section 1, and nowhere
-  else in either repository.
+  then commit and push there; GitHub publishes within a minute or two. The site repository's README
+  gives the same command with `…` for the four details, and says when `LAUNCH_STATE=live` and
+  `DPA_SINCE` are due (below). Since 21 November 2026 the README no longer has the operator's name,
+  postal address and email address written out: they stand on the published privacy policy, in
+  section 1, and nowhere else in either repository.
 
   **Check that it arrived,** a few minutes after the push. The pages are what people read, not
   the repository:

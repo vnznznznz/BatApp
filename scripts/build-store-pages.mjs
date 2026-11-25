@@ -24,7 +24,7 @@
  * processing agreement with Supabase demonstrably applies, as it is written
  * into docs/store/gdpr-records.md, 5.1: for Night Courier 2026-11-25, the day
  * it was seen in force in Supabase's dashboard. Supabase's DPA is part of its
- * Terms of Service and is never signed, so the date is not a signature's, and
+ * Terms of Service and needs no signature, so the date is not a signature's, and
  * never an earlier one guessed for the day the account accepted the Terms. The
  * pages do not show it. It is asked for because the policy says the agreement
  * exists, and the pages have once been published before anyone had made sure
